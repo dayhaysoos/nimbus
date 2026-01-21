@@ -1,0 +1,28 @@
+{
+  "name": "@dayhaysoos/nimbus",
+  "version": "0.0.1",
+  "description": "CLI tool for benchmarking LLMs on code generation tasks",
+  "type": "module",
+  "bin": {
+    "nimbus": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node --loader ts-node/esm src/index.ts",
+    "prepublishOnly": "npm run build"
+  },
+  "dependencies": {
+    "@clack/prompts": "^0.9.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "dist"
+  ]
+}

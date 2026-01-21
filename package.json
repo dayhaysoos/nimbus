@@ -1,0 +1,13 @@
+{
+  "name": "nimbus",
+  "private": true,
+  "packageManager": "pnpm@9.15.0",
+  "scripts": {
+    "dev": "pnpm --filter @dayhaysoos/nimbus-worker dev",
+    "build": "pnpm -r build",
+    "cli": "pnpm --filter @dayhaysoos/nimbus start"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
