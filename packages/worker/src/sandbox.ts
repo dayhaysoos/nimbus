@@ -6,12 +6,17 @@ export { Sandbox } from '@cloudflare/sandbox';
 
 type SSEWriter = (event: SSEEvent) => void;
 
+export interface BuildResult {
+  previewUrl: string;
+  sandboxId: string;
+}
+
 export async function buildInSandbox(
   sandboxNamespace: DurableObjectNamespace<Sandbox>,
   files: GeneratedFile[],
   sendEvent: SSEWriter,
   hostname: string
-): Promise<string> {
+): Promise<BuildResult> {
   // Create a unique sandbox instance for this build
   const sandboxId = `build-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const sandbox = getSandbox(sandboxNamespace, sandboxId);
@@ -81,7 +86,10 @@ export async function buildInSandbox(
     // Expose the port and get preview URL
     const exposed = await sandbox.exposePort(8080, { hostname });
     
-    return exposed.url;
+    return {
+      previewUrl: exposed.url,
+      sandboxId,
+    };
   } catch (error) {
     // On error, try to clean up the sandbox
     try {

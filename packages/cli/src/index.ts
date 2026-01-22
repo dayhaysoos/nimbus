@@ -1,155 +1,137 @@
 #!/usr/bin/env node
 
 import * as p from '@clack/prompts';
+import { startCommand } from './commands/start.js';
+import { listCommand } from './commands/list.js';
+import { watchCommand } from './commands/watch.js';
 
-// SSE Event types (matching worker)
-type SSEEvent =
-  | { type: 'generating' }
-  | { type: 'generated'; fileCount: number }
-  | { type: 'scaffolding' }
-  | { type: 'writing' }
-  | { type: 'installing' }
-  | { type: 'building' }
-  | { type: 'starting' }
-  | { type: 'complete'; previewUrl: string }
-  | { type: 'error'; message: string };
+const VERSION = '0.1.0';
 
-const WORKER_URL = process.env.NIMBUS_WORKER_URL;
+function showHelp(): void {
+  console.log(`
+nimbus - AI-powered website generator
 
-async function* parseSSE(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<SSEEvent> {
-  const decoder = new TextDecoder();
-  let buffer = '';
+Usage:
+  nimbus <command> [options]
 
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
+Commands:
+  start <prompt>     Create a new website from a prompt
+  list               List all past jobs
+  watch <job-id>     Watch a job's progress
 
-    buffer += decoder.decode(value, { stream: true });
+Options:
+  -m, --model <id>   Specify model for start command (skips picker)
+  -h, --help         Show this help message
+  -v, --version      Show version
 
-    // Process complete SSE messages
-    const lines = buffer.split('\n\n');
-    buffer = lines.pop() || ''; // Keep incomplete message in buffer
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          const data = JSON.parse(line.slice(6)) as SSEEvent;
-          yield data;
-        } catch {
-          // Skip malformed JSON
-        }
-      }
-    }
-  }
-}
-
-async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  const prompt = args.join(' ').trim();
-
-  // Show help
-  if (!prompt || prompt === '--help' || prompt === '-h') {
-    console.log(`
-Usage: npx @dayhaysoos/nimbus "<prompt>"
-
-Example:
-  NIMBUS_WORKER_URL=https://your-worker.com npx @dayhaysoos/nimbus "Build a landing page"
+Examples:
+  nimbus start "Build a landing page for a coffee shop"
+  nimbus start -m openai/gpt-4o "Build a portfolio site"
+  nimbus list
+  nimbus watch job_abc123
 
 Environment Variables:
   NIMBUS_WORKER_URL  Worker URL (required) - Your self-hosted Nimbus worker
 
-Self-hosting guide: https://github.com/dayhaysoos/nimbus#self-hosting-guide
+Self-hosting: https://github.com/dayhaysoos/nimbus#self-hosting-guide
 `);
-    process.exit(prompt ? 0 : 1);
+}
+
+function parseArgs(args: string[]): {
+  command: string | null;
+  flags: Record<string, string | boolean>;
+  positional: string[];
+} {
+  const flags: Record<string, string | boolean> = {};
+  const positional: string[] = [];
+  let command: string | null = null;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+
+    if (arg.startsWith('--')) {
+      const key = arg.slice(2);
+      // Check if next arg is a value (not another flag)
+      if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        flags[key] = args[++i];
+      } else {
+        flags[key] = true;
+      }
+    } else if (arg.startsWith('-')) {
+      const key = arg.slice(1);
+      // Handle short flags
+      if (key === 'm' && i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        flags['model'] = args[++i];
+      } else if (key === 'h') {
+        flags['help'] = true;
+      } else if (key === 'v') {
+        flags['version'] = true;
+      } else {
+        flags[key] = true;
+      }
+    } else if (!command) {
+      command = arg;
+    } else {
+      positional.push(arg);
+    }
   }
 
-  // Require NIMBUS_WORKER_URL
-  if (!WORKER_URL) {
-    p.intro('@dayhaysoos/nimbus');
-    p.log.error('NIMBUS_WORKER_URL environment variable is required.');
-    p.log.info('Set it to your self-hosted Nimbus worker URL.');
-    p.log.info('');
-    p.log.info('Example:');
-    p.log.info('  NIMBUS_WORKER_URL=https://your-worker.com npx @dayhaysoos/nimbus "your prompt"');
-    p.log.info('');
-    p.log.info('Self-hosting guide: https://github.com/dayhaysoos/nimbus#self-hosting-guide');
-    process.exit(1);
+  return { command, flags, positional };
+}
+
+async function main(): Promise<void> {
+  const args = process.argv.slice(2);
+  const { command, flags, positional } = parseArgs(args);
+
+  // Handle version flag
+  if (flags.version || flags.v) {
+    console.log(`nimbus v${VERSION}`);
+    process.exit(0);
+  }
+
+  // Handle help flag
+  if (flags.help || flags.h || !command) {
+    showHelp();
+    process.exit(command ? 0 : 1);
   }
 
   p.intro('@dayhaysoos/nimbus');
 
-  const spinner = p.spinner();
-
   try {
-    spinner.start('Connecting to worker...');
-
-    const response = await fetch(`${WORKER_URL}/build`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt }),
-    });
-
-    if (!response.ok) {
-      const errorText = await response.text();
-      throw new Error(`Worker error (${response.status}): ${errorText}`);
-    }
-
-    if (!response.body) {
-      throw new Error('No response body from worker');
-    }
-
-    const reader = response.body.getReader();
-
-    for await (const event of parseSSE(reader)) {
-      switch (event.type) {
-        case 'generating':
-          spinner.stop('Connected to worker');
-          spinner.start('Sending to Claude...');
-          break;
-
-        case 'generated':
-          spinner.stop(`Generated ${event.fileCount} files`);
-          spinner.start('Building in sandbox...');
-          break;
-
-        case 'scaffolding':
-          spinner.message('Scaffolding Astro project...');
-          break;
-
-        case 'writing':
-          spinner.message('Writing generated files...');
-          break;
-
-        case 'installing':
-          spinner.message('Running npm install...');
-          break;
-
-        case 'building':
-          spinner.message('Running npm build...');
-          break;
-
-        case 'starting':
-          spinner.stop('Build complete');
-          spinner.start('Starting preview server...');
-          break;
-
-        case 'complete':
-          spinner.stop('Preview server ready');
-          p.outro(`Preview: ${event.previewUrl}`);
-          p.log.info('Press Ctrl+C to stop the preview.');
-
-          // Keep the process alive until Ctrl+C
-          await new Promise(() => {});
-          break;
-
-        case 'error':
-          spinner.stop('Failed');
-          p.log.error(event.message);
+    switch (command) {
+      case 'start': {
+        // Get prompt from positional args
+        const prompt = positional.join(' ').trim();
+        if (!prompt) {
+          p.log.error('Missing prompt. Usage: nimbus start "your prompt"');
           process.exit(1);
+        }
+        await startCommand(prompt, { model: flags.model as string | undefined });
+        break;
+      }
+
+      case 'list': {
+        await listCommand();
+        break;
+      }
+
+      case 'watch': {
+        const jobId = positional[0];
+        if (!jobId) {
+          p.log.error('Missing job ID. Usage: nimbus watch <job-id>');
+          process.exit(1);
+        }
+        await watchCommand(jobId);
+        break;
+      }
+
+      default: {
+        p.log.error(`Unknown command: ${command}`);
+        p.log.info('Run "nimbus --help" for usage information.');
+        process.exit(1);
       }
     }
   } catch (error) {
-    spinner.stop('Failed');
     const message = error instanceof Error ? error.message : String(error);
     p.log.error(message);
     process.exit(1);

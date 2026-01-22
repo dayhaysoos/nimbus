@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "pnpm --filter @dayhaysoos/nimbus-worker dev",
     "build": "pnpm -r build",
-    "cli": "pnpm --filter @dayhaysoos/nimbus start"
+    "deploy": "pnpm --filter @dayhaysoos/nimbus-worker deploy",
+    "cli": "pnpm --filter @dayhaysoos/nimbus start",
+    "wrangler": "pnpm --filter @dayhaysoos/nimbus-worker exec wrangler"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

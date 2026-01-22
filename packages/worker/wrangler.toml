@@ -3,6 +3,9 @@ main = "src/index.ts"
 compatibility_date = "2025-01-21"
 compatibility_flags = ["nodejs_compat"]
 
+# Enable workers.dev access
+workers_dev = true
+
 # Custom domain for preview URLs (wildcard DNS required)
 [[routes]]
 pattern = "*.getnimbus.dev/*"
@@ -12,6 +15,14 @@ zone_name = "getnimbus.dev"
 DEFAULT_MODEL = "anthropic/claude-sonnet-4"
 # Use getnimbus.dev for preview URLs (wildcard SSL via Cloudflare)
 PREVIEW_HOSTNAME = "getnimbus.dev"
+# Pages project name for deployments
+PAGES_PROJECT_NAME = "nimbus"
+
+# D1 Database for job persistence
+[[d1_databases]]
+binding = "DB"
+database_name = "nimbus-db"
+database_id = "b0c22993-0a1a-4117-8ffb-f243e7487c05"
 
 # Sandbox container configuration
 [[containers]]

@@ -1,6 +1,6 @@
 {
   "name": "@dayhaysoos/nimbus",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "CLI that generates and hosts websites using AI. Give it a prompt, get back a live preview URL.",
   "type": "module",
   "bin": {
