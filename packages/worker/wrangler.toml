@@ -3,6 +3,11 @@ main = "src/index.ts"
 compatibility_date = "2025-01-21"
 compatibility_flags = ["nodejs_compat"]
 
+# Custom domain for preview URLs (wildcard DNS required)
+[[routes]]
+pattern = "*.getnimbus.dev/*"
+zone_name = "getnimbus.dev"
+
 [vars]
 DEFAULT_MODEL = "anthropic/claude-sonnet-4"
 

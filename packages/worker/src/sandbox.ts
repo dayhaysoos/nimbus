@@ -69,14 +69,19 @@ export async function buildInSandbox(
       sendEvent({ type: 'building' });
     }
 
-    // List what was created
+    // Start HTTP server and expose preview URL
     sendEvent({ type: 'starting' });
-    const lsResult = await sandbox.exec(`ls -la ${APP_DIR}`);
-    const fileList = lsResult.stdout || 'Files written successfully';
+    
+    // Start Python HTTP server to serve the static files
+    await sandbox.startProcess(`cd ${APP_DIR} && python3 -m http.server 8080 --bind 0.0.0.0`);
+    
+    // Wait for server to start
+    await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // For Slice 0, just return the file list
-    // Preview URLs will be implemented properly in a future slice
-    return `Build succeeded! Files at ${APP_DIR}:\n${fileList}`;
+    // Expose the port and get preview URL
+    const exposed = await sandbox.exposePort(8080, { hostname });
+    
+    return exposed.url;
   } catch (error) {
     // On error, try to clean up the sandbox
     try {
