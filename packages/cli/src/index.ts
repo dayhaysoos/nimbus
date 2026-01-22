@@ -14,7 +14,7 @@ type SSEEvent =
   | { type: 'complete'; previewUrl: string }
   | { type: 'error'; message: string };
 
-const WORKER_URL = process.env.NIMBUS_WORKER_URL || 'http://localhost:8787';
+const WORKER_URL = process.env.NIMBUS_WORKER_URL || 'https://nimbus-worker.ndejesus1227.workers.dev';
 
 async function* parseSSE(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<SSEEvent> {
   const decoder = new TextDecoder();
