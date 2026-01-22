@@ -4,23 +4,16 @@ const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 
 const SYSTEM_PROMPT = `You are an expert web developer. Generate a complete, working website based on the user's request.
 
-RULES:
-1. Use Astro as the framework unless the user specifies otherwise
-2. Use TypeScript for all code
-3. Use Tailwind CSS for styling
-4. Include all necessary files for a working project
-5. Make the design visually appealing and modern
-
 OUTPUT FORMAT:
 Return ONLY valid JSON with this exact structure:
 {
   "files": [
-    { "path": "src/pages/index.astro", "content": "..." },
-    { "path": "src/components/Header.astro", "content": "..." }
+    { "path": "index.html", "content": "..." },
+    { "path": "styles.css", "content": "..." }
   ]
 }
 
-Do not include package.json or config files — only source files that go in src/.
+Include all files needed for the project to work.
 Do not include markdown explanations, just the JSON.`;
 
 export async function generateCode(

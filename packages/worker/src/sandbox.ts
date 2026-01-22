@@ -19,67 +19,61 @@ export async function buildInSandbox(
   const APP_DIR = '/root/app';
 
   try {
-    // Step 1: Scaffold Astro project
+    // Step 1: Create project directory
     sendEvent({ type: 'scaffolding' });
-    
-    // Create the app directory and scaffold Astro project in the home directory
-    const scaffoldResult = await sandbox.exec(
-      `npm create astro@latest ${APP_DIR} -- --template basics --typescript strict --install --yes`,
-      { timeout: 180000 } // 3 minute timeout for scaffolding + install
-    );
+    await sandbox.exec(`mkdir -p ${APP_DIR}`);
 
-    if (scaffoldResult.exitCode !== 0) {
-      throw new Error(`Scaffold failed (exit ${scaffoldResult.exitCode}): ${scaffoldResult.stderr || scaffoldResult.stdout}`);
-    }
-
-    // Verify the project was created
-    const verifyResult = await sandbox.exec(`ls -la ${APP_DIR}/package.json`);
-    if (verifyResult.exitCode !== 0) {
-      // Try to debug what happened
-      const lsResult = await sandbox.exec('ls -la /root');
-      throw new Error(`Astro project not created at ${APP_DIR}. Contents of /root: ${lsResult.stdout}`);
-    }
-
-    // Step 2: Write generated files (overwrite scaffolded files)
+    // Step 2: Write generated files
     sendEvent({ type: 'writing' });
     for (const file of files) {
       const fullPath = `${APP_DIR}/${file.path}`;
       // Ensure parent directory exists
       const dir = fullPath.substring(0, fullPath.lastIndexOf('/'));
-      await sandbox.exec(`mkdir -p ${dir}`);
+      if (dir && dir !== APP_DIR) {
+        await sandbox.exec(`mkdir -p ${dir}`);
+      }
       await sandbox.writeFile(fullPath, file.content);
     }
 
-    // Step 3: Install dependencies (in case new deps were added)
-    sendEvent({ type: 'installing' });
-    const installResult = await sandbox.exec(`cd ${APP_DIR} && npm install`, {
-      timeout: 180000, // 3 minute timeout
-    });
-
-    if (installResult.exitCode !== 0) {
-      throw new Error(`npm install failed (exit ${installResult.exitCode}): ${installResult.stderr || installResult.stdout}`);
-    }
-
-    // Step 4: Build the project
-    sendEvent({ type: 'building' });
-    const buildResult = await sandbox.exec(`cd ${APP_DIR} && npm run build`, {
-      timeout: 120000, // 2 minute timeout
-    });
-
-    if (buildResult.exitCode !== 0) {
-      throw new Error(`npm run build failed (exit ${buildResult.exitCode}): ${buildResult.stderr || buildResult.stdout}`);
-    }
-
-    // For Slice 0: Skip preview server - just confirm build succeeded
-    // Preview URLs will be implemented in a later slice
+    // Check if this is a Node.js project (has package.json)
+    const hasPackageJson = files.some(f => f.path === 'package.json' || f.path.endsWith('/package.json'));
     
-    // Verify the build output exists
-    const distCheck = await sandbox.exec(`ls ${APP_DIR}/dist`);
-    if (distCheck.exitCode !== 0) {
-      throw new Error(`Build output not found at ${APP_DIR}/dist`);
+    if (hasPackageJson) {
+      // Step 3: Install dependencies
+      sendEvent({ type: 'installing' });
+      const installResult = await sandbox.exec(`cd ${APP_DIR} && npm install`, {
+        timeout: 180000,
+      });
+
+      if (installResult.exitCode !== 0) {
+        throw new Error(`npm install failed (exit ${installResult.exitCode}): ${installResult.stderr || installResult.stdout}`);
+      }
+
+      // Step 4: Build if there's a build script
+      sendEvent({ type: 'building' });
+      const packageJsonFile = files.find(f => f.path === 'package.json');
+      const hasBuildScript = packageJsonFile && packageJsonFile.content.includes('"build"');
+      
+      if (hasBuildScript) {
+        const buildResult = await sandbox.exec(`cd ${APP_DIR} && npm run build`, {
+          timeout: 120000,
+        });
+
+        if (buildResult.exitCode !== 0) {
+          throw new Error(`npm run build failed (exit ${buildResult.exitCode}): ${buildResult.stderr || buildResult.stdout}`);
+        }
+      }
+    } else {
+      // Static HTML/CSS project - no build needed
+      sendEvent({ type: 'installing' });
+      sendEvent({ type: 'building' });
     }
 
-    return `Build succeeded! Output at ${APP_DIR}/dist. (Preview URLs coming in next slice)`;
+    // List what was created
+    const lsResult = await sandbox.exec(`ls -la ${APP_DIR}`);
+    const fileList = lsResult.stdout || 'Files written successfully';
+
+    return `Build succeeded! Files at ${APP_DIR}:\n${fileList}`;
   } catch (error) {
     // On error, try to clean up the sandbox
     try {
