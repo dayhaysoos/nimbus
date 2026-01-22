@@ -9,6 +9,7 @@ DEFAULT_MODEL = "anthropic/claude-sonnet-4"
 # Sandbox container configuration
 [[containers]]
 class_name = "Sandbox"
+image = "./Dockerfile"
 
 [durable_objects]
 bindings = [{ name = "Sandbox", class_name = "Sandbox" }]
