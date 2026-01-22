@@ -10,7 +10,7 @@ export async function buildInSandbox(
   sandboxNamespace: DurableObjectNamespace<Sandbox>,
   files: GeneratedFile[],
   sendEvent: SSEWriter,
-  _hostname: string // Will be used for preview URLs in later slice
+  hostname: string
 ): Promise<string> {
   // Create a unique sandbox instance for this build
   const sandboxId = `build-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -70,9 +70,12 @@ export async function buildInSandbox(
     }
 
     // List what was created
+    sendEvent({ type: 'starting' });
     const lsResult = await sandbox.exec(`ls -la ${APP_DIR}`);
     const fileList = lsResult.stdout || 'Files written successfully';
 
+    // For Slice 0, just return the file list
+    // Preview URLs will be implemented properly in a future slice
     return `Build succeeded! Files at ${APP_DIR}:\n${fileList}`;
   } catch (error) {
     // On error, try to clean up the sandbox
