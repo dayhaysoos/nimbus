@@ -14,7 +14,7 @@ type SSEEvent =
   | { type: 'complete'; previewUrl: string }
   | { type: 'error'; message: string };
 
-const WORKER_URL = process.env.NIMBUS_WORKER_URL || 'https://api.getnimbus.dev';
+const WORKER_URL = process.env.NIMBUS_WORKER_URL;
 
 async function* parseSSE(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<SSEEvent> {
   const decoder = new TextDecoder();
@@ -53,12 +53,27 @@ async function main(): Promise<void> {
 Usage: npx @dayhaysoos/nimbus "<prompt>"
 
 Example:
-  npx @dayhaysoos/nimbus "Build a landing page with Astro and Tailwind"
+  NIMBUS_WORKER_URL=https://your-worker.com npx @dayhaysoos/nimbus "Build a landing page"
 
 Environment Variables:
-  NIMBUS_WORKER_URL  Worker URL (default: http://localhost:8787)
+  NIMBUS_WORKER_URL  Worker URL (required) - Your self-hosted Nimbus worker
+
+Self-hosting guide: https://github.com/dayhaysoos/nimbus#self-hosting-guide
 `);
     process.exit(prompt ? 0 : 1);
+  }
+
+  // Require NIMBUS_WORKER_URL
+  if (!WORKER_URL) {
+    p.intro('@dayhaysoos/nimbus');
+    p.log.error('NIMBUS_WORKER_URL environment variable is required.');
+    p.log.info('Set it to your self-hosted Nimbus worker URL.');
+    p.log.info('');
+    p.log.info('Example:');
+    p.log.info('  NIMBUS_WORKER_URL=https://your-worker.com npx @dayhaysoos/nimbus "your prompt"');
+    p.log.info('');
+    p.log.info('Self-hosting guide: https://github.com/dayhaysoos/nimbus#self-hosting-guide');
+    process.exit(1);
   }
 
   p.intro('@dayhaysoos/nimbus');

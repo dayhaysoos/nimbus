@@ -103,8 +103,9 @@ async function handleBuild(request: Request, env: Env): Promise<Response> {
       sendEvent({ type: 'generated', fileCount: generatedCode.files.length });
 
       // Step 2: Build in sandbox
-      // Get hostname from request for preview URL generation
-      const hostname = request.headers.get('host') || new URL(request.url).host;
+      // Use workers.dev hostname for preview URLs (free SSL)
+      // Falls back to request host if PREVIEW_HOSTNAME not configured
+      const hostname = env.PREVIEW_HOSTNAME || request.headers.get('host') || new URL(request.url).host;
       const previewUrl = await buildInSandbox(env.Sandbox, generatedCode.files, sendEvent, hostname);
 
       // Step 3: Complete

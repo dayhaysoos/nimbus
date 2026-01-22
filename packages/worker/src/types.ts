@@ -5,6 +5,7 @@ export interface Env {
   Sandbox: DurableObjectNamespace<Sandbox>;
   OPENROUTER_API_KEY: string;
   DEFAULT_MODEL: string;
+  PREVIEW_HOSTNAME: string; // workers.dev hostname for preview URLs (free SSL)
 }
 
 // Request/Response types

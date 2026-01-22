@@ -1,7 +1,7 @@
 {
   "name": "@dayhaysoos/nimbus",
   "version": "0.0.1",
-  "description": "CLI tool for benchmarking LLMs on code generation tasks",
+  "description": "CLI that generates and hosts websites using AI. Give it a prompt, get back a live preview URL.",
   "type": "module",
   "bin": {
     "nimbus": "./dist/index.js"
@@ -24,5 +24,24 @@
   },
   "files": [
     "dist"
-  ]
+  ],
+  "keywords": [
+    "ai",
+    "cli",
+    "website-generator",
+    "cloudflare",
+    "claude",
+    "llm"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/dayhaysoos/nimbus.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/dayhaysoos/nimbus#readme",
+  "bugs": {
+    "url": "https://github.com/dayhaysoos/nimbus/issues"
+  },
+  "license": "MIT",
+  "author": "Nick DeJesus"
 }

@@ -10,6 +10,8 @@ zone_name = "getnimbus.dev"
 
 [vars]
 DEFAULT_MODEL = "anthropic/claude-sonnet-4"
+# Use getnimbus.dev for preview URLs (wildcard SSL via Cloudflare)
+PREVIEW_HOSTNAME = "getnimbus.dev"
 
 # Sandbox container configuration
 [[containers]]
