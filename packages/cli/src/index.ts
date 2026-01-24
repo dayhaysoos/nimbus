@@ -1,5 +1,21 @@
 #!/usr/bin/env node
 
+import { config } from 'dotenv';
+import { resolve } from 'path';
+import { existsSync } from 'fs';
+
+// Load .env from repo root or current directory
+const envPaths = [
+  resolve(process.cwd(), '.env'),
+  resolve(process.cwd(), '..', '..', '.env'), // When run from packages/cli
+];
+for (const envPath of envPaths) {
+  if (existsSync(envPath)) {
+    config({ path: envPath });
+    break;
+  }
+}
+
 import * as p from '@clack/prompts';
 import { startCommand } from './commands/start.js';
 import { listCommand } from './commands/list.js';
