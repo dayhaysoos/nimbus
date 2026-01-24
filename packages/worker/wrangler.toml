@@ -37,3 +37,7 @@ bindings = [{ name = "Sandbox", class_name = "Sandbox" }]
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Sandbox"]
+
+[observability.logs]
+enabled = true
+invocation_logs = true

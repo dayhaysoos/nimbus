@@ -24,11 +24,10 @@ export async function deployToPages(
 
   // Step 2: Deploy using Wrangler
   // Set environment variables for wrangler
-  // Use npx to ensure wrangler is found (it's installed globally but PATH might not include it)
   const wranglerCmd = [
     `export CLOUDFLARE_API_TOKEN="${env.CLOUDFLARE_API_TOKEN}"`,
     `export CLOUDFLARE_ACCOUNT_ID="${env.CLOUDFLARE_ACCOUNT_ID}"`,
-    `npx wrangler pages deploy "${deployPath}" --project-name="${projectName}" --branch="${jobId}" --commit-message="Nimbus deployment: ${jobId}"`
+    `wrangler pages deploy "${deployPath}" --project-name="${projectName}" --branch="${jobId}" --commit-message="Nimbus deployment: ${jobId}"`
   ].join(' && ');
 
   const result = await sandbox.exec(wranglerCmd);

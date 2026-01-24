@@ -9,6 +9,33 @@ import type {
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_GENERATION_URL = 'https://openrouter.ai/api/v1/generation';
 
+const RESPONSE_FORMAT = {
+  type: 'json_schema',
+  json_schema: {
+    name: 'nimbus_generated_code',
+    strict: true,
+    schema: {
+      type: 'object',
+      properties: {
+        files: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              path: { type: 'string' },
+              content: { type: 'string' },
+            },
+            required: ['path', 'content'],
+            additionalProperties: false,
+          },
+        },
+      },
+      required: ['files'],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
 /**
  * Fetch cost information from OpenRouter's Generation API
  * This is the most reliable way to get accurate cost in USD
@@ -32,6 +59,48 @@ async function fetchGenerationCost(apiKey: string, generationId: string): Promis
   return data.data.total_cost ?? 0;
 }
 
+async function fetchOpenRouterResponse(
+  apiKey: string,
+  request: OpenRouterRequest
+): Promise<OpenRouterResponse> {
+  const response = await fetch(OPENROUTER_API_URL, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+      'HTTP-Referer': 'https://github.com/dayhaysoos/nimbus',
+      'X-Title': 'Nimbus LLM Benchmarking',
+    },
+    body: JSON.stringify(request),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    let message = errorText;
+    try {
+      const parsed = JSON.parse(errorText) as { error?: { message?: string } };
+      if (parsed?.error?.message) {
+        message = parsed.error.message;
+      }
+    } catch {
+      // Ignore parse errors
+    }
+    throw new Error(`OpenRouter API error (${response.status}): ${message}`);
+  }
+
+  return (await response.json()) as OpenRouterResponse;
+}
+
+function isResponseFormatUnsupported(message: string): boolean {
+  const normalized = message.toLowerCase();
+  return (
+    normalized.includes('response_format') ||
+    normalized.includes('structured output') ||
+    normalized.includes('json_schema') ||
+    normalized.includes('schema')
+  );
+}
+
 const SYSTEM_PROMPT = `You are an expert web developer. Generate a complete, working website based on the user's request.
 
 OUTPUT FORMAT:
@@ -44,7 +113,21 @@ Return ONLY valid JSON with this exact structure:
 }
 
 Include all files needed for the project to work.
-Do not include markdown explanations, just the JSON.`;
+Do not include markdown explanations, just the JSON.
+
+FRAMEWORK RULES:
+- If the user explicitly asks for Next.js, SSR, or a full-stack React app, generate a Next.js project configured for Cloudflare Workers using OpenNext.
+- For Next.js SSR output, you MUST include:
+  - package.json with dependencies: next@latest, react@latest, react-dom@latest, @opennextjs/cloudflare@latest
+  - open-next.config.ts exporting defineCloudflareConfig()
+  - next.config.ts with output: "standalone" (do not use experimental.runtime or eslint config)
+  - nimbus.config.json with {"framework":"next","target":"workers"}
+  - scripts: "build": "next build", "preview": "opennextjs-cloudflare preview", "deploy": "opennextjs-cloudflare deploy"
+  - packageManager: "bun@1.2.19"
+- Prefer the App Router with TypeScript unless the user asks for Pages Router or JavaScript.
+- Do NOT set output: "export" or otherwise force static-only output for Next.js SSR.
+- Use real published versions or "latest" only. Never invent versions.
+- If the user does not ask for Next.js, create a static site (HTML/CSS/JS) by default.`;
 
 // Result from generateCode including usage metrics
 export interface GenerateCodeResult {
@@ -64,7 +147,7 @@ export async function generateCode(
   prompt: string
 ): Promise<GenerateCodeResult> {
   const startTime = Date.now();
-  const request: OpenRouterRequest = {
+  const baseRequest: OpenRouterRequest = {
     model,
     messages: [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -74,23 +157,16 @@ export async function generateCode(
     temperature: 0.7,
   };
 
-  const response = await fetch(OPENROUTER_API_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-      'HTTP-Referer': 'https://github.com/dayhaysoos/nimbus',
-      'X-Title': 'Nimbus LLM Benchmarking',
-    },
-    body: JSON.stringify(request),
-  });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenRouter API error (${response.status}): ${errorText}`);
+  let data: OpenRouterResponse;
+  try {
+    data = await fetchOpenRouterResponse(apiKey, { ...baseRequest, response_format: RESPONSE_FORMAT });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!isResponseFormatUnsupported(message)) {
+      throw error;
+    }
+    data = await fetchOpenRouterResponse(apiKey, baseRequest);
   }
-
-  const data = (await response.json()) as OpenRouterResponse;
 
   if (!data.choices || data.choices.length === 0) {
     throw new Error('OpenRouter returned no choices');

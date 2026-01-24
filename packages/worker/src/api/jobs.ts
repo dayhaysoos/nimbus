@@ -10,6 +10,8 @@ import {
   markJobFailed,
 } from '../lib/db.js';
 import { deployToPages } from '../lib/deploy/pages.js';
+import { deployToWorkers } from '../lib/deploy/workers.js';
+import { isNextWorkersConfig, normalizeNextConfigFiles, parseNimbusConfig } from '../lib/nimbus-config.js';
 import type { Env, BuildRequest, SSEEvent, BuildMetrics } from '../types.js';
 
 // CORS headers
@@ -101,10 +103,14 @@ export async function handleCreateJob(request: Request, env: Env): Promise<Respo
       sendEvent({ type: 'generating' });
 
       const generateResult = await generateCode(env.OPENROUTER_API_KEY, model, body.prompt);
-      const fileCount = generateResult.files.length;
+      const nimbusConfig = parseNimbusConfig(generateResult.files);
+      const isNextWorkers = isNextWorkersConfig(nimbusConfig);
+      const files = isNextWorkers ? normalizeNextConfigFiles(generateResult.files) : generateResult.files;
+      const fileCount = files.length;
+      console.log('[Nimbus] Job config', jobId, { isNextWorkers, nimbusConfig });
 
       // Calculate lines of code
-      const linesOfCode = generateResult.files.reduce(
+      const linesOfCode = files.reduce(
         (sum, file) => sum + file.content.split('\n').length,
         0
       );
@@ -113,13 +119,12 @@ export async function handleCreateJob(request: Request, env: Env): Promise<Respo
 
       // Step 2: Build in sandbox
       const hostname = env.PREVIEW_HOSTNAME || request.headers.get('host') || new URL(request.url).host;
-      const buildResult = await buildInSandbox(env.Sandbox, generateResult.files, sendEvent, hostname);
+      const buildResult = await buildInSandbox(env.Sandbox, files, sendEvent, hostname, jobId);
       const previewUrlForJob = buildResult.previewUrl;
       if (!previewUrlForJob) {
         throw new Error('Preview URL missing from build result');
       }
       previewUrl = previewUrlForJob;
-
       sendEvent({ type: 'preview_ready', previewUrl: previewUrlForJob });
 
       // Step 3: Deploy to Cloudflare Pages
@@ -129,13 +134,17 @@ export async function handleCreateJob(request: Request, env: Env): Promise<Respo
       let deployError: string | undefined;
       const deployStartTime = Date.now();
       try {
-        deployedUrl = await deployToPages(env, jobId, env.Sandbox, buildResult.sandboxId);
+        if (isNextWorkers) {
+          deployedUrl = await deployToWorkers(env, env.Sandbox, buildResult.sandboxId);
+        } else {
+          deployedUrl = await deployToPages(env, jobId, env.Sandbox, buildResult.sandboxId);
+        }
       } catch (err) {
-        // If Pages deployment fails, still mark job as completed with preview URL
         const deployMsg = err instanceof Error ? err.message : String(err);
         const deployStack = err instanceof Error ? err.stack : '';
-        console.error('Pages deployment failed:', deployMsg, deployStack);
-        sendEvent({ type: 'deploy_warning', message: `Pages deployment failed: ${deployMsg}` });
+        const deployTarget = isNextWorkers ? 'Workers' : 'Pages';
+        console.error(`${deployTarget} deployment failed:`, deployMsg, deployStack);
+        sendEvent({ type: 'deploy_warning', message: `${deployTarget} deployment failed: ${deployMsg}` });
         deployedUrl = previewUrlForJob;
         isPreviewFallback = true;
         deployError = deployMsg;

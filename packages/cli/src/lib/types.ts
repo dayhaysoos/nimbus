@@ -24,6 +24,7 @@ export interface BuildMetrics {
 }
 
 // SSE Event types (matching worker)
+export type LogPhase = 'install' | 'build';
 export type SSEEvent =
   | { type: 'job_created'; jobId: string }
   | { type: 'generating' }
@@ -32,6 +33,7 @@ export type SSEEvent =
   | { type: 'writing' }
   | { type: 'installing' }
   | { type: 'building' }
+  | { type: 'log'; phase: LogPhase; message: string }
   | { type: 'starting' }
   | { type: 'preview_ready'; previewUrl: string }
   | { type: 'deploying' }

@@ -101,12 +101,24 @@ async function handleEvent(
       break;
 
     case 'installing':
-      spinner.message('Running npm install...');
+      spinner.message('Installing dependencies...');
       break;
 
     case 'building':
-      spinner.message('Running npm build...');
+      spinner.message('Building project...');
       break;
+
+    case 'log': {
+      const prefix = event.phase === 'install' ? 'install' : 'build';
+      const lines = event.message.split('\n');
+      for (const line of lines) {
+        if (!line.trim()) {
+          continue;
+        }
+        p.log.info(`[${prefix}] ${line}`);
+      }
+      break;
+    }
 
     case 'starting':
       spinner.stop('Build complete');
@@ -119,11 +131,11 @@ async function handleEvent(
       break;
 
     case 'deploying':
-      spinner.start('Uploading to Cloudflare Pages...');
+      spinner.start('Deploying...');
       break;
 
     case 'deploy_warning':
-      spinner.stop('Pages deployment failed');
+      spinner.stop('Deployment failed');
       p.log.warning(event.message);
       p.log.info('Falling back to preview URL (temporary)');
       break;
