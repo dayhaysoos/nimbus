@@ -10,7 +10,7 @@ import {
   markJobFailed,
 } from '../lib/db.js';
 import { deployToPages } from '../lib/deploy/pages.js';
-import type { Env, BuildRequest, SSEEvent } from '../types.js';
+import type { Env, BuildRequest, SSEEvent, BuildMetrics } from '../types.js';
 
 // CORS headers
 const corsHeaders = {
@@ -88,7 +88,7 @@ export async function handleCreateJob(request: Request, env: Env): Promise<Respo
   // Run the build process asynchronously
   (async () => {
     let previewUrl: string | undefined;
-    let fileCount = 0;
+    const startedAt = new Date();
 
     try {
       // Send job created event
@@ -100,37 +100,76 @@ export async function handleCreateJob(request: Request, env: Env): Promise<Respo
       // Step 1: Generate code with LLM
       sendEvent({ type: 'generating' });
 
-      const generatedCode = await generateCode(env.OPENROUTER_API_KEY, model, body.prompt);
-      fileCount = generatedCode.files.length;
+      const generateResult = await generateCode(env.OPENROUTER_API_KEY, model, body.prompt);
+      const fileCount = generateResult.files.length;
+
+      // Calculate lines of code
+      const linesOfCode = generateResult.files.reduce(
+        (sum, file) => sum + file.content.split('\n').length,
+        0
+      );
 
       sendEvent({ type: 'generated', fileCount });
 
       // Step 2: Build in sandbox
       const hostname = env.PREVIEW_HOSTNAME || request.headers.get('host') || new URL(request.url).host;
-      const buildResult = await buildInSandbox(env.Sandbox, generatedCode.files, sendEvent, hostname);
-      previewUrl = buildResult.previewUrl;
+      const buildResult = await buildInSandbox(env.Sandbox, generateResult.files, sendEvent, hostname);
+      const previewUrlForJob = buildResult.previewUrl;
+      if (!previewUrlForJob) {
+        throw new Error('Preview URL missing from build result');
+      }
+      previewUrl = previewUrlForJob;
 
-      sendEvent({ type: 'preview_ready', previewUrl });
+      sendEvent({ type: 'preview_ready', previewUrl: previewUrlForJob });
 
       // Step 3: Deploy to Cloudflare Pages
       sendEvent({ type: 'deploying' });
       let deployedUrl: string;
       let isPreviewFallback = false;
+      let deployError: string | undefined;
+      const deployStartTime = Date.now();
       try {
         deployedUrl = await deployToPages(env, jobId, env.Sandbox, buildResult.sandboxId);
-      } catch (deployError) {
+      } catch (err) {
         // If Pages deployment fails, still mark job as completed with preview URL
-        const deployMsg = deployError instanceof Error ? deployError.message : String(deployError);
-        const deployStack = deployError instanceof Error ? deployError.stack : '';
+        const deployMsg = err instanceof Error ? err.message : String(err);
+        const deployStack = err instanceof Error ? err.stack : '';
         console.error('Pages deployment failed:', deployMsg, deployStack);
         sendEvent({ type: 'deploy_warning', message: `Pages deployment failed: ${deployMsg}` });
-        deployedUrl = previewUrl;
+        deployedUrl = previewUrlForJob;
         isPreviewFallback = true;
+        deployError = deployMsg;
       }
+      const deployDurationMs = Date.now() - deployStartTime;
 
-      await markJobCompleted(env.DB, jobId, previewUrl, deployedUrl, fileCount);
+      // Assemble metrics
+      const completedAt = new Date();
+      const metrics: BuildMetrics = {
+        id: jobId,
+        prompt: body.prompt,
+        model,
+        promptTokens: generateResult.usage.promptTokens,
+        completionTokens: generateResult.usage.completionTokens,
+        totalTokens: generateResult.usage.totalTokens,
+        cost: generateResult.usage.cost,
+        llmLatencyMs: generateResult.llmLatencyMs,
+        filesGenerated: fileCount,
+        linesOfCode,
+        buildSuccess: true,
+        deploySuccess: !isPreviewFallback,
+        deployError,
+        installDurationMs: buildResult.installDurationMs,
+        buildDurationMs: buildResult.buildDurationMs,
+        deployDurationMs,
+        totalDurationMs: completedAt.getTime() - startedAt.getTime(),
+        deployedUrl,
+        startedAt: startedAt.toISOString(),
+        completedAt: completedAt.toISOString(),
+      };
 
-      sendEvent({ type: 'complete', previewUrl, deployedUrl, isPreviewFallback });
+      await markJobCompleted(env.DB, jobId, previewUrlForJob, deployedUrl, metrics);
+
+      sendEvent({ type: 'complete', previewUrl: previewUrlForJob, deployedUrl, isPreviewFallback, metrics });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       try {

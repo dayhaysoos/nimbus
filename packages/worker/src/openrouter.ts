@@ -1,6 +1,36 @@
-import type { GeneratedCode, OpenRouterRequest, OpenRouterResponse } from './types.js';
+import type {
+  GeneratedCode,
+  GeneratedFile,
+  OpenRouterRequest,
+  OpenRouterResponse,
+  OpenRouterGenerationResponse,
+} from './types.js';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
+const OPENROUTER_GENERATION_URL = 'https://openrouter.ai/api/v1/generation';
+
+/**
+ * Fetch cost information from OpenRouter's Generation API
+ * This is the most reliable way to get accurate cost in USD
+ */
+async function fetchGenerationCost(apiKey: string, generationId: string): Promise<number> {
+  // Small delay to ensure the generation is recorded
+  await new Promise((resolve) => setTimeout(resolve, 500));
+
+  const response = await fetch(`${OPENROUTER_GENERATION_URL}?id=${generationId}`, {
+    method: 'GET',
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to fetch generation: ${response.status}`);
+  }
+
+  const data = (await response.json()) as OpenRouterGenerationResponse;
+  return data.data.total_cost ?? 0;
+}
 
 const SYSTEM_PROMPT = `You are an expert web developer. Generate a complete, working website based on the user's request.
 
@@ -16,11 +46,24 @@ Return ONLY valid JSON with this exact structure:
 Include all files needed for the project to work.
 Do not include markdown explanations, just the JSON.`;
 
+// Result from generateCode including usage metrics
+export interface GenerateCodeResult {
+  files: GeneratedFile[];
+  usage: {
+    promptTokens: number;
+    completionTokens: number;
+    totalTokens: number;
+    cost: number;
+  };
+  llmLatencyMs: number;
+}
+
 export async function generateCode(
   apiKey: string,
   model: string,
   prompt: string
-): Promise<GeneratedCode> {
+): Promise<GenerateCodeResult> {
+  const startTime = Date.now();
   const request: OpenRouterRequest = {
     model,
     messages: [
@@ -84,7 +127,31 @@ export async function generateCode(
       }
     }
 
-    return parsed;
+    const llmLatencyMs = Date.now() - startTime;
+
+    // Get cost - try from direct response first, then query Generation API
+    let cost = data.usage.cost ?? 0;
+
+    // If cost is 0 or not provided, try to get it from the Generation API
+    if (cost === 0 && data.id) {
+      try {
+        cost = await fetchGenerationCost(apiKey, data.id);
+      } catch {
+        // Silently fall back to 0 if we can't get the cost
+        console.warn('Could not fetch generation cost from OpenRouter API');
+      }
+    }
+
+    return {
+      files: parsed.files,
+      usage: {
+        promptTokens: data.usage.prompt_tokens,
+        completionTokens: data.usage.completion_tokens,
+        totalTokens: data.usage.total_tokens,
+        cost,
+      },
+      llmLatencyMs,
+    };
   } catch (parseError) {
     throw new Error(
       `Failed to parse LLM response as JSON: ${parseError instanceof Error ? parseError.message : String(parseError)}\n\nRaw content:\n${content.slice(0, 500)}...`

@@ -1,6 +1,8 @@
 import * as p from '@clack/prompts';
 import { getWorkerUrl, createJob, parseSSE } from '../lib/api.js';
 import { showModelPicker, getDefaultModel } from '../lib/models.js';
+import { printSummary } from '../lib/summary.js';
+import { saveReport } from '../lib/report.js';
 import type { SSEEvent } from '../lib/types.js';
 
 interface StartOptions {
@@ -130,9 +132,24 @@ async function handleEvent(
       spinner.stop('Deployment complete');
       break;
 
-    case 'complete':
+    case 'complete': {
       spinner.stop('Done');
-      console.log('');
+
+      // Print summary box
+      printSummary(event.metrics);
+
+      // Generate and save report
+      try {
+        const filename = await saveReport(event.metrics);
+        console.log('');
+        console.log(`Report saved: ./${filename}`);
+        console.log('');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        p.log.warning(`Failed to save report: ${message}`);
+      }
+
+      // Print final URL
       if (event.isPreviewFallback) {
         p.outro(`Preview (temporary): ${event.deployedUrl}`);
       } else {
@@ -140,6 +157,7 @@ async function handleEvent(
       }
       process.exit(0);
       break;
+    }
 
     case 'error':
       spinner.stop('Failed');

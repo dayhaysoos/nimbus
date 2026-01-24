@@ -84,7 +84,13 @@ export type SSEEvent =
   | { type: 'deploying' }
   | { type: 'deploy_warning'; message: string }
   | { type: 'deployed'; deployedUrl: string }
-  | { type: 'complete'; previewUrl: string; deployedUrl: string; isPreviewFallback?: boolean }
+  | {
+      type: 'complete';
+      previewUrl: string;
+      deployedUrl: string;
+      isPreviewFallback?: boolean;
+      metrics: BuildMetrics;
+    }
   | { type: 'error'; message: string };
 
 // OpenRouter types
@@ -113,5 +119,42 @@ export interface OpenRouterResponse {
     prompt_tokens: number;
     completion_tokens: number;
     total_tokens: number;
+    cost?: number; // May not be returned by all providers
   };
+}
+
+// OpenRouter Generation API response (for querying cost after completion)
+export interface OpenRouterGenerationResponse {
+  data: {
+    id: string;
+    total_cost: number; // Cost in USD
+    native_tokens_prompt: number | null;
+    native_tokens_completion: number | null;
+    latency: number | null;
+  };
+}
+
+// Build metrics returned to CLI
+// NOTE: This interface is duplicated in packages/cli/src/lib/types.ts - keep them in sync
+export interface BuildMetrics {
+  id: string;
+  prompt: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cost: number;
+  llmLatencyMs: number;
+  filesGenerated: number;
+  linesOfCode: number;
+  buildSuccess: boolean;
+  deploySuccess: boolean;
+  deployError?: string;
+  installDurationMs: number;
+  buildDurationMs: number;
+  deployDurationMs: number;
+  totalDurationMs: number;
+  deployedUrl: string;
+  startedAt: string;
+  completedAt: string;
 }

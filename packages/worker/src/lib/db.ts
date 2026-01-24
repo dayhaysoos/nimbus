@@ -1,4 +1,4 @@
-import type { JobRecord, JobResponse, JobListItem, JobStatus } from '../types';
+import type { JobRecord, JobResponse, JobListItem, JobStatus, BuildMetrics } from '../types';
 
 /**
  * Generate a unique job ID
@@ -112,6 +112,17 @@ export async function updateJobStatus(
     deployed_url?: string;
     error_message?: string;
     file_count?: number;
+    // Metrics fields
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    total_tokens?: number;
+    cost?: number;
+    llm_latency_ms?: number;
+    install_duration_ms?: number;
+    build_duration_ms?: number;
+    deploy_duration_ms?: number;
+    total_duration_ms?: number;
+    lines_of_code?: number;
   }
 ): Promise<void> {
   const updates: string[] = ['status = ?'];
@@ -142,6 +153,47 @@ export async function updateJobStatus(
       updates.push('file_count = ?');
       values.push(additionalFields.file_count);
     }
+    // Metrics fields
+    if (additionalFields.prompt_tokens !== undefined) {
+      updates.push('prompt_tokens = ?');
+      values.push(additionalFields.prompt_tokens);
+    }
+    if (additionalFields.completion_tokens !== undefined) {
+      updates.push('completion_tokens = ?');
+      values.push(additionalFields.completion_tokens);
+    }
+    if (additionalFields.total_tokens !== undefined) {
+      updates.push('total_tokens = ?');
+      values.push(additionalFields.total_tokens);
+    }
+    if (additionalFields.cost !== undefined) {
+      updates.push('cost = ?');
+      values.push(additionalFields.cost);
+    }
+    if (additionalFields.llm_latency_ms !== undefined) {
+      updates.push('llm_latency_ms = ?');
+      values.push(additionalFields.llm_latency_ms);
+    }
+    if (additionalFields.install_duration_ms !== undefined) {
+      updates.push('install_duration_ms = ?');
+      values.push(additionalFields.install_duration_ms);
+    }
+    if (additionalFields.build_duration_ms !== undefined) {
+      updates.push('build_duration_ms = ?');
+      values.push(additionalFields.build_duration_ms);
+    }
+    if (additionalFields.deploy_duration_ms !== undefined) {
+      updates.push('deploy_duration_ms = ?');
+      values.push(additionalFields.deploy_duration_ms);
+    }
+    if (additionalFields.total_duration_ms !== undefined) {
+      updates.push('total_duration_ms = ?');
+      values.push(additionalFields.total_duration_ms);
+    }
+    if (additionalFields.lines_of_code !== undefined) {
+      updates.push('lines_of_code = ?');
+      values.push(additionalFields.lines_of_code);
+    }
   }
 
   values.push(id);
@@ -162,20 +214,30 @@ export async function markJobRunning(db: D1Database, id: string): Promise<void> 
 }
 
 /**
- * Mark job as completed with URLs
+ * Mark job as completed with URLs and metrics
  */
 export async function markJobCompleted(
   db: D1Database,
   id: string,
   previewUrl: string,
   deployedUrl: string,
-  fileCount: number
+  metrics: BuildMetrics
 ): Promise<void> {
   await updateJobStatus(db, id, 'completed', {
     completed_at: new Date().toISOString(),
     preview_url: previewUrl,
     deployed_url: deployedUrl,
-    file_count: fileCount,
+    file_count: metrics.filesGenerated,
+    prompt_tokens: metrics.promptTokens,
+    completion_tokens: metrics.completionTokens,
+    total_tokens: metrics.totalTokens,
+    cost: metrics.cost,
+    llm_latency_ms: metrics.llmLatencyMs,
+    install_duration_ms: metrics.installDurationMs,
+    build_duration_ms: metrics.buildDurationMs,
+    deploy_duration_ms: metrics.deployDurationMs,
+    total_duration_ms: metrics.totalDurationMs,
+    lines_of_code: metrics.linesOfCode,
   });
 }
 

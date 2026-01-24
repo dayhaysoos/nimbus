@@ -25,9 +25,11 @@ database_name = "nimbus-db"
 database_id = "b0c22993-0a1a-4117-8ffb-f243e7487c05"
 
 # Sandbox container configuration
+# Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)
 [[containers]]
 class_name = "Sandbox"
 image = "./Dockerfile"
+instance_type = "standard-2"
 
 [durable_objects]
 bindings = [{ name = "Sandbox", class_name = "Sandbox" }]

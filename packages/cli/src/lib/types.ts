@@ -1,3 +1,28 @@
+// Build metrics returned from worker
+// NOTE: This interface is duplicated in packages/worker/src/types.ts - keep them in sync
+export interface BuildMetrics {
+  id: string;
+  prompt: string;
+  model: string;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  cost: number;
+  llmLatencyMs: number;
+  filesGenerated: number;
+  linesOfCode: number;
+  buildSuccess: boolean;
+  deploySuccess: boolean;
+  deployError?: string;
+  installDurationMs: number;
+  buildDurationMs: number;
+  deployDurationMs: number;
+  totalDurationMs: number;
+  deployedUrl: string;
+  startedAt: string;
+  completedAt: string;
+}
+
 // SSE Event types (matching worker)
 export type SSEEvent =
   | { type: 'job_created'; jobId: string }
@@ -12,7 +37,13 @@ export type SSEEvent =
   | { type: 'deploying' }
   | { type: 'deploy_warning'; message: string }
   | { type: 'deployed'; deployedUrl: string }
-  | { type: 'complete'; previewUrl: string; deployedUrl: string; isPreviewFallback?: boolean }
+  | {
+      type: 'complete';
+      previewUrl: string;
+      deployedUrl: string;
+      isPreviewFallback?: boolean;
+      metrics: BuildMetrics;
+    }
   | { type: 'error'; message: string };
 
 // Job status type
