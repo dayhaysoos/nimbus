@@ -12,8 +12,8 @@ npx @dayhaysoos/nimbus start "Build a coffee shop landing page"
 **Built with:**
 - [Cloudflare Workers](https://workers.cloudflare.com/) - Serverless API
 - [Cloudflare Containers/Sandbox SDK](https://developers.cloudflare.com/sandbox/) - Isolated code execution
-- [Cloudflare Pages](https://pages.cloudflare.com/) - Permanent hosting
 - [Cloudflare D1](https://developers.cloudflare.com/d1/) - Job persistence
+- [Cloudflare R2](https://developers.cloudflare.com/r2/) - Build/deploy logs
 - [Claude](https://anthropic.com/claude) via [OpenRouter](https://openrouter.ai/) - Code generation
 - [clack](https://github.com/bombshell-dev/clack) - Beautiful CLI prompts
 
@@ -26,18 +26,24 @@ npx @dayhaysoos/nimbus start "Build a coffee shop landing page"
 └─────────┘     └──────────────────┘     └─────────────┘     └─────────────┘
                         │                                           │
                         ▼                                           ▼
-               ┌────────────────┐                        ┌─────────────────────┐
-               │   D1 Database  │                        │   Cloudflare Pages  │
-               │ (Job History)  │                        │  (Permanent URL)    │
-               └────────────────┘                        └─────────────────────┘
+               ┌────────────────┐                        ┌─────────────────────────┐
+               │   D1 Database  │                        │  Cloudflare Workers     │
+               │ (Job History)  │                        │ (Deployed URL)          │
+               └────────────────┘                        └─────────────────────────┘
+                        │
+                        ▼
+               ┌────────────────┐
+               │     R2 Logs    │
+               │ (Build/Deploy) │
+               └────────────────┘
 ```
 
 1. CLI sends your prompt to the Cloudflare Worker
 2. Worker creates a job record in D1 and asks Claude to generate code
 3. Generated files are written to an isolated Sandbox container
-4. If needed, `npm install` and `npm build` run automatically
-5. A preview server starts (temporary URL for testing)
-6. Files are deployed to Cloudflare Pages (permanent URL)
+4. Dependencies install and build run automatically
+5. Build output is deployed to a per-job Cloudflare Worker URL
+6. Build and deploy logs are stored in R2
 
 ## CLI Commands
 
@@ -53,6 +59,9 @@ nimbus list
 
 # Watch a specific job's status
 nimbus watch <job-id>
+
+# Fetch build or deploy logs
+nimbus logs <job-id> --type build
 ```
 
 ## Self-Hosting Guide
@@ -63,7 +72,7 @@ nimbus watch <job-id>
 - **Docker Desktop** running locally (required for Cloudflare Containers)
 - **Cloudflare account** (Workers Paid plan required for Containers)
 - **OpenRouter API key** ([get one here](https://openrouter.ai/keys))
-- **Custom domain** added to Cloudflare (required for preview URLs)
+- **R2 enabled** in the Cloudflare dashboard
 
 ### 1. Clone and Install
 
@@ -84,38 +93,13 @@ npx wrangler d1 create nimbus-db
 # Note the database_id from the output, you'll need it for wrangler.toml
 ```
 
-### 3. Set Up Your Custom Domain
+### 3. Enable R2 and Create a Bucket
 
-Preview URLs require a custom domain with wildcard DNS. The free `*.workers.dev` domain doesn't support the subdomain pattern needed.
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → **R2**
+2. Click **Enable R2** and accept the terms
+3. Create a bucket named `nimbus-logs`
 
-#### Buy/Transfer a Domain
-
-If you don't have one, you can buy a domain directly from Cloudflare:
-1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Domain Registration** → **Register Domain**
-2. Or transfer an existing domain to Cloudflare
-
-#### Add Wildcard DNS Record
-
-In the Cloudflare dashboard:
-
-1. Go to your domain → **DNS** → **Records**
-2. Add a new record:
-   - **Type**: `A`
-   - **Name**: `*` (wildcard)
-   - **IPv4 address**: `192.0.2.0`
-   - **Proxy status**: **Proxied** (orange cloud ON)
-   - **TTL**: Auto
-
-> **Note**: `192.0.2.0` is a documentation IP (RFC 5737). Cloudflare recognizes this when proxied and routes traffic to your Worker.
-
-### 4. Create a Cloudflare Pages Project
-
-```bash
-# Create the Pages project for deployments
-npx wrangler pages project create nimbus
-```
-
-### 5. Configure the Worker
+### 4. Configure the Worker
 
 Edit `packages/worker/wrangler.toml`:
 
@@ -128,23 +112,19 @@ compatibility_flags = ["nodejs_compat"]
 # Enable workers.dev access
 workers_dev = true
 
-# Replace with YOUR domain
-[[routes]]
-pattern = "*.yourdomain.com/*"
-zone_name = "yourdomain.com"
-
 [vars]
 DEFAULT_MODEL = "anthropic/claude-sonnet-4"
-# Replace with YOUR domain (same as zone_name)
-PREVIEW_HOSTNAME = "yourdomain.com"
-# Pages project name for deployments
-PAGES_PROJECT_NAME = "nimbus"
 
 # D1 Database - replace database_id with yours from step 2
 [[d1_databases]]
 binding = "DB"
 database_name = "nimbus-db"
 database_id = "your-database-id-here"
+
+# R2 bucket for build/deploy logs
+[[r2_buckets]]
+binding = "LOGS_BUCKET"
+bucket_name = "nimbus-logs"
 
 # Sandbox container configuration
 [[containers]]
@@ -160,17 +140,16 @@ new_sqlite_classes = ["Sandbox"]
 ```
 
 **Replace:**
-- `yourdomain.com` with your actual domain (in both places)
 - `database_id` with the ID from step 2
 
-### 6. Run Database Migrations
+### 5. Run Database Migrations
 
 ```bash
 cd packages/worker
 npx wrangler d1 migrations apply nimbus-db --remote
 ```
 
-### 7. Set Secrets
+### 6. Set Secrets
 
 ```bash
 cd packages/worker
@@ -179,16 +158,19 @@ cd packages/worker
 npx wrangler secret put OPENROUTER_API_KEY
 # Paste your API key when prompted
 
-# Cloudflare API token (for Pages deployment)
+# Cloudflare API token (for Workers deploy + cleanup)
 # Create at: https://dash.cloudflare.com/profile/api-tokens
-# Required permission: Cloudflare Pages - Edit
+# Required permissions: Workers Scripts - Edit, R2 - Edit, D1 - Edit
 npx wrangler secret put CLOUDFLARE_API_TOKEN
 
 # Cloudflare Account ID (find in dashboard URL or sidebar)
 npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+
+# Auth token for log endpoint (choose any random string)
+npx wrangler secret put AUTH_TOKEN
 ```
 
-### 8. Deploy
+### 7. Deploy
 
 Make sure Docker Desktop is running, then:
 
@@ -209,35 +191,48 @@ Deployed nimbus-worker triggers
 
 **Wait 2-3 minutes** after first deploy for the container to provision before testing.
 
+### 8. Deploy Cleanup Worker
+
+```bash
+cd packages/cleanup-worker
+
+# Set Cloudflare API token and account ID
+npx wrangler secret put CLOUDFLARE_API_TOKEN
+npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+
+# Deploy the cleanup worker (runs hourly)
+npx wrangler deploy
+```
+
 ### 9. Test the Deployment
 
 ```bash
 # Health check
-curl https://api.yourdomain.com/health
-
-# Or any subdomain works since you have wildcard routing
-curl https://anything.yourdomain.com/health
+curl https://your-worker-name.workers.dev/health
 ```
 
 ### 10. Use the CLI
 
 ```bash
 # Option 1: Inline
-NIMBUS_WORKER_URL=https://api.yourdomain.com npx @dayhaysoos/nimbus start "Build a landing page"
+NIMBUS_WORKER_URL=https://your-worker-name.workers.dev npx @dayhaysoos/nimbus start "Build a landing page"
 
 # Option 2: Export for session
-export NIMBUS_WORKER_URL=https://api.yourdomain.com
+export NIMBUS_WORKER_URL=https://your-worker-name.workers.dev
+export NIMBUS_AUTH_TOKEN=your-auth-token
 npx @dayhaysoos/nimbus start "Build a landing page"
 
 # Option 3: Add to shell profile (~/.bashrc, ~/.zshrc, etc.)
-echo 'export NIMBUS_WORKER_URL=https://api.yourdomain.com' >> ~/.zshrc
+echo 'export NIMBUS_WORKER_URL=https://your-worker-name.workers.dev' >> ~/.zshrc
+echo 'export NIMBUS_AUTH_TOKEN=your-auth-token' >> ~/.zshrc
 ```
 
 ## Usage
 
 ```bash
 # Set your worker URL first
-export NIMBUS_WORKER_URL=https://api.yourdomain.com
+export NIMBUS_WORKER_URL=https://your-worker-name.workers.dev
+export NIMBUS_AUTH_TOKEN=your-auth-token
 
 # Start a build (interactive model picker)
 npx @dayhaysoos/nimbus start "Build a portfolio site for a photographer"
@@ -260,18 +255,11 @@ The CLI will show progress and output URLs:
 ◇  Job created: job_abc12345
 ◇  Generated 3 files
 ◇  Build complete
-◇  Preview ready
-│
-●  Preview: https://8080-build-abc123.yourdomain.com/
-│
+◇  Deploying...
 ◇  Done
 │
-└  Deployed: https://abc123.nimbus.pages.dev
+└  Deployed: https://job-abc12345.workers.dev
 ```
-
-**Two URLs are provided:**
-- **Preview URL** - Temporary, dies when sandbox times out (~10 min idle)
-- **Deployed URL** - Permanent Cloudflare Pages URL
 
 ## Project Structure
 
@@ -283,6 +271,9 @@ nimbus/
 │   │       ├── index.ts        # CLI entry + command router
 │   │       ├── commands/       # start, list, watch commands
 │   │       └── lib/            # API client, model picker, types
+│   ├── cleanup-worker/          # TTL cleanup worker
+│   │   └── src/
+│   │       └── index.ts        # Scheduled cleanup
 │   └── worker/                 # Cloudflare Worker
 │       ├── src/
 │       │   ├── index.ts        # API routes
@@ -291,7 +282,7 @@ nimbus/
 │       │   ├── sandbox.ts      # Container orchestration
 │       │   ├── lib/
 │       │   │   ├── db.ts       # D1 database operations
-│       │   │   └── deploy/     # Pages deployment
+│       │   │   └── deploy/     # Workers deployment
 │       │   └── types.ts        # TypeScript types
 │       ├── migrations/         # D1 database migrations
 │       ├── wrangler.toml       # Cloudflare config
@@ -307,16 +298,15 @@ nimbus/
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `DEFAULT_MODEL` | OpenRouter model ID | `anthropic/claude-sonnet-4` |
-| `PREVIEW_HOSTNAME` | Domain for preview URLs | (required) |
-| `PAGES_PROJECT_NAME` | Cloudflare Pages project | `nimbus` |
 
 ### Secrets (set via `wrangler secret put`)
 
 | Secret | Description |
 |--------|-------------|
 | `OPENROUTER_API_KEY` | Your OpenRouter API key |
-| `CLOUDFLARE_API_TOKEN` | Cloudflare API token with Pages Edit permission |
+| `CLOUDFLARE_API_TOKEN` | Cloudflare API token with Workers, R2, D1 permissions |
 | `CLOUDFLARE_ACCOUNT_ID` | Your Cloudflare account ID |
+| `AUTH_TOKEN` | Auth token for log endpoint |
 
 ### Changing the LLM Model
 
@@ -360,10 +350,10 @@ data: {"type":"scaffolding"}
 data: {"type":"writing"}
 data: {"type":"installing"}
 data: {"type":"building"}
-data: {"type":"starting"}
-data: {"type":"preview_ready","previewUrl":"https://8080-xxx.yourdomain.com/"}
+data: {"type":"log","phase":"build","message":"..."}
 data: {"type":"deploying"}
-data: {"type":"complete","previewUrl":"...","deployedUrl":"https://xxx.nimbus.pages.dev"}
+data: {"type":"deployed","deployedUrl":"https://job-abc12345.workers.dev"}
+data: {"type":"complete","previewUrl":"...","deployedUrl":"https://job-abc12345.workers.dev"}
 ```
 
 ### `GET /api/jobs`
@@ -380,7 +370,7 @@ Lists all jobs.
       "model": "anthropic/claude-sonnet-4",
       "status": "completed",
       "createdAt": "2025-01-22 12:00:00",
-      "deployedUrl": "https://abc123.nimbus.pages.dev"
+      "deployedUrl": "https://job-abc12345.workers.dev"
     }
   ]
 }
@@ -389,6 +379,15 @@ Lists all jobs.
 ### `GET /api/jobs/:id`
 
 Gets a specific job's details.
+
+### `GET /api/jobs/:id/logs?type=build|deploy`
+
+Fetches build or deploy logs for a job. Requires the `Auth` header to match `AUTH_TOKEN`.
+
+```bash
+curl -H "Auth: $NIMBUS_AUTH_TOKEN" \
+  "$NIMBUS_WORKER_URL/api/jobs/job_abc123/logs?type=deploy"
+```
 
 ### `GET /health`
 
@@ -403,38 +402,36 @@ cd packages/worker
 npx wrangler secret put OPENROUTER_API_KEY
 ```
 
-### Pages deployment fails
+### Workers deployment fails
 
-Ensure you've set the Cloudflare secrets:
+Ensure you've set these secrets on the worker:
 
 ```bash
 npx wrangler secret put CLOUDFLARE_API_TOKEN
 npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
 ```
 
-The API token needs **Cloudflare Pages - Edit** permission.
+The API token needs **Workers Scripts - Edit**, **R2 - Edit**, and **D1 - Edit** permissions.
 
-### SSL/TLS Errors on Preview URLs
+Fetch deploy logs for details:
 
-Make sure:
-1. Your wildcard DNS record is **Proxied** (orange cloud)
-2. SSL/TLS mode is set to **Full** or **Full (strict)** in Cloudflare dashboard
-3. You're using the root domain in `PREVIEW_HOSTNAME` (e.g., `yourdomain.com` not `api.yourdomain.com`)
+```bash
+NIMBUS_AUTH_TOKEN=your-token nimbus logs <job-id> --type deploy
+```
 
-### "Could not resolve host" for Preview URLs
+### R2 not enabled (error 10042)
 
-- DNS propagation can take a few minutes
-- Verify the wildcard A record exists: `dig *.yourdomain.com`
+Enable R2 in the Cloudflare Dashboard (R2 → Enable). Then retry deploy.
+
+### "Unauthorized" when fetching logs
+
+Make sure `AUTH_TOKEN` is set on the worker and `NIMBUS_AUTH_TOKEN` is set locally.
 
 ### Container Not Starting
 
 - Ensure Docker Desktop is running when you deploy
 - Wait 2-3 minutes after first deployment
 - Check container status: `npx wrangler containers list`
-
-### Preview URL Returns 404
-
-The sandbox may have been destroyed. Sandboxes are ephemeral - run the build again to get a new preview URL. The **deployed URL** (Pages) is permanent.
 
 ## Local Development
 
@@ -446,7 +443,7 @@ pnpm dev
 NIMBUS_WORKER_URL=http://localhost:8787 npx @dayhaysoos/nimbus start "Build a hello world page"
 ```
 
-> **Note**: Preview URLs and Pages deployment don't work in local development (they require custom domain routing and Cloudflare infrastructure). The build will complete but URLs won't be accessible.
+> **Note**: Deployments and log uploads require Cloudflare credentials. If secrets are not configured, local builds will fail at deploy time.
 
 ## Contributing
 
@@ -458,6 +455,6 @@ MIT
 
 ## Acknowledgments
 
-- [Cloudflare](https://cloudflare.com) for Workers, Containers, Pages, and D1
+- [Cloudflare](https://cloudflare.com) for Workers, Containers, R2, and D1
 - [Anthropic](https://anthropic.com) for Claude
 - [OpenRouter](https://openrouter.ai) for the unified LLM API

@@ -6,8 +6,8 @@ import { formatDuration, formatCost, formatNumber } from './report.js';
  */
 export function printSummary(metrics: BuildMetrics): void {
   const line = '-------------------------------------------';
-  const urlLabel = metrics.deploySuccess ? 'URL:' : 'Preview:';
-  const urlNote = metrics.deploySuccess ? '' : ' (temporary - deploy failed)';
+  const urlLabel = 'URL:';
+  const urlNote = '';
 
   console.log('');
   console.log(line);

@@ -1,5 +1,6 @@
 import { getSandbox, type Sandbox } from '@cloudflare/sandbox';
 import { isNextWorkersConfig, parseNimbusConfig } from './lib/nimbus-config.js';
+import { buildWorkerName } from './lib/worker-name.js';
 import type { GeneratedFile, SSEEvent } from './types.js';
 
 // Re-export Sandbox class for Durable Object binding
@@ -15,6 +16,8 @@ const OPENNEXT_BUILD_TIMEOUT = 60000; // 1 minute for OpenNext packaging
 const WORKER_COMPATIBILITY_DATE = '2026-01-23';
 const NIMBUS_WRANGLER_FILENAME = 'wrangler.nimbus.toml';
 const PROJECT_WRANGLER_FILENAME = 'wrangler.toml';
+const STATIC_WORKER_FILENAME = 'nimbus-static-worker.js';
+const STATIC_WORKER_SOURCE = `export default { fetch: (request, env) => env.ASSETS.fetch(request) };\n`;
 const SSE_HEARTBEAT_MS = 15000;
 const MAX_LOG_CHARS = 4000;
 const LOG_STREAM_INTERVAL_MS = 5000;
@@ -45,10 +48,6 @@ async function execWithTimeout(
   }
 }
 
-function buildWorkerName(jobId: string): string {
-  return `nimbus-${jobId}`.replace(/_/g, '-');
-}
-
 function buildWranglerConfig(jobId: string): string {
   const workerName = buildWorkerName(jobId);
   return [
@@ -60,6 +59,22 @@ function buildWranglerConfig(jobId: string): string {
     '',
     '[assets]',
     'directory = ".open-next/assets"',
+    'binding = "ASSETS"',
+    '',
+  ].join('\n');
+}
+
+function buildStaticWranglerConfig(jobId: string, assetsDir: string, workerEntry: string): string {
+  const workerName = buildWorkerName(jobId);
+  return [
+    `name = "${workerName}"`,
+    'workers_dev = true',
+    `main = "${workerEntry}"`,
+    `compatibility_date = "${WORKER_COMPATIBILITY_DATE}"`,
+    'compatibility_flags = ["nodejs_compat"]',
+    '',
+    '[assets]',
+    `directory = "${assetsDir}"`,
     'binding = "ASSETS"',
     '',
   ].join('\n');
@@ -183,8 +198,59 @@ function startLogStreamer(
   };
 }
 
+export class SandboxBuildError extends Error {
+  sandboxId: string;
+
+  constructor(message: string, sandboxId: string) {
+    super(message);
+    this.sandboxId = sandboxId;
+  }
+}
+
+async function findStaticAssetsDir(sandbox: ReturnType<typeof getSandbox>): Promise<string> {
+  const appDir = '/root/app';
+  const candidates = ['dist', 'build', '.output', 'out'];
+  for (const dir of candidates) {
+    const checkPath = `${appDir}/${dir}`;
+    const result = await sandbox.exec(`test -d ${checkPath} && echo "exists"`);
+    if (result.stdout.includes('exists')) {
+      return dir;
+    }
+  }
+  return '.';
+}
+
+async function resolveStaticAssetsDir(
+  sandbox: ReturnType<typeof getSandbox>,
+  config: { assetsDir?: string } | null
+): Promise<string> {
+  if (config?.assetsDir) {
+    const normalized = config.assetsDir.replace(/^\.\//, '');
+    const checkPath = `/root/app/${normalized}`;
+    const result = await sandbox.exec(`test -d ${checkPath} && echo "exists"`);
+    if (result.stdout.includes('exists')) {
+      return normalized;
+    }
+  }
+  return findStaticAssetsDir(sandbox);
+}
+
+function resolveStaticWorkerEntry(
+  files: GeneratedFile[],
+  config: { workerEntry?: string } | null
+): { path: string; contents?: string } {
+  const configuredEntry = config?.workerEntry;
+  if (configuredEntry && files.some((file) => file.path === configuredEntry)) {
+    return { path: configuredEntry };
+  }
+  const explicitWorker = files.find((file) => /(^|\/)(worker)\.(js|ts)$/.test(file.path));
+  if (explicitWorker) {
+    return { path: explicitWorker.path };
+  }
+  return { path: STATIC_WORKER_FILENAME, contents: STATIC_WORKER_SOURCE };
+}
+
 export interface BuildResult {
-  previewUrl: string;
   sandboxId: string;
   installDurationMs: number;
   buildDurationMs: number;
@@ -194,7 +260,6 @@ export async function buildInSandbox(
   sandboxNamespace: DurableObjectNamespace<Sandbox>,
   files: GeneratedFile[],
   sendEvent: SSEWriter,
-  hostname: string,
   jobId: string
 ): Promise<BuildResult> {
   // Create a unique sandbox instance for this build
@@ -372,74 +437,29 @@ export async function buildInSandbox(
       if (assetsCheck.stdout?.trim() !== 'yes') {
         throw new Error('Next.js SSR output missing: .open-next/assets not found');
       }
-
-    }
-
-    // Start HTTP server and expose preview URL
-    sendEvent({ type: 'starting' });
-
-    // Determine what to serve and how
-    const packageJsonFile = files.find(f => f.path === 'package.json');
-    let packageJson: { scripts?: Record<string, string> } = {};
-    if (packageJsonFile) {
-      try {
-        packageJson = JSON.parse(packageJsonFile.content);
-      } catch {
-        // Ignore parse errors
-      }
-    }
-
-    // Check for preview/start scripts or determine serve directory
-    const hasPreviewScript = packageJson.scripts?.preview;
-    const hasStartScript = packageJson.scripts?.start;
-
-    if (isNextWorkers) {
-      await sandbox.startProcess(
-        `cd ${APP_DIR} && wrangler dev --local --config ${NIMBUS_WRANGLER_FILENAME} --port 8080 --ip 0.0.0.0`
-      );
-    } else if (hasPreviewScript) {
-      // Astro, Vite, etc. have a preview script that serves the built output
-      await sandbox.startProcess(`cd ${APP_DIR} && bun run preview -- --host 0.0.0.0 --port 8080`);
-    } else if (hasStartScript) {
-      // Some projects have a start script - try to set port via PORT env var (common convention)
-      await sandbox.startProcess(`cd ${APP_DIR} && PORT=8080 bun run start`);
     } else {
-      // Static files - use serve to serve the appropriate directory
-      // Check if there's a dist/ or build/ folder after build
-      const distExists = await sandbox.exec(`test -d ${APP_DIR}/dist && echo "yes" || echo "no"`);
-      const buildExists = await sandbox.exec(`test -d ${APP_DIR}/build && echo "yes" || echo "no"`);
-
-      let serveDir = APP_DIR;
-      if (distExists.stdout?.trim() === 'yes') {
-        serveDir = `${APP_DIR}/dist`;
-      } else if (buildExists.stdout?.trim() === 'yes') {
-        serveDir = `${APP_DIR}/build`;
+      const assetsDir = await resolveStaticAssetsDir(sandbox, nimbusConfig);
+      const workerEntry = resolveStaticWorkerEntry(files, nimbusConfig);
+      if (workerEntry.contents) {
+        const workerPath = `${APP_DIR}/${workerEntry.path}`;
+        const workerDir = workerPath.substring(0, workerPath.lastIndexOf('/'));
+        if (workerDir && workerDir !== APP_DIR) {
+          await sandbox.exec(`mkdir -p ${workerDir}`);
+        }
+        await sandbox.writeFile(workerPath, workerEntry.contents);
       }
 
-      // Use serve for static file serving (installed globally in Dockerfile)
-      await sandbox.startProcess(`serve ${serveDir} -l 8080 --no-clipboard`);
+      const wranglerConfig = buildStaticWranglerConfig(jobId, assetsDir, workerEntry.path);
+      await sandbox.writeFile(`${APP_DIR}/${NIMBUS_WRANGLER_FILENAME}`, wranglerConfig);
     }
-
-    // Wait for server to start
-    await new Promise((resolve) => setTimeout(resolve, 2000));
-
-    // Expose the port and get preview URL
-    const exposed = await sandbox.exposePort(8080, { hostname });
-    const previewUrl = exposed.url;
 
     return {
-      previewUrl,
       sandboxId,
       installDurationMs,
       buildDurationMs,
     };
   } catch (error) {
-    // On error, try to clean up the sandbox
-    try {
-      await sandbox.destroy();
-    } catch {
-      // Ignore cleanup errors
-    }
-    throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new SandboxBuildError(message, sandboxId);
   }
 }

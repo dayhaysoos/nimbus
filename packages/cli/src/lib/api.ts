@@ -8,6 +8,13 @@ export function getWorkerUrl(): string | undefined {
 }
 
 /**
+ * Get auth token for log retrieval
+ */
+export function getAuthToken(): string | undefined {
+  return process.env.NIMBUS_AUTH_TOKEN || process.env.AUTH_TOKEN;
+}
+
+/**
  * Parse SSE stream from worker
  */
 export async function* parseSSE(
@@ -90,6 +97,27 @@ export async function listJobs(workerUrl: string): Promise<JobsListResponse> {
   }
 
   return response.json() as Promise<JobsListResponse>;
+}
+
+/**
+ * Get build/deploy logs for a job
+ */
+export async function getJobLogs(
+  workerUrl: string,
+  jobId: string,
+  type: 'build' | 'deploy',
+  authToken: string
+): Promise<string> {
+  const response = await fetch(`${workerUrl}/api/jobs/${jobId}/logs?type=${type}`, {
+    headers: { Auth: authToken },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.text();
 }
 
 /**

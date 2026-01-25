@@ -1,6 +1,5 @@
-import { proxyToSandbox } from '@cloudflare/sandbox';
 import { Sandbox } from './sandbox.js';
-import { handleCreateJob, handleGetJob, handleListJobs } from './api/jobs.js';
+import { handleCreateJob, handleGetJob, handleGetJobLogs, handleListJobs } from './api/jobs.js';
 import type { Env } from './types.js';
 
 // Re-export Sandbox for Durable Object binding
@@ -10,7 +9,7 @@ export { Sandbox };
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Auth',
 };
 
 export default {
@@ -22,10 +21,6 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Proxy preview URL requests to sandbox
-    const proxyResponse = await proxyToSandbox(request, env);
-    if (proxyResponse) return proxyResponse;
-
     // Route: POST /api/jobs - Create new job
     if (url.pathname === '/api/jobs' && request.method === 'POST') {
       return handleCreateJob(request, env);
@@ -34,6 +29,12 @@ export default {
     // Route: GET /api/jobs - List all jobs
     if (url.pathname === '/api/jobs' && request.method === 'GET') {
       return handleListJobs(env);
+    }
+
+    // Route: GET /api/jobs/:id/logs - Get build/deploy logs (auth required)
+    const logMatch = url.pathname.match(/^\/api\/jobs\/([a-z0-9_]+)\/logs$/);
+    if (logMatch && request.method === 'GET') {
+      return handleGetJobLogs(request, env, logMatch[1]);
     }
 
     // Route: GET /api/jobs/:id - Get job by ID

@@ -56,24 +56,12 @@ export function generateReportFilename(): string {
 export function generateReportContent(metrics: BuildMetrics): string {
   const timestamp = new Date(metrics.completedAt).toLocaleString();
   const buildStatus = metrics.buildSuccess ? 'Success' : 'Failed';
-  const deployStatus = metrics.deploySuccess ? 'Deployed' : 'Failed (using preview)';
+  const deployStatus = metrics.deploySuccess ? 'Deployed' : 'Failed';
 
-  // Build deployment section based on success/failure
-  let deploymentSection: string;
-  if (metrics.deploySuccess) {
-    deploymentSection = `## Output
+  const deploymentSection = `## Output
 
 - **Deployed URL:** ${metrics.deployedUrl}
 - **Build ID:** ${metrics.id}`;
-  } else {
-    deploymentSection = `## Output
-
-- **Preview URL (temporary):** ${metrics.deployedUrl}
-- **Build ID:** ${metrics.id}
-- **Deployment Error:** ${metrics.deployError || 'Unknown error'}
-
-> **Warning:** Deployment to Cloudflare Pages failed. The preview URL above is temporary and will expire when the sandbox is cleaned up.`;
-  }
 
   return `# Nimbus Build Report
 

@@ -3,6 +3,8 @@ import type { GeneratedFile } from '../types.js';
 export interface NimbusConfig {
   framework?: string;
   target?: string;
+  assetsDir?: string;
+  workerEntry?: string;
 }
 
 const NIMBUS_CONFIG_BASENAME = 'nimbus.config.json';

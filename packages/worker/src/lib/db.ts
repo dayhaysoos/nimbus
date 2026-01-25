@@ -24,6 +24,7 @@ function toJobResponse(record: JobRecord): JobResponse {
     createdAt: record.created_at,
     startedAt: record.started_at,
     completedAt: record.completed_at,
+    expiresAt: record.expires_at,
     previewUrl: record.preview_url,
     deployedUrl: record.deployed_url,
     errorMessage: record.error_message,
@@ -87,6 +88,28 @@ export async function getJob(db: D1Database, id: string): Promise<JobResponse | 
 }
 
 /**
+ * Get job log keys by ID
+ */
+export async function getJobLogKeys(
+  db: D1Database,
+  id: string
+): Promise<{ buildLogKey: string | null; deployLogKey: string | null } | null> {
+  const result = await db
+    .prepare('SELECT build_log_key, deploy_log_key FROM jobs WHERE id = ?')
+    .bind(id)
+    .first<{ build_log_key: string | null; deploy_log_key: string | null }>();
+
+  if (!result) {
+    return null;
+  }
+
+  return {
+    buildLogKey: result.build_log_key,
+    deployLogKey: result.deploy_log_key,
+  };
+}
+
+/**
  * List all jobs, most recent first
  */
 export async function listJobs(db: D1Database, limit = 50): Promise<JobListItem[]> {
@@ -108,10 +131,14 @@ export async function updateJobStatus(
   additionalFields?: {
     started_at?: string;
     completed_at?: string;
+    expires_at?: string;
     preview_url?: string;
     deployed_url?: string;
     error_message?: string;
     file_count?: number;
+    build_log_key?: string;
+    deploy_log_key?: string;
+    worker_name?: string;
     // Metrics fields
     prompt_tokens?: number;
     completion_tokens?: number;
@@ -137,6 +164,10 @@ export async function updateJobStatus(
       updates.push('completed_at = ?');
       values.push(additionalFields.completed_at);
     }
+    if (additionalFields.expires_at !== undefined) {
+      updates.push('expires_at = ?');
+      values.push(additionalFields.expires_at);
+    }
     if (additionalFields.preview_url !== undefined) {
       updates.push('preview_url = ?');
       values.push(additionalFields.preview_url);
@@ -152,6 +183,18 @@ export async function updateJobStatus(
     if (additionalFields.file_count !== undefined) {
       updates.push('file_count = ?');
       values.push(additionalFields.file_count);
+    }
+    if (additionalFields.build_log_key !== undefined) {
+      updates.push('build_log_key = ?');
+      values.push(additionalFields.build_log_key);
+    }
+    if (additionalFields.deploy_log_key !== undefined) {
+      updates.push('deploy_log_key = ?');
+      values.push(additionalFields.deploy_log_key);
+    }
+    if (additionalFields.worker_name !== undefined) {
+      updates.push('worker_name = ?');
+      values.push(additionalFields.worker_name);
     }
     // Metrics fields
     if (additionalFields.prompt_tokens !== undefined) {
@@ -221,13 +264,23 @@ export async function markJobCompleted(
   id: string,
   previewUrl: string,
   deployedUrl: string,
-  metrics: BuildMetrics
+  metrics: BuildMetrics,
+  extra?: {
+    expiresAt?: string;
+    workerName?: string;
+    buildLogKey?: string;
+    deployLogKey?: string;
+  }
 ): Promise<void> {
   await updateJobStatus(db, id, 'completed', {
     completed_at: new Date().toISOString(),
+    expires_at: extra?.expiresAt,
     preview_url: previewUrl,
     deployed_url: deployedUrl,
     file_count: metrics.filesGenerated,
+    build_log_key: extra?.buildLogKey,
+    deploy_log_key: extra?.deployLogKey,
+    worker_name: extra?.workerName,
     prompt_tokens: metrics.promptTokens,
     completion_tokens: metrics.completionTokens,
     total_tokens: metrics.totalTokens,
@@ -248,11 +301,21 @@ export async function markJobFailed(
   db: D1Database,
   id: string,
   errorMessage: string,
-  previewUrl?: string
+  previewUrl?: string,
+  extra?: {
+    buildLogKey?: string;
+    deployLogKey?: string;
+    workerName?: string;
+    expiresAt?: string;
+  }
 ): Promise<void> {
   await updateJobStatus(db, id, 'failed', {
     completed_at: new Date().toISOString(),
+    expires_at: extra?.expiresAt,
     error_message: errorMessage,
     preview_url: previewUrl,
+    build_log_key: extra?.buildLogKey,
+    deploy_log_key: extra?.deployLogKey,
+    worker_name: extra?.workerName,
   });
 }

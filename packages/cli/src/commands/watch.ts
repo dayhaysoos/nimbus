@@ -47,6 +47,12 @@ export async function watchCommand(jobId: string): Promise<void> {
         process.exit(1);
       }
 
+      if (job.status === 'expired') {
+        spinner.stop('Job expired');
+        displayJobExpired(job);
+        process.exit(1);
+      }
+
       // Wait before polling again
       await sleep(POLL_INTERVAL);
     }
@@ -87,10 +93,6 @@ function displayJobResult(job: JobResponse): void {
   p.log.success('Build completed successfully!');
   console.log('');
 
-  if (job.previewUrl) {
-    p.log.info(`Preview URL: ${job.previewUrl}`);
-  }
-
   if (job.deployedUrl) {
     p.outro(`Deployed: ${job.deployedUrl}`);
   }
@@ -122,18 +124,30 @@ function displayJobError(job: JobResponse): void {
     p.log.error(job.errorMessage);
   }
 
-  // If preview URL exists, build succeeded but deployment failed
-  if (job.previewUrl) {
-    console.log('');
-    p.log.info('Build succeeded but deployment failed.');
-    p.log.info(`Preview URL (temporary): ${job.previewUrl}`);
-  }
-
   console.log('');
   console.log('  Job Details:');
   console.log(`    ID:       ${job.id}`);
   console.log(`    Model:    ${getShortModelName(job.model)}`);
   console.log(`    Prompt:   ${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? '...' : ''}`);
+  console.log('');
+}
+
+/**
+ * Display expired job message
+ */
+function displayJobExpired(job: JobResponse): void {
+  console.log('');
+  p.log.warning('Job expired');
+  console.log('');
+  p.log.info('This deployment exceeded the 24-hour retention window.');
+
+  console.log('');
+  console.log('  Job Details:');
+  console.log(`    ID:       ${job.id}`);
+  console.log(`    Model:    ${getShortModelName(job.model)}`);
+  if (job.expiresAt) {
+    console.log(`    Expired:  ${job.expiresAt}`);
+  }
   console.log('');
 }
 

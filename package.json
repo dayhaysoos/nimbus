@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "pnpm --filter @dayhaysoos/nimbus-worker dev",
     "build": "pnpm -r build",
-    "deploy": "pnpm --filter @dayhaysoos/nimbus-worker deploy",
+    "deploy": "pnpm --filter @dayhaysoos/nimbus-worker run deploy && pnpm --filter @dayhaysoos/nimbus-cleanup-worker run deploy",
+    "deploy:worker": "pnpm --filter @dayhaysoos/nimbus-worker run deploy",
+    "deploy:cleanup": "pnpm --filter @dayhaysoos/nimbus-cleanup-worker run deploy",
     "cli": "pnpm --filter @dayhaysoos/nimbus start",
     "wrangler": "pnpm --filter @dayhaysoos/nimbus-worker exec wrangler"
   },

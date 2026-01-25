@@ -13,16 +13,16 @@ zone_name = "getnimbus.dev"
 
 [vars]
 DEFAULT_MODEL = "anthropic/claude-sonnet-4"
-# Use getnimbus.dev for preview URLs (wildcard SSL via Cloudflare)
-PREVIEW_HOSTNAME = "getnimbus.dev"
-# Pages project name for deployments
-PAGES_PROJECT_NAME = "nimbus"
 
 # D1 Database for job persistence
 [[d1_databases]]
 binding = "DB"
 database_name = "nimbus-db"
 database_id = "b0c22993-0a1a-4117-8ffb-f243e7487c05"
+
+[[r2_buckets]]
+binding = "LOGS_BUCKET"
+bucket_name = "nimbus-logs"
 
 # Sandbox container configuration
 # Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)

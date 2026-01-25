@@ -1,0 +1,16 @@
+name = "nimbus-cleanup"
+main = "src/index.ts"
+compatibility_date = "2025-01-21"
+workers_dev = true
+
+[triggers]
+crons = ["0 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "nimbus-db"
+database_id = "b0c22993-0a1a-4117-8ffb-f243e7487c05"
+
+[[r2_buckets]]
+binding = "LOGS_BUCKET"
+bucket_name = "nimbus-logs"

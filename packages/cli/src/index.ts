@@ -20,6 +20,7 @@ import * as p from '@clack/prompts';
 import { startCommand } from './commands/start.js';
 import { listCommand } from './commands/list.js';
 import { watchCommand } from './commands/watch.js';
+import { logsCommand } from './commands/logs.js';
 
 const VERSION = '0.1.0';
 
@@ -34,9 +35,11 @@ Commands:
   start <prompt>     Create a new website from a prompt
   list               List all past jobs
   watch <job-id>     Watch a job's progress
+  logs <job-id>      Fetch build/deploy logs
 
 Options:
   -m, --model <id>   Specify model for start command (skips picker)
+  -t, --type <kind>  Log type for logs command (build|deploy)
   -h, --help         Show this help message
   -v, --version      Show version
 
@@ -45,9 +48,11 @@ Examples:
   nimbus start -m openai/gpt-4o "Build a portfolio site"
   nimbus list
   nimbus watch job_abc123
+  nimbus logs job_abc123 --type deploy
 
 Environment Variables:
   NIMBUS_WORKER_URL  Worker URL (required) - Your self-hosted Nimbus worker
+  NIMBUS_AUTH_TOKEN  Auth token for log retrieval
 
 Self-hosting: https://github.com/dayhaysoos/nimbus#self-hosting-guide
 `);
@@ -78,6 +83,8 @@ function parseArgs(args: string[]): {
       // Handle short flags
       if (key === 'm' && i + 1 < args.length && !args[i + 1].startsWith('-')) {
         flags['model'] = args[++i];
+      } else if (key === 't' && i + 1 < args.length && !args[i + 1].startsWith('-')) {
+        flags['type'] = args[++i];
       } else if (key === 'h') {
         flags['help'] = true;
       } else if (key === 'v') {
@@ -138,6 +145,16 @@ async function main(): Promise<void> {
           process.exit(1);
         }
         await watchCommand(jobId);
+        break;
+      }
+
+      case 'logs': {
+        const jobId = positional[0];
+        if (!jobId) {
+          p.log.error('Missing job ID. Usage: nimbus logs <job-id>');
+          process.exit(1);
+        }
+        await logsCommand(jobId, { type: flags.type as string | undefined });
         break;
       }
 

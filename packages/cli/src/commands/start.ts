@@ -120,24 +120,8 @@ async function handleEvent(
       break;
     }
 
-    case 'starting':
-      spinner.stop('Build complete');
-      spinner.start('Starting preview server...');
-      break;
-
-    case 'preview_ready':
-      spinner.stop('Preview ready');
-      p.log.info(`Preview: ${event.previewUrl}`);
-      break;
-
     case 'deploying':
       spinner.start('Deploying...');
-      break;
-
-    case 'deploy_warning':
-      spinner.stop('Deployment failed');
-      p.log.warning(event.message);
-      p.log.info('Falling back to preview URL (temporary)');
       break;
 
     case 'deployed':
@@ -162,11 +146,7 @@ async function handleEvent(
       }
 
       // Print final URL
-      if (event.isPreviewFallback) {
-        p.outro(`Preview (temporary): ${event.deployedUrl}`);
-      } else {
-        p.outro(`Deployed: ${event.deployedUrl}`);
-      }
+      p.outro(`Deployed: ${event.deployedUrl}`);
       process.exit(0);
       break;
     }

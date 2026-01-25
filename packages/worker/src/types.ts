@@ -4,12 +4,12 @@ import type { Sandbox } from '@cloudflare/sandbox';
 export interface Env {
   Sandbox: DurableObjectNamespace<Sandbox>;
   DB: D1Database;
+  LOGS_BUCKET: R2Bucket;
   OPENROUTER_API_KEY: string;
   DEFAULT_MODEL: string;
-  PREVIEW_HOSTNAME: string;
-  PAGES_PROJECT_NAME: string;
   CLOUDFLARE_API_TOKEN: string;
   CLOUDFLARE_ACCOUNT_ID: string;
+  AUTH_TOKEN: string;
 }
 
 // Request/Response types
@@ -19,7 +19,7 @@ export interface BuildRequest {
 }
 
 // Job status type
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'expired';
 
 // Job record from D1 database
 export interface JobRecord {
@@ -30,10 +30,14 @@ export interface JobRecord {
   created_at: string;
   started_at: string | null;
   completed_at: string | null;
+  expires_at: string | null;
   preview_url: string | null;
   deployed_url: string | null;
   error_message: string | null;
   file_count: number | null;
+  build_log_key: string | null;
+  deploy_log_key: string | null;
+  worker_name: string | null;
 }
 
 // Job response for API (camelCase)
@@ -45,6 +49,7 @@ export interface JobResponse {
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  expiresAt: string | null;
   previewUrl: string | null;
   deployedUrl: string | null;
   errorMessage: string | null;
@@ -81,16 +86,12 @@ export type SSEEvent =
   | { type: 'installing' }
   | { type: 'building' }
   | { type: 'log'; phase: LogPhase; message: string }
-  | { type: 'starting' }
-  | { type: 'preview_ready'; previewUrl: string }
   | { type: 'deploying' }
-  | { type: 'deploy_warning'; message: string }
   | { type: 'deployed'; deployedUrl: string }
   | {
       type: 'complete';
       previewUrl: string;
       deployedUrl: string;
-      isPreviewFallback?: boolean;
       metrics: BuildMetrics;
     }
   | { type: 'error'; message: string };

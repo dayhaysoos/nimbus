@@ -34,22 +34,18 @@ export type SSEEvent =
   | { type: 'installing' }
   | { type: 'building' }
   | { type: 'log'; phase: LogPhase; message: string }
-  | { type: 'starting' }
-  | { type: 'preview_ready'; previewUrl: string }
   | { type: 'deploying' }
-  | { type: 'deploy_warning'; message: string }
   | { type: 'deployed'; deployedUrl: string }
   | {
       type: 'complete';
       previewUrl: string;
       deployedUrl: string;
-      isPreviewFallback?: boolean;
       metrics: BuildMetrics;
     }
   | { type: 'error'; message: string };
 
 // Job status type
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type JobStatus = 'pending' | 'running' | 'completed' | 'failed' | 'expired';
 
 // Job response from API
 export interface JobResponse {
@@ -60,6 +56,7 @@ export interface JobResponse {
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
+  expiresAt: string | null;
   previewUrl: string | null;
   deployedUrl: string | null;
   errorMessage: string | null;

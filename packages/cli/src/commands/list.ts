@@ -90,6 +90,7 @@ function formatStatus(status: JobStatus): string {
     running: '[~] running',
     completed: '[+] completed',
     failed: '[x] failed',
+    expired: '[!] expired',
   };
   return indicators[status] || status;
 }
