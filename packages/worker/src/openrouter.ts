@@ -5,6 +5,7 @@ import type {
   OpenRouterResponse,
   OpenRouterGenerationResponse,
 } from './types.js';
+import { buildFrameworkPrompt } from './frameworks/index.js';
 
 const OPENROUTER_API_URL = 'https://openrouter.ai/api/v1/chat/completions';
 const OPENROUTER_GENERATION_URL = 'https://openrouter.ai/api/v1/generation';
@@ -101,7 +102,7 @@ function isResponseFormatUnsupported(message: string): boolean {
   );
 }
 
-const SYSTEM_PROMPT = `You are an expert web developer. Generate a complete, working website based on the user's request.
+const BASE_SYSTEM_PROMPT = `You are an expert web developer. Generate a complete, working website based on the user's request.
 
 OUTPUT FORMAT:
 Return ONLY valid JSON with this exact structure:
@@ -114,20 +115,12 @@ Return ONLY valid JSON with this exact structure:
 
 Include all files needed for the project to work.
 Do not include markdown explanations, just the JSON.
+`;
 
-FRAMEWORK RULES:
-- If the user explicitly asks for Next.js, SSR, or a full-stack React app, generate a Next.js project configured for Cloudflare Workers using OpenNext.
-- For Next.js SSR output, you MUST include:
-  - package.json with dependencies: next@latest, react@latest, react-dom@latest, @opennextjs/cloudflare@latest
-  - open-next.config.ts exporting defineCloudflareConfig()
-  - next.config.ts with output: "standalone" (do not use experimental.runtime or eslint config)
-  - nimbus.config.json with {"framework":"next","target":"workers"}
-  - scripts: "build": "next build", "preview": "opennextjs-cloudflare preview", "deploy": "opennextjs-cloudflare deploy"
-  - packageManager: "bun@1.2.19"
-- Prefer the App Router with TypeScript unless the user asks for Pages Router or JavaScript.
-- Do NOT set output: "export" or otherwise force static-only output for Next.js SSR.
-- Use real published versions or "latest" only. Never invent versions.
-- If the user does not ask for Next.js, create a static site (HTML/CSS/JS) by default.`;
+function buildSystemPrompt(prompt: string): string {
+  const frameworkRules = buildFrameworkPrompt(prompt);
+  return `${BASE_SYSTEM_PROMPT}\n\nFRAMEWORK RULES:\n${frameworkRules}`;
+}
 
 // Result from generateCode including usage metrics
 export interface GenerateCodeResult {
@@ -150,7 +143,7 @@ export async function generateCode(
   const baseRequest: OpenRouterRequest = {
     model,
     messages: [
-      { role: 'system', content: SYSTEM_PROMPT },
+      { role: 'system', content: buildSystemPrompt(prompt) },
       { role: 'user', content: prompt },
     ],
     max_tokens: 8192,

@@ -64,20 +64,24 @@ function buildWranglerConfig(jobId: string): string {
   ].join('\n');
 }
 
-function buildStaticWranglerConfig(jobId: string, assetsDir: string, workerEntry: string): string {
+function buildWorkerWranglerConfig(
+  jobId: string,
+  workerEntry: string,
+  assetsDir?: string
+): string {
   const workerName = buildWorkerName(jobId);
-  return [
+  const lines = [
     `name = "${workerName}"`,
     'workers_dev = true',
     `main = "${workerEntry}"`,
     `compatibility_date = "${WORKER_COMPATIBILITY_DATE}"`,
     'compatibility_flags = ["nodejs_compat"]',
     '',
-    '[assets]',
-    `directory = "${assetsDir}"`,
-    'binding = "ASSETS"',
-    '',
-  ].join('\n');
+  ];
+  if (assetsDir) {
+    lines.push('[assets]', `directory = "${assetsDir}"`, 'binding = "ASSETS"', '');
+  }
+  return lines.join('\n');
 }
 
 function wrapWithTimeout(command: string, timeoutMs: number): string {
@@ -250,6 +254,38 @@ function resolveStaticWorkerEntry(
   return { path: STATIC_WORKER_FILENAME, contents: STATIC_WORKER_SOURCE };
 }
 
+async function ensureAssetsIgnore(
+  sandbox: ReturnType<typeof getSandbox>,
+  assetsDir: string | undefined
+): Promise<void> {
+  if (!assetsDir) {
+    return;
+  }
+  const assetsRoot = `/root/app/${assetsDir}`;
+  const workerAssetsPath = `${assetsRoot}/_worker.js`;
+  const workerDirCheck = await sandbox.exec(
+    `test -d "${workerAssetsPath}" && echo "yes" || echo "no"`
+  );
+  if (workerDirCheck.stdout?.trim() !== 'yes') {
+    return;
+  }
+
+  const ignorePath = `${assetsRoot}/.assetsignore`;
+  const existing = await sandbox.exec(`if [ -f "${ignorePath}" ]; then cat "${ignorePath}"; fi`);
+  const contents = existing.stdout ?? '';
+  const hasEntry = contents
+    .split('\n')
+    .map((line) => line.trim())
+    .some((line) => line === '_worker.js');
+  if (hasEntry) {
+    return;
+  }
+
+  const trimmed = contents.replace(/\s+$/, '');
+  const nextContents = `${trimmed}${trimmed ? '\n' : ''}_worker.js\n`;
+  await sandbox.writeFile(ignorePath, nextContents);
+}
+
 export interface BuildResult {
   sandboxId: string;
   installDurationMs: number;
@@ -291,6 +327,7 @@ export async function buildInSandbox(
 
     const nimbusConfig = parseNimbusConfig(files);
     const isNextWorkers = isNextWorkersConfig(nimbusConfig);
+    const isWorkersTarget = nimbusConfig?.target === 'workers' && !isNextWorkers;
 
     if (isNextWorkers) {
       const wranglerConfig = buildWranglerConfig(jobId);
@@ -437,6 +474,31 @@ export async function buildInSandbox(
       if (assetsCheck.stdout?.trim() !== 'yes') {
         throw new Error('Next.js SSR output missing: .open-next/assets not found');
       }
+    } else if (isWorkersTarget) {
+      const workerEntry = nimbusConfig?.workerEntry;
+      if (!workerEntry) {
+        throw new Error('Workers target requires workerEntry in nimbus.config.json');
+      }
+      const workerEntryCheck = await sandbox.exec(
+        `test -f "${APP_DIR}/${workerEntry}" && echo "yes" || echo "no"`
+      );
+      if (workerEntryCheck.stdout?.trim() !== 'yes') {
+        throw new Error(`Workers output missing: ${workerEntry} not found`);
+      }
+
+      const assetsDir = nimbusConfig?.assetsDir;
+      if (assetsDir) {
+        const assetsCheck = await sandbox.exec(
+          `test -d "${APP_DIR}/${assetsDir}" && echo "yes" || echo "no"`
+        );
+        if (assetsCheck.stdout?.trim() !== 'yes') {
+          throw new Error(`Workers output missing: ${assetsDir} not found`);
+        }
+        await ensureAssetsIgnore(sandbox, assetsDir);
+      }
+
+      const wranglerConfig = buildWorkerWranglerConfig(jobId, workerEntry, assetsDir);
+      await sandbox.writeFile(`${APP_DIR}/${NIMBUS_WRANGLER_FILENAME}`, wranglerConfig);
     } else {
       const assetsDir = await resolveStaticAssetsDir(sandbox, nimbusConfig);
       const workerEntry = resolveStaticWorkerEntry(files, nimbusConfig);
@@ -449,7 +511,7 @@ export async function buildInSandbox(
         await sandbox.writeFile(workerPath, workerEntry.contents);
       }
 
-      const wranglerConfig = buildStaticWranglerConfig(jobId, assetsDir, workerEntry.path);
+      const wranglerConfig = buildWorkerWranglerConfig(jobId, workerEntry.path, assetsDir);
       await sandbox.writeFile(`${APP_DIR}/${NIMBUS_WRANGLER_FILENAME}`, wranglerConfig);
     }
 

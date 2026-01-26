@@ -17,6 +17,12 @@ npx @dayhaysoos/nimbus start "Build a coffee shop landing page"
 - [Claude](https://anthropic.com/claude) via [OpenRouter](https://openrouter.ai/) - Code generation
 - [clack](https://github.com/bombshell-dev/clack) - Beautiful CLI prompts
 
+## Framework Support
+
+- **Next.js SSR** on Cloudflare Workers via OpenNext
+- **Astro SSR** on Cloudflare Workers
+- **Static sites** (HTML/CSS/JS) when no framework is specified
+
 ## How It Works
 
 ```
@@ -44,6 +50,37 @@ npx @dayhaysoos/nimbus start "Build a coffee shop landing page"
 4. Dependencies install and build run automatically
 5. Build output is deployed to a per-job Cloudflare Worker URL
 6. Build and deploy logs are stored in R2
+
+## Framework Registry
+
+Nimbus uses a lightweight framework registry in the worker to normalize outputs and ensure builds are deployable.
+
+- Detects frameworks based on `nimbus.config.json`, `package.json`, or framework config files.
+- Normalizes `nimbus.config.json` with `framework`, `target`, `assetsDir`, and `workerEntry` for the deploy step.
+- Adds required framework dependencies to `package.json` (for example, Astro SSR adapter packages).
+- Adds framework-specific prompt rules only for the selected framework to keep LLM context small.
+- Supported targets are `workers` (SSR) and `static`.
+
+Example `nimbus.config.json`:
+
+```json
+{
+  "framework": "astro",
+  "target": "workers",
+  "assetsDir": "dist",
+  "workerEntry": "dist/_worker.js/index.js"
+}
+```
+
+Static-only example:
+
+```json
+{
+  "framework": "astro",
+  "target": "static",
+  "assetsDir": "dist"
+}
+```
 
 ## CLI Commands
 

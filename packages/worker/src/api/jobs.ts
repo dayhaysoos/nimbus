@@ -11,8 +11,9 @@ import {
   markJobCompleted,
   markJobFailed,
 } from '../lib/db.js';
+import { normalizeGeneratedFiles } from '../frameworks/index.js';
 import { deployToWorkers, DeployError } from '../lib/deploy/workers.js';
-import { isNextWorkersConfig, normalizeNextConfigFiles, parseNimbusConfig } from '../lib/nimbus-config.js';
+import { isNextWorkersConfig, normalizeNextConfigFiles } from '../lib/nimbus-config.js';
 import { buildWorkerName } from '../lib/worker-name.js';
 import { SandboxBuildError } from '../sandbox.js';
 import type { Env, BuildRequest, SSEEvent, BuildMetrics } from '../types.js';
@@ -183,9 +184,10 @@ export async function handleCreateJob(request: Request, env: Env): Promise<Respo
       sendEvent({ type: 'generating' });
 
       const generateResult = await generateCode(env.OPENROUTER_API_KEY, model, body.prompt);
-      const nimbusConfig = parseNimbusConfig(generateResult.files);
+      const normalized = normalizeGeneratedFiles(generateResult.files);
+      const nimbusConfig = normalized.config;
       const isNextWorkers = isNextWorkersConfig(nimbusConfig);
-      const files = isNextWorkers ? normalizeNextConfigFiles(generateResult.files) : generateResult.files;
+      const files = isNextWorkers ? normalizeNextConfigFiles(normalized.files) : normalized.files;
       const fileCount = files.length;
       console.log('[Nimbus] Job config', jobId, { isNextWorkers, nimbusConfig });
 
