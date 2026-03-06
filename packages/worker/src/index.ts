@@ -1,6 +1,8 @@
 import { proxyToSandbox } from '@cloudflare/sandbox';
 import { Sandbox } from './sandbox.js';
 import { handleCreateJob, handleGetJob, handleListJobs } from './api/jobs.js';
+import { handleGetJobEvents } from './api/job-events.js';
+import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';
 import type { Env } from './types.js';
 
 // Re-export Sandbox for Durable Object binding
@@ -31,6 +33,11 @@ export default {
       return handleCreateJob(request, env);
     }
 
+    // Route: POST /api/checkpoint/jobs - Create new checkpoint-based deployment job
+    if (url.pathname === '/api/checkpoint/jobs' && request.method === 'POST') {
+      return handleCreateCheckpointJob(request, env);
+    }
+
     // Route: GET /api/jobs - List all jobs
     if (url.pathname === '/api/jobs' && request.method === 'GET') {
       return handleListJobs(env);
@@ -40,6 +47,12 @@ export default {
     const jobMatch = url.pathname.match(/^\/api\/jobs\/([a-z0-9_]+)$/);
     if (jobMatch && request.method === 'GET') {
       return handleGetJob(jobMatch[1], env);
+    }
+
+    // Route: GET /api/jobs/:id/events - Event stream placeholder
+    const jobEventsMatch = url.pathname.match(/^\/api\/jobs\/([a-z0-9_]+)\/events$/);
+    if (jobEventsMatch && request.method === 'GET') {
+      return handleGetJobEvents(jobEventsMatch[1], env);
     }
 
     // Route: POST /build (legacy, redirect to /api/jobs)

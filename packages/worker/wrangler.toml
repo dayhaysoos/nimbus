@@ -39,6 +39,11 @@ binding = "DB"
 database_name = "nimbus-db"
 database_id = "b0c22993-0a1a-4117-8ffb-f243e7487c05"
 
+[[r2_buckets]]
+binding = "SOURCE_BUNDLES"
+bucket_name = "nimbus-source-bundles"
+preview_bucket_name = "nimbus-source-bundles-preview"
+
 # Sandbox container configuration
 # Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)
 [[containers]]

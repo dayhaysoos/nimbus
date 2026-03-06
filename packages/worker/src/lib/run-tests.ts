@@ -1,5 +1,8 @@
 import { runFlagsTests } from './flags.test.js';
 import { runStateMachineTests } from './state-machine.test.js';
+import { runCheckpointJobsApiTests } from '../api/checkpoint-jobs.test.js';
+import { runCheckpointDbTests } from './db.checkpoint.test.js';
+import { runJobEventsApiTests } from '../api/job-events.test.js';
 
 type TestCase = {
   name: string;
@@ -9,6 +12,9 @@ type TestCase = {
 const TEST_CASES: TestCase[] = [
   { name: 'state-machine', run: runStateMachineTests },
   { name: 'runtime-flags', run: runFlagsTests },
+  { name: 'job-events-api', run: runJobEventsApiTests },
+  { name: 'checkpoint-db', run: runCheckpointDbTests },
+  { name: 'checkpoint-jobs-api', run: runCheckpointJobsApiTests },
 ];
 
 async function main(): Promise<void> {

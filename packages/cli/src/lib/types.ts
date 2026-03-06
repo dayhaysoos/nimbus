@@ -76,6 +76,14 @@ export interface JobResponse {
   deployedUrl: string | null;
   errorMessage: string | null;
   fileCount: number | null;
+
+  sourceType?: string | null;
+  checkpointId?: string | null;
+  commitSha?: string | null;
+  sourceRef?: string | null;
+  sourceBundleKey?: string | null;
+  sourceBundleSha256?: string | null;
+  sourceBundleBytes?: number | null;
 }
 
 // Job list item (lightweight)
@@ -92,4 +100,12 @@ export interface JobListItem {
 // Jobs list response
 export interface JobsListResponse {
   jobs: JobListItem[];
+}
+
+export interface CheckpointJobCreateResponse {
+  jobId: string;
+  status: JobStatus;
+  phase: JobPhase;
+  eventsUrl: string;
+  jobUrl: string;
 }

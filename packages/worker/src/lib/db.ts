@@ -1,4 +1,18 @@
-import type { JobRecord, JobResponse, JobListItem, JobStatus, JobPhase, BuildMetrics } from '../types';
+import type { JobRecord, JobResponse, JobListItem, JobStatus, JobPhase, BuildMetrics } from '../types.js';
+
+export interface CreateCheckpointJobInput {
+  id: string;
+  prompt: string;
+  checkpointId: string | null;
+  commitSha: string;
+  sourceRef?: string;
+  sourceProjectRoot?: string;
+  buildRunTestsIfPresent: boolean;
+  buildRunLintIfPresent: boolean;
+  sourceBundleKey: string;
+  sourceBundleSha256: string;
+  sourceBundleBytes: number;
+}
 
 function phaseFromStatus(status: JobStatus): JobPhase {
   switch (status) {
@@ -53,6 +67,22 @@ function toJobResponse(record: JobRecord): JobResponse {
     fileCount: record.file_count,
     currentAttempt: record.current_attempt,
     retryCount: record.retry_count,
+    sourceType: record.source_type ?? null,
+    checkpointId: record.checkpoint_id ?? null,
+    commitSha: record.commit_sha ?? null,
+    sourceRef: record.source_ref ?? null,
+    sourceProjectRoot: record.source_project_root ?? null,
+    buildRunTestsIfPresent:
+      record.build_run_tests_if_present === null || record.build_run_tests_if_present === undefined
+        ? null
+        : Boolean(record.build_run_tests_if_present),
+    buildRunLintIfPresent:
+      record.build_run_lint_if_present === null || record.build_run_lint_if_present === undefined
+        ? null
+        : Boolean(record.build_run_lint_if_present),
+    sourceBundleKey: record.source_bundle_key ?? null,
+    sourceBundleSha256: record.source_bundle_sha256 ?? null,
+    sourceBundleBytes: record.source_bundle_bytes ?? null,
   };
 }
 
@@ -91,6 +121,57 @@ export async function createJob(
 
   if (!result) {
     throw new Error('Failed to create job');
+  }
+
+  return toJobResponse(result);
+}
+
+/**
+ * Create a new checkpoint job in the database
+ */
+export async function createCheckpointJob(
+  db: D1Database,
+  input: CreateCheckpointJobInput
+): Promise<JobResponse> {
+  const result = await db
+    .prepare(
+      `INSERT INTO jobs (
+         id,
+         prompt,
+         model,
+         status,
+         phase,
+         source_type,
+         checkpoint_id,
+         commit_sha,
+         source_ref,
+         source_project_root,
+         build_run_tests_if_present,
+         build_run_lint_if_present,
+         source_bundle_key,
+         source_bundle_sha256,
+         source_bundle_bytes
+       )
+       VALUES (?, ?, 'checkpoint', 'queued', 'queued', 'checkpoint', ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING *`
+    )
+    .bind(
+      input.id,
+      input.prompt,
+      input.checkpointId,
+      input.commitSha,
+      input.sourceRef ?? null,
+      input.sourceProjectRoot ?? null,
+      input.buildRunTestsIfPresent ? 1 : 0,
+      input.buildRunLintIfPresent ? 1 : 0,
+      input.sourceBundleKey,
+      input.sourceBundleSha256,
+      input.sourceBundleBytes
+    )
+    .first<JobRecord>();
+
+  if (!result) {
+    throw new Error('Failed to create checkpoint job');
   }
 
   return toJobResponse(result);

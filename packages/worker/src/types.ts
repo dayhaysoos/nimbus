@@ -4,6 +4,7 @@ import type { Sandbox } from '@cloudflare/sandbox';
 export interface Env {
   Sandbox: DurableObjectNamespace<Sandbox>;
   DB: D1Database;
+  SOURCE_BUNDLES?: R2Bucket;
   OPENROUTER_API_KEY: string;
   DEFAULT_MODEL: string;
   PREVIEW_HOSTNAME: string;
@@ -71,6 +72,17 @@ export interface JobRecord {
   file_count: number | null;
   current_attempt?: number;
   retry_count?: number;
+
+  source_type?: string | null;
+  checkpoint_id?: string | null;
+  commit_sha?: string | null;
+  source_ref?: string | null;
+  source_project_root?: string | null;
+  build_run_tests_if_present?: number | null;
+  build_run_lint_if_present?: number | null;
+  source_bundle_key?: string | null;
+  source_bundle_sha256?: string | null;
+  source_bundle_bytes?: number | null;
 }
 
 // Job response for API (camelCase)
@@ -94,6 +106,17 @@ export interface JobResponse {
   fileCount: number | null;
   currentAttempt?: number;
   retryCount?: number;
+
+  sourceType?: string | null;
+  checkpointId?: string | null;
+  commitSha?: string | null;
+  sourceRef?: string | null;
+  sourceProjectRoot?: string | null;
+  buildRunTestsIfPresent?: boolean | null;
+  buildRunLintIfPresent?: boolean | null;
+  sourceBundleKey?: string | null;
+  sourceBundleSha256?: string | null;
+  sourceBundleBytes?: number | null;
 }
 
 // Job list item (lightweight for listing)

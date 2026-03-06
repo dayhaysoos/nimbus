@@ -20,6 +20,9 @@ import * as p from '@clack/prompts';
 import { startCommand } from './commands/start.js';
 import { listCommand } from './commands/list.js';
 import { watchCommand } from './commands/watch.js';
+import { deployCheckpointCommand } from './commands/deploy/checkpoint.js';
+import { resolveDeployCheckpointOptions } from './commands/deploy/checkpoint-options.js';
+import { parseArgs } from './lib/args.js';
 
 const VERSION = '0.1.0';
 
@@ -34,9 +37,20 @@ Commands:
   start <prompt>     Create a new website from a prompt
   list               List all past jobs
   watch <job-id>     Watch a job's progress
+  deploy checkpoint <checkpoint-id-or-commit-ish>
+                     Resolve a checkpoint/commit and run deployment dry run
 
 Options:
   -m, --model <id>   Specify model for start command (skips picker)
+  --ref <ref>        Resolution hint for checkpoint lookup
+  --project-root <path>
+                     Deploy project root override for monorepos
+  --env-file <path>  Extra env file(s), comma-separated
+  --env KEY=VALUE    Explicit env override (repeatable)
+  --no-tests         Skip tests in checkpoint deploy metadata
+  --no-lint          Skip lint in checkpoint deploy metadata
+  --no-watch         Disable watch mode (future execution slices)
+  --no-dry-run       Upload source bundle and create checkpoint job
   -h, --help         Show this help message
   -v, --version      Show version
 
@@ -45,6 +59,8 @@ Examples:
   nimbus start -m openai/gpt-4o "Build a portfolio site"
   nimbus list
   nimbus watch job_abc123
+  nimbus deploy checkpoint checkpoint:8a513f56ed70
+  nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
 
 Environment Variables:
   NIMBUS_WORKER_URL  Worker URL (required) - Your self-hosted Nimbus worker
@@ -53,67 +69,30 @@ Self-hosting: https://github.com/dayhaysoos/nimbus#self-hosting-guide
 `);
 }
 
-function parseArgs(args: string[]): {
-  command: string | null;
-  flags: Record<string, string | boolean>;
-  positional: string[];
-} {
-  const flags: Record<string, string | boolean> = {};
-  const positional: string[] = [];
-  let command: string | null = null;
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    if (arg.startsWith('--')) {
-      const key = arg.slice(2);
-      // Check if next arg is a value (not another flag)
-      if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
-        flags[key] = args[++i];
-      } else {
-        flags[key] = true;
-      }
-    } else if (arg.startsWith('-')) {
-      const key = arg.slice(1);
-      // Handle short flags
-      if (key === 'm' && i + 1 < args.length && !args[i + 1].startsWith('-')) {
-        flags['model'] = args[++i];
-      } else if (key === 'h') {
-        flags['help'] = true;
-      } else if (key === 'v') {
-        flags['version'] = true;
-      } else {
-        flags[key] = true;
-      }
-    } else if (!command) {
-      command = arg;
-    } else {
-      positional.push(arg);
-    }
-  }
-
-  return { command, flags, positional };
-}
-
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
-  const { command, flags, positional } = parseArgs(args);
-
-  // Handle version flag
-  if (flags.version || flags.v) {
-    console.log(`nimbus v${VERSION}`);
-    process.exit(0);
-  }
-
-  // Handle help flag
-  if (flags.help || flags.h || !command) {
-    showHelp();
-    process.exit(command ? 0 : 1);
-  }
-
-  p.intro('@dayhaysoos/nimbus');
-
   try {
+    const { command, flags, positional } = parseArgs(args);
+    const modelFlag = Array.isArray(flags.model)
+      ? flags.model[flags.model.length - 1]
+      : typeof flags.model === 'string'
+        ? flags.model
+        : undefined;
+
+    // Handle version flag
+    if (flags.version || flags.v) {
+      console.log(`nimbus v${VERSION}`);
+      process.exit(0);
+    }
+
+    // Handle help flag
+    if (flags.help || flags.h || !command) {
+      showHelp();
+      process.exit(command ? 0 : 1);
+    }
+
+    p.intro('@dayhaysoos/nimbus');
+
     switch (command) {
       case 'start': {
         // Get prompt from positional args
@@ -122,7 +101,26 @@ async function main(): Promise<void> {
           p.log.error('Missing prompt. Usage: nimbus start "your prompt"');
           process.exit(1);
         }
-        await startCommand(prompt, { model: flags.model as string | undefined });
+        await startCommand(prompt, { model: modelFlag });
+        break;
+      }
+
+      case 'deploy': {
+        const deployTarget = positional[0];
+        const deployInput = positional[1];
+
+        if (deployTarget !== 'checkpoint') {
+          p.log.error('Missing or invalid deploy target. Usage: nimbus deploy checkpoint <checkpoint-id-or-commit-ish>');
+          process.exit(1);
+        }
+
+        if (!deployInput) {
+          p.log.error('Missing checkpoint ID or commit-ish. Usage: nimbus deploy checkpoint <checkpoint-id-or-commit-ish>');
+          process.exit(1);
+        }
+
+        const deployOptions = resolveDeployCheckpointOptions(flags);
+        await deployCheckpointCommand(deployInput, deployOptions);
         break;
       }
 

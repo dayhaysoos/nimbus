@@ -16,8 +16,14 @@
     "src/types.ts",
     "src/lib/state-machine.ts",
     "src/lib/flags.ts",
+    "src/lib/db.ts",
+    "src/api/job-events.ts",
+    "src/api/checkpoint-jobs.ts",
     "src/lib/state-machine.test.ts",
     "src/lib/flags.test.ts",
+    "src/lib/db.checkpoint.test.ts",
+    "src/api/job-events.test.ts",
+    "src/api/checkpoint-jobs.test.ts",
     "src/lib/run-tests.ts"
   ],
   "exclude": ["node_modules", ".test-dist"]
