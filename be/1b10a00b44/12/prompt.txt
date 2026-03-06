@@ -1,0 +1,490 @@
+Create a plan for completing this body of work. You're an expert Cloudflare developer. I think one thing that should be added is that we check for .env files to grab env variables if needed for proper dev environments/backends if needed.
+
+# Nimbus Checkpoint Deployment Plan
+
+## Goal
+
+Enable Nimbus to deploy websites directly from **Entire committed checkpoints** with reliable, reproducible build and deploy behavior.
+
+This path should feel like:
+
+1. Pick checkpoint (or commit)
+2. Build exactly that source snapshot
+3. Deploy
+4. Keep a durable audit trail (checkpoint, commit, logs, artifacts, URL)
+
+---
+
+## Product Outcomes
+
+- Deterministic deployments from immutable source snapshots
+- Strong provenance: deployment is linked to `Entire-Checkpoint` and commit SHA
+- Fast debug cycle with summarized logs and raw logs
+- Clear separation between source resolution and runtime/build/deploy orchestration
+
+---
+
+## MVP Scope
+
+### In Scope
+
+- Deploy from **committed** Entire checkpoints only
+- Accept either:
+  - checkpoint ID (12-char hex)
+  - commit-ish (`<sha>`, branch ref, tag)
+- Resolve to commit SHA, create source bundle from Git tree, upload to worker
+- Build/test/lint/deploy/smoke pipeline in sandbox
+- Persist deployment metadata, artifacts, and logs
+- CLI support for checkpoint deployment and status watch
+
+### Out of Scope (Phase 2)
+
+- Temporary shadow checkpoint deployments
+- In-browser checkpoint selection UI
+- Multi-checkpoint batch deployments
+- Differential deployment optimization between checkpoints
+
+---
+
+## Why Committed Checkpoints First
+
+Committed checkpoints are ideal deployment inputs because they map to immutable Git commits and are globally reproducible. They avoid local-only state and simplify source resolution, artifact integrity, and rollback.
+
+---
+
+## End-to-End Flow
+
+1. User runs checkpoint deploy command in CLI
+2. CLI resolves checkpoint -> commit SHA and collects checkpoint metadata
+3. CLI archives source from that commit (`git archive`) into a tarball
+4. CLI calls worker create-job endpoint with checkpoint metadata + source bundle
+5. Worker stores bundle in R2 and enqueues job execution
+6. Sandbox unpacks source, runs install/build/validation
+7. On pass, worker deploys to Pages and runs runtime smoke check
+8. Worker emits SSE events and stores logs/artifacts/metrics
+9. CLI renders progress and final output URLs + provenance details
+
+---
+
+## Source Resolution Model
+
+### Accepted Inputs
+
+- `checkpoint:<id>` (explicit)
+- `<id>` if it matches checkpoint ID pattern
+- `commit:<sha-or-ref>` (explicit)
+- raw commit-ish argument
+
+### Resolution Rules
+
+1. If input is checkpoint ID:
+   - Find commit containing trailer `Entire-Checkpoint: <id>`
+   - If multiple matches, choose newest reachable commit on current branch by default
+2. If input is commit-ish:
+   - Resolve directly via `git rev-parse`
+   - Parse commit message trailers; attach checkpoint metadata if present
+3. If no checkpoint trailer exists on commit:
+   - Deployment can still proceed (commit deploy)
+   - Mark `checkpointId = null`
+
+### Provenance Captured
+
+- `checkpointId` (nullable)
+- `commitSha` (required)
+- `branchRef` (best effort)
+- `entireSessionId` (if discoverable from metadata)
+- `entireAttribution` trailer (if present)
+
+---
+
+## API Contract (Checkpoint Source)
+
+### Create Job
+
+`POST /api/jobs`
+
+Use `multipart/form-data`:
+
+- `metadata` (JSON string)
+- `bundle` (tar.gz source archive)
+
+Metadata shape:
+
+```json
+{
+  "source": {
+    "type": "checkpoint",
+    "checkpointId": "8a513f56ed70",
+    "commitSha": "abc123...",
+    "ref": "v2-agentic"
+  },
+  "build": {
+    "runTestsIfPresent": true,
+    "runLintIfPresent": true
+  }
+}
+```
+
+Response `202`:
+
+```json
+{
+  "jobId": "job_xxxxxxxx",
+  "status": "queued",
+  "phase": "queued",
+  "eventsUrl": "/api/jobs/job_xxxxxxxx/events",
+  "jobUrl": "/api/jobs/job_xxxxxxxx"
+}
+```
+
+### Stream Events
+
+`GET /api/jobs/:id/events?from=<seq>`
+
+- at-least-once delivery
+- replay from `Last-Event-ID` and/or `from`
+
+### Job Details
+
+`GET /api/jobs/:id`
+
+- include source provenance fields (`sourceType`, `checkpointId`, `commitSha`)
+
+### Logs
+
+`GET /api/jobs/:id/logs?format=summary|raw`
+
+---
+
+## Job State and Phases
+
+### Status
+
+- `queued`
+- `running`
+- `completed`
+- `failed`
+- `cancelled`
+
+### Phase
+
+- `queued`
+- `resolving_source`
+- `extracting_source`
+- `installing`
+- `building`
+- `validating`
+- `deploying`
+- `smoke_testing`
+- `completed`
+- `failed`
+- `cancelled`
+
+---
+
+## Data Model Additions
+
+Add fields (or equivalent table columns) to job persistence:
+
+- `source_type` (`checkpoint`)
+- `checkpoint_id` (nullable)
+- `commit_sha` (required for checkpoint flow)
+- `source_bundle_key` (R2 key)
+- `source_bundle_sha256`
+- `source_bundle_bytes`
+
+Artifacts to index in R2:
+
+- source archive
+- unpack manifest
+- install/build/test/lint/deploy/smoke logs
+- summary JSON
+
+---
+
+## CLI Surface
+
+### New Command
+
+```bash
+nimbus deploy checkpoint <checkpoint-id-or-commit-ish>
+```
+
+Optional flags:
+
+- `--ref <branch-or-ref>` (resolution hint)
+- `--no-tests`
+- `--no-lint`
+- `--watch` (default true)
+
+### Behavior
+
+1. Resolve input -> commit + checkpoint metadata
+2. Archive source
+3. Upload and create job
+4. Stream events
+5. Print final URL + provenance summary
+
+---
+
+## Vertical Slice Execution Plan
+
+### Slice 1: Resolution Engine + Dry Run
+
+Build:
+
+- CLI resolver for checkpoint ID and commit-ish
+- Trailer parser for `Entire-Checkpoint` and `Entire-Attribution`
+- Dry-run output without deployment side effects
+
+Manual checkpoint A:
+
+- Resolve known checkpoint ID to expected commit SHA
+- Resolve commit-ish with and without checkpoint trailer
+- Validate ambiguity handling message when multiple matches exist
+
+Tests:
+
+- Resolver selection logic
+- Trailer parsing
+- invalid input errors
+
+---
+
+### Slice 2: Source Archive + Upload Contract
+
+Build:
+
+- Create tar.gz from resolved commit tree
+- Add worker endpoint handling for multipart metadata + bundle
+- Store bundle in R2 and persist source metadata in job row
+
+Manual checkpoint B:
+
+- Archive upload success for sample checkpoint
+- Verify source bundle artifact exists in R2
+- Verify job has provenance fields in API response
+
+Tests:
+
+- archive creation/exclusion behavior
+- request validation for missing/invalid metadata
+- bundle hash/size recording
+
+---
+
+### Slice 3: Build/Validation in Sandbox
+
+Build:
+
+- Unpack source in sandbox
+- Safe install first, optional scripts fallback
+- Build/test/lint orchestration and phase events
+- Deterministic summary logs
+
+Manual checkpoint C:
+
+- successful build checkpoint
+- failing test checkpoint blocks deploy
+- lint-only failure is warning-only (if policy set)
+
+Tests:
+
+- install fallback policy
+- validation gate behavior
+- event sequence correctness
+
+---
+
+### Slice 4: Deploy + Smoke + Provenance Output
+
+Build:
+
+- Deploy validated artifact to Pages
+- Smoke check `GET /` expecting 200-399
+- Persist deploy metadata and final URLs
+- Print checkpoint and commit provenance in CLI output
+
+Manual checkpoint D:
+
+- successful deploy from checkpoint
+- deploy success + smoke failure marks job failed but retains URL
+
+Tests:
+
+- deploy gating
+- smoke fail semantics
+- final summary payload includes provenance fields
+
+---
+
+### Slice 5: Retry/Cancel + Operational Hardening
+
+Build:
+
+- retry/cancel action path compatibility for checkpoint jobs
+- reconnect-safe event streaming in CLI watch flow
+- log retrieval and summaries from API
+
+Manual checkpoint E:
+
+- cancel in-flight build
+- retry from failed build using same source bundle
+- reconnect watch without duplicate rendering
+
+Tests:
+
+- cancellation race behavior
+- retry state transition integrity
+- SSE replay dedupe logic
+
+---
+
+## Test Strategy
+
+### Unit Tests
+
+- checkpoint/commit resolver logic
+- trailer parsing and provenance extraction
+- job transition guards and phase progression
+
+### Integration Tests (Worker + Sandbox + D1 + R2)
+
+- end-to-end checkpoint deploy success path
+- build fail and test fail gates
+- deploy+smoke fail path
+- retry and cancel behavior
+
+### Cloud Smoke Tests
+
+- one known-good checkpoint deploy
+- one intentionally broken checkpoint deploy
+
+Do not add tests that only restate TypeScript type guarantees.
+
+---
+
+## Security and Safety Controls
+
+- Enforce max source bundle size
+- Reject path traversal during archive extraction
+- Keep safer install mode as default, then controlled fallback
+- Persist full raw logs and deterministic summary logs separately
+- Restrict accepted source type to `checkpoint` for this phase
+
+---
+
+## Metrics to Track
+
+- time to resolve checkpoint
+- upload size and duration
+- install/build/test/lint/deploy/smoke durations
+- total job duration
+- retry count
+- artifact byte totals
+- success/failure rates by phase
+
+---
+
+## Rollout Plan
+
+1. Implement behind runtime flag (`checkpoint_deploy_enabled=false`)
+2. Enable in local and staging first
+3. Run manual checkpoints A-E
+4. Enable by default after stable pass rates and acceptable p50 latency
+
+---
+
+## Immediate Next Implementation Step
+
+Start with **Slice 1** (resolution engine + dry run), then stop for manual checkpoint A before implementing source upload and job execution.
+
+---
+
+Before we begin, are there things that I missed that need to be considered? If so, you should interview meon the impementation details until you feel confident enough to tackle it. Don't ask obvious questions, think deeply.
+
+---
+
+1. A
+2. New endpoint..just call it checkpoint.
+3. A
+4. A
+5. A
+6. A
+7. A
+8. A
+9. A
+10. A
+11. A
+
+---
+
+All of your recommendations look good to me. No other feedback.
+
+---
+
+One thing I want to add is that you should write tests as you go along, but don't write simple tests that'll be taken care of by TypeScript integrations/typings. Before moving on to next features, tests should run successfully. Don't move on to the next thing until a test passes. Once you add this to the plan we can begin
+
+---
+
+Go aheand and build.
+
+---
+
+why are we running such an old version of node? Shouldn't we upgrade?
+
+---
+
+sudo: /Users/nickdejesus/.nvm/nvm.sh: command not foundnickdejesus@MacBook-Pro-6 ~ %
+
+---
+
+begin slice 2
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
