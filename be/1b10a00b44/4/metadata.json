@@ -1,9 +1,11 @@
 {
   "cli_version": "0.4.9",
   "checkpoint_id": "be1b10a00b44",
+  "session_id": "ses_33b1987daffekXvOOhTlyLxPUM",
   "strategy": "manual-commit",
+  "created_at": "2026-03-06T21:52:24.591432Z",
   "branch": "v2-agentic",
-  "checkpoints_count": 5,
+  "checkpoints_count": 1,
   "files_touched": [
     "packages/cli/package.json",
     "packages/cli/src/commands/deploy/checkpoint-options.test.ts",
@@ -29,11 +31,8 @@
     "packages/cli/src/lib/types.ts",
     "packages/cli/tsconfig.test.json",
     "packages/worker/migrations/0002_checkpoint_source.sql",
-    "packages/worker/migrations/0003_checkpoint_build_metadata.sql",
     "packages/worker/src/api/checkpoint-jobs.test.ts",
     "packages/worker/src/api/checkpoint-jobs.ts",
-    "packages/worker/src/api/job-events.test.ts",
-    "packages/worker/src/api/job-events.ts",
     "packages/worker/src/index.ts",
     "packages/worker/src/lib/db.checkpoint.test.ts",
     "packages/worker/src/lib/db.ts",
@@ -42,48 +41,22 @@
     "packages/worker/tsconfig.test.json",
     "packages/worker/wrangler.toml"
   ],
-  "sessions": [
-    {
-      "metadata": "/be/1b10a00b44/0/metadata.json",
-      "transcript": "/be/1b10a00b44/0/full.jsonl",
-      "context": "/be/1b10a00b44/0/context.md",
-      "content_hash": "/be/1b10a00b44/0/content_hash.txt",
-      "prompt": "/be/1b10a00b44/0/prompt.txt"
-    },
-    {
-      "metadata": "/be/1b10a00b44/1/metadata.json",
-      "transcript": "/be/1b10a00b44/1/full.jsonl",
-      "context": "/be/1b10a00b44/1/context.md",
-      "content_hash": "/be/1b10a00b44/1/content_hash.txt",
-      "prompt": "/be/1b10a00b44/1/prompt.txt"
-    },
-    {
-      "metadata": "/be/1b10a00b44/2/metadata.json",
-      "transcript": "/be/1b10a00b44/2/full.jsonl",
-      "context": "/be/1b10a00b44/2/context.md",
-      "content_hash": "/be/1b10a00b44/2/content_hash.txt",
-      "prompt": "/be/1b10a00b44/2/prompt.txt"
-    },
-    {
-      "metadata": "/be/1b10a00b44/3/metadata.json",
-      "transcript": "/be/1b10a00b44/3/full.jsonl",
-      "context": "/be/1b10a00b44/3/context.md",
-      "content_hash": "/be/1b10a00b44/3/content_hash.txt",
-      "prompt": "/be/1b10a00b44/3/prompt.txt"
-    },
-    {
-      "metadata": "/be/1b10a00b44/4/metadata.json",
-      "transcript": "/be/1b10a00b44/4/full.jsonl",
-      "context": "/be/1b10a00b44/4/context.md",
-      "content_hash": "/be/1b10a00b44/4/content_hash.txt",
-      "prompt": "/be/1b10a00b44/4/prompt.txt"
-    }
-  ],
+  "agent": "OpenCode",
+  "turn_id": "03d6f756c86c",
   "token_usage": {
-    "input_tokens": 696130,
+    "input_tokens": 208681,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1666304,
-    "output_tokens": 37612,
-    "api_call_count": 59
+    "cache_read_tokens": 187904,
+    "output_tokens": 7087,
+    "api_call_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-06T21:52:24.454201Z",
+    "agent_lines": 3009,
+    "human_added": 0,
+    "human_modified": 131,
+    "human_removed": 151,
+    "total_committed": 3140,
+    "agent_percentage": 95.828025477707
   }
 }
