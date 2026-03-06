@@ -86,10 +86,11 @@ function formatJob(job: JobListItem): string {
  */
 function formatStatus(status: JobStatus): string {
   const indicators: Record<JobStatus, string> = {
-    pending: '[ ] pending',
+    queued: '[ ] queued',
     running: '[~] running',
     completed: '[+] completed',
     failed: '[x] failed',
+    cancelled: '[-] cancelled',
   };
   return indicators[status] || status;
 }

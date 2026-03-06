@@ -47,13 +47,19 @@ export async function watchCommand(jobId: string): Promise<void> {
         process.exit(1);
       }
 
+      if (job.status === 'cancelled') {
+        spinner.stop('Job cancelled');
+        displayJobCancelled(job);
+        process.exit(1);
+      }
+
       // Wait before polling again
       await sleep(POLL_INTERVAL);
     }
 
     // Timeout reached
     spinner.stop('Timeout');
-    p.log.warning(`Job ${jobId} is still ${lastStatus || 'pending'} after 5 minutes.`);
+    p.log.warning(`Job ${jobId} is still ${lastStatus || 'queued'} after 5 minutes.`);
     p.log.info('The job may still be running. Check again later with:');
     p.log.info(`  nimbus watch ${jobId}`);
     process.exit(1);
@@ -70,11 +76,14 @@ export async function watchCommand(jobId: string): Promise<void> {
  */
 function updateSpinner(spinner: ReturnType<typeof p.spinner>, job: JobResponse): void {
   switch (job.status) {
-    case 'pending':
-      spinner.message('Job is pending...');
+    case 'queued':
+      spinner.message('Job is queued...');
       break;
     case 'running':
       spinner.message('Job is running...');
+      break;
+    case 'cancelled':
+      spinner.message('Job was cancelled.');
       break;
   }
 }
@@ -130,6 +139,21 @@ function displayJobError(job: JobResponse): void {
   }
 
   console.log('');
+  console.log('  Job Details:');
+  console.log(`    ID:       ${job.id}`);
+  console.log(`    Model:    ${getShortModelName(job.model)}`);
+  console.log(`    Prompt:   ${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? '...' : ''}`);
+  console.log('');
+}
+
+/**
+ * Display cancelled job info
+ */
+function displayJobCancelled(job: JobResponse): void {
+  console.log('');
+  p.log.warning('Build cancelled');
+  console.log('');
+
   console.log('  Job Details:');
   console.log(`    ID:       ${job.id}`);
   console.log(`    Model:    ${getShortModelName(job.model)}`);

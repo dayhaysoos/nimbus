@@ -47,7 +47,20 @@ export type SSEEvent =
   | { type: 'error'; message: string };
 
 // Job status type
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+// Job phase type
+export type JobPhase =
+  | 'queued'
+  | 'planning'
+  | 'generating'
+  | 'building'
+  | 'repairing'
+  | 'validating'
+  | 'deploying'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 // Job response from API
 export interface JobResponse {
@@ -55,6 +68,7 @@ export interface JobResponse {
   prompt: string;
   model: string;
   status: JobStatus;
+  phase: JobPhase;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -70,6 +84,7 @@ export interface JobListItem {
   prompt: string;
   model: string;
   status: JobStatus;
+  phase?: JobPhase;
   createdAt: string;
   deployedUrl: string | null;
 }

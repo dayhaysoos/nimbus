@@ -59,11 +59,18 @@ nimbus watch <job-id>
 
 ### Prerequisites
 
-- **Node.js** 18+ and **pnpm** 9+
+- **Node.js** 20+ and **pnpm** 9+
 - **Docker Desktop** running locally (required for Cloudflare Containers)
 - **Cloudflare account** (Workers Paid plan required for Containers)
 - **OpenRouter API key** ([get one here](https://openrouter.ai/keys))
 - **Custom domain** added to Cloudflare (required for preview URLs)
+
+Verify your runtime before starting:
+
+```bash
+node -v
+pnpm -v
+```
 
 ### 1. Clone and Install
 
@@ -79,7 +86,7 @@ pnpm install
 cd packages/worker
 
 # Create the database
-npx wrangler d1 create nimbus-db
+pnpm exec wrangler d1 create nimbus-db
 
 # Note the database_id from the output, you'll need it for wrangler.toml
 ```
@@ -112,7 +119,7 @@ In the Cloudflare dashboard:
 
 ```bash
 # Create the Pages project for deployments
-npx wrangler pages project create nimbus
+pnpm exec wrangler pages project create nimbus
 ```
 
 ### 5. Configure the Worker
@@ -167,7 +174,7 @@ new_sqlite_classes = ["Sandbox"]
 
 ```bash
 cd packages/worker
-npx wrangler d1 migrations apply nimbus-db --remote
+pnpm exec wrangler d1 migrations apply nimbus-db --remote
 ```
 
 ### 7. Set Secrets
@@ -176,16 +183,16 @@ npx wrangler d1 migrations apply nimbus-db --remote
 cd packages/worker
 
 # OpenRouter API key (for LLM access)
-npx wrangler secret put OPENROUTER_API_KEY
+pnpm exec wrangler secret put OPENROUTER_API_KEY
 # Paste your API key when prompted
 
 # Cloudflare API token (for Pages deployment)
 # Create at: https://dash.cloudflare.com/profile/api-tokens
 # Required permission: Cloudflare Pages - Edit
-npx wrangler secret put CLOUDFLARE_API_TOKEN
+pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN
 
 # Cloudflare Account ID (find in dashboard URL or sidebar)
-npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+pnpm exec wrangler secret put CLOUDFLARE_ACCOUNT_ID
 ```
 
 ### 8. Deploy
@@ -194,7 +201,7 @@ Make sure Docker Desktop is running, then:
 
 ```bash
 cd packages/worker
-npx wrangler deploy
+pnpm exec wrangler deploy
 ```
 
 First deployment takes 2-3 minutes (builds the container image). You'll see output like:
@@ -400,7 +407,7 @@ Returns `{"status":"ok"}` if the worker is running.
 
 ```bash
 cd packages/worker
-npx wrangler secret put OPENROUTER_API_KEY
+pnpm exec wrangler secret put OPENROUTER_API_KEY
 ```
 
 ### Pages deployment fails
@@ -408,8 +415,8 @@ npx wrangler secret put OPENROUTER_API_KEY
 Ensure you've set the Cloudflare secrets:
 
 ```bash
-npx wrangler secret put CLOUDFLARE_API_TOKEN
-npx wrangler secret put CLOUDFLARE_ACCOUNT_ID
+pnpm exec wrangler secret put CLOUDFLARE_API_TOKEN
+pnpm exec wrangler secret put CLOUDFLARE_ACCOUNT_ID
 ```
 
 The API token needs **Cloudflare Pages - Edit** permission.
@@ -430,7 +437,7 @@ Make sure:
 
 - Ensure Docker Desktop is running when you deploy
 - Wait 2-3 minutes after first deployment
-- Check container status: `npx wrangler containers list`
+- Check container status: `pnpm exec wrangler containers list`
 
 ### Preview URL Returns 404
 
