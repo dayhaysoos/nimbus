@@ -3,7 +3,7 @@
   "checkpoint_id": "11676010474e",
   "strategy": "manual-commit",
   "branch": "v2-agentic",
-  "checkpoints_count": 10,
+  "checkpoints_count": 11,
   "files_touched": [
     "packages/worker/src/api/checkpoint-jobs.test.ts",
     "packages/worker/src/api/checkpoint-jobs.ts",
@@ -94,13 +94,20 @@
       "context": "/11/676010474e/9/context.md",
       "content_hash": "/11/676010474e/9/content_hash.txt",
       "prompt": "/11/676010474e/9/prompt.txt"
+    },
+    {
+      "metadata": "/11/676010474e/10/metadata.json",
+      "transcript": "/11/676010474e/10/full.jsonl",
+      "context": "/11/676010474e/10/context.md",
+      "content_hash": "/11/676010474e/10/content_hash.txt",
+      "prompt": "/11/676010474e/10/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 1185430,
+    "input_tokens": 1274323,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 3474560,
-    "output_tokens": 60975,
-    "api_call_count": 113
+    "cache_read_tokens": 3738624,
+    "output_tokens": 66678,
+    "api_call_count": 123
   }
 }
