@@ -3,7 +3,7 @@
   "checkpoint_id": "107e846f866c",
   "strategy": "manual-commit",
   "branch": "phase-1-workspace-foundation",
-  "checkpoints_count": 4,
+  "checkpoints_count": 5,
   "files_touched": [
     "packages/worker/src/api/workspaces.test.ts",
     "packages/worker/src/api/workspaces.ts",
@@ -37,13 +37,20 @@
       "context": "/10/7e846f866c/3/context.md",
       "content_hash": "/10/7e846f866c/3/content_hash.txt",
       "prompt": "/10/7e846f866c/3/prompt.txt"
+    },
+    {
+      "metadata": "/10/7e846f866c/4/metadata.json",
+      "transcript": "/10/7e846f866c/4/full.jsonl",
+      "context": "/10/7e846f866c/4/context.md",
+      "content_hash": "/10/7e846f866c/4/content_hash.txt",
+      "prompt": "/10/7e846f866c/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 523559,
+    "input_tokens": 712805,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1344256,
-    "output_tokens": 29275,
-    "api_call_count": 45
+    "cache_read_tokens": 1764736,
+    "output_tokens": 36458,
+    "api_call_count": 59
   }
 }
