@@ -61,3 +61,30 @@ export interface CheckpointJobCreateResponse {
   eventsUrl: string;
   jobUrl: string;
 }
+
+export type WorkspaceStatus = 'creating' | 'ready' | 'failed' | 'deleted';
+
+export interface WorkspaceResponse {
+  id: string;
+  status: WorkspaceStatus;
+  sourceType: string;
+  checkpointId: string | null;
+  commitSha: string;
+  sourceRef: string | null;
+  sourceProjectRoot: string | null;
+  sourceBundleKey: string;
+  sourceBundleSha256: string;
+  sourceBundleBytes: number;
+  sandboxId: string;
+  baselineReady: boolean;
+  errorCode: string | null;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  eventsUrl: string;
+}
+
+export interface WorkspaceCreateResponse {
+  workspace: WorkspaceResponse;
+}

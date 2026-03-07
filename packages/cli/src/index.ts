@@ -21,6 +21,9 @@ import { listCommand } from './commands/list.js';
 import { watchCommand } from './commands/watch.js';
 import { deployCheckpointCommand } from './commands/deploy/checkpoint.js';
 import { resolveDeployCheckpointOptions } from './commands/deploy/checkpoint-options.js';
+import { createWorkspaceCommand } from './commands/workspace/create.js';
+import { showWorkspaceCommand } from './commands/workspace/show.js';
+import { destroyWorkspaceCommand } from './commands/workspace/destroy.js';
 import { parseArgs } from './lib/args.js';
 
 const VERSION = '0.1.0';
@@ -34,7 +37,13 @@ Usage:
 
 Commands:
   deploy checkpoint <checkpoint-id-or-commit-ish>
-                     Resolve checkpoint/commit source and queue a deployment job
+                      Resolve checkpoint/commit source and queue a deployment job
+  workspace create <checkpoint-id-or-commit-ish>
+                     Create a persistent sandbox workspace from checkpoint source
+  workspace show <workspace-id>
+                     Show workspace status and source metadata
+  workspace destroy <workspace-id>
+                     Destroy sandbox workspace and source bundle
   list               List all past jobs
   watch <job-id>     Watch a job's progress
 
@@ -53,6 +62,8 @@ Options:
 
 Examples:
   nimbus deploy checkpoint checkpoint:8a513f56ed70
+  nimbus workspace create checkpoint:8a513f56ed70 --project-root apps/web
+  nimbus workspace show ws_abc12345
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
   nimbus list
   nimbus watch job_abc123
@@ -100,6 +111,52 @@ async function main(): Promise<void> {
         const deployOptions = resolveDeployCheckpointOptions(flags);
         await deployCheckpointCommand(deployInput, deployOptions);
         break;
+      }
+
+      case 'workspace': {
+        const workspaceAction = positional[0];
+
+        if (workspaceAction === 'create') {
+          const input = positional[1];
+          if (!input) {
+            p.log.error(
+              'Missing checkpoint ID or commit-ish. Usage: nimbus workspace create <checkpoint-id-or-commit-ish>'
+            );
+            process.exit(1);
+          }
+
+          const projectRootFlag = flags['project-root'];
+          const refFlag = flags.ref;
+          const projectRoot = typeof projectRootFlag === 'string' ? projectRootFlag : undefined;
+          const ref = typeof refFlag === 'string' ? refFlag : undefined;
+          await createWorkspaceCommand(input, { ref, projectRoot });
+          break;
+        }
+
+        if (workspaceAction === 'show') {
+          const workspaceId = positional[1];
+          if (!workspaceId) {
+            p.log.error('Missing workspace ID. Usage: nimbus workspace show <workspace-id>');
+            process.exit(1);
+          }
+
+          await showWorkspaceCommand(workspaceId);
+          break;
+        }
+
+        if (workspaceAction === 'destroy') {
+          const workspaceId = positional[1];
+          if (!workspaceId) {
+            p.log.error('Missing workspace ID. Usage: nimbus workspace destroy <workspace-id>');
+            process.exit(1);
+          }
+
+          await destroyWorkspaceCommand(workspaceId);
+          break;
+        }
+
+        p.log.error('Unknown workspace command. Use: create, show, destroy');
+        process.exit(1);
       }
 
       case 'list': {

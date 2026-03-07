@@ -133,3 +133,59 @@ export interface RuntimeFlags {
   rawRetentionDays: number;
   summaryRetentionDays: number;
 }
+
+export type WorkspaceStatus = 'creating' | 'ready' | 'failed' | 'deleted';
+
+export interface WorkspaceRecord {
+  id: string;
+  status: WorkspaceStatus;
+
+  source_type: string;
+  checkpoint_id: string | null;
+  commit_sha: string;
+  source_ref: string | null;
+  source_project_root: string | null;
+
+  source_bundle_key: string;
+  source_bundle_sha256: string;
+  source_bundle_bytes: number;
+
+  sandbox_id: string;
+  baseline_ready: number;
+
+  error_code: string | null;
+  error_message: string | null;
+
+  last_event_seq: number;
+
+  created_at: string;
+  updated_at: string;
+  deleted_at: string | null;
+}
+
+export interface WorkspaceResponse {
+  id: string;
+  status: WorkspaceStatus;
+
+  sourceType: string;
+  checkpointId: string | null;
+  commitSha: string;
+  sourceRef: string | null;
+  sourceProjectRoot: string | null;
+
+  sourceBundleKey: string;
+  sourceBundleSha256: string;
+  sourceBundleBytes: number;
+
+  sandboxId: string;
+  baselineReady: boolean;
+
+  errorCode: string | null;
+  errorMessage: string | null;
+
+  createdAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+
+  eventsUrl: string;
+}

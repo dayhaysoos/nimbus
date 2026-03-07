@@ -1,4 +1,13 @@
-import type { JobRecord, JobResponse, JobListItem, JobStatus, JobPhase } from '../types.js';
+import type {
+  JobRecord,
+  JobResponse,
+  JobListItem,
+  JobStatus,
+  JobPhase,
+  WorkspaceRecord,
+  WorkspaceResponse,
+  WorkspaceStatus,
+} from '../types.js';
 
 export interface CreateCheckpointJobInput {
   id: string;
@@ -33,6 +42,33 @@ export interface JobEventItem {
   createdAt: string;
 }
 
+export interface WorkspaceEventRecord {
+  seq: number;
+  event_type: string;
+  payload_json: string;
+  created_at: string;
+}
+
+export interface WorkspaceEventItem {
+  seq: number;
+  eventType: string;
+  payload: unknown;
+  createdAt: string;
+}
+
+export interface CreateWorkspaceInput {
+  id: string;
+  sourceType: 'checkpoint';
+  checkpointId: string | null;
+  commitSha: string;
+  sourceRef?: string;
+  sourceProjectRoot?: string;
+  sourceBundleKey: string;
+  sourceBundleSha256: string;
+  sourceBundleBytes: number;
+  sandboxId: string;
+}
+
 function phaseFromStatus(status: JobStatus): JobPhase {
   switch (status) {
     case 'queued':
@@ -58,6 +94,18 @@ export function generateJobId(): string {
     id += chars[Math.floor(Math.random() * chars.length)];
   }
   return `job_${id}`;
+}
+
+/**
+ * Generate a unique workspace ID
+ */
+export function generateWorkspaceId(): string {
+  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  let id = '';
+  for (let i = 0; i < 8; i++) {
+    id += chars[Math.floor(Math.random() * chars.length)];
+  }
+  return `ws_${id}`;
 }
 
 /**
@@ -117,6 +165,29 @@ function toJobListItem(record: JobRecord): JobListItem {
     phase: record.phase,
     createdAt: record.created_at,
     deployedUrl: record.deployed_url,
+  };
+}
+
+function toWorkspaceResponse(record: WorkspaceRecord): WorkspaceResponse {
+  return {
+    id: record.id,
+    status: record.status,
+    sourceType: record.source_type,
+    checkpointId: record.checkpoint_id,
+    commitSha: record.commit_sha,
+    sourceRef: record.source_ref,
+    sourceProjectRoot: record.source_project_root,
+    sourceBundleKey: record.source_bundle_key,
+    sourceBundleSha256: record.source_bundle_sha256,
+    sourceBundleBytes: record.source_bundle_bytes,
+    sandboxId: record.sandbox_id,
+    baselineReady: Boolean(record.baseline_ready),
+    errorCode: record.error_code,
+    errorMessage: record.error_message,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+    deletedAt: record.deleted_at,
+    eventsUrl: `/api/workspaces/${record.id}/events`,
   };
 }
 
@@ -458,5 +529,213 @@ export async function markJobCancelled(db: D1Database, id: string): Promise<void
     cancel_requested_at: now,
     cancelled_at: now,
     completed_at: now,
+  });
+}
+
+/**
+ * Create a new workspace in creating state.
+ */
+export async function createWorkspace(
+  db: D1Database,
+  input: CreateWorkspaceInput
+): Promise<WorkspaceResponse> {
+  const result = await db
+    .prepare(
+      `INSERT INTO workspaces (
+         id,
+         status,
+         source_type,
+         checkpoint_id,
+         commit_sha,
+         source_ref,
+         source_project_root,
+         source_bundle_key,
+         source_bundle_sha256,
+         source_bundle_bytes,
+         sandbox_id,
+         baseline_ready
+       )
+       VALUES (?, 'creating', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+       RETURNING *`
+    )
+    .bind(
+      input.id,
+      input.sourceType,
+      input.checkpointId,
+      input.commitSha,
+      input.sourceRef ?? null,
+      input.sourceProjectRoot ?? null,
+      input.sourceBundleKey,
+      input.sourceBundleSha256,
+      input.sourceBundleBytes,
+      input.sandboxId
+    )
+    .first<WorkspaceRecord>();
+
+  if (!result) {
+    throw new Error('Failed to create workspace');
+  }
+
+  return toWorkspaceResponse(result);
+}
+
+/**
+ * Get workspace by ID.
+ */
+export async function getWorkspace(db: D1Database, id: string): Promise<WorkspaceResponse | null> {
+  const result = await db.prepare('SELECT * FROM workspaces WHERE id = ?').bind(id).first<WorkspaceRecord>();
+
+  if (!result) {
+    return null;
+  }
+
+  return toWorkspaceResponse(result);
+}
+
+/**
+ * Update workspace status and selected metadata.
+ */
+export async function updateWorkspaceStatus(
+  db: D1Database,
+  id: string,
+  status: WorkspaceStatus,
+  additionalFields?: {
+    baseline_ready?: number;
+    deleted_at?: string | null;
+    error_code?: string | null;
+    error_message?: string | null;
+  }
+): Promise<void> {
+  const updates: string[] = ['status = ?', 'updated_at = ?'];
+  const values: (string | number | null)[] = [status, new Date().toISOString()];
+
+  if (additionalFields) {
+    if (additionalFields.baseline_ready !== undefined) {
+      updates.push('baseline_ready = ?');
+      values.push(additionalFields.baseline_ready);
+    }
+    if (additionalFields.deleted_at !== undefined) {
+      updates.push('deleted_at = ?');
+      values.push(additionalFields.deleted_at);
+    }
+    if (additionalFields.error_code !== undefined) {
+      updates.push('error_code = ?');
+      values.push(additionalFields.error_code);
+    }
+    if (additionalFields.error_message !== undefined) {
+      updates.push('error_message = ?');
+      values.push(additionalFields.error_message);
+    }
+  }
+
+  values.push(id);
+
+  await db
+    .prepare(`UPDATE workspaces SET ${updates.join(', ')} WHERE id = ?`)
+    .bind(...values)
+    .run();
+}
+
+/**
+ * Mark workspace as ready.
+ */
+export async function markWorkspaceReady(db: D1Database, id: string): Promise<void> {
+  await updateWorkspaceStatus(db, id, 'ready', {
+    baseline_ready: 1,
+    error_code: null,
+    error_message: null,
+  });
+}
+
+/**
+ * Mark workspace as failed.
+ */
+export async function markWorkspaceFailed(
+  db: D1Database,
+  id: string,
+  message: string,
+  errorCode: string | null = null
+): Promise<void> {
+  await updateWorkspaceStatus(db, id, 'failed', {
+    error_code: errorCode,
+    error_message: message,
+  });
+}
+
+/**
+ * Mark workspace as deleted.
+ */
+export async function markWorkspaceDeleted(db: D1Database, id: string): Promise<void> {
+  await updateWorkspaceStatus(db, id, 'deleted', {
+    deleted_at: new Date().toISOString(),
+  });
+}
+
+/**
+ * Append a sequenced workspace event and return sequence number.
+ */
+export async function appendWorkspaceEvent(
+  db: D1Database,
+  input: {
+    workspaceId: string;
+    eventType: string;
+    payload: unknown;
+  }
+): Promise<number> {
+  const sequenceResult = await db
+    .prepare('UPDATE workspaces SET last_event_seq = last_event_seq + 1 WHERE id = ? RETURNING last_event_seq')
+    .bind(input.workspaceId)
+    .first<{ last_event_seq: number }>();
+
+  if (!sequenceResult) {
+    throw new Error(`Failed to allocate event sequence for workspace ${input.workspaceId}`);
+  }
+
+  const seq = Number(sequenceResult.last_event_seq);
+  await db
+    .prepare(
+      `INSERT INTO workspace_events (workspace_id, seq, event_type, payload_json)
+       VALUES (?, ?, ?, ?)`
+    )
+    .bind(input.workspaceId, seq, input.eventType, JSON.stringify(input.payload))
+    .run();
+
+  return seq;
+}
+
+/**
+ * List persisted workspace events from a given sequence.
+ */
+export async function listWorkspaceEvents(
+  db: D1Database,
+  workspaceId: string,
+  fromExclusive = 0,
+  limit = 500
+): Promise<WorkspaceEventItem[]> {
+  const result = await db
+    .prepare(
+      `SELECT seq, event_type, payload_json, created_at
+       FROM workspace_events
+       WHERE workspace_id = ? AND seq > ?
+       ORDER BY seq ASC
+       LIMIT ?`
+    )
+    .bind(workspaceId, fromExclusive, limit)
+    .all<WorkspaceEventRecord>();
+
+  return result.results.map((row) => {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(row.payload_json);
+    } catch {
+      payload = { raw: row.payload_json };
+    }
+
+    return {
+      seq: row.seq,
+      eventType: row.event_type,
+      payload,
+      createdAt: row.created_at,
+    };
   });
 }
