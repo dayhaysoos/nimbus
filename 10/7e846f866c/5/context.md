@@ -1,0 +1,63 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+Explore this project and learn about what it does, where it's going and how it works and the direction we're trying to go
+
+### Prompt 2
+
+I want to dig deeper into the sandbox experience I'm looking for. Here are some key features:
+
+- Users should be able to download the snapshot as a zip, or fork it into a git branch. Entire allows you to "reset" to a certain check point locally. The idea is that you experiment with that same checkpoint in a sandbox before commiting to the reset on your local or remote repo.
+- The sandbox needs to be agentic first. Meaning if someone wants to use agents/LLMs to make changes to the code base, t...
+
+### Prompt 3
+
+Yes github only for now. I feel like you should document all of this into the specs directory. When I begin working on these features, I will ask you to interview me on the implementation details per phase/slice to be a little more thorough.
+
+### Prompt 4
+
+Go ahead and add those documents to specs now
+
+### Prompt 5
+
+commit and push these changes directly to main for now.
+
+### Prompt 6
+
+We're on main branch now. Create a new branch for phase 1 and begin
+
+### Prompt 7
+
+I'm going to use the reviewer tool. if it finds bugs, fix them. If it doesn't find any bugs, commit your progress and we can move forward from there.
+
+### Prompt 8
+
+I told you that I was going to run the review myself. Never do that again on your own. I'm going to continue running the reviews til there are no more bugs
+
+### Prompt 9
+
+Summarize the task tool output above and continue with your task.
+
+### Prompt 10
+
+Summarize the task tool output above and continue with your task.
+
+### Prompt 11
+
+Summarize the task tool output above and continue with your task.
+
+### Prompt 12
+
+Summarize the task tool output above and continue with your task.
+
+### Prompt 13
+
+Summarize the task tool output above and continue with your task.
+
+### Prompt 14
+
+Summarize the task tool output above and continue with your task.
+
