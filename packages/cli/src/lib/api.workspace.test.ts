@@ -1,5 +1,12 @@
 import { strict as assert } from 'assert';
-import { createWorkspace, deleteWorkspace, getWorkspace } from './api.js';
+import {
+  createWorkspace,
+  deleteWorkspace,
+  getWorkspace,
+  getWorkspaceDiff,
+  getWorkspaceFile,
+  listWorkspaceFiles,
+} from './api.js';
 
 export async function runWorkspaceApiTests(): Promise<void> {
   const originalFetch = globalThis.fetch;
@@ -68,6 +75,57 @@ export async function runWorkspaceApiTests(): Promise<void> {
         );
       }
 
+      if (url.includes('/api/workspaces/ws_abc12345/files')) {
+        return new Response(
+          JSON.stringify({
+            workspaceId: 'ws_abc12345',
+            path: 'src',
+            entries: [
+              { path: 'src/index.ts', type: 'file' },
+              { path: 'src/lib', type: 'directory' },
+            ],
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (url.includes('/api/workspaces/ws_abc12345/file')) {
+        return new Response(
+          JSON.stringify({
+            workspaceId: 'ws_abc12345',
+            path: 'src/index.ts',
+            sizeBytes: 42,
+            maxBytes: 200,
+            truncated: false,
+            content: 'console.log("hello")\n',
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
+      if (url.includes('/api/workspaces/ws_abc12345/diff')) {
+        return new Response(
+          JSON.stringify({
+            workspaceId: 'ws_abc12345',
+            includePatch: true,
+            maxBytes: 1024,
+            truncated: false,
+            summary: {
+              added: 1,
+              modified: 0,
+              deleted: 0,
+              renamed: 0,
+              totalChanged: 1,
+            },
+            changedFiles: [{ path: 'src/new.ts', status: 'added' }],
+            patch: 'diff --git a/src/new.ts b/src/new.ts',
+            patchBytes: 36,
+            patchTotalBytes: 36,
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+
       return new Response(JSON.stringify({ error: 'not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -86,6 +144,21 @@ export async function runWorkspaceApiTests(): Promise<void> {
 
     const deleted = await deleteWorkspace('https://worker.example.com', 'ws_abc12345');
     assert.equal(deleted.status, 'deleted');
+
+    const files = await listWorkspaceFiles('https://worker.example.com', 'ws_abc12345', 'src');
+    assert.equal(files.entries.length, 2);
+    assert.equal(files.path, 'src');
+
+    const file = await getWorkspaceFile('https://worker.example.com', 'ws_abc12345', 'src/index.ts', 200);
+    assert.equal(file.truncated, false);
+    assert.equal(file.path, 'src/index.ts');
+
+    const diff = await getWorkspaceDiff('https://worker.example.com', 'ws_abc12345', {
+      includePatch: true,
+      maxBytes: 1024,
+    });
+    assert.equal(diff.summary.totalChanged, 1);
+    assert.equal(diff.includePatch, true);
   } finally {
     globalThis.fetch = originalFetch;
   }

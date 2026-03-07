@@ -4,7 +4,7 @@ export interface ParsedCliArgs {
   positional: string[];
 }
 
-const LONG_VALUE_FLAGS = new Set(['ref', 'project-root', 'env-file', 'env']);
+const LONG_VALUE_FLAGS = new Set(['ref', 'project-root', 'env-file', 'env', 'max-bytes']);
 const SHORT_VALUE_FLAGS = new Set<string>();
 
 function appendFlagValue(
