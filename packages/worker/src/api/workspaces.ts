@@ -1,5 +1,5 @@
 import type { Sandbox } from '@cloudflare/sandbox';
-import type { Env } from '../types.js';
+import type { Env, WorkspaceResponse } from '../types.js';
 import { parseCheckpointCreateRequest } from './checkpoint-jobs.js';
 import type { ParsedCheckpointCreateRequest } from './checkpoint-jobs.js';
 import {
@@ -38,6 +38,23 @@ interface SandboxClient {
   }>;
   writeFile(path: string, contents: string): Promise<unknown>;
   destroy(): Promise<void>;
+}
+
+async function runSandboxCommand(
+  sandbox: SandboxClient,
+  command: string,
+  options?: { timeout?: number }
+): Promise<void> {
+  const result = await sandbox.exec(command, options);
+  if (result.exitCode !== 0) {
+    const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
+    throw new Error(`Sandbox command failed (${command}) with exit ${result.exitCode}: ${output || 'No output'}`);
+  }
+}
+
+function isSandboxAlreadyGoneError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /(sandbox.*not found|sandbox.*does not exist|no such sandbox|already destroyed)/i.test(message);
 }
 
 function toHex(bytes: Uint8Array): string {
@@ -80,7 +97,7 @@ async function getWorkspaceSandbox(env: Env, sandboxId: string): Promise<Sandbox
 async function writeBundleBase64InChunks(sandbox: SandboxClient, bundleBytes: ArrayBuffer): Promise<void> {
   const bytes = new Uint8Array(bundleBytes);
 
-  await sandbox.exec(`rm -f ${shellQuote(BUNDLE_BASE64_PATH)} ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}*`);
+  await runSandboxCommand(sandbox, `rm -f ${shellQuote(BUNDLE_BASE64_PATH)} ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}*`);
 
   let partIndex = 0;
   for (let offset = 0; offset < bytes.byteLength; offset += BUNDLE_BASE64_CHUNK_BYTES) {
@@ -91,19 +108,21 @@ async function writeBundleBase64InChunks(sandbox: SandboxClient, bundleBytes: Ar
     partIndex += 1;
   }
 
-  await sandbox.exec(`cat ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}.* > ${shellQuote(BUNDLE_BASE64_PATH)}`);
+  await runSandboxCommand(sandbox, `cat ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}.* > ${shellQuote(BUNDLE_BASE64_PATH)}`);
 }
 
 async function hydrateWorkspaceFilesystem(env: Env, sandboxId: string, sourceBytes: ArrayBuffer): Promise<void> {
   const sandbox = await getWorkspaceSandbox(env, sandboxId);
 
-  await sandbox.exec(`rm -rf ${shellQuote(WORKSPACE_ROOT)} && mkdir -p ${shellQuote(WORKSPACE_ROOT)}`);
+  await runSandboxCommand(sandbox, `rm -rf ${shellQuote(WORKSPACE_ROOT)} && mkdir -p ${shellQuote(WORKSPACE_ROOT)}`);
   await writeBundleBase64InChunks(sandbox, sourceBytes);
-  await sandbox.exec(
+  await runSandboxCommand(
+    sandbox,
     `base64 -d ${shellQuote(BUNDLE_BASE64_PATH)} > ${shellQuote(BUNDLE_PATH)} && tar -xzf ${shellQuote(BUNDLE_PATH)} -C ${shellQuote(WORKSPACE_ROOT)}`,
     { timeout: 8 * 60 * 1000 }
   );
-  await sandbox.exec(
+  await runSandboxCommand(
+    sandbox,
     `rm -f ${shellQuote(BUNDLE_BASE64_PATH)} ${shellQuote(BUNDLE_PATH)} ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}*`
   );
 }
@@ -113,6 +132,41 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
+}
+
+function buildWorkspaceCreateFallback(input: {
+  workspaceId: string;
+  sourceType: 'checkpoint';
+  checkpointId: string | null;
+  commitSha: string;
+  sourceRef?: string;
+  sourceProjectRoot?: string;
+  sourceBundleKey: string;
+  sourceBundleSha256: string;
+  sourceBundleBytes: number;
+  sandboxId: string;
+}): WorkspaceResponse {
+  const now = new Date().toISOString();
+  return {
+    id: input.workspaceId,
+    status: 'ready',
+    sourceType: input.sourceType,
+    checkpointId: input.checkpointId,
+    commitSha: input.commitSha,
+    sourceRef: input.sourceRef ?? null,
+    sourceProjectRoot: input.sourceProjectRoot ?? null,
+    sourceBundleKey: input.sourceBundleKey,
+    sourceBundleSha256: input.sourceBundleSha256,
+    sourceBundleBytes: input.sourceBundleBytes,
+    sandboxId: input.sandboxId,
+    baselineReady: true,
+    errorCode: null,
+    errorMessage: null,
+    createdAt: now,
+    updatedAt: now,
+    deletedAt: null,
+    eventsUrl: `/api/workspaces/${input.workspaceId}/events`,
+  };
 }
 
 export async function handleCreateWorkspace(request: Request, env: Env): Promise<Response> {
@@ -133,6 +187,7 @@ export async function handleCreateWorkspace(request: Request, env: Env): Promise
   const sourceBundleKey = sourceBundleR2Key(workspaceId, parsed.metadata.source.commitSha);
   let bundleUploaded = false;
   let workspaceCreated = false;
+  let workspaceReadyPersisted = false;
 
   try {
     await env.SOURCE_BUNDLES.put(sourceBundleKey, parsed.bundleArrayBuffer, {
@@ -174,7 +229,11 @@ export async function handleCreateWorkspace(request: Request, env: Env): Promise
     });
 
     await hydrateWorkspaceFilesystem(env, sandboxId, parsed.bundleArrayBuffer);
-    await markWorkspaceReady(env.DB, workspaceId);
+    const markedReady = await markWorkspaceReady(env.DB, workspaceId);
+    if (!markedReady) {
+      return jsonResponse({ error: 'Workspace can no longer transition to ready (likely deleted)' }, 409);
+    }
+    workspaceReadyPersisted = true;
 
     await appendWorkspaceEvent(env.DB, {
       workspaceId,
@@ -192,6 +251,38 @@ export async function handleCreateWorkspace(request: Request, env: Env): Promise
     return jsonResponse({ workspace }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+
+    if (workspaceReadyPersisted) {
+      try {
+        const workspace = await getWorkspace(env.DB, workspaceId);
+        if (workspace) {
+          return jsonResponse({ workspace }, 201);
+        }
+      } catch {
+        // Best-effort readback only.
+      }
+
+      const workspace = buildWorkspaceCreateFallback({
+        workspaceId,
+        sourceType: parsed.metadata.source.type,
+        checkpointId: parsed.metadata.source.checkpointId,
+        commitSha: parsed.metadata.source.commitSha,
+        sourceRef: parsed.metadata.source.ref,
+        sourceProjectRoot: parsed.metadata.source.projectRoot,
+        sourceBundleKey,
+        sourceBundleSha256: parsed.bundleSha256,
+        sourceBundleBytes: parsed.bundleBytes,
+        sandboxId,
+      });
+
+      return jsonResponse(
+        {
+          workspace,
+          warning: `Workspace became ready but post-ready bookkeeping failed: ${message}`,
+        },
+        201
+      );
+    }
 
     if (workspaceCreated) {
       try {
@@ -263,11 +354,15 @@ export async function handleResetWorkspace(workspaceId: string, env: Env): Promi
     return jsonResponse({ error: 'SOURCE_BUNDLES R2 binding is not configured' }, 500);
   }
 
+  let workspaceReadyPersisted = false;
+  let originalWorkspace: WorkspaceResponse | null = null;
+
   try {
     const workspace = await getWorkspace(env.DB, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
     }
+    originalWorkspace = workspace;
 
     if (workspace.status === 'deleted') {
       return jsonResponse({ error: 'Workspace has been deleted' }, 409);
@@ -291,7 +386,11 @@ export async function handleResetWorkspace(workspaceId: string, env: Env): Promi
     });
 
     await hydrateWorkspaceFilesystem(env, workspace.sandboxId, sourceBytes);
-    await markWorkspaceReady(env.DB, workspaceId);
+    const markedReady = await markWorkspaceReady(env.DB, workspaceId);
+    if (!markedReady) {
+      return jsonResponse({ error: 'Workspace can no longer transition to ready (likely deleted)' }, 409);
+    }
+    workspaceReadyPersisted = true;
 
     await appendWorkspaceEvent(env.DB, {
       workspaceId,
@@ -304,8 +403,36 @@ export async function handleResetWorkspace(workspaceId: string, env: Env): Promi
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
 
+    if (workspaceReadyPersisted) {
+      try {
+        const workspace = await getWorkspace(env.DB, workspaceId);
+        if (workspace) {
+          return jsonResponse({ workspace });
+        }
+      } catch {
+        // Best-effort readback only.
+      }
+
+      if (originalWorkspace) {
+        const fallbackWorkspace: WorkspaceResponse = {
+          ...originalWorkspace,
+          status: 'ready',
+          baselineReady: true,
+          errorCode: null,
+          errorMessage: null,
+          updatedAt: new Date().toISOString(),
+        };
+        return jsonResponse({ workspace: fallbackWorkspace, warning: `Post-ready reset bookkeeping failed: ${message}` });
+      }
+
+      return jsonResponse({ error: `Reset reached ready state but result could not be loaded: ${message}` }, 500);
+    }
+
     try {
-      await markWorkspaceFailed(env.DB, workspaceId, message, 'workspace_reset_failed');
+      const markedFailed = await markWorkspaceFailed(env.DB, workspaceId, message, 'workspace_reset_failed');
+      if (!markedFailed) {
+        return jsonResponse({ error: 'Workspace reset failed after workspace was deleted' }, 409);
+      }
       await appendWorkspaceEvent(env.DB, {
         workspaceId,
         eventType: 'workspace_reset_failed',
@@ -334,6 +461,9 @@ export async function handleDeleteWorkspace(workspaceId: string, env: Env): Prom
       const sandbox = await getWorkspaceSandbox(env, workspace.sandboxId);
       await sandbox.destroy();
     } catch (error) {
+      if (isSandboxAlreadyGoneError(error)) {
+        // Treat missing/already-destroyed sandbox as idempotent success.
+      } else {
       const message = error instanceof Error ? error.message : String(error);
 
       try {
@@ -348,22 +478,41 @@ export async function handleDeleteWorkspace(workspaceId: string, env: Env): Prom
       }
 
       return jsonResponse({ error: `Failed to destroy workspace sandbox: ${message}` }, 500);
+      }
     }
 
     if (env.SOURCE_BUNDLES) {
       try {
         await env.SOURCE_BUNDLES.delete(workspace.sourceBundleKey);
-      } catch {
-        // Best-effort cleanup only.
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        try {
+          await markWorkspaceFailed(env.DB, workspaceId, message, 'workspace_delete_partial');
+          await appendWorkspaceEvent(env.DB, {
+            workspaceId,
+            eventType: 'workspace_delete_partial',
+            payload: { message },
+          });
+        } catch {
+          // Best-effort status/event update for partial delete.
+        }
+        return jsonResponse({ error: `Failed to delete workspace source bundle: ${message}` }, 503);
       }
     }
 
-    await markWorkspaceDeleted(env.DB, workspaceId);
-    await appendWorkspaceEvent(env.DB, {
-      workspaceId,
-      eventType: 'workspace_deleted',
-      payload: {},
-    });
+    const markedDeleted = await markWorkspaceDeleted(env.DB, workspaceId);
+    if (!markedDeleted) {
+      return jsonResponse({ error: 'Workspace can no longer transition to deleted' }, 409);
+    }
+    try {
+      await appendWorkspaceEvent(env.DB, {
+        workspaceId,
+        eventType: 'workspace_deleted',
+        payload: {},
+      });
+    } catch {
+      // Deletion already persisted; event append is best-effort.
+    }
 
     return jsonResponse({ workspaceId, status: 'deleted' });
   } catch (error) {

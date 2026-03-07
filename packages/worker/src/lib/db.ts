@@ -604,8 +604,11 @@ export async function updateWorkspaceStatus(
     deleted_at?: string | null;
     error_code?: string | null;
     error_message?: string | null;
+  },
+  options?: {
+    ifNotDeleted?: boolean;
   }
-): Promise<void> {
+): Promise<boolean> {
   const updates: string[] = ['status = ?', 'updated_at = ?'];
   const values: (string | number | null)[] = [status, new Date().toISOString()];
 
@@ -630,21 +633,34 @@ export async function updateWorkspaceStatus(
 
   values.push(id);
 
-  await db
-    .prepare(`UPDATE workspaces SET ${updates.join(', ')} WHERE id = ?`)
+  let whereClause = 'id = ?';
+  if (options?.ifNotDeleted) {
+    whereClause += " AND status != 'deleted'";
+  }
+
+  const result = await db
+    .prepare(`UPDATE workspaces SET ${updates.join(', ')} WHERE ${whereClause}`)
     .bind(...values)
     .run();
+
+  return Number(result.meta.changes ?? 0) > 0;
 }
 
 /**
  * Mark workspace as ready.
  */
-export async function markWorkspaceReady(db: D1Database, id: string): Promise<void> {
-  await updateWorkspaceStatus(db, id, 'ready', {
-    baseline_ready: 1,
-    error_code: null,
-    error_message: null,
-  });
+export async function markWorkspaceReady(db: D1Database, id: string): Promise<boolean> {
+  return updateWorkspaceStatus(
+    db,
+    id,
+    'ready',
+    {
+      baseline_ready: 1,
+      error_code: null,
+      error_message: null,
+    },
+    { ifNotDeleted: true }
+  );
 }
 
 /**
@@ -655,18 +671,24 @@ export async function markWorkspaceFailed(
   id: string,
   message: string,
   errorCode: string | null = null
-): Promise<void> {
-  await updateWorkspaceStatus(db, id, 'failed', {
-    error_code: errorCode,
-    error_message: message,
-  });
+): Promise<boolean> {
+  return updateWorkspaceStatus(
+    db,
+    id,
+    'failed',
+    {
+      error_code: errorCode,
+      error_message: message,
+    },
+    { ifNotDeleted: true }
+  );
 }
 
 /**
  * Mark workspace as deleted.
  */
-export async function markWorkspaceDeleted(db: D1Database, id: string): Promise<void> {
-  await updateWorkspaceStatus(db, id, 'deleted', {
+export async function markWorkspaceDeleted(db: D1Database, id: string): Promise<boolean> {
+  return updateWorkspaceStatus(db, id, 'deleted', {
     deleted_at: new Date().toISOString(),
   });
 }
