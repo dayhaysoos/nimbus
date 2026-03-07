@@ -649,13 +649,13 @@ export async function updateWorkspaceStatus(
 /**
  * Mark workspace as ready.
  */
-export async function markWorkspaceReady(db: D1Database, id: string): Promise<boolean> {
+export async function markWorkspaceReady(db: D1Database, id: string, baselineReady = true): Promise<boolean> {
   return updateWorkspaceStatus(
     db,
     id,
     'ready',
     {
-      baseline_ready: 1,
+      baseline_ready: baselineReady ? 1 : 0,
       error_code: null,
       error_message: null,
     },

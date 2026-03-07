@@ -88,3 +88,54 @@ export interface WorkspaceResponse {
 export interface WorkspaceCreateResponse {
   workspace: WorkspaceResponse;
 }
+
+export interface WorkspaceFileListEntry {
+  path: string;
+  type: 'file' | 'directory';
+}
+
+export interface WorkspaceFileListResponse {
+  workspaceId: string;
+  path: string;
+  entries: WorkspaceFileListEntry[];
+}
+
+export interface WorkspaceFileResponse {
+  workspaceId: string;
+  path: string;
+  sizeBytes: number | null;
+  maxBytes: number;
+  truncated: boolean;
+  content: string;
+}
+
+export type WorkspaceDiffStatus = 'added' | 'modified' | 'deleted' | 'renamed';
+
+export interface WorkspaceDiffFile {
+  path: string;
+  status: WorkspaceDiffStatus;
+  previousPath?: string;
+}
+
+export interface WorkspaceDiffResponse {
+  workspaceId: string;
+  includePatch: boolean;
+  maxBytes: number;
+  truncated: boolean;
+  changedFilesTruncated?: boolean;
+  patchTruncated?: boolean;
+  summaryIsPartial?: boolean;
+  summary: {
+    added: number;
+    modified: number;
+    deleted: number;
+    renamed: number;
+    totalChanged: number;
+  };
+  changedFiles: WorkspaceDiffFile[];
+  changedFilesBytes?: number;
+  changedFilesTotalBytes?: number;
+  patch?: string;
+  patchBytes?: number;
+  patchTotalBytes?: number;
+}

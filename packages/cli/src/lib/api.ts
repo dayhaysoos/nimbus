@@ -3,6 +3,9 @@ import type {
   JobsListResponse,
   CheckpointJobCreateResponse,
   WorkspaceCreateResponse,
+  WorkspaceDiffResponse,
+  WorkspaceFileListResponse,
+  WorkspaceFileResponse,
   WorkspaceResponse,
 } from './types.js';
 
@@ -118,4 +121,78 @@ export async function deleteWorkspace(workerUrl: string, workspaceId: string): P
   }
 
   return response.json() as Promise<{ status: string }>;
+}
+
+/**
+ * List files for a workspace path.
+ */
+export async function listWorkspaceFiles(
+  workerUrl: string,
+  workspaceId: string,
+  path?: string
+): Promise<WorkspaceFileListResponse> {
+  const url = new URL(`${workerUrl}/api/workspaces/${workspaceId}/files`);
+  if (path) {
+    url.searchParams.set('path', path);
+  }
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<WorkspaceFileListResponse>;
+}
+
+/**
+ * Read file content from workspace.
+ */
+export async function getWorkspaceFile(
+  workerUrl: string,
+  workspaceId: string,
+  path: string,
+  maxBytes?: number
+): Promise<WorkspaceFileResponse> {
+  const url = new URL(`${workerUrl}/api/workspaces/${workspaceId}/file`);
+  url.searchParams.set('path', path);
+  if (typeof maxBytes === 'number' && Number.isFinite(maxBytes) && maxBytes > 0) {
+    url.searchParams.set('max_bytes', String(Math.floor(maxBytes)));
+  }
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<WorkspaceFileResponse>;
+}
+
+/**
+ * Get workspace diff summary and optional patch.
+ */
+export async function getWorkspaceDiff(
+  workerUrl: string,
+  workspaceId: string,
+  options?: {
+    includePatch?: boolean;
+    maxBytes?: number;
+  }
+): Promise<WorkspaceDiffResponse> {
+  const url = new URL(`${workerUrl}/api/workspaces/${workspaceId}/diff`);
+  if (options?.includePatch) {
+    url.searchParams.set('include_patch', 'true');
+  }
+  if (typeof options?.maxBytes === 'number' && Number.isFinite(options.maxBytes) && options.maxBytes > 0) {
+    url.searchParams.set('max_bytes', String(Math.floor(options.maxBytes)));
+  }
+
+  const response = await fetch(url.toString());
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<WorkspaceDiffResponse>;
 }

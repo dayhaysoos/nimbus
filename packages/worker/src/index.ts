@@ -5,8 +5,11 @@ import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';
 import {
   handleCreateWorkspace,
   handleDeleteWorkspace,
+  handleGetWorkspaceDiff,
+  handleGetWorkspaceFile,
   handleGetWorkspace,
   handleGetWorkspaceEvents,
+  handleListWorkspaceFiles,
   handleResetWorkspace,
 } from './api/workspaces.js';
 import { parseCheckpointJobQueueMessage } from './lib/checkpoint-queue.js';
@@ -46,6 +49,24 @@ export default {
     const workspaceEventsMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/events$/);
     if (workspaceEventsMatch && request.method === 'GET') {
       return handleGetWorkspaceEvents(workspaceEventsMatch[1], request, env);
+    }
+
+    // Route: GET /api/workspaces/:id/files - List files for a path
+    const workspaceFilesMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/files$/);
+    if (workspaceFilesMatch && request.method === 'GET') {
+      return handleListWorkspaceFiles(workspaceFilesMatch[1], request, env);
+    }
+
+    // Route: GET /api/workspaces/:id/file - Read a single file
+    const workspaceFileMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/file$/);
+    if (workspaceFileMatch && request.method === 'GET') {
+      return handleGetWorkspaceFile(workspaceFileMatch[1], request, env);
+    }
+
+    // Route: GET /api/workspaces/:id/diff - View workspace diff metadata/patch
+    const workspaceDiffMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/diff$/);
+    if (workspaceDiffMatch && request.method === 'GET') {
+      return handleGetWorkspaceDiff(workspaceDiffMatch[1], request, env);
     }
 
     // Route: POST /api/workspaces/:id/reset - Reset workspace to baseline source snapshot
