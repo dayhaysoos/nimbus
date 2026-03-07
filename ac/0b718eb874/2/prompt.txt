@@ -1,0 +1,28 @@
+Explore this project and learn about what it does, where it's going and how it works and the direction we're trying to go
+
+---
+
+I want to dig deeper into the sandbox experience I'm looking for. Here are some key features:
+
+- Users should be able to download the snapshot as a zip, or fork it into a git branch. Entire allows you to "reset" to a certain check point locally. The idea is that you experiment with that same checkpoint in a sandbox before commiting to the reset on your local or remote repo.
+- The sandbox needs to be agentic first. Meaning if someone wants to use agents/LLMs to make changes to the code base, they can do it via sandbox. Research for me cloudflare documentation to see if what they have can support this idea of agentic sandboxes or if they already have things like this fleshed out.
+- Code should be viewable, as well as diffs. 
+
+
+I want you to help me plan/refocus this project. these may be things I should have mentioned earlier, hoping it's not too late to start with these considerations.
+
+---
+
+Yes github only for now. I feel like you should document all of this into the specs directory. When I begin working on these features, I will ask you to interview me on the implementation details per phase/slice to be a little more thorough.
+
+---
+
+Go ahead and add those documents to specs now
+
+---
+
+commit and push these changes directly to main for now.
+
+---
+
+We're on main branch now. Create a new branch for phase 1 and begin
