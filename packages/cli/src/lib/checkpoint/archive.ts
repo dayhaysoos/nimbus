@@ -2,6 +2,39 @@ import { execFileSync } from 'child_process';
 
 export const MAX_SOURCE_BUNDLE_BYTES = 100 * 1024 * 1024;
 
+function normalizeGitError(error: unknown): string {
+  if (error && typeof error === 'object' && 'stderr' in error) {
+    const stderr = (error as { stderr?: string | Buffer }).stderr;
+    if (typeof stderr === 'string' && stderr.trim()) {
+      return stderr.trim();
+    }
+
+    if (stderr && Buffer.isBuffer(stderr) && stderr.toString('utf8').trim()) {
+      return stderr.toString('utf8').trim();
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return String(error);
+}
+
+function resolveRepoRoot(cwd: string): string {
+  try {
+    return execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd,
+      stdio: ['ignore', 'pipe', 'pipe'],
+      encoding: 'utf8',
+    })
+      .toString()
+      .trim();
+  } catch (error) {
+    throw new Error(`Failed to resolve git repository root from ${cwd}: ${normalizeGitError(error)}`);
+  }
+}
+
 export function buildGitArchiveArgs(commitSha: string): string[] {
   return ['archive', '--format=tar.gz', commitSha];
 }
@@ -26,12 +59,13 @@ export function createSourceArchiveFromCommit(
   }
 ): ArrayBuffer {
   const cwd = options?.cwd ?? process.cwd();
+  const repoRoot = resolveRepoRoot(cwd);
   const maxBytes = options?.maxBytes ?? MAX_SOURCE_BUNDLE_BYTES;
 
   let output: Buffer;
   try {
     output = execFileSync('git', buildGitArchiveArgs(commitSha), {
-      cwd,
+      cwd: repoRoot,
       stdio: ['ignore', 'pipe', 'pipe'],
       encoding: 'buffer',
       maxBuffer: maxBytes * 2,
