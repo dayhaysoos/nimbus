@@ -1,0 +1,35 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./.test-dist",
+    "rootDir": "./src",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["node"]
+  },
+  "include": [
+    "src/lib/checkpoint/env.ts",
+    "src/lib/checkpoint/resolver.ts",
+    "src/lib/checkpoint/git.ts",
+    "src/lib/checkpoint/git.test.ts",
+    "src/lib/checkpoint/archive.ts",
+    "src/lib/checkpoint/archive.test.ts",
+    "src/lib/checkpoint/deploy-request.ts",
+    "src/lib/checkpoint/deploy-request.test.ts",
+    "src/lib/api.ts",
+    "src/lib/api.checkpoint.test.ts",
+    "src/lib/args.ts",
+    "src/lib/args.test.ts",
+    "src/commands/deploy/checkpoint.ts",
+    "src/commands/deploy/checkpoint.test.ts",
+    "src/commands/deploy/checkpoint-options.ts",
+    "src/commands/deploy/checkpoint.ts",
+    "src/commands/deploy/checkpoint-options.test.ts",
+    "src/lib/checkpoint/env.test.ts",
+    "src/lib/checkpoint/resolver.test.ts",
+    "src/lib/run-tests.ts"
+  ],
+  "exclude": ["node_modules", "dist", ".test-dist"]
+}

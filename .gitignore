@@ -4,6 +4,7 @@ node_modules/
 # Build outputs
 dist/
 .wrangler/
+.test-dist/
 
 # Environment files
 .env

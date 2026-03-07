@@ -1,0 +1,37 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./.test-dist",
+    "rootDir": "./src",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2020",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": [
+    "src/types.ts",
+    "src/lib/state-machine.ts",
+    "src/lib/flags.ts",
+    "src/lib/db.ts",
+    "src/lib/checkpoint-queue.ts",
+    "src/lib/checkpoint-plan.ts",
+    "src/lib/checkpoint-runner.ts",
+    "src/api/job-events.ts",
+    "src/api/checkpoint-jobs.ts",
+    "src/lib/state-machine.test.ts",
+    "src/lib/flags.test.ts",
+    "src/lib/checkpoint-queue.test.ts",
+    "src/lib/checkpoint-plan.test.ts",
+    "src/lib/checkpoint-runner.test.ts",
+    "src/lib/db.events.test.ts",
+    "src/lib/db.checkpoint.test.ts",
+    "src/api/job-events.test.ts",
+    "src/api/checkpoint-jobs.test.ts",
+    "src/lib/run-tests.ts"
+  ],
+  "exclude": ["node_modules", ".test-dist"]
+}

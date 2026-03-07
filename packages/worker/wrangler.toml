@@ -18,11 +18,40 @@ PREVIEW_HOSTNAME = "getnimbus.dev"
 # Pages project name for deployments
 PAGES_PROJECT_NAME = "nimbus"
 
+# V2 runtime defaults (can be overridden in D1 runtime_flags)
+V2_ENABLED = "false"
+V2_CODE_BROWSER_ENABLED = "false"
+MAX_ATTEMPTS = "3"
+ATTEMPT_TIMEOUT_MS = "600000"
+TOTAL_TIMEOUT_MS = "1800000"
+IDEMPOTENCY_TTL_HOURS = "24"
+MAX_REPAIR_CYCLES = "2"
+LINT_BLOCKING = "false"
+TEST_BLOCKING = "true"
+SAFE_INSTALL_IGNORE_SCRIPTS = "true"
+AUTO_INSTALL_SCRIPTS_FALLBACK = "true"
+RAW_RETENTION_DAYS = "30"
+SUMMARY_RETENTION_DAYS = "180"
+
 # D1 Database for job persistence
 [[d1_databases]]
 binding = "DB"
 database_name = "nimbus-db"
 database_id = "b0c22993-0a1a-4117-8ffb-f243e7487c05"
+
+[[r2_buckets]]
+binding = "SOURCE_BUNDLES"
+bucket_name = "nimbus-source-bundles"
+preview_bucket_name = "nimbus-source-bundles-preview"
+
+[[queues.producers]]
+binding = "CHECKPOINT_JOBS_QUEUE"
+queue = "nimbus-checkpoint-jobs"
+
+[[queues.consumers]]
+queue = "nimbus-checkpoint-jobs"
+max_batch_size = 5
+max_batch_timeout = 3
 
 # Sandbox container configuration
 # Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)

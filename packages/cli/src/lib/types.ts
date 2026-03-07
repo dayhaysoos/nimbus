@@ -47,7 +47,20 @@ export type SSEEvent =
   | { type: 'error'; message: string };
 
 // Job status type
-export type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+
+// Job phase type
+export type JobPhase =
+  | 'queued'
+  | 'planning'
+  | 'generating'
+  | 'building'
+  | 'repairing'
+  | 'validating'
+  | 'deploying'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
 
 // Job response from API
 export interface JobResponse {
@@ -55,6 +68,7 @@ export interface JobResponse {
   prompt: string;
   model: string;
   status: JobStatus;
+  phase: JobPhase;
   createdAt: string;
   startedAt: string | null;
   completedAt: string | null;
@@ -62,6 +76,14 @@ export interface JobResponse {
   deployedUrl: string | null;
   errorMessage: string | null;
   fileCount: number | null;
+
+  sourceType?: string | null;
+  checkpointId?: string | null;
+  commitSha?: string | null;
+  sourceRef?: string | null;
+  sourceBundleKey?: string | null;
+  sourceBundleSha256?: string | null;
+  sourceBundleBytes?: number | null;
 }
 
 // Job list item (lightweight)
@@ -70,6 +92,7 @@ export interface JobListItem {
   prompt: string;
   model: string;
   status: JobStatus;
+  phase?: JobPhase;
   createdAt: string;
   deployedUrl: string | null;
 }
@@ -77,4 +100,12 @@ export interface JobListItem {
 // Jobs list response
 export interface JobsListResponse {
   jobs: JobListItem[];
+}
+
+export interface CheckpointJobCreateResponse {
+  jobId: string;
+  status: JobStatus;
+  phase: JobPhase;
+  eventsUrl: string;
+  jobUrl: string;
 }

@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc",
     "start": "tsx src/index.ts",
+    "test": "tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

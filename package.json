@@ -2,6 +2,9 @@
   "name": "nimbus",
   "private": true,
   "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "scripts": {
     "dev": "pnpm --filter @dayhaysoos/nimbus-worker dev",
     "build": "pnpm -r build",

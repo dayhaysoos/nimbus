@@ -1,4 +1,9 @@
-import type { SSEEvent, JobResponse, JobsListResponse } from './types.js';
+import type {
+  SSEEvent,
+  JobResponse,
+  JobsListResponse,
+  CheckpointJobCreateResponse,
+} from './types.js';
 
 /**
  * Get the worker URL from environment
@@ -59,6 +64,26 @@ export async function createJob(
   }
 
   return response;
+}
+
+/**
+ * Create a checkpoint-based deployment job
+ */
+export async function createCheckpointJob(
+  workerUrl: string,
+  formData: FormData
+): Promise<CheckpointJobCreateResponse> {
+  const response = await fetch(`${workerUrl}/api/checkpoint/jobs`, {
+    method: 'POST',
+    body: formData,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<CheckpointJobCreateResponse>;
 }
 
 /**
