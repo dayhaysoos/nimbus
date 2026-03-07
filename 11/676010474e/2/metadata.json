@@ -1,9 +1,11 @@
 {
   "cli_version": "0.4.9",
   "checkpoint_id": "11676010474e",
+  "session_id": "ses_3397b54b3ffdbS7SnXr2N28orn",
   "strategy": "manual-commit",
+  "created_at": "2026-03-07T04:58:49.164418Z",
   "branch": "v2-agentic",
-  "checkpoints_count": 3,
+  "checkpoints_count": 1,
   "files_touched": [
     "packages/worker/src/api/checkpoint-jobs.test.ts",
     "packages/worker/src/api/checkpoint-jobs.ts",
@@ -24,34 +26,22 @@
     "packages/worker/tsconfig.test.json",
     "packages/worker/wrangler.toml"
   ],
-  "sessions": [
-    {
-      "metadata": "/11/676010474e/0/metadata.json",
-      "transcript": "/11/676010474e/0/full.jsonl",
-      "context": "/11/676010474e/0/context.md",
-      "content_hash": "/11/676010474e/0/content_hash.txt",
-      "prompt": "/11/676010474e/0/prompt.txt"
-    },
-    {
-      "metadata": "/11/676010474e/1/metadata.json",
-      "transcript": "/11/676010474e/1/full.jsonl",
-      "context": "/11/676010474e/1/context.md",
-      "content_hash": "/11/676010474e/1/content_hash.txt",
-      "prompt": "/11/676010474e/1/prompt.txt"
-    },
-    {
-      "metadata": "/11/676010474e/2/metadata.json",
-      "transcript": "/11/676010474e/2/full.jsonl",
-      "context": "/11/676010474e/2/context.md",
-      "content_hash": "/11/676010474e/2/content_hash.txt",
-      "prompt": "/11/676010474e/2/prompt.txt"
-    }
-  ],
+  "agent": "OpenCode",
+  "turn_id": "bca57f50ff2a",
   "token_usage": {
-    "input_tokens": 468421,
+    "input_tokens": 162895,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 980608,
-    "output_tokens": 17075,
-    "api_call_count": 33
+    "cache_read_tokens": 241920,
+    "output_tokens": 5309,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-07T04:58:49.045278Z",
+    "agent_lines": 2145,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2145,
+    "agent_percentage": 100
   }
 }
