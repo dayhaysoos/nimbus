@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "02531488fcc5",
+  "session_id": "ses_33600c474ffee2fdP3UFZuGu1Q",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-07T23:38:41.589314Z",
+  "branch": "phase-2-code-view-diff",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/workspace/cat.ts",
+    "packages/cli/src/commands/workspace/diff.ts",
+    "packages/cli/src/commands/workspace/files.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/api.workspace.test.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/src/api/workspaces.test.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/index.ts",
+    "specs/phases/02-code-view-and-diff.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "3ac69b91dbdc",
+  "token_usage": {
+    "input_tokens": 179002,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 193792,
+    "output_tokens": 7824,
+    "api_call_count": 10
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-07T23:38:41.482119Z",
+    "agent_lines": 1449,
+    "human_added": 2,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1451,
+    "agent_percentage": 99.86216402481047
+  }
+}
