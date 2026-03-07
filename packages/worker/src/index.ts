@@ -2,6 +2,13 @@ import { Sandbox } from '@cloudflare/sandbox';
 import { handleGetJob, handleListJobs } from './api/jobs.js';
 import { handleGetJobEvents } from './api/job-events.js';
 import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';
+import {
+  handleCreateWorkspace,
+  handleDeleteWorkspace,
+  handleGetWorkspace,
+  handleGetWorkspaceEvents,
+  handleResetWorkspace,
+} from './api/workspaces.js';
 import { parseCheckpointJobQueueMessage } from './lib/checkpoint-queue.js';
 import { processCheckpointJob } from './lib/checkpoint-runner.js';
 import type { Env } from './types.js';
@@ -12,7 +19,7 @@ export { Sandbox };
 // CORS headers for local development
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -28,6 +35,33 @@ export default {
     // Route: POST /api/checkpoint/jobs - Create new checkpoint-based deployment job
     if (url.pathname === '/api/checkpoint/jobs' && request.method === 'POST') {
       return handleCreateCheckpointJob(request, env);
+    }
+
+    // Route: POST /api/workspaces - Create workspace from checkpoint source bundle
+    if (url.pathname === '/api/workspaces' && request.method === 'POST') {
+      return handleCreateWorkspace(request, env);
+    }
+
+    // Route: GET /api/workspaces/:id/events - List workspace events
+    const workspaceEventsMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/events$/);
+    if (workspaceEventsMatch && request.method === 'GET') {
+      return handleGetWorkspaceEvents(workspaceEventsMatch[1], request, env);
+    }
+
+    // Route: POST /api/workspaces/:id/reset - Reset workspace to baseline source snapshot
+    const workspaceResetMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/reset$/);
+    if (workspaceResetMatch && request.method === 'POST') {
+      return handleResetWorkspace(workspaceResetMatch[1], env);
+    }
+
+    // Route: GET /api/workspaces/:id - Get workspace
+    // Route: DELETE /api/workspaces/:id - Delete workspace
+    const workspaceMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)$/);
+    if (workspaceMatch && request.method === 'GET') {
+      return handleGetWorkspace(workspaceMatch[1], env);
+    }
+    if (workspaceMatch && request.method === 'DELETE') {
+      return handleDeleteWorkspace(workspaceMatch[1], env);
     }
 
     // Route: GET /api/jobs - List all jobs

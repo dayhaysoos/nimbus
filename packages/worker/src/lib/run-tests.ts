@@ -7,6 +7,8 @@ import { runCheckpointQueueTests } from './checkpoint-queue.test.js';
 import { runCheckpointPlanTests } from './checkpoint-plan.test.js';
 import { runCheckpointRunnerTests } from './checkpoint-runner.test.js';
 import { runDbEventsTests } from './db.events.test.js';
+import { runWorkspaceDbTests } from './db.workspace.test.js';
+import { runWorkspaceApiTests } from '../api/workspaces.test.js';
 
 type TestCase = {
   name: string;
@@ -20,6 +22,8 @@ const TEST_CASES: TestCase[] = [
   { name: 'checkpoint-plan', run: runCheckpointPlanTests },
   { name: 'checkpoint-runner', run: runCheckpointRunnerTests },
   { name: 'db-events', run: runDbEventsTests },
+  { name: 'workspace-db', run: runWorkspaceDbTests },
+  { name: 'workspace-api', run: runWorkspaceApiTests },
   { name: 'job-events-api', run: runJobEventsApiTests },
   { name: 'checkpoint-db', run: runCheckpointDbTests },
   { name: 'checkpoint-jobs-api', run: runCheckpointJobsApiTests },
