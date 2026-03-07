@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "11676010474e",
+  "strategy": "manual-commit",
+  "branch": "v2-agentic",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/checkpoint-jobs.test.ts",
+    "packages/worker/src/api/checkpoint-jobs.ts",
+    "packages/worker/src/api/job-events.test.ts",
+    "packages/worker/src/api/job-events.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/checkpoint-plan.test.ts",
+    "packages/worker/src/lib/checkpoint-plan.ts",
+    "packages/worker/src/lib/checkpoint-queue.test.ts",
+    "packages/worker/src/lib/checkpoint-queue.ts",
+    "packages/worker/src/lib/checkpoint-runner.test.ts",
+    "packages/worker/src/lib/checkpoint-runner.ts",
+    "packages/worker/src/lib/db.checkpoint.test.ts",
+    "packages/worker/src/lib/db.events.test.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/tsconfig.test.json",
+    "packages/worker/wrangler.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/11/676010474e/0/metadata.json",
+      "transcript": "/11/676010474e/0/full.jsonl",
+      "context": "/11/676010474e/0/context.md",
+      "content_hash": "/11/676010474e/0/content_hash.txt",
+      "prompt": "/11/676010474e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 195263,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 303616,
+    "output_tokens": 5468,
+    "api_call_count": 11
+  }
+}
