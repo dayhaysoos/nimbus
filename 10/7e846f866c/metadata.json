@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "107e846f866c",
+  "strategy": "manual-commit",
+  "branch": "phase-1-workspace-foundation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/workspaces.test.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/lib/db.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/10/7e846f866c/0/metadata.json",
+      "transcript": "/10/7e846f866c/0/full.jsonl",
+      "context": "/10/7e846f866c/0/context.md",
+      "content_hash": "/10/7e846f866c/0/content_hash.txt",
+      "prompt": "/10/7e846f866c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 124877,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 431744,
+    "output_tokens": 7226,
+    "api_call_count": 13
+  }
+}

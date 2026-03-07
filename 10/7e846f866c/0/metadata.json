@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "107e846f866c",
+  "session_id": "ses_3368ee548ffeETSyVu8ZQMJ2Z3",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-07T17:58:32.099945Z",
+  "branch": "phase-1-workspace-foundation",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/workspaces.test.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/lib/db.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "eed3297861d5",
+  "token_usage": {
+    "input_tokens": 124877,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 431744,
+    "output_tokens": 7226,
+    "api_call_count": 13
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-07T17:58:31.900861Z",
+    "agent_lines": 312,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 312,
+    "agent_percentage": 100
+  }
+}
