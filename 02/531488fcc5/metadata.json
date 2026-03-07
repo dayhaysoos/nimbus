@@ -3,7 +3,7 @@
   "checkpoint_id": "02531488fcc5",
   "strategy": "manual-commit",
   "branch": "phase-2-code-view-diff",
-  "checkpoints_count": 13,
+  "checkpoints_count": 14,
   "files_touched": [
     "packages/cli/src/commands/workspace/cat.ts",
     "packages/cli/src/commands/workspace/diff.ts",
@@ -110,13 +110,20 @@
       "context": "/02/531488fcc5/12/context.md",
       "content_hash": "/02/531488fcc5/12/content_hash.txt",
       "prompt": "/02/531488fcc5/12/prompt.txt"
+    },
+    {
+      "metadata": "/02/531488fcc5/13/metadata.json",
+      "transcript": "/02/531488fcc5/13/full.jsonl",
+      "context": "/02/531488fcc5/13/context.md",
+      "content_hash": "/02/531488fcc5/13/content_hash.txt",
+      "prompt": "/02/531488fcc5/13/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 1646784,
+    "input_tokens": 1759436,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 2830080,
-    "output_tokens": 85195,
-    "api_call_count": 111
+    "cache_read_tokens": 3082752,
+    "output_tokens": 91658,
+    "api_call_count": 120
   }
 }
