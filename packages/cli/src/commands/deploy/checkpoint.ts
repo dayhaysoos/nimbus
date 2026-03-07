@@ -323,7 +323,7 @@ function printDryRunSummary(summary: DryRunSummary): void {
   assertRequiredEnvKeysResolved(summary);
 
   p.log.success('Dry run succeeded. Source resolution and env preflight are valid.');
-  p.log.info('Checkpoint execution pipeline is not enabled yet in this slice.');
+  p.log.info('Run again with --no-dry-run to upload source and queue a live checkpoint job.');
 }
 
 function printQueuedCheckpointSummary(
@@ -395,7 +395,7 @@ export async function deployCheckpointCommand(
     printQueuedCheckpointSummary(summary, created);
 
     if (options.watch) {
-      p.log.info('Live checkpoint watch SSE output will be added in a later slice.');
+      p.log.info('Checkpoint watch currently polls job status (SSE event rendering is limited).');
       p.log.info(`You can poll status now: nimbus watch ${created.jobId}`);
     }
   } catch (error) {

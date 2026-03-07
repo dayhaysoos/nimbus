@@ -6,18 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 # Enable workers.dev access
 workers_dev = true
 
-# Custom domain for preview URLs (wildcard DNS required)
-[[routes]]
-pattern = "*.getnimbus.dev/*"
-zone_name = "getnimbus.dev"
-
 [vars]
-DEFAULT_MODEL = "anthropic/claude-sonnet-4"
-# Use getnimbus.dev for preview URLs (wildcard SSL via Cloudflare)
-PREVIEW_HOSTNAME = "getnimbus.dev"
-# Pages project name for deployments
-PAGES_PROJECT_NAME = "nimbus"
-
 # V2 runtime defaults (can be overridden in D1 runtime_flags)
 V2_ENABLED = "false"
 V2_CODE_BROWSER_ENABLED = "false"

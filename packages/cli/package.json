@@ -1,14 +1,14 @@
 {
   "name": "@dayhaysoos/nimbus",
   "version": "0.1.0",
-  "description": "CLI that generates and hosts websites using AI. Give it a prompt, get back a live preview URL.",
+  "description": "CLI for Nimbus checkpoint deployment and job tracking on Cloudflare.",
   "type": "module",
   "bin": {
     "nimbus": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
-    "start": "tsx src/index.ts",
+    "dev": "tsx src/index.ts",
     "test": "tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js",
     "prepublishOnly": "npm run build"
   },
@@ -22,18 +22,16 @@
     "typescript": "^5.7.3"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "files": [
     "dist"
   ],
   "keywords": [
-    "ai",
     "cli",
-    "website-generator",
-    "cloudflare",
-    "claude",
-    "llm"
+    "checkpoint-deploy",
+    "entire-checkpoint",
+    "cloudflare"
   ],
   "repository": {
     "type": "git",

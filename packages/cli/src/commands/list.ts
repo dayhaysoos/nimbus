@@ -24,7 +24,7 @@ export async function listCommand(): Promise<void> {
     spinner.stop('Jobs retrieved');
 
     if (jobs.length === 0) {
-      p.log.info('No jobs found. Create one with: nimbus start "your prompt"');
+      p.log.info('No jobs found. Create one with: nimbus deploy checkpoint <checkpoint-id-or-commit-ish> --no-dry-run');
       return;
     }
 

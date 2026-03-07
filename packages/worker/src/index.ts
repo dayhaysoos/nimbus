@@ -1,6 +1,5 @@
-import { proxyToSandbox } from '@cloudflare/sandbox';
-import { Sandbox } from './sandbox.js';
-import { handleCreateJob, handleGetJob, handleListJobs } from './api/jobs.js';
+import { Sandbox } from '@cloudflare/sandbox';
+import { handleGetJob, handleListJobs } from './api/jobs.js';
 import { handleGetJobEvents } from './api/job-events.js';
 import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';
 import { parseCheckpointJobQueueMessage } from './lib/checkpoint-queue.js';
@@ -26,15 +25,6 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    // Proxy preview URL requests to sandbox
-    const proxyResponse = await proxyToSandbox(request, env);
-    if (proxyResponse) return proxyResponse;
-
-    // Route: POST /api/jobs - Create new job
-    if (url.pathname === '/api/jobs' && request.method === 'POST') {
-      return handleCreateJob(request, env);
-    }
-
     // Route: POST /api/checkpoint/jobs - Create new checkpoint-based deployment job
     if (url.pathname === '/api/checkpoint/jobs' && request.method === 'POST') {
       return handleCreateCheckpointJob(request, env);
@@ -55,11 +45,6 @@ export default {
     const jobEventsMatch = url.pathname.match(/^\/api\/jobs\/([a-z0-9_]+)\/events$/);
     if (jobEventsMatch && request.method === 'GET') {
       return handleGetJobEvents(jobEventsMatch[1], request, env);
-    }
-
-    // Route: POST /build (legacy, redirect to /api/jobs)
-    if (url.pathname === '/build' && request.method === 'POST') {
-      return handleCreateJob(request, env);
     }
 
     // Route: GET /health

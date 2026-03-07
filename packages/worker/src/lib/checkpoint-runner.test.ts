@@ -537,8 +537,8 @@ export async function runCheckpointRunnerTests(): Promise<void> {
                   async first<T>() {
                     return {
                       id: 'job_prompt123',
-                      prompt: 'Build a landing page',
-                      model: 'gpt-5',
+                      prompt: 'Non-checkpoint job fixture',
+                      model: 'non_checkpoint',
                       status: 'queued',
                       phase: 'queued',
                       created_at: '2026-03-06T10:00:00.000Z',

@@ -4,8 +4,8 @@ export interface ParsedCliArgs {
   positional: string[];
 }
 
-const LONG_VALUE_FLAGS = new Set(['model', 'ref', 'project-root', 'env-file', 'env']);
-const SHORT_VALUE_FLAGS = new Set(['m']);
+const LONG_VALUE_FLAGS = new Set(['ref', 'project-root', 'env-file', 'env']);
+const SHORT_VALUE_FLAGS = new Set<string>();
 
 function appendFlagValue(
   flags: Record<string, string | boolean | string[]>,
@@ -63,11 +63,7 @@ export function parseArgs(args: string[]): ParsedCliArgs {
 
       if (SHORT_VALUE_FLAGS.has(key)) {
         if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
-          if (key === 'm') {
-            appendFlagValue(flags, 'model', args[++i]);
-          } else {
-            appendFlagValue(flags, key, args[++i]);
-          }
+          appendFlagValue(flags, key, args[++i]);
 
           continue;
         }

@@ -6,10 +6,11 @@
     "node": ">=20.0.0"
   },
   "scripts": {
+    "preinstall": "node ./enforce-node-version.mjs",
     "dev": "pnpm --filter @dayhaysoos/nimbus-worker dev",
     "build": "pnpm -r build",
     "deploy": "pnpm --filter @dayhaysoos/nimbus-worker deploy",
-    "cli": "pnpm --filter @dayhaysoos/nimbus start",
+    "cli": "pnpm --filter @dayhaysoos/nimbus dev",
     "wrangler": "pnpm --filter @dayhaysoos/nimbus-worker exec wrangler"
   },
   "devDependencies": {

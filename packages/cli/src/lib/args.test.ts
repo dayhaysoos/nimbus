@@ -17,13 +17,6 @@ export function runArgsParsingTests(): void {
     assert.deepEqual(parsed.positional, ['checkpoint', 'HEAD']);
   }
 
-  {
-    const parsed = parseArgs(['start', '-m', 'openai/gpt-4o', 'build', 'site']);
-    assert.equal(parsed.command, 'start');
-    assert.equal(parsed.flags.model, 'openai/gpt-4o');
-    assert.deepEqual(parsed.positional, ['build', 'site']);
-  }
-
   assert.throws(
     () => parseArgs(['deploy', 'checkpoint', 'HEAD', '--ref']),
     /Missing value for --ref/
@@ -32,10 +25,5 @@ export function runArgsParsingTests(): void {
   assert.throws(
     () => parseArgs(['deploy', '--env-file', '--no-dry-run', 'checkpoint', 'HEAD']),
     /Missing value for --env-file/
-  );
-
-  assert.throws(
-    () => parseArgs(['start', '-m']),
-    /Missing value for -m/
   );
 }

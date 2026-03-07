@@ -97,7 +97,7 @@ function displayJobResult(job: JobResponse): void {
   console.log('');
 
   if (job.previewUrl) {
-    p.log.info(`Preview URL: ${job.previewUrl}`);
+    p.log.info(`Sandbox URL: ${job.previewUrl}`);
   }
 
   if (job.deployedUrl) {
@@ -131,11 +131,10 @@ function displayJobError(job: JobResponse): void {
     p.log.error(job.errorMessage);
   }
 
-  // If preview URL exists, build succeeded but deployment failed
+  // Show sandbox URL when available for debugging
   if (job.previewUrl) {
     console.log('');
-    p.log.info('Build succeeded but deployment failed.');
-    p.log.info(`Preview URL (temporary): ${job.previewUrl}`);
+    p.log.info(`Sandbox URL: ${job.previewUrl}`);
   }
 
   console.log('');

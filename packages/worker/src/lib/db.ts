@@ -1,4 +1,4 @@
-import type { JobRecord, JobResponse, JobListItem, JobStatus, JobPhase, BuildMetrics } from '../types.js';
+import type { JobRecord, JobResponse, JobListItem, JobStatus, JobPhase } from '../types.js';
 
 export interface CreateCheckpointJobInput {
   id: string;
@@ -118,31 +118,6 @@ function toJobListItem(record: JobRecord): JobListItem {
     createdAt: record.created_at,
     deployedUrl: record.deployed_url,
   };
-}
-
-/**
- * Create a new job in the database
- */
-export async function createJob(
-  db: D1Database,
-  id: string,
-  prompt: string,
-  model: string
-): Promise<JobResponse> {
-  const result = await db
-    .prepare(
-      `INSERT INTO jobs (id, prompt, model, status, phase)
-       VALUES (?, ?, ?, 'queued', 'queued')
-       RETURNING *`
-    )
-    .bind(id, prompt, model)
-    .first<JobRecord>();
-
-  if (!result) {
-    throw new Error('Failed to create job');
-  }
-
-  return toJobResponse(result);
 }
 
 /**
@@ -471,62 +446,6 @@ export async function updateJobStatus(
     .prepare(`UPDATE jobs SET ${updates.join(', ')} WHERE id = ?`)
     .bind(...values)
     .run();
-}
-
-/**
- * Mark job as running
- */
-export async function markJobRunning(db: D1Database, id: string): Promise<void> {
-  await updateJobStatus(db, id, 'running', {
-    phase: 'generating',
-    started_at: new Date().toISOString(),
-  });
-}
-
-/**
- * Mark job as completed with URLs and metrics
- */
-export async function markJobCompleted(
-  db: D1Database,
-  id: string,
-  previewUrl: string,
-  deployedUrl: string,
-  metrics: BuildMetrics
-): Promise<void> {
-  await updateJobStatus(db, id, 'completed', {
-    phase: 'completed',
-    completed_at: new Date().toISOString(),
-    preview_url: previewUrl,
-    deployed_url: deployedUrl,
-    file_count: metrics.filesGenerated,
-    prompt_tokens: metrics.promptTokens,
-    completion_tokens: metrics.completionTokens,
-    total_tokens: metrics.totalTokens,
-    cost: metrics.cost,
-    llm_latency_ms: metrics.llmLatencyMs,
-    install_duration_ms: metrics.installDurationMs,
-    build_duration_ms: metrics.buildDurationMs,
-    deploy_duration_ms: metrics.deployDurationMs,
-    total_duration_ms: metrics.totalDurationMs,
-    lines_of_code: metrics.linesOfCode,
-  });
-}
-
-/**
- * Mark job as failed with error message
- */
-export async function markJobFailed(
-  db: D1Database,
-  id: string,
-  errorMessage: string,
-  previewUrl?: string
-): Promise<void> {
-  await updateJobStatus(db, id, 'failed', {
-    phase: 'failed',
-    completed_at: new Date().toISOString(),
-    error_message: errorMessage,
-    preview_url: previewUrl,
-  });
 }
 
 /**

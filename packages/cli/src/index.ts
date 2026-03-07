@@ -17,7 +17,6 @@ for (const envPath of envPaths) {
 }
 
 import * as p from '@clack/prompts';
-import { startCommand } from './commands/start.js';
 import { listCommand } from './commands/list.js';
 import { watchCommand } from './commands/watch.js';
 import { deployCheckpointCommand } from './commands/deploy/checkpoint.js';
@@ -28,20 +27,18 @@ const VERSION = '0.1.0';
 
 function showHelp(): void {
   console.log(`
-nimbus - AI-powered website generator
+nimbus - Entire checkpoint deployment CLI
 
 Usage:
   nimbus <command> [options]
 
 Commands:
-  start <prompt>     Create a new website from a prompt
+  deploy checkpoint <checkpoint-id-or-commit-ish>
+                     Resolve checkpoint/commit source and queue a deployment job
   list               List all past jobs
   watch <job-id>     Watch a job's progress
-  deploy checkpoint <checkpoint-id-or-commit-ish>
-                     Resolve a checkpoint/commit and run deployment dry run
 
 Options:
-  -m, --model <id>   Specify model for start command (skips picker)
   --ref <ref>        Resolution hint for checkpoint lookup
   --project-root <path>
                      Deploy project root override for monorepos
@@ -49,18 +46,16 @@ Options:
   --env KEY=VALUE    Explicit env override (repeatable)
   --no-tests         Skip tests in checkpoint deploy metadata
   --no-lint          Skip lint in checkpoint deploy metadata
-  --no-watch         Disable watch mode (future execution slices)
+  --no-watch         Disable follow-up watch guidance
   --no-dry-run       Upload source bundle and create checkpoint job
   -h, --help         Show this help message
   -v, --version      Show version
 
 Examples:
-  nimbus start "Build a landing page for a coffee shop"
-  nimbus start -m openai/gpt-4o "Build a portfolio site"
-  nimbus list
-  nimbus watch job_abc123
   nimbus deploy checkpoint checkpoint:8a513f56ed70
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
+  nimbus list
+  nimbus watch job_abc123
 
 Environment Variables:
   NIMBUS_WORKER_URL  Worker URL (required) - Your self-hosted Nimbus worker
@@ -73,12 +68,6 @@ async function main(): Promise<void> {
   const args = process.argv.slice(2);
   try {
     const { command, flags, positional } = parseArgs(args);
-    const modelFlag = Array.isArray(flags.model)
-      ? flags.model[flags.model.length - 1]
-      : typeof flags.model === 'string'
-        ? flags.model
-        : undefined;
-
     // Handle version flag
     if (flags.version || flags.v) {
       console.log(`nimbus v${VERSION}`);
@@ -94,17 +83,6 @@ async function main(): Promise<void> {
     p.intro('@dayhaysoos/nimbus');
 
     switch (command) {
-      case 'start': {
-        // Get prompt from positional args
-        const prompt = positional.join(' ').trim();
-        if (!prompt) {
-          p.log.error('Missing prompt. Usage: nimbus start "your prompt"');
-          process.exit(1);
-        }
-        await startCommand(prompt, { model: modelFlag });
-        break;
-      }
-
       case 'deploy': {
         const deployTarget = positional[0];
         const deployInput = positional[1];

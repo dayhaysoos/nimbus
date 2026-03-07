@@ -40,6 +40,7 @@ Entire checkpoint notes:
 From repo root:
 
 ```bash
+nvm use
 source ~/.bash_profile
 pnpm install
 ```
@@ -92,7 +93,6 @@ pnpm dev
 ## CLI Surface (Current)
 
 ```bash
-nimbus start <prompt>
 nimbus list
 nimbus watch <job-id>
 nimbus deploy checkpoint <checkpoint-id-or-commit-ish>

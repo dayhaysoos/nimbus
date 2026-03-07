@@ -36,12 +36,6 @@ function createEnv(overrides: Partial<Env> = {}): Env {
   return {
     Sandbox: {} as DurableObjectNamespace<any>,
     DB: createDb(),
-    OPENROUTER_API_KEY: 'test',
-    DEFAULT_MODEL: 'anthropic/claude-sonnet-4',
-    PREVIEW_HOSTNAME: 'example.com',
-    PAGES_PROJECT_NAME: 'nimbus',
-    CLOUDFLARE_API_TOKEN: 'token',
-    CLOUDFLARE_ACCOUNT_ID: 'account',
     ...overrides,
   };
 }
