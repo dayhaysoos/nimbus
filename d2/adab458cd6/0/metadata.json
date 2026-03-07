@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "d2adab458cd6",
+  "session_id": "ses_336ebe11bffePlPIwBobiYzDoC",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-07T16:46:13.290125Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "specs/agentic-sandbox-refocus.md",
+    "specs/interviews/phase-interview-template.md",
+    "specs/phases/01-workspace-foundation.md",
+    "specs/phases/02-code-view-and-diff.md",
+    "specs/phases/03-export-zip-and-github-branch-fork.md",
+    "specs/phases/04-agentic-runtime.md",
+    "specs/phases/05-deploy-from-workspace.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "4d8332344b6a",
+  "token_usage": {
+    "input_tokens": 1201964,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3038464,
+    "output_tokens": 21099,
+    "api_call_count": 49
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-07T16:46:12.763149Z",
+    "agent_lines": 481,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 481,
+    "agent_percentage": 100
+  }
+}

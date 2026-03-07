@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "d2adab458cd6",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "specs/agentic-sandbox-refocus.md",
+    "specs/interviews/phase-interview-template.md",
+    "specs/phases/01-workspace-foundation.md",
+    "specs/phases/02-code-view-and-diff.md",
+    "specs/phases/03-export-zip-and-github-branch-fork.md",
+    "specs/phases/04-agentic-runtime.md",
+    "specs/phases/05-deploy-from-workspace.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d2/adab458cd6/0/metadata.json",
+      "transcript": "/d2/adab458cd6/0/full.jsonl",
+      "context": "/d2/adab458cd6/0/context.md",
+      "content_hash": "/d2/adab458cd6/0/content_hash.txt",
+      "prompt": "/d2/adab458cd6/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1201964,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3038464,
+    "output_tokens": 21099,
+    "api_call_count": 49
+  }
+}
