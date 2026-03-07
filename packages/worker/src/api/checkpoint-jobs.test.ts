@@ -60,6 +60,78 @@ export async function runCheckpointJobsApiTests(): Promise<void> {
     /Invalid metadata.source.commitSha/
   );
 
+  assert.throws(
+    () =>
+      parseCheckpointJobMetadata(
+        JSON.stringify({
+          source: {
+            type: 'checkpoint',
+            checkpointId: '8a513f56ed70',
+            commitSha: 'a'.repeat(40),
+            projectRoot: '../..',
+          },
+          build: { runTestsIfPresent: true, runLintIfPresent: true },
+        })
+      ),
+    /Invalid metadata.source.projectRoot/
+  );
+
+  {
+    const form = new FormData();
+    form.set(
+      'metadata',
+      JSON.stringify({
+        source: {
+          type: 'checkpoint',
+          checkpointId: '8a513f56ed70',
+          commitSha: 'f'.repeat(40),
+        },
+        build: {
+          runTestsIfPresent: true,
+          runLintIfPresent: true,
+        },
+      })
+    );
+    form.set('bundle', new File([new Uint8Array([1, 2])], 'source.tar.gz', { type: 'application/gzip' }));
+
+    const env = {
+      SOURCE_BUNDLES: {
+        async put(): Promise<void> {
+          // no-op
+        },
+      },
+      DB: {
+        prepare() {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'job_any',
+                    prompt: 'Deploy',
+                    model: 'checkpoint',
+                    status: 'queued',
+                    phase: 'queued',
+                    created_at: '2026-03-06T10:00:00.000Z',
+                    started_at: null,
+                    completed_at: null,
+                    preview_url: null,
+                    deployed_url: null,
+                    error_message: null,
+                    file_count: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        },
+      },
+    } as unknown;
+
+    const response = await handleCreateCheckpointJob(createMultipartRequest(form), env as never);
+    assert.equal(response.status, 500);
+  }
+
   {
     const form = new FormData();
     form.set(
@@ -143,6 +215,7 @@ export async function runCheckpointJobsApiTests(): Promise<void> {
 
     const puts: Array<{ key: string; bytes: number }> = [];
     const inserts: unknown[][] = [];
+    const queuedMessages: unknown[] = [];
 
     const env = {
       SOURCE_BUNDLES: {
@@ -199,6 +272,11 @@ export async function runCheckpointJobsApiTests(): Promise<void> {
           };
         },
       },
+      CHECKPOINT_JOBS_QUEUE: {
+        async send(body: unknown): Promise<void> {
+          queuedMessages.push(body);
+        },
+      },
     } as unknown;
 
     const response = await handleCreateCheckpointJob(createMultipartRequest(form), env as never);
@@ -230,6 +308,221 @@ export async function runCheckpointJobsApiTests(): Promise<void> {
     assert.equal(inserts[0][5], 'apps/web');
     assert.equal(inserts[0][6], 1);
     assert.equal(inserts[0][7], 1);
+
+    assert.equal(queuedMessages.length, 1);
+    const queuePayload = queuedMessages[0] as { type: string; jobId: string; queuedAt: string };
+    assert.equal(queuePayload.type, 'checkpoint_job_created');
+    assert.equal(queuePayload.jobId, payload.jobId);
+    assert.equal(typeof queuePayload.queuedAt, 'string');
+  }
+
+  {
+    const form = new FormData();
+    form.set(
+      'metadata',
+      JSON.stringify({
+        source: {
+          type: 'checkpoint',
+          checkpointId: '8a513f56ed70',
+          commitSha: 'a'.repeat(40),
+        },
+        build: {
+          runTestsIfPresent: true,
+          runLintIfPresent: true,
+        },
+      })
+    );
+    form.set('bundle', new File([new Uint8Array([1, 2, 3, 4])], 'source.tar.gz', { type: 'application/gzip' }));
+
+    let deletedJobs = 0;
+    let deletedBundles = 0;
+    let failedUpdates = 0;
+    const cleanupOrder: string[] = [];
+    let createdJobId: string | null = null;
+
+    const env = {
+      SOURCE_BUNDLES: {
+        async put(): Promise<void> {
+          // no-op
+        },
+        async delete(): Promise<void> {
+          deletedBundles += 1;
+          cleanupOrder.push('bundle_delete');
+        },
+      },
+      CHECKPOINT_JOBS_QUEUE: {
+        async send(): Promise<void> {
+          throw new Error('queue unavailable');
+        },
+      },
+      DB: {
+        prepare(sql: string) {
+          if (/^DELETE FROM jobs/i.test(sql)) {
+            return {
+              bind() {
+                return {
+                  async run() {
+                    deletedJobs += 1;
+                    cleanupOrder.push('job_delete');
+                    return { success: true, meta: { duration: 0 } };
+                  },
+                };
+              },
+            };
+          }
+
+          if (/^UPDATE jobs SET status = \?/i.test(sql)) {
+            return {
+              bind(...values: unknown[]) {
+                return {
+                  async run() {
+                    failedUpdates += 1;
+                    assert.equal(values[0], 'failed');
+                    assert.equal(values[values.length - 1], createdJobId);
+                    return { success: true, meta: { duration: 0 } };
+                  },
+                };
+              },
+            };
+          }
+
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  createdJobId = String(values[0]);
+                  return {
+                    id: values[0],
+                    prompt: values[1],
+                    model: 'checkpoint',
+                    status: 'queued',
+                    phase: 'queued',
+                    created_at: '2026-03-06T10:00:00.000Z',
+                    started_at: null,
+                    completed_at: null,
+                    preview_url: null,
+                    deployed_url: null,
+                    error_message: null,
+                    file_count: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        },
+      },
+    } as unknown;
+
+    const response = await handleCreateCheckpointJob(createMultipartRequest(form), env as never);
+    assert.equal(response.status, 500);
+    assert.equal(deletedBundles, 1);
+    assert.equal(deletedJobs, 1);
+    assert.deepEqual(cleanupOrder, ['job_delete', 'bundle_delete']);
+    assert.ok(createdJobId);
+    assert.match(createdJobId as string, /^job_[a-z0-9]{8}$/);
+  }
+
+  {
+    const form = new FormData();
+    form.set(
+      'metadata',
+      JSON.stringify({
+        source: {
+          type: 'checkpoint',
+          checkpointId: '8a513f56ed70',
+          commitSha: 'b'.repeat(40),
+        },
+        build: {
+          runTestsIfPresent: true,
+          runLintIfPresent: true,
+        },
+      })
+    );
+    form.set('bundle', new File([new Uint8Array([5, 6, 7])], 'source.tar.gz', { type: 'application/gzip' }));
+
+    let deletedJobs = 0;
+    let deletedBundles = 0;
+    let failedUpdates = 0;
+    let createdJobId: string | null = null;
+
+    const env = {
+      SOURCE_BUNDLES: {
+        async put(): Promise<void> {
+          // no-op
+        },
+        async delete(): Promise<void> {
+          deletedBundles += 1;
+        },
+      },
+      CHECKPOINT_JOBS_QUEUE: {
+        async send(): Promise<void> {
+          throw new Error('queue unavailable');
+        },
+      },
+      DB: {
+        prepare(sql: string) {
+          if (/^DELETE FROM jobs/i.test(sql)) {
+            return {
+              bind() {
+                return {
+                  async run() {
+                    deletedJobs += 1;
+                    throw new Error('delete failed');
+                  },
+                };
+              },
+            };
+          }
+
+          if (/^UPDATE jobs SET status = \?/i.test(sql)) {
+            return {
+              bind(...values: unknown[]) {
+                return {
+                  async run() {
+                    failedUpdates += 1;
+                    assert.equal(values[0], 'failed');
+                    assert.equal(values[values.length - 1], createdJobId);
+                    return { success: true, meta: { duration: 0 } };
+                  },
+                };
+              },
+            };
+          }
+
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  createdJobId = String(values[0]);
+                  return {
+                    id: values[0],
+                    prompt: values[1],
+                    model: 'checkpoint',
+                    status: 'queued',
+                    phase: 'queued',
+                    created_at: '2026-03-06T10:00:00.000Z',
+                    started_at: null,
+                    completed_at: null,
+                    preview_url: null,
+                    deployed_url: null,
+                    error_message: null,
+                    file_count: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        },
+      },
+    } as unknown;
+
+    const response = await handleCreateCheckpointJob(createMultipartRequest(form), env as never);
+    assert.equal(response.status, 500);
+    assert.equal(deletedJobs, 1);
+    assert.equal(deletedBundles, 0);
+    assert.equal(failedUpdates, 1);
+    assert.ok(createdJobId);
+    assert.match(createdJobId as string, /^job_[a-z0-9]{8}$/);
   }
 
   {
@@ -273,6 +566,11 @@ export async function runCheckpointJobsApiTests(): Promise<void> {
               };
             },
           };
+        },
+      },
+      CHECKPOINT_JOBS_QUEUE: {
+        async send(): Promise<void> {
+          // no-op
         },
       },
     } as unknown;

@@ -5,6 +5,7 @@ export interface Env {
   Sandbox: DurableObjectNamespace<Sandbox>;
   DB: D1Database;
   SOURCE_BUNDLES?: R2Bucket;
+  CHECKPOINT_JOBS_QUEUE?: Queue;
   OPENROUTER_API_KEY: string;
   DEFAULT_MODEL: string;
   PREVIEW_HOSTNAME: string;

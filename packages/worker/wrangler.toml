@@ -44,6 +44,15 @@ binding = "SOURCE_BUNDLES"
 bucket_name = "nimbus-source-bundles"
 preview_bucket_name = "nimbus-source-bundles-preview"
 
+[[queues.producers]]
+binding = "CHECKPOINT_JOBS_QUEUE"
+queue = "nimbus-checkpoint-jobs"
+
+[[queues.consumers]]
+queue = "nimbus-checkpoint-jobs"
+max_batch_size = 5
+max_batch_timeout = 3
+
 # Sandbox container configuration
 # Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)
 [[containers]]

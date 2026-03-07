@@ -1,5 +1,7 @@
 import type { Env } from '../types.js';
-import { createCheckpointJob, generateJobId } from '../lib/db.js';
+import { createCheckpointJob, deleteJob, generateJobId, updateJobStatus } from '../lib/db.js';
+import { createCheckpointJobQueueMessage } from '../lib/checkpoint-queue.js';
+import { normalizeProjectRoot } from '../lib/checkpoint-plan.js';
 
 export const MAX_SOURCE_BUNDLE_BYTES = 100 * 1024 * 1024;
 
@@ -119,13 +121,23 @@ export function parseCheckpointJobMetadata(metadataJson: string): CheckpointJobM
     throw new Error('Invalid metadata.build.runLintIfPresent: expected boolean');
   }
 
+  let projectRoot: string | undefined;
+  try {
+    const parsedProjectRoot = parseOptionalString(source.projectRoot, 'metadata.source.projectRoot');
+    if (parsedProjectRoot !== undefined) {
+      projectRoot = normalizeProjectRoot(parsedProjectRoot);
+    }
+  } catch {
+    throw new Error('Invalid metadata.source.projectRoot: expected safe relative directory path');
+  }
+
   return {
     source: {
       type: 'checkpoint',
       checkpointId,
       commitSha: commitShaValue.trim().toLowerCase(),
       ref: parseOptionalString(source.ref, 'metadata.source.ref'),
-      projectRoot: parseOptionalString(source.projectRoot, 'metadata.source.projectRoot'),
+      projectRoot,
     },
     build: {
       runTestsIfPresent,
@@ -214,6 +226,16 @@ export async function handleCreateCheckpointJob(request: Request, env: Env): Pro
     );
   }
 
+  if (!env.CHECKPOINT_JOBS_QUEUE) {
+    return new Response(
+      JSON.stringify({ error: 'CHECKPOINT_JOBS_QUEUE binding is not configured' }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json', ...corsHeaders },
+      }
+    );
+  }
+
   let parsed: ParsedCheckpointCreateRequest;
 
   try {
@@ -229,6 +251,8 @@ export async function handleCreateCheckpointJob(request: Request, env: Env): Pro
   const jobId = generateJobId();
   const sourceBundleKey = sourceBundleR2Key(jobId, parsed.metadata.source.commitSha);
   let bundleUploaded = false;
+  let jobPersisted = false;
+  let jobDeleted = false;
 
   try {
     await env.SOURCE_BUNDLES.put(sourceBundleKey, parsed.bundleArrayBuffer, {
@@ -259,8 +283,32 @@ export async function handleCreateCheckpointJob(request: Request, env: Env): Pro
       sourceBundleSha256: parsed.bundleSha256,
       sourceBundleBytes: parsed.bundleBytes,
     });
+    jobPersisted = true;
+
+    await env.CHECKPOINT_JOBS_QUEUE.send(createCheckpointJobQueueMessage(jobId));
   } catch (error) {
-    if (bundleUploaded) {
+    if (jobPersisted) {
+      try {
+        await deleteJob(env.DB, jobId);
+        jobDeleted = true;
+      } catch (deleteError) {
+        const deleteMessage = deleteError instanceof Error ? deleteError.message : String(deleteError);
+
+        try {
+          await updateJobStatus(env.DB, jobId, 'failed', {
+            phase: 'failed',
+            completed_at: new Date().toISOString(),
+            error_message: `Queue enqueue failed and cleanup delete failed: ${deleteMessage}`,
+          });
+        } catch {
+          // Best-effort fallback only.
+        }
+
+        // Best-effort cleanup only.
+      }
+    }
+
+    if (bundleUploaded && (!jobPersisted || jobDeleted)) {
       try {
         await env.SOURCE_BUNDLES.delete(sourceBundleKey);
       } catch {

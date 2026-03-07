@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { createCheckpointJob } from './db.js';
+import { claimQueuedCheckpointJob, createCheckpointJob } from './db.js';
 
 interface PreparedStatementMock {
   bind: (...values: unknown[]) => {
@@ -95,4 +95,26 @@ export async function runCheckpointDbTests(): Promise<void> {
   assert.equal(created.sourceBundleKey, 'jobs/job_abc12345/source/main.tar.gz');
   assert.equal(created.sourceBundleSha256, 'f'.repeat(64));
   assert.equal(created.sourceBundleBytes, 1234);
+
+  const claimSql: string[] = [];
+  const claimDb = {
+    prepare(sql: string) {
+      claimSql.push(sql);
+      return {
+        bind() {
+          return {
+            async run() {
+              return { success: true, meta: { changes: 1 } };
+            },
+          };
+        },
+      };
+    },
+  } as unknown as D1Database;
+
+  const claimed = await claimQueuedCheckpointJob(claimDb, 'job_abc12345');
+  assert.equal(claimed, true);
+  assert.equal(claimSql.length, 1);
+  assert.match(claimSql[0], /error_message = NULL/i);
+  assert.match(claimSql[0], /error_code = NULL/i);
 }

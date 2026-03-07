@@ -14,6 +14,25 @@ export interface CreateCheckpointJobInput {
   sourceBundleBytes: number;
 }
 
+export interface JobEventRecord {
+  id: number;
+  job_id: string;
+  attempt_no: number;
+  seq: number;
+  event_type: string;
+  phase: JobPhase;
+  payload_json: string;
+  created_at: string;
+}
+
+export interface JobEventItem {
+  seq: number;
+  eventType: string;
+  phase: JobPhase;
+  payload: unknown;
+  createdAt: string;
+}
+
 function phaseFromStatus(status: JobStatus): JobPhase {
   switch (status) {
     case 'queued':
@@ -206,6 +225,114 @@ export async function listJobs(db: D1Database, limit = 50): Promise<JobListItem[
 }
 
 /**
+ * Delete a job by ID
+ */
+export async function deleteJob(db: D1Database, id: string): Promise<void> {
+  await db.prepare('DELETE FROM jobs WHERE id = ?').bind(id).run();
+}
+
+/**
+ * Atomically claim a queued checkpoint job for execution.
+ * Returns true when claim succeeds, false when another worker already claimed.
+ */
+export async function claimQueuedCheckpointJob(db: D1Database, id: string): Promise<boolean> {
+  const result = await db
+    .prepare(
+      `UPDATE jobs
+       SET status = 'running',
+           phase = 'building',
+           started_at = ?,
+           error_message = NULL,
+           error_code = NULL
+       WHERE id = ? AND status = 'queued'`
+    )
+    .bind(new Date().toISOString(), id)
+    .run();
+
+  const changes = Number((result as { meta?: { changes?: number } }).meta?.changes ?? 0);
+  return changes > 0;
+}
+
+/**
+ * Append a sequenced job event and return its sequence number.
+ */
+export async function appendJobEvent(
+  db: D1Database,
+  input: {
+    jobId: string;
+    attemptNo?: number;
+    eventType: string;
+    phase: JobPhase;
+    payload: unknown;
+  }
+): Promise<number> {
+  const sequenceResult = await db
+    .prepare('UPDATE jobs SET last_event_seq = last_event_seq + 1 WHERE id = ? RETURNING last_event_seq')
+    .bind(input.jobId)
+    .first<{ last_event_seq: number }>();
+
+  if (!sequenceResult) {
+    throw new Error(`Failed to allocate event sequence for job ${input.jobId}`);
+  }
+
+  const seq = Number(sequenceResult.last_event_seq);
+  await db
+    .prepare(
+      `INSERT INTO job_events (job_id, attempt_no, seq, event_type, phase, payload_json)
+       VALUES (?, ?, ?, ?, ?, ?)`
+    )
+    .bind(
+      input.jobId,
+      input.attemptNo ?? 0,
+      seq,
+      input.eventType,
+      input.phase,
+      JSON.stringify(input.payload)
+    )
+    .run();
+
+  return seq;
+}
+
+/**
+ * List persisted job events from a given sequence.
+ */
+export async function listJobEvents(
+  db: D1Database,
+  jobId: string,
+  fromExclusive = 0,
+  limit = 500
+): Promise<JobEventItem[]> {
+  const result = await db
+    .prepare(
+      `SELECT id, job_id, attempt_no, seq, event_type, phase, payload_json, created_at
+       FROM job_events
+       WHERE job_id = ? AND seq > ?
+       ORDER BY seq ASC
+       LIMIT ?`
+    )
+    .bind(jobId, fromExclusive, limit)
+    .all<JobEventRecord>();
+
+  return result.results.map((row) => {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(row.payload_json);
+    } catch {
+      payload = { raw: row.payload_json };
+    }
+
+    return {
+      seq: row.seq,
+      eventType: row.event_type,
+      phase: row.phase,
+      payload,
+      createdAt: row.created_at,
+    };
+  });
+}
+
+/**
  * Update job status
  */
 export async function updateJobStatus(
@@ -214,16 +341,16 @@ export async function updateJobStatus(
   status: JobStatus,
   additionalFields?: {
     phase?: JobPhase;
-    started_at?: string;
-    completed_at?: string;
-    cancel_requested_at?: string;
-    cancelled_at?: string;
+    started_at?: string | null;
+    completed_at?: string | null;
+    cancel_requested_at?: string | null;
+    cancelled_at?: string | null;
     preview_url?: string;
     deployed_url?: string;
     code_url?: string;
     code_zip_url?: string;
-    error_message?: string;
-    error_code?: string;
+    error_message?: string | null;
+    error_code?: string | null;
     retry_count?: number;
     file_count?: number;
     // Metrics fields
