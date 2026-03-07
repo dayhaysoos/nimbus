@@ -72,7 +72,7 @@ function installCommand(packageManager: CheckpointPackageManager): string {
     return 'bun install --frozen-lockfile --ignore-scripts';
   }
 
-  return 'npm ci --ignore-scripts --no-audit --no-fund';
+  return 'npm ci --include=dev --ignore-scripts --no-audit --no-fund';
 }
 
 function runScriptCommand(packageManager: CheckpointPackageManager, scriptName: string): string {

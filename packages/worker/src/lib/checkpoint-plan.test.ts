@@ -29,7 +29,7 @@ export function runCheckpointPlanTests(): void {
       runLintIfPresent: false,
     });
 
-    assert.equal(plan.install, 'npm ci --ignore-scripts --no-audit --no-fund');
+    assert.equal(plan.install, 'npm ci --include=dev --ignore-scripts --no-audit --no-fund');
     assert.equal(plan.build, 'npm run build');
     assert.equal(plan.test, 'npm run test');
     assert.equal(plan.lint, null);
