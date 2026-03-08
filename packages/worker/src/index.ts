@@ -3,6 +3,12 @@ import { handleGetJob, handleListJobs } from './api/jobs.js';
 import { handleGetJobEvents } from './api/job-events.js';
 import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';
 import {
+  handleCancelWorkspaceTask,
+  handleCreateWorkspaceTask,
+  handleGetWorkspaceTask,
+  handleGetWorkspaceTaskEvents,
+} from './api/workspace-tasks.js';
+import {
   handleCreateWorkspace,
   handleCreateWorkspaceGithubFork,
   handleCreateWorkspacePatchExport,
@@ -20,6 +26,8 @@ import {
 } from './api/workspaces.js';
 import { parseCheckpointJobQueueMessage } from './lib/checkpoint-queue.js';
 import { processCheckpointJob } from './lib/checkpoint-runner.js';
+import { parseWorkspaceTaskQueueMessage } from './lib/workspace-task-queue.js';
+import { processWorkspaceTask, shouldRetryWorkspaceTaskError } from './lib/workspace-task-runner.js';
 import type { Env } from './types.js';
 
 // Re-export Sandbox for Durable Object binding
@@ -100,6 +108,34 @@ export default {
       );
     }
 
+    // Route: POST /api/workspaces/:id/tasks - Queue agentic workspace task
+    const workspaceTasksCreateMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/tasks$/);
+    if (workspaceTasksCreateMatch && request.method === 'POST') {
+      return handleCreateWorkspaceTask(workspaceTasksCreateMatch[1], request, env, ctx);
+    }
+
+    // Route: GET /api/workspaces/:id/tasks/:taskId - Poll workspace task status
+    const workspaceTaskGetMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/tasks\/([a-z0-9_]+)$/);
+    if (workspaceTaskGetMatch && request.method === 'GET') {
+      return handleGetWorkspaceTask(workspaceTaskGetMatch[1], workspaceTaskGetMatch[2], env);
+    }
+
+    // Route: GET /api/workspaces/:id/tasks/:taskId/events - Poll workspace task events
+    const workspaceTaskEventsMatch = url.pathname.match(
+      /^\/api\/workspaces\/([a-z0-9_]+)\/tasks\/([a-z0-9_]+)\/events$/
+    );
+    if (workspaceTaskEventsMatch && request.method === 'GET') {
+      return handleGetWorkspaceTaskEvents(workspaceTaskEventsMatch[1], workspaceTaskEventsMatch[2], request, env);
+    }
+
+    // Route: POST /api/workspaces/:id/tasks/:taskId/cancel - Request task cancellation
+    const workspaceTaskCancelMatch = url.pathname.match(
+      /^\/api\/workspaces\/([a-z0-9_]+)\/tasks\/([a-z0-9_]+)\/cancel$/
+    );
+    if (workspaceTaskCancelMatch && request.method === 'POST') {
+      return handleCancelWorkspaceTask(workspaceTaskCancelMatch[1], workspaceTaskCancelMatch[2], env);
+    }
+
     // Route: GET /api/workspaces/:id/files - List files for a path
     const workspaceFilesMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/files$/);
     if (workspaceFilesMatch && request.method === 'GET') {
@@ -164,10 +200,34 @@ export default {
 
   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {
     for (const message of batch.messages) {
-      let payload;
+      const body = message.body as Record<string, unknown> | null;
+      const type = typeof body?.type === 'string' ? body.type : '';
 
+      if (type === 'workspace_task_created') {
+        let payload;
+        try {
+          payload = parseWorkspaceTaskQueueMessage(message.body);
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          console.error(`[workspace-task-queue] invalid message dropped: ${details}`);
+          continue;
+        }
+
+        try {
+          await processWorkspaceTask(env, payload.workspaceId, payload.taskId);
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          console.error(`[workspace-task-queue] message handling failed: ${details}`);
+          if (shouldRetryWorkspaceTaskError(error)) {
+            message.retry();
+          }
+        }
+        continue;
+      }
+
+      let checkpointPayload;
       try {
-        payload = parseCheckpointJobQueueMessage(message.body);
+        checkpointPayload = parseCheckpointJobQueueMessage(message.body);
       } catch (error) {
         const details = error instanceof Error ? error.message : String(error);
         console.error(`[checkpoint-queue] invalid message dropped: ${details}`);
@@ -175,7 +235,7 @@ export default {
       }
 
       try {
-        await processCheckpointJob(env, payload.jobId);
+        await processCheckpointJob(env, checkpointPayload.jobId);
       } catch (error) {
         const details = error instanceof Error ? error.message : String(error);
         console.error(`[checkpoint-queue] message handling failed: ${details}`);

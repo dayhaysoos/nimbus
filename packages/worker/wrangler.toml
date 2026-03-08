@@ -21,6 +21,13 @@ SAFE_INSTALL_IGNORE_SCRIPTS = "true"
 AUTO_INSTALL_SCRIPTS_FALLBACK = "true"
 RAW_RETENTION_DAYS = "30"
 SUMMARY_RETENTION_DAYS = "180"
+WORKSPACE_AGENT_RUNTIME_ENABLED = "false"
+WORKSPACE_AGENT_MAX_RETRIES = "2"
+WORKSPACE_AGENT_MAX_STEPS = "24"
+WORKSPACE_AGENT_TIMEOUT_MS = "900000"
+WORKSPACE_AGENT_ALLOW_SCRIPTED_PROVIDER = "false"
+AGENT_PROVIDER = "cloudflare_agents_sdk"
+AGENT_MODEL = "claude-3-7-sonnet"
 
 # D1 Database for job persistence
 [[d1_databases]]
@@ -37,8 +44,17 @@ preview_bucket_name = "nimbus-source-bundles-preview"
 binding = "CHECKPOINT_JOBS_QUEUE"
 queue = "nimbus-checkpoint-jobs"
 
+[[queues.producers]]
+binding = "WORKSPACE_TASKS_QUEUE"
+queue = "nimbus-workspace-tasks"
+
 [[queues.consumers]]
 queue = "nimbus-checkpoint-jobs"
+max_batch_size = 5
+max_batch_timeout = 3
+
+[[queues.consumers]]
+queue = "nimbus-workspace-tasks"
 max_batch_size = 5
 max_batch_timeout = 3
 
