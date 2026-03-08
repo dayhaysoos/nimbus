@@ -22,6 +22,11 @@ export interface Env {
   AUTO_INSTALL_SCRIPTS_FALLBACK?: string;
   RAW_RETENTION_DAYS?: string;
   SUMMARY_RETENTION_DAYS?: string;
+  WORKSPACE_AGENT_RUNTIME_ENABLED?: string;
+  WORKSPACE_AGENT_MAX_RETRIES?: string;
+  WORKSPACE_AGENT_MAX_STEPS?: string;
+  WORKSPACE_AGENT_TIMEOUT_MS?: string;
+  WORKSPACE_AGENT_ALLOW_SCRIPTED_PROVIDER?: string;
 
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
@@ -30,6 +35,13 @@ export interface Env {
   GITHUB_FORK_ALLOWED_ORGS?: string;
   BLOCK_ON_SECRET_MATCH?: string;
   WORKSPACE_ARTIFACT_DOWNLOAD_SECRET?: string;
+
+  WORKSPACE_TASKS_QUEUE?: Queue;
+
+  AGENT_PROVIDER?: string;
+  AGENT_MODEL?: string;
+  AGENT_SDK_URL?: string;
+  AGENT_SDK_AUTH_TOKEN?: string;
 }
 
 // Job status type
@@ -141,6 +153,7 @@ export interface RuntimeFlags {
   autoInstallScriptsFallback: boolean;
   rawRetentionDays: number;
   summaryRetentionDays: number;
+  workspaceAgentRuntimeEnabled: boolean;
 }
 
 export type WorkspaceStatus = 'creating' | 'ready' | 'failed' | 'deleted';
@@ -279,4 +292,59 @@ export interface WorkspaceArtifactResponse {
   expiresAt: string;
   warnings: unknown[];
   metadata: unknown;
+}
+
+export type WorkspaceTaskStatus =
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
+
+export interface WorkspaceTaskRecord {
+  id: string;
+  workspace_id: string;
+  status: WorkspaceTaskStatus;
+  prompt: string;
+  provider: string;
+  model: string;
+  idempotency_key: string;
+  request_payload_json: string;
+  request_payload_sha256: string;
+  max_steps: number;
+  max_retries: number;
+  attempt_count: number;
+  actor_id: string | null;
+  tool_policy_json: string;
+  started_at: string | null;
+  finished_at: string | null;
+  cancel_requested_at: string | null;
+  result_json: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceTaskResponse {
+  id: string;
+  workspaceId: string;
+  status: WorkspaceTaskStatus;
+  prompt: string;
+  provider: string;
+  model: string;
+  idempotencyKey: string;
+  maxSteps: number;
+  maxRetries: number;
+  attemptCount: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  cancelRequestedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  result?: unknown;
+  error?: {
+    code: string;
+    message: string;
+  };
 }

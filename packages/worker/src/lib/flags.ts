@@ -19,6 +19,7 @@ export const DEFAULT_RUNTIME_FLAGS: RuntimeFlags = {
   autoInstallScriptsFallback: true,
   rawRetentionDays: 30,
   summaryRetentionDays: 180,
+  workspaceAgentRuntimeEnabled: false,
 };
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -117,6 +118,10 @@ export function getRuntimeFlagsFromEnv(env: Env): RuntimeFlags {
       DEFAULT_RUNTIME_FLAGS.summaryRetentionDays,
       { min: 1 }
     ),
+    workspaceAgentRuntimeEnabled: parseBoolean(
+      env.WORKSPACE_AGENT_RUNTIME_ENABLED,
+      DEFAULT_RUNTIME_FLAGS.workspaceAgentRuntimeEnabled
+    ),
   };
 
   return normalizeRuntimeFlags(resolved);
@@ -177,6 +182,9 @@ export function mergeRuntimeFlagOverrides(
         break;
       case 'summary_retention_days':
         merged.summaryRetentionDays = parseInteger(row.value, merged.summaryRetentionDays, { min: 1 });
+        break;
+      case 'workspace_agent_runtime_enabled':
+        merged.workspaceAgentRuntimeEnabled = parseBoolean(row.value, merged.workspaceAgentRuntimeEnabled);
         break;
       default:
         break;

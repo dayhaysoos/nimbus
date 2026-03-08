@@ -1,14 +1,19 @@
 import { strict as assert } from 'assert';
 import {
   appendWorkspaceEvent,
+  appendWorkspaceTaskEvent,
   createWorkspaceArtifact,
   createWorkspaceOperation,
+  createWorkspaceTask,
   createWorkspace,
+  getWorkspaceTask,
   getWorkspaceOperation,
   listWorkspaceEvents,
   listWorkspaceArtifacts,
+  listWorkspaceTaskEvents,
   markWorkspaceDeleted,
   markWorkspaceReady,
+  requestWorkspaceTaskCancel,
   WorkspaceIdempotencyConflictError,
 } from './db.js';
 
@@ -423,5 +428,213 @@ export async function runWorkspaceDbTests(): Promise<void> {
     const artifacts = await listWorkspaceArtifacts(db, 'ws_abc12345');
     assert.equal(artifacts.length, 1);
     assert.equal(artifacts[0].id, 'art_abc');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT task_id, request_payload_sha256, expires_at/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return null as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_tasks/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  return {
+                    id: values[0],
+                    workspace_id: values[1],
+                    status: 'queued',
+                    prompt: values[2],
+                    provider: values[3],
+                    model: values[4],
+                    idempotency_key: values[5],
+                    request_payload_json: values[6],
+                    request_payload_sha256: values[7],
+                    max_steps: values[8],
+                    max_retries: values[9],
+                    attempt_count: 0,
+                    actor_id: null,
+                    tool_policy_json: values[11],
+                    last_event_seq: 0,
+                    started_at: null,
+                    finished_at: null,
+                    cancel_requested_at: null,
+                    result_json: null,
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-08T00:00:00.000Z',
+                    updated_at: '2026-03-08T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_task_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM workspace_tasks WHERE id = \? AND workspace_id = \?/i.test(sql)) {
+          return {
+            bind(taskId: string, workspaceId: string) {
+              return {
+                async first<T>() {
+                  return {
+                    id: taskId,
+                    workspace_id: workspaceId,
+                    status: 'queued',
+                    prompt: 'Do work',
+                    provider: 'scripted',
+                    model: 'test',
+                    idempotency_key: 'idem-task',
+                    request_payload_json: '{}',
+                    request_payload_sha256: 'hash',
+                    max_steps: 12,
+                    max_retries: 2,
+                    attempt_count: 0,
+                    actor_id: null,
+                    tool_policy_json: '{}',
+                    last_event_seq: 0,
+                    started_at: null,
+                    finished_at: null,
+                    cancel_requested_at: null,
+                    result_json: null,
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-08T00:00:00.000Z',
+                    updated_at: '2026-03-08T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE workspace_tasks\s+SET cancel_requested_at = COALESCE/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE workspace_tasks SET last_event_seq = last_event_seq \+ 1/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return { last_event_seq: 2 } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_task_events/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT seq, event_type, payload_json, created_at\s+FROM workspace_task_events/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async all<T>() {
+                  return {
+                    results: [
+                      {
+                        seq: 1,
+                        event_type: 'task_created',
+                        payload_json: '{"ok":true}',
+                        created_at: '2026-03-08T00:00:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const created = await createWorkspaceTask(db, {
+      id: 'task_abcd1234',
+      workspaceId: 'ws_abc12345',
+      prompt: 'Do work',
+      provider: 'scripted',
+      model: 'test',
+      idempotencyKey: 'idem-task',
+      requestPayload: {},
+      requestPayloadSha256: 'hash',
+      maxSteps: 12,
+      maxRetries: 2,
+    });
+
+    assert.equal(created.reused, false);
+    assert.equal(created.task.id, 'task_abcd1234');
+
+    const task = await getWorkspaceTask(db, 'ws_abc12345', 'task_abcd1234');
+    assert.ok(task);
+    assert.equal(task?.workspaceId, 'ws_abc12345');
+
+    const cancelled = await requestWorkspaceTaskCancel(db, 'ws_abc12345', 'task_abcd1234');
+    assert.equal(cancelled.updated, true);
+    assert.equal(cancelled.task?.id, 'task_abcd1234');
+
+    const seq = await appendWorkspaceTaskEvent(db, {
+      workspaceId: 'ws_abc12345',
+      taskId: 'task_abcd1234',
+      eventType: 'task_created',
+      payload: { ok: true },
+    });
+    assert.equal(seq, 2);
+
+    const events = await listWorkspaceTaskEvents(db, 'ws_abc12345', 'task_abcd1234');
+    assert.equal(events.length, 1);
+    assert.equal(events[0].eventType, 'task_created');
   }
 }
