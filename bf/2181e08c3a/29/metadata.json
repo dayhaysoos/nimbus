@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "bf2181e08c3a",
+  "session_id": "ses_3353a8139ffeLXvY9MIuOitgt6",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-08T16:17:04.736074Z",
+  "branch": "phase-4-agentic-runtime",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "packages/worker/migrations/0006_workspace_agent_runtime.sql",
+    "packages/worker/src/api/workspace-tasks.test.ts",
+    "packages/worker/src/api/workspace-tasks.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/db.workspace.test.ts",
+    "packages/worker/src/lib/flags.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/lib/workspace-task-queue.test.ts",
+    "packages/worker/src/lib/workspace-task-queue.ts",
+    "packages/worker/src/lib/workspace-task-runner.test.ts",
+    "packages/worker/src/lib/workspace-task-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "specs/phases/04-agentic-runtime.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "988c1d43909e",
+  "checkpoint_transcript_start": 259,
+  "transcript_lines_at_start": 259,
+  "token_usage": {
+    "input_tokens": 2589443,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 20516096,
+    "output_tokens": 85267,
+    "api_call_count": 215
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-08T16:16:53.603228Z",
+    "agent_lines": 2978,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 2978,
+    "agent_percentage": 100
+  }
+}
