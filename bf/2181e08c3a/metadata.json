@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "bf2181e08c3a",
+  "strategy": "manual-commit",
+  "branch": "phase-4-agentic-runtime",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/migrations/0006_workspace_agent_runtime.sql",
+    "packages/worker/src/api/workspace-tasks.test.ts",
+    "packages/worker/src/api/workspace-tasks.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/db.workspace.test.ts",
+    "packages/worker/src/lib/flags.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/lib/workspace-task-queue.test.ts",
+    "packages/worker/src/lib/workspace-task-queue.ts",
+    "packages/worker/src/lib/workspace-task-runner.test.ts",
+    "packages/worker/src/lib/workspace-task-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "specs/phases/04-agentic-runtime.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bf/2181e08c3a/0/metadata.json",
+      "transcript": "/bf/2181e08c3a/0/full.jsonl",
+      "context": "/bf/2181e08c3a/0/context.md",
+      "content_hash": "/bf/2181e08c3a/0/content_hash.txt",
+      "prompt": "/bf/2181e08c3a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 83206,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 249344,
+    "output_tokens": 5941,
+    "api_call_count": 10
+  }
+}
