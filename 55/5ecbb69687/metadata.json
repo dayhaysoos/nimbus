@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "555ecbb69687",
+  "strategy": "manual-commit",
+  "branch": "phase-3",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/migrations/0005_workspace_export_and_fork.sql",
+    "packages/worker/src/api/workspaces.test.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/db.workspace.test.ts",
+    "packages/worker/src/types.ts",
+    "specs/phases/03-export-zip-and-github-branch-fork.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/55/5ecbb69687/0/metadata.json",
+      "transcript": "/55/5ecbb69687/0/full.jsonl",
+      "context": "/55/5ecbb69687/0/context.md",
+      "content_hash": "/55/5ecbb69687/0/content_hash.txt",
+      "prompt": "/55/5ecbb69687/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 200802,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 159488,
+    "output_tokens": 8075,
+    "api_call_count": 6
+  }
+}
