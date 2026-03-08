@@ -5,6 +5,7 @@ export interface Env {
   Sandbox: DurableObjectNamespace<Sandbox>;
   DB: D1Database;
   SOURCE_BUNDLES?: R2Bucket;
+  WORKSPACE_ARTIFACTS?: R2Bucket;
   CHECKPOINT_JOBS_QUEUE?: Queue;
 
   // Runtime flag defaults (can be overridden by D1 runtime_flags)
@@ -21,6 +22,14 @@ export interface Env {
   AUTO_INSTALL_SCRIPTS_FALLBACK?: string;
   RAW_RETENTION_DAYS?: string;
   SUMMARY_RETENTION_DAYS?: string;
+
+  GITHUB_APP_ID?: string;
+  GITHUB_APP_PRIVATE_KEY?: string;
+  GITHUB_APP_JWT?: string;
+  GITHUB_API_BASE_URL?: string;
+  GITHUB_FORK_ALLOWED_ORGS?: string;
+  BLOCK_ON_SECRET_MATCH?: string;
+  WORKSPACE_ARTIFACT_DOWNLOAD_SECRET?: string;
 }
 
 // Job status type
@@ -188,4 +197,86 @@ export interface WorkspaceResponse {
   deletedAt: string | null;
 
   eventsUrl: string;
+}
+
+export type WorkspaceOperationType = 'export_zip' | 'export_patch' | 'fork_github';
+export type WorkspaceOperationStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export interface WorkspaceOperationRecord {
+  id: string;
+  workspace_id: string;
+  type: WorkspaceOperationType;
+  status: WorkspaceOperationStatus;
+  actor_id: string | null;
+  auth_principal_json: string;
+  request_payload_json: string;
+  request_payload_sha256: string;
+  idempotency_key: string;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  result_json: string | null;
+  warnings_json: string;
+  error_code: string | null;
+  error_class: string | null;
+  error_message: string | null;
+  error_details_json: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceOperationResponse {
+  id: string;
+  type: WorkspaceOperationType;
+  status: WorkspaceOperationStatus;
+  workspaceId: string;
+  idempotencyKey: string;
+  createdAt: string;
+  updatedAt: string;
+  result?: unknown;
+  warnings?: unknown[];
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+export type WorkspaceArtifactType = 'zip' | 'patch';
+export type WorkspaceArtifactStatus = 'available' | 'expired';
+
+export interface WorkspaceArtifactRecord {
+  id: string;
+  workspace_id: string;
+  operation_id: string | null;
+  type: WorkspaceArtifactType;
+  status: WorkspaceArtifactStatus;
+  object_key: string;
+  bytes: number;
+  content_type: string;
+  sha256: string;
+  source_baseline_sha: string;
+  creator_id: string | null;
+  retention_expires_at: string;
+  expired_at: string | null;
+  warnings_json: string;
+  metadata_json: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceArtifactResponse {
+  id: string;
+  type: WorkspaceArtifactType;
+  status: WorkspaceArtifactStatus;
+  bytes: number;
+  contentType: string;
+  sha256: string;
+  workspaceId: string;
+  sourceBaselineSha: string;
+  creatorId: string | null;
+  createdAt: string;
+  expiresAt: string;
+  warnings: unknown[];
+  metadata: unknown;
 }

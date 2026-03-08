@@ -4,11 +4,17 @@ import { handleGetJobEvents } from './api/job-events.js';
 import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';
 import {
   handleCreateWorkspace,
+  handleCreateWorkspaceGithubFork,
+  handleCreateWorkspacePatchExport,
+  handleCreateWorkspaceZipExport,
+  handleDownloadWorkspaceArtifact,
   handleDeleteWorkspace,
   handleGetWorkspaceDiff,
   handleGetWorkspaceFile,
   handleGetWorkspace,
   handleGetWorkspaceEvents,
+  handleGetWorkspaceOperation,
+  handleListWorkspaceArtifacts,
   handleListWorkspaceFiles,
   handleResetWorkspace,
 } from './api/workspaces.js';
@@ -23,11 +29,11 @@ export { Sandbox };
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
 };
 
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
 
     // Handle CORS preflight
@@ -49,6 +55,49 @@ export default {
     const workspaceEventsMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/events$/);
     if (workspaceEventsMatch && request.method === 'GET') {
       return handleGetWorkspaceEvents(workspaceEventsMatch[1], request, env);
+    }
+
+    // Route: POST /api/workspaces/:id/export/zip - Queue zip export operation
+    const workspaceZipExportMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/export\/zip$/);
+    if (workspaceZipExportMatch && request.method === 'POST') {
+      return handleCreateWorkspaceZipExport(workspaceZipExportMatch[1], request, env, ctx);
+    }
+
+    // Route: POST /api/workspaces/:id/export/patch - Queue patch export operation
+    const workspacePatchExportMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/export\/patch$/);
+    if (workspacePatchExportMatch && request.method === 'POST') {
+      return handleCreateWorkspacePatchExport(workspacePatchExportMatch[1], request, env, ctx);
+    }
+
+    // Route: POST /api/workspaces/:id/fork/github - Queue GitHub fork operation
+    const workspaceForkGithubMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/fork\/github$/);
+    if (workspaceForkGithubMatch && request.method === 'POST') {
+      return handleCreateWorkspaceGithubFork(workspaceForkGithubMatch[1], request, env, ctx);
+    }
+
+    // Route: GET /api/workspaces/:id/operations/:operationId - Poll workspace operation status
+    const workspaceOperationMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/operations\/([a-z0-9_]+)$/);
+    if (workspaceOperationMatch && request.method === 'GET') {
+      return handleGetWorkspaceOperation(workspaceOperationMatch[1], workspaceOperationMatch[2], env);
+    }
+
+    // Route: GET /api/workspaces/:id/artifacts - List workspace artifacts
+    const workspaceArtifactsMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/artifacts$/);
+    if (workspaceArtifactsMatch && request.method === 'GET') {
+      return handleListWorkspaceArtifacts(workspaceArtifactsMatch[1], env);
+    }
+
+    // Route: GET /api/workspaces/:id/artifacts/:artifactId/download - Download artifact bytes
+    const workspaceArtifactDownloadMatch = url.pathname.match(
+      /^\/api\/workspaces\/([a-z0-9_]+)\/artifacts\/([a-z0-9_]+)\/download$/
+    );
+    if (workspaceArtifactDownloadMatch && request.method === 'GET') {
+      return handleDownloadWorkspaceArtifact(
+        workspaceArtifactDownloadMatch[1],
+        workspaceArtifactDownloadMatch[2],
+        request,
+        env
+      );
     }
 
     // Route: GET /api/workspaces/:id/files - List files for a path
