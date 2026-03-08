@@ -3,7 +3,7 @@
   "checkpoint_id": "bf2181e08c3a",
   "strategy": "manual-commit",
   "branch": "phase-4-agentic-runtime",
-  "checkpoints_count": 7,
+  "checkpoints_count": 8,
   "files_touched": [
     "packages/worker/migrations/0006_workspace_agent_runtime.sql",
     "packages/worker/src/api/workspace-tasks.test.ts",
@@ -70,13 +70,20 @@
       "context": "/bf/2181e08c3a/6/context.md",
       "content_hash": "/bf/2181e08c3a/6/content_hash.txt",
       "prompt": "/bf/2181e08c3a/6/prompt.txt"
+    },
+    {
+      "metadata": "/bf/2181e08c3a/7/metadata.json",
+      "transcript": "/bf/2181e08c3a/7/full.jsonl",
+      "context": "/bf/2181e08c3a/7/context.md",
+      "content_hash": "/bf/2181e08c3a/7/content_hash.txt",
+      "prompt": "/bf/2181e08c3a/7/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 740567,
+    "input_tokens": 1028685,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1608448,
-    "output_tokens": 42182,
-    "api_call_count": 66
+    "cache_read_tokens": 1876352,
+    "output_tokens": 52014,
+    "api_call_count": 77
   }
 }
