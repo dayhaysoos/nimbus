@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "555ecbb69687",
+  "session_id": "ses_334e59744ffeAT5FH012snb3fP",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-08T05:20:10.714968Z",
+  "branch": "phase-3",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/migrations/0005_workspace_export_and_fork.sql",
+    "packages/worker/src/api/workspaces.test.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/db.workspace.test.ts",
+    "packages/worker/src/types.ts",
+    "specs/phases/03-export-zip-and-github-branch-fork.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "69b2716c2697",
+  "token_usage": {
+    "input_tokens": 99738,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 384000,
+    "output_tokens": 3893,
+    "api_call_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-08T05:20:10.510168Z",
+    "agent_lines": 3151,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3151,
+    "agent_percentage": 100
+  }
+}
