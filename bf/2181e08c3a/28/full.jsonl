@@ -1,0 +1,1253 @@
+{
+  "info": {
+    "id": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+    "slug": "cosmic-planet",
+    "projectID": "e636a08f504c17bb94725f03ccc30ead67d304f9",
+    "directory": "/Users/nickdejesus/Code/nimbus",
+    "parentID": "ses_3353a8139ffeLXvY9MIuOitgt6",
+    "title": "Run code review (@general subagent)",
+    "version": "1.2.21",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "permission": [
+      {
+        "permission": "todowrite",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "todoread",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "task",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1772952265920,
+      "updated": 1772952306525
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1772952265925
+        },
+        "summary": {
+          "diffs": []
+        },
+        "agent": "general",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "gpt-5.3-codex"
+        },
+        "tools": {
+          "todowrite": false,
+          "todoread": false,
+          "task": false
+        },
+        "id": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "/review",
+          "id": "prt_ccc30a4c5001WWXW3Kx15BPDR5",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30a4c300153AXnB2OwbH8mx"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952265928,
+          "completed": 1772952269266
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01381975,
+        "tokens": {
+          "total": 6091,
+          "input": 5929,
+          "output": 162,
+          "reasoning": 84,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_ccc30a4c8001ly1IZtB42WQDr2",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc30a730001YvhcGbqpRQBKSr",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30a4c8001ly1IZtB42WQDr2"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Planning code review inspection**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_038f275e36ad957e0169ad1acab8b4819b9b0392e8e7b1dfcb",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1772952266756,
+            "end": 1772952269062
+          },
+          "id": "prt_ccc30a8040017EfsuYZj7YaTuO",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30a4c8001ly1IZtB42WQDr2"
+        },
+        {
+          "type": "tool",
+          "callID": "call_he9DFeFa3ZR727v3GL6DisSt",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git status --short",
+              "description": "Shows concise working tree status"
+            },
+            "output": " M packages/worker/src/index.ts\n M packages/worker/src/lib/db.ts\n M packages/worker/src/lib/db.workspace.test.ts\n M packages/worker/src/lib/flags.ts\n M packages/worker/src/lib/run-tests.ts\n M packages/worker/src/types.ts\n M packages/worker/wrangler.toml\n M specs/phases/04-agentic-runtime.md\n?? packages/worker/migrations/0006_workspace_agent_runtime.sql\n?? packages/worker/src/api/workspace-tasks.test.ts\n?? packages/worker/src/api/workspace-tasks.ts\n?? packages/worker/src/lib/workspace-task-queue.test.ts\n?? packages/worker/src/lib/workspace-task-queue.ts\n?? packages/worker/src/lib/workspace-task-runner.test.ts\n?? packages/worker/src/lib/workspace-task-runner.ts\n",
+            "title": "Shows concise working tree status",
+            "metadata": {
+              "output": " M packages/worker/src/index.ts\n M packages/worker/src/lib/db.ts\n M packages/worker/src/lib/db.workspace.test.ts\n M packages/worker/src/lib/flags.ts\n M packages/worker/src/lib/run-tests.ts\n M packages/worker/src/types.ts\n M packages/worker/wrangler.toml\n M specs/phases/04-agentic-runtime.md\n?? packages/worker/migrations/0006_workspace_agent_runtime.sql\n?? packages/worker/src/api/workspace-tasks.test.ts\n?? packages/worker/src/api/workspace-tasks.ts\n?? packages/worker/src/lib/workspace-task-queue.test.ts\n?? packages/worker/src/lib/workspace-task-queue.ts\n?? packages/worker/src/lib/workspace-task-runner.test.ts\n?? packages/worker/src/lib/workspace-task-runner.ts\n",
+              "exit": 0,
+              "description": "Shows concise working tree status",
+              "truncated": false
+            },
+            "time": {
+              "start": 1772952269088,
+              "end": 1772952269116
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_038f275e36ad957e0169ad1acd059c819b9fc65404f4c20af4"
+            }
+          },
+          "id": "prt_ccc30b106001yCnRqoYn1LkCWS",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30a4c8001ly1IZtB42WQDr2"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff --staged && git diff",
+              "description": "Shows staged and unstaged diffs"
+            },
+            "output": "diff --git a/packages/worker/src/index.ts b/packages/worker/src/index.ts\nindex a4185ce..44df03e 100644\n--- a/packages/worker/src/index.ts\n+++ b/packages/worker/src/index.ts\n@@ -2,6 +2,12 @@ import { Sandbox } from '@cloudflare/sandbox';\n import { handleGetJob, handleListJobs } from './api/jobs.js';\n import { handleGetJobEvents } from './api/job-events.js';\n import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';\n+import {\n+  handleCancelWorkspaceTask,\n+  handleCreateWorkspaceTask,\n+  handleGetWorkspaceTask,\n+  handleGetWorkspaceTaskEvents,\n+} from './api/workspace-tasks.js';\n import {\n   handleCreateWorkspace,\n   handleCreateWorkspaceGithubFork,\n@@ -20,6 +26,8 @@ import {\n } from './api/workspaces.js';\n import { parseCheckpointJobQueueMessage } from './lib/checkpoint-queue.js';\n import { processCheckpointJob } from './lib/checkpoint-runner.js';\n+import { parseWorkspaceTaskQueueMessage } from './lib/workspace-task-queue.js';\n+import { processWorkspaceTask, shouldRetryWorkspaceTaskError } from './lib/workspace-task-runner.js';\n import type { Env } from './types.js';\n \n // Re-export Sandbox for Durable Object binding\n@@ -100,6 +108,34 @@ export default {\n       );\n     }\n \n+    // Route: POST /api/workspaces/:id/tasks - Queue agentic workspace task\n+    const workspaceTasksCreateMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks$/);\n+    if (workspaceTasksCreateMatch && request.method === 'POST') {\n+      return handleCreateWorkspaceTask(workspaceTasksCreateMatch[1], request, env, ctx);\n+    }\n+\n+    // Route: GET /api/workspaces/:id/tasks/:taskId - Poll workspace task status\n+    const workspaceTaskGetMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)$/);\n+    if (workspaceTaskGetMatch && request.method === 'GET') {\n+      return handleGetWorkspaceTask(workspaceTaskGetMatch[1], workspaceTaskGetMatch[2], env);\n+    }\n+\n+    // Route: GET /api/workspaces/:id/tasks/:taskId/events - Poll workspace task events\n+    const workspaceTaskEventsMatch = url.pathname.match(\n+      /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)\\/events$/\n+    );\n+    if (workspaceTaskEventsMatch && request.method === 'GET') {\n+      return handleGetWorkspaceTaskEvents(workspaceTaskEventsMatch[1], workspaceTaskEventsMatch[2], request, env);\n+    }\n+\n+    // Route: POST /api/workspaces/:id/tasks/:taskId/cancel - Request task cancellation\n+    const workspaceTaskCancelMatch = url.pathname.match(\n+      /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)\\/cancel$/\n+    );\n+    if (workspaceTaskCancelMatch && request.method === 'POST') {\n+      return handleCancelWorkspaceTask(workspaceTaskCancelMatch[1], workspaceTaskCancelMatch[2], env);\n+    }\n+\n     // Route: GET /api/workspaces/:id/files - List files for a path\n     const workspaceFilesMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/files$/);\n     if (workspaceFilesMatch && request.method === 'GET') {\n@@ -164,10 +200,26 @@ export default {\n \n   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {\n     for (const message of batch.messages) {\n-      let payload;\n+      const body = message.body as Record<string, unknown> | null;\n+      const type = typeof body?.type === 'string' ? body.type : '';\n+\n+      if (type === 'workspace_task_created') {\n+        try {\n+          const payload = parseWorkspaceTaskQueueMessage(message.body);\n+          await processWorkspaceTask(env, payload.workspaceId, payload.taskId);\n+        } catch (error) {\n+          const details = error instanceof Error ? error.message : String(error);\n+          console.error(`[workspace-task-queue] message handling failed: ${details}`);\n+          if (shouldRetryWorkspaceTaskError(error)) {\n+            message.retry();\n+          }\n+        }\n+        continue;\n+      }\n \n+      let checkpointPayload;\n       try {\n-        payload = parseCheckpointJobQueueMessage(message.body);\n+        checkpointPayload = parseCheckpointJobQueueMessage(message.body);\n       } catch (error) {\n         const details = error instanceof Error ? error.message : String(error);\n         console.error(`[checkpoint-queue] invalid message dropped: ${details}`);\n@@ -175,7 +227,7 @@ export default {\n       }\n \n       try {\n-        await processCheckpointJob(env, payload.jobId);\n+        await processCheckpointJob(env, checkpointPayload.jobId);\n       } catch (error) {\n         const details = error instanceof Error ? error.message : String(error);\n         console.error(`[checkpoint-queue] message handling failed: ${details}`);\ndiff --git a/packages/worker/src/lib/db.ts b/packages/worker/src/lib/db.ts\nindex b27723e..3837603 100644\n--- a/packages/worker/src/lib/db.ts\n+++ b/packages/worker/src/lib/db.ts\n@@ -15,6 +15,9 @@ import type {\n   WorkspaceArtifactResponse,\n   WorkspaceArtifactType,\n   WorkspaceArtifactStatus,\n+  WorkspaceTaskRecord,\n+  WorkspaceTaskResponse,\n+  WorkspaceTaskStatus,\n } from '../types.js';\n \n export interface CreateCheckpointJobInput {\n@@ -104,6 +107,35 @@ export interface CreateWorkspaceArtifactInput {\n   metadata?: Record<string, unknown>;\n }\n \n+export interface CreateWorkspaceTaskInput {\n+  id: string;\n+  workspaceId: string;\n+  prompt: string;\n+  provider: string;\n+  model: string;\n+  idempotencyKey: string;\n+  requestPayload: unknown;\n+  requestPayloadSha256: string;\n+  maxSteps: number;\n+  maxRetries: number;\n+  actorId?: string | null;\n+  toolPolicy?: Record<string, unknown>;\n+}\n+\n+export interface WorkspaceTaskEventRecord {\n+  seq: number;\n+  event_type: string;\n+  payload_json: string;\n+  created_at: string;\n+}\n+\n+export interface WorkspaceTaskEventItem {\n+  seq: number;\n+  eventType: string;\n+  payload: unknown;\n+  createdAt: string;\n+}\n+\n export class WorkspaceIdempotencyConflictError extends Error {\n   constructor(\n     public readonly key: string,\n@@ -114,6 +146,13 @@ export class WorkspaceIdempotencyConflictError extends Error {\n   }\n }\n \n+export class WorkspaceTaskIdempotencyConflictError extends Error {\n+  constructor(public readonly key: string) {\n+    super(`Task idempotency key conflict: ${key}`);\n+    this.name = 'WorkspaceTaskIdempotencyConflictError';\n+  }\n+}\n+\n function isUniqueConstraintError(error: unknown): boolean {\n   if (!(error instanceof Error)) {\n     return false;\n@@ -171,6 +210,10 @@ export function generateWorkspaceArtifactId(): string {\n   return generatePrefixedId('art');\n }\n \n+export function generateWorkspaceTaskId(): string {\n+  return generatePrefixedId('task');\n+}\n+\n /**\n  * Convert snake_case DB record to camelCase API response\n  */\n@@ -319,6 +362,41 @@ function toWorkspaceArtifactResponse(record: WorkspaceArtifactRecord): Workspace\n   };\n }\n \n+function toWorkspaceTaskResponse(record: WorkspaceTaskRecord): WorkspaceTaskResponse {\n+  const result = parseJsonOrFallback(record.result_json, undefined);\n+\n+  const response: WorkspaceTaskResponse = {\n+    id: record.id,\n+    workspaceId: record.workspace_id,\n+    status: record.status,\n+    prompt: record.prompt,\n+    provider: record.provider,\n+    model: record.model,\n+    idempotencyKey: record.idempotency_key,\n+    maxSteps: record.max_steps,\n+    maxRetries: record.max_retries,\n+    attemptCount: record.attempt_count,\n+    startedAt: record.started_at,\n+    finishedAt: record.finished_at,\n+    cancelRequestedAt: record.cancel_requested_at,\n+    createdAt: record.created_at,\n+    updatedAt: record.updated_at,\n+  };\n+\n+  if (result !== undefined) {\n+    response.result = result;\n+  }\n+\n+  if (record.error_code && record.error_message) {\n+    response.error = {\n+      code: record.error_code,\n+      message: record.error_message,\n+    };\n+  }\n+\n+  return response;\n+}\n+\n /**\n  * Create a new checkpoint job in the database\n  */\n@@ -1223,3 +1301,340 @@ export async function getWorkspaceArtifactById(\n     retentionExpiresAt: record.retention_expires_at,\n   };\n }\n+\n+export async function createWorkspaceTask(\n+  db: D1Database,\n+  input: CreateWorkspaceTaskInput\n+): Promise<{ task: WorkspaceTaskResponse; reused: boolean }> {\n+  const now = new Date().toISOString();\n+  const existingIdempotency = await db\n+    .prepare(\n+      `SELECT task_id, request_payload_sha256, expires_at\n+       FROM workspace_task_idempotency\n+       WHERE workspace_id = ? AND idempotency_key = ?\n+       LIMIT 1`\n+    )\n+    .bind(input.workspaceId, input.idempotencyKey)\n+    .first<{ task_id: string; request_payload_sha256: string; expires_at: string }>();\n+\n+  if (existingIdempotency && existingIdempotency.expires_at > now) {\n+    if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {\n+      throw new WorkspaceTaskIdempotencyConflictError(input.idempotencyKey);\n+    }\n+\n+    const existingTask = await getWorkspaceTask(db, input.workspaceId, existingIdempotency.task_id);\n+    if (!existingTask) {\n+      throw new Error(`Idempotency record references missing task ${existingIdempotency.task_id}`);\n+    }\n+\n+    return { task: existingTask, reused: true };\n+  }\n+\n+  if (existingIdempotency && existingIdempotency.expires_at <= now) {\n+    await db\n+      .prepare('DELETE FROM workspace_task_idempotency WHERE workspace_id = ? AND idempotency_key = ?')\n+      .bind(input.workspaceId, input.idempotencyKey)\n+      .run();\n+  }\n+\n+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();\n+  const taskRecord = await db\n+    .prepare(\n+      `INSERT INTO workspace_tasks (\n+         id,\n+         workspace_id,\n+         status,\n+         prompt,\n+         provider,\n+         model,\n+         idempotency_key,\n+         request_payload_json,\n+         request_payload_sha256,\n+         max_steps,\n+         max_retries,\n+         actor_id,\n+         tool_policy_json\n+       )\n+       VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n+       RETURNING *`\n+    )\n+    .bind(\n+      input.id,\n+      input.workspaceId,\n+      input.prompt,\n+      input.provider,\n+      input.model,\n+      input.idempotencyKey,\n+      JSON.stringify(input.requestPayload ?? {}),\n+      input.requestPayloadSha256,\n+      input.maxSteps,\n+      input.maxRetries,\n+      input.actorId ?? null,\n+      JSON.stringify(input.toolPolicy ?? {})\n+    )\n+    .first<WorkspaceTaskRecord>();\n+\n+  if (!taskRecord) {\n+    throw new Error('Failed to create workspace task');\n+  }\n+\n+  try {\n+    await db\n+      .prepare(\n+        `INSERT INTO workspace_task_idempotency (\n+           id,\n+           workspace_id,\n+           idempotency_key,\n+           task_id,\n+           request_payload_sha256,\n+           expires_at\n+         )\n+         VALUES (?, ?, ?, ?, ?, ?)`\n+      )\n+      .bind(\n+        generatePrefixedId('wtsk'),\n+        input.workspaceId,\n+        input.idempotencyKey,\n+        input.id,\n+        input.requestPayloadSha256,\n+        expiresAt\n+      )\n+      .run();\n+  } catch (error) {\n+    if (!isUniqueConstraintError(error)) {\n+      await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+      throw error;\n+    }\n+\n+    const concurrent = await db\n+      .prepare(\n+        `SELECT task_id, request_payload_sha256, expires_at\n+         FROM workspace_task_idempotency\n+         WHERE workspace_id = ? AND idempotency_key = ?\n+         LIMIT 1`\n+      )\n+      .bind(input.workspaceId, input.idempotencyKey)\n+      .first<{ task_id: string; request_payload_sha256: string; expires_at: string }>();\n+\n+    if (!concurrent || concurrent.expires_at <= now) {\n+      await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+      throw new Error('Task idempotency race detected but winner record is unavailable');\n+    }\n+\n+    if (concurrent.request_payload_sha256 !== input.requestPayloadSha256) {\n+      await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+      throw new WorkspaceTaskIdempotencyConflictError(input.idempotencyKey);\n+    }\n+\n+    const existingTask = await getWorkspaceTask(db, input.workspaceId, concurrent.task_id);\n+    if (!existingTask) {\n+      await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+      throw new Error(`Idempotency record references missing task ${concurrent.task_id}`);\n+    }\n+\n+    await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+    return { task: existingTask, reused: true };\n+  }\n+\n+  return { task: toWorkspaceTaskResponse(taskRecord), reused: false };\n+}\n+\n+export async function getWorkspaceTask(\n+  db: D1Database,\n+  workspaceId: string,\n+  taskId: string\n+): Promise<WorkspaceTaskResponse | null> {\n+  const record = await db\n+    .prepare('SELECT * FROM workspace_tasks WHERE id = ? AND workspace_id = ?')\n+    .bind(taskId, workspaceId)\n+    .first<WorkspaceTaskRecord>();\n+\n+  if (!record) {\n+    return null;\n+  }\n+\n+  return toWorkspaceTaskResponse(record);\n+}\n+\n+export async function getWorkspaceTaskRequestPayload(\n+  db: D1Database,\n+  taskId: string\n+): Promise<Record<string, unknown> | null> {\n+  const record = await db\n+    .prepare('SELECT request_payload_json FROM workspace_tasks WHERE id = ?')\n+    .bind(taskId)\n+    .first<{ request_payload_json: string }>();\n+\n+  if (!record) {\n+    return null;\n+  }\n+\n+  try {\n+    const parsed = JSON.parse(record.request_payload_json) as unknown;\n+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n+      return {};\n+    }\n+    return parsed as Record<string, unknown>;\n+  } catch {\n+    return {};\n+  }\n+}\n+\n+export async function claimWorkspaceTaskForExecution(\n+  db: D1Database,\n+  workspaceId: string,\n+  taskId: string\n+): Promise<boolean> {\n+  const now = new Date().toISOString();\n+  const result = await db\n+    .prepare(\n+      `UPDATE workspace_tasks\n+       SET status = 'running',\n+           started_at = COALESCE(started_at, ?),\n+           attempt_count = attempt_count + 1,\n+           updated_at = ?\n+       WHERE id = ? AND workspace_id = ? AND status = 'queued' AND cancel_requested_at IS NULL`\n+    )\n+    .bind(now, now, taskId, workspaceId)\n+    .run();\n+\n+  return (result.meta?.changes ?? 0) > 0;\n+}\n+\n+export async function updateWorkspaceTaskStatus(\n+  db: D1Database,\n+  taskId: string,\n+  status: WorkspaceTaskStatus,\n+  options?: {\n+    result?: unknown;\n+    errorCode?: string | null;\n+    errorMessage?: string | null;\n+    startedAt?: string | null;\n+    finishedAt?: string | null;\n+  }\n+): Promise<void> {\n+  const updates: string[] = ['status = ?', 'updated_at = ?'];\n+  const values: Array<string | null> = [status, new Date().toISOString()];\n+\n+  if (options?.startedAt !== undefined) {\n+    updates.push('started_at = ?');\n+    values.push(options.startedAt);\n+  }\n+\n+  if (options?.finishedAt !== undefined) {\n+    updates.push('finished_at = ?');\n+    values.push(options.finishedAt);\n+  }\n+\n+  if (options?.result !== undefined) {\n+    updates.push('result_json = ?');\n+    values.push(JSON.stringify(options.result));\n+  }\n+\n+  if (options?.errorCode !== undefined) {\n+    updates.push('error_code = ?');\n+    values.push(options.errorCode);\n+  }\n+\n+  if (options?.errorMessage !== undefined) {\n+    updates.push('error_message = ?');\n+    values.push(options.errorMessage);\n+  }\n+\n+  if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {\n+    updates.push('finished_at = COALESCE(finished_at, ?)');\n+    values.push(new Date().toISOString());\n+  }\n+\n+  values.push(taskId);\n+\n+  await db\n+    .prepare(`UPDATE workspace_tasks SET ${updates.join(', ')} WHERE id = ?`)\n+    .bind(...values)\n+    .run();\n+}\n+\n+export async function requestWorkspaceTaskCancel(\n+  db: D1Database,\n+  workspaceId: string,\n+  taskId: string\n+): Promise<WorkspaceTaskResponse | null> {\n+  const now = new Date().toISOString();\n+  await db\n+    .prepare(\n+      `UPDATE workspace_tasks\n+       SET cancel_requested_at = COALESCE(cancel_requested_at, ?),\n+           updated_at = ?\n+       WHERE id = ? AND workspace_id = ? AND status IN ('queued', 'running')`\n+    )\n+    .bind(now, now, taskId, workspaceId)\n+    .run();\n+\n+  return getWorkspaceTask(db, workspaceId, taskId);\n+}\n+\n+export async function appendWorkspaceTaskEvent(\n+  db: D1Database,\n+  input: {\n+    workspaceId: string;\n+    taskId: string;\n+    eventType: string;\n+    payload: unknown;\n+  }\n+): Promise<number> {\n+  const seqResult = await db\n+    .prepare('UPDATE workspace_tasks SET last_event_seq = last_event_seq + 1 WHERE id = ? RETURNING last_event_seq')\n+    .bind(input.taskId)\n+    .first<{ last_event_seq: number }>();\n+\n+  if (!seqResult) {\n+    throw new Error(`Failed to allocate event sequence for workspace task ${input.taskId}`);\n+  }\n+\n+  const seq = Number(seqResult.last_event_seq);\n+\n+  await db\n+    .prepare(\n+      `INSERT INTO workspace_task_events (workspace_id, task_id, seq, event_type, payload_json)\n+       VALUES (?, ?, ?, ?, ?)`\n+    )\n+    .bind(input.workspaceId, input.taskId, seq, input.eventType, JSON.stringify(input.payload))\n+    .run();\n+\n+  return seq;\n+}\n+\n+export async function listWorkspaceTaskEvents(\n+  db: D1Database,\n+  workspaceId: string,\n+  taskId: string,\n+  fromExclusive = 0,\n+  limit = 500\n+): Promise<WorkspaceTaskEventItem[]> {\n+  const result = await db\n+    .prepare(\n+      `SELECT seq, event_type, payload_json, created_at\n+       FROM workspace_task_events\n+       WHERE workspace_id = ? AND task_id = ? AND seq > ?\n+       ORDER BY seq ASC\n+       LIMIT ?`\n+    )\n+    .bind(workspaceId, taskId, fromExclusive, limit)\n+    .all<WorkspaceTaskEventRecord>();\n+\n+  return result.results.map((row) => {\n+    let payload: unknown;\n+    try {\n+      payload = JSON.parse(row.payload_json);\n+    } catch {\n+      payload = { raw: row.payload_json };\n+    }\n+\n+    return {\n+      seq: row.seq,\n+      eventType: row.event_type,\n+      payload,\n+      createdAt: row.created_at,\n+    };\n+  });\n+}\ndiff --git a/packages/worker/src/lib/db.workspace.test.ts b/packages/worker/src/lib/db.workspace.test.ts\nindex 28ef79a..ab46b89 100644\n--- a/packages/worker/src/lib/db.workspace.test.ts\n+++ b/packages/worker/src/lib/db.workspace.test.ts\n@@ -1,14 +1,19 @@\n import { strict as assert } from 'assert';\n import {\n   appendWorkspaceEvent,\n+  appendWorkspaceTaskEvent,\n   createWorkspaceArtifact,\n   createWorkspaceOperation,\n+  createWorkspaceTask,\n   createWorkspace,\n+  getWorkspaceTask,\n   getWorkspaceOperation,\n   listWorkspaceEvents,\n   listWorkspaceArtifacts,\n+  listWorkspaceTaskEvents,\n   markWorkspaceDeleted,\n   markWorkspaceReady,\n+  requestWorkspaceTaskCancel,\n   WorkspaceIdempotencyConflictError,\n } from './db.js';\n \n@@ -424,4 +429,212 @@ export async function runWorkspaceDbTests(): Promise<void> {\n     assert.equal(artifacts.length, 1);\n     assert.equal(artifacts[0].id, 'art_abc');\n   }\n+\n+  {\n+    const db = {\n+      prepare(sql: string) {\n+        if (/SELECT task_id, request_payload_sha256, expires_at/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async first<T>() {\n+                  return null as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/INSERT INTO workspace_tasks/i.test(sql)) {\n+          return {\n+            bind(...values: unknown[]) {\n+              return {\n+                async first<T>() {\n+                  return {\n+                    id: values[0],\n+                    workspace_id: values[1],\n+                    status: 'queued',\n+                    prompt: values[2],\n+                    provider: values[3],\n+                    model: values[4],\n+                    idempotency_key: values[5],\n+                    request_payload_json: values[6],\n+                    request_payload_sha256: values[7],\n+                    max_steps: values[8],\n+                    max_retries: values[9],\n+                    attempt_count: 0,\n+                    actor_id: null,\n+                    tool_policy_json: values[11],\n+                    last_event_seq: 0,\n+                    started_at: null,\n+                    finished_at: null,\n+                    cancel_requested_at: null,\n+                    result_json: null,\n+                    error_code: null,\n+                    error_message: null,\n+                    created_at: '2026-03-08T00:00:00.000Z',\n+                    updated_at: '2026-03-08T00:00:00.000Z',\n+                  } as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/INSERT INTO workspace_task_idempotency/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async run() {\n+                  return { success: true, meta: { changes: 1 } };\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/SELECT \\* FROM workspace_tasks WHERE id = \\? AND workspace_id = \\?/i.test(sql)) {\n+          return {\n+            bind(taskId: string, workspaceId: string) {\n+              return {\n+                async first<T>() {\n+                  return {\n+                    id: taskId,\n+                    workspace_id: workspaceId,\n+                    status: 'queued',\n+                    prompt: 'Do work',\n+                    provider: 'scripted',\n+                    model: 'test',\n+                    idempotency_key: 'idem-task',\n+                    request_payload_json: '{}',\n+                    request_payload_sha256: 'hash',\n+                    max_steps: 12,\n+                    max_retries: 2,\n+                    attempt_count: 0,\n+                    actor_id: null,\n+                    tool_policy_json: '{}',\n+                    last_event_seq: 0,\n+                    started_at: null,\n+                    finished_at: null,\n+                    cancel_requested_at: null,\n+                    result_json: null,\n+                    error_code: null,\n+                    error_message: null,\n+                    created_at: '2026-03-08T00:00:00.000Z',\n+                    updated_at: '2026-03-08T00:00:00.000Z',\n+                  } as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/UPDATE workspace_tasks\\s+SET cancel_requested_at = COALESCE/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async run() {\n+                  return { success: true, meta: { changes: 1 } };\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/UPDATE workspace_tasks SET last_event_seq = last_event_seq \\+ 1/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async first<T>() {\n+                  return { last_event_seq: 2 } as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/INSERT INTO workspace_task_events/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async run() {\n+                  return { success: true, meta: { changes: 1 } };\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/SELECT seq, event_type, payload_json, created_at\\s+FROM workspace_task_events/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async all<T>() {\n+                  return {\n+                    results: [\n+                      {\n+                        seq: 1,\n+                        event_type: 'task_created',\n+                        payload_json: '{\"ok\":true}',\n+                        created_at: '2026-03-08T00:00:00.000Z',\n+                      },\n+                    ],\n+                  } as unknown as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        return {\n+          bind() {\n+            return {\n+              async first() {\n+                return null;\n+              },\n+              async run() {\n+                return { success: true, meta: { changes: 1 } };\n+              },\n+            };\n+          },\n+        };\n+      },\n+    } as unknown as D1Database;\n+\n+    const created = await createWorkspaceTask(db, {\n+      id: 'task_abcd1234',\n+      workspaceId: 'ws_abc12345',\n+      prompt: 'Do work',\n+      provider: 'scripted',\n+      model: 'test',\n+      idempotencyKey: 'idem-task',\n+      requestPayload: {},\n+      requestPayloadSha256: 'hash',\n+      maxSteps: 12,\n+      maxRetries: 2,\n+    });\n+\n+    assert.equal(created.reused, false);\n+    assert.equal(created.task.id, 'task_abcd1234');\n+\n+    const task = await getWorkspaceTask(db, 'ws_abc12345', 'task_abcd1234');\n+    assert.ok(task);\n+    assert.equal(task?.workspaceId, 'ws_abc12345');\n+\n+    const cancelled = await requestWorkspaceTaskCancel(db, 'ws_abc12345', 'task_abcd1234');\n+    assert.ok(cancelled);\n+    assert.equal(cancelled?.id, 'task_abcd1234');\n+\n+    const seq = await appendWorkspaceTaskEvent(db, {\n+      workspaceId: 'ws_abc12345',\n+      taskId: 'task_abcd1234',\n+      eventType: 'task_created',\n+      payload: { ok: true },\n+    });\n+    assert.equal(seq, 2);\n+\n+    const events = await listWorkspaceTaskEvents(db, 'ws_abc12345', 'task_abcd1234');\n+    assert.equal(events.length, 1);\n+    assert.equal(events[0].eventType, 'task_created');\n+  }\n }\ndiff --git a/packages/worker/src/lib/flags.ts b/packages/worker/src/lib/flags.ts\nindex 043213f..f73b6f3 100644\n--- a/packages/worker/src/lib/flags.ts\n+++ b/packages/worker/src/lib/flags.ts\n@@ -19,6 +19,7 @@ export const DEFAULT_RUNTIME_FLAGS: RuntimeFlags = {\n   autoInstallScriptsFallback: true,\n   rawRetentionDays: 30,\n   summaryRetentionDays: 180,\n+  workspaceAgentRuntimeEnabled: false,\n };\n \n function parseBoolean(value: string | undefined, fallback: boolean): boolean {\n@@ -117,6 +118,10 @@ export function getRuntimeFlagsFromEnv(env: Env): RuntimeFlags {\n       DEFAULT_RUNTIME_FLAGS.summaryRetentionDays,\n       { min: 1 }\n     ),\n+    workspaceAgentRuntimeEnabled: parseBoolean(\n+      env.WORKSPACE_AGENT_RUNTIME_ENABLED,\n+      DEFAULT_RUNTIME_FLAGS.workspaceAgentRuntimeEnabled\n+    ),\n   };\n \n   return normalizeRuntimeFlags(resolved);\n@@ -178,6 +183,9 @@ export function mergeRuntimeFlagOverrides(\n       case 'summary_retention_days':\n         merged.summaryRetentionDays = parseInteger(row.value, merged.summaryRetentionDays, { min: 1 });\n         break;\n+      case 'workspace_agent_runtime_enabled':\n+        merged.workspaceAgentRuntimeEnabled = parseBoolean(row.value, merged.workspaceAgentRuntimeEnabled);\n+        break;\n       default:\n         break;\n     }\ndiff --git a/packages/worker/src/lib/run-tests.ts b/packages/worker/src/lib/run-tests.ts\nindex d66692b..564534a 100644\n--- a/packages/worker/src/lib/run-tests.ts\n+++ b/packages/worker/src/lib/run-tests.ts\n@@ -9,6 +9,9 @@ import { runCheckpointRunnerTests } from './checkpoint-runner.test.js';\n import { runDbEventsTests } from './db.events.test.js';\n import { runWorkspaceDbTests } from './db.workspace.test.js';\n import { runWorkspaceApiTests } from '../api/workspaces.test.js';\n+import { runWorkspaceTaskApiTests } from '../api/workspace-tasks.test.js';\n+import { runWorkspaceTaskQueueTests } from './workspace-task-queue.test.js';\n+import { runWorkspaceTaskRunnerTests } from './workspace-task-runner.test.js';\n \n type TestCase = {\n   name: string;\n@@ -24,6 +27,9 @@ const TEST_CASES: TestCase[] = [\n   { name: 'db-events', run: runDbEventsTests },\n   { name: 'workspace-db', run: runWorkspaceDbTests },\n   { name: 'workspace-api', run: runWorkspaceApiTests },\n+  { name: 'workspace-task-queue', run: runWorkspaceTaskQueueTests },\n+  { name: 'workspace-task-runner', run: runWorkspaceTaskRunnerTests },\n+  { name: 'workspace-task-api', run: runWorkspaceTaskApiTests },\n   { name: 'job-events-api', run: runJobEventsApiTests },\n   { name: 'checkpoint-db', run: runCheckpointDbTests },\n   { name: 'checkpoint-jobs-api', run: runCheckpointJobsApiTests },\ndiff --git a/packages/worker/src/types.ts b/packages/worker/src/types.ts\nindex 5c925dc..6eccb21 100644\n--- a/packages/worker/src/types.ts\n+++ b/packages/worker/src/types.ts\n@@ -22,6 +22,10 @@ export interface Env {\n   AUTO_INSTALL_SCRIPTS_FALLBACK?: string;\n   RAW_RETENTION_DAYS?: string;\n   SUMMARY_RETENTION_DAYS?: string;\n+  WORKSPACE_AGENT_RUNTIME_ENABLED?: string;\n+  WORKSPACE_AGENT_MAX_RETRIES?: string;\n+  WORKSPACE_AGENT_MAX_STEPS?: string;\n+  WORKSPACE_AGENT_TIMEOUT_MS?: string;\n \n   GITHUB_APP_ID?: string;\n   GITHUB_APP_PRIVATE_KEY?: string;\n@@ -30,6 +34,13 @@ export interface Env {\n   GITHUB_FORK_ALLOWED_ORGS?: string;\n   BLOCK_ON_SECRET_MATCH?: string;\n   WORKSPACE_ARTIFACT_DOWNLOAD_SECRET?: string;\n+\n+  WORKSPACE_TASKS_QUEUE?: Queue;\n+\n+  AGENT_PROVIDER?: string;\n+  AGENT_MODEL?: string;\n+  AGENT_SDK_URL?: string;\n+  AGENT_SDK_AUTH_TOKEN?: string;\n }\n \n // Job status type\n@@ -141,6 +152,7 @@ export interface RuntimeFlags {\n   autoInstallScriptsFallback: boolean;\n   rawRetentionDays: number;\n   summaryRetentionDays: number;\n+  workspaceAgentRuntimeEnabled: boolean;\n }\n \n export type WorkspaceStatus = 'creating' | 'ready' | 'failed' | 'deleted';\n@@ -280,3 +292,58 @@ export interface WorkspaceArtifactResponse {\n   warnings: unknown[];\n   metadata: unknown;\n }\n+\n+export type WorkspaceTaskStatus =\n+  | 'queued'\n+  | 'running'\n+  | 'succeeded'\n+  | 'failed'\n+  | 'cancelled';\n+\n+export interface WorkspaceTaskRecord {\n+  id: string;\n+  workspace_id: string;\n+  status: WorkspaceTaskStatus;\n+  prompt: string;\n+  provider: string;\n+  model: string;\n+  idempotency_key: string;\n+  request_payload_json: string;\n+  request_payload_sha256: string;\n+  max_steps: number;\n+  max_retries: number;\n+  attempt_count: number;\n+  actor_id: string | null;\n+  tool_policy_json: string;\n+  started_at: string | null;\n+  finished_at: string | null;\n+  cancel_requested_at: string | null;\n+  result_json: string | null;\n+  error_code: string | null;\n+  error_message: string | null;\n+  created_at: string;\n+  updated_at: string;\n+}\n+\n+export interface WorkspaceTaskResponse {\n+  id: string;\n+  workspaceId: string;\n+  status: WorkspaceTaskStatus;\n+  prompt: string;\n+  provider: string;\n+  model: string;\n+  idempotencyKey: string;\n+  maxSteps: number;\n+  maxRetries: number;\n+  attemptCount: number;\n+  startedAt: string | null;\n+  finishedAt: string | null;\n+  cancelRequestedAt: string | null;\n+  createdAt: string;\n+  updatedAt: string;\n+  result?: unknown;\n+  error?: {\n+    code: string;\n+    message: string;\n+  };\n+}\ndiff --git a/packages/worker/wrangler.toml b/packages/worker/wrangler.toml\nindex 4208b44..3659c7c 100644\n--- a/packages/worker/wrangler.toml\n+++ b/packages/worker/wrangler.toml\n@@ -21,6 +21,12 @@ SAFE_INSTALL_IGNORE_SCRIPTS = \"true\"\n AUTO_INSTALL_SCRIPTS_FALLBACK = \"true\"\n RAW_RETENTION_DAYS = \"30\"\n SUMMARY_RETENTION_DAYS = \"180\"\n+WORKSPACE_AGENT_RUNTIME_ENABLED = \"false\"\n+WORKSPACE_AGENT_MAX_RETRIES = \"2\"\n+WORKSPACE_AGENT_MAX_STEPS = \"24\"\n+WORKSPACE_AGENT_TIMEOUT_MS = \"900000\"\n+AGENT_PROVIDER = \"cloudflare_agents_sdk\"\n+AGENT_MODEL = \"claude-3-7-sonnet\"\n \n # D1 Database for job persistence\n [[d1_databases]]\n@@ -37,11 +43,20 @@ preview_bucket_name = \"nimbus-source-bundles-preview\"\n binding = \"CHECKPOINT_JOBS_QUEUE\"\n queue = \"nimbus-checkpoint-jobs\"\n \n+[[queues.producers]]\n+binding = \"WORKSPACE_TASKS_QUEUE\"\n+queue = \"nimbus-workspace-tasks\"\n+\n [[queues.consumers]]\n queue = \"nimbus-checkpoint-jobs\"\n max_batch_size = 5\n max_batch_timeout = 3\n \n+[[queues.consumers]]\n+queue = \"nimbus-workspace-tasks\"\n+max_batch_size = 5\n+max_batch_timeout = 3\n+\n # Sandbox container configuration\n # Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)\n [[containers]]\ndiff --git a/specs/phases/04-agentic-runtime.md b/specs/phases/04-agentic-runtime.md\nindex c3a3aa0..4b46a4e 100644\n--- a/specs/phases/04-agentic-runtime.md\n+++ b/specs/phases/04-agentic-runtime.md\n@@ -1,65 +1,241 @@\n # Phase 4: Agentic Runtime\n \n ## Objective\n-Enable autonomous or guided agent tasks to modify workspace code safely and observably.\n+Enable fully autonomous agent tasks that can modify workspace code with durable execution, strong policy guardrails, and complete event observability.\n+\n+## Product decisions (final)\n+1. **Autonomy level:** full autonomy (no human approval checkpoints in-run).\n+2. **Provider/model strategy:** model/provider is switchable per task and via env defaults; Cloudflare Agent SDK is the primary provider integration path.\n+3. **Retry policy:** retry only transient failures, max 2 retries by default (3 total attempts), idempotent queue/claim semantics.\n \n ## In scope\n-- Agent task model and queue/workflow execution.\n-- Tool surface for agent actions against workspace.\n-- Streaming task events and durable task logs.\n-- Guardrails for command/file operations.\n+- Workspace task model and queue-backed execution loop.\n+- Task tool contract for controlled file/command operations.\n+- Durable task event log with sequenced events.\n+- Cancellation and idempotency.\n+- Runtime policy enforcement (commands, paths, output limits, time/step limits).\n \n ## Out of scope\n-- Full generalized multi-agent marketplace.\n-- Unbounded shell access.\n-- Human approval UX beyond minimal endpoint hooks.\n+- Multi-agent orchestration/marketplace.\n+- Unbounded shell or network tool access.\n+- Rich human approval UX beyond cancel endpoint.\n \n ## User stories\n-1. As a developer, I can ask an agent to apply changes in my workspace.\n-2. As a developer, I can watch progress and inspect outputs/errors.\n-3. As a developer, I can review resulting diff before export/fork.\n+1. As a developer, I can create an autonomous task that edits workspace code.\n+2. As a developer, I can poll task status and stream task events.\n+3. As a developer, I can cancel a task and leave workspace state coherent.\n+4. As a developer, I can inspect task-produced diff output before export/fork.\n \n ## Deliverables\n-- D1 schema additions:\n-  - `workspace_tasks`\n-  - `workspace_task_events`\n-- Worker APIs:\n-  - `POST /api/workspaces/:id/tasks`\n-  - `GET /api/workspaces/:id/tasks/:taskId`\n-  - `GET /api/workspaces/:id/tasks/:taskId/events`\n-  - `POST /api/workspaces/:id/tasks/:taskId/cancel`\n-- Agent execution runtime:\n-  - queue-backed runner and retry policy\n-  - optional Workflows integration for durable multi-step runs\n-- Tooling contract:\n-  - read/write/list files\n-  - run constrained commands\n-  - request diff summary\n+\n+### D1. Schema additions\n+- `workspace_tasks`\n+- `workspace_task_events`\n+- `workspace_task_idempotency`\n+\n+### D2. Worker APIs\n+- `POST /api/workspaces/:id/tasks`\n+- `GET /api/workspaces/:id/tasks/:taskId`\n+- `GET /api/workspaces/:id/tasks/:taskId/events`\n+- `POST /api/workspaces/:id/tasks/:taskId/cancel`\n+\n+### D3. Runtime\n+- Queue message contract for task execution.\n+- Autonomous step loop with tool execution and terminal result.\n+- Retry classification and requeue behavior.\n+\n+### D4. Tooling contract\n+- `list_files`\n+- `read_file`\n+- `write_file`\n+- `run_command` (allowlisted + denylisted)\n+- `diff_summary`\n+\n+## API contract\n+\n+### POST `/api/workspaces/:id/tasks`\n+Headers:\n+- `Idempotency-Key` (required)\n+\n+Request body:\n+```json\n+{\n+  \"prompt\": \"Refactor auth middleware to handle missing tokens\",\n+  \"provider\": \"cloudflare_agents_sdk\",\n+  \"model\": \"claude-3-7-sonnet\",\n+  \"maxSteps\": 24,\n+  \"maxRetries\": 2\n+}\n+```\n+\n+Response `202` (new):\n+```json\n+{\n+  \"task\": {\n+    \"id\": \"task_ab12cd34\",\n+    \"workspaceId\": \"ws_1234abcd\",\n+    \"status\": \"queued\",\n+    \"prompt\": \"Refactor auth middleware to handle missing tokens\",\n+    \"provider\": \"cloudflare_agents_sdk\",\n+    \"model\": \"claude-3-7-sonnet\",\n+    \"idempotencyKey\": \"task-req-001\",\n+    \"maxSteps\": 24,\n+    \"maxRetries\": 2,\n+    \"attemptCount\": 0,\n+    \"startedAt\": null,\n+    \"finishedAt\": null,\n+    \"cancelRequestedAt\": null,\n+    \"createdAt\": \"2026-03-08T12:00:00.000Z\",\n+    \"updatedAt\": \"2026-03-08T12:00:00.000Z\"\n+  }\n+}\n+```\n+\n+Response `200` (idempotent replay): same shape with existing task.\n+\n+Errors:\n+- `400` missing/invalid request\n+- `403` runtime disabled (`workspace_agent_runtime_disabled`)\n+- `404` workspace missing\n+- `409` workspace not ready or idempotency payload conflict\n+\n+### GET `/api/workspaces/:id/tasks/:taskId`\n+Response `200`:\n+```json\n+{\n+  \"task\": {\n+    \"id\": \"task_ab12cd34\",\n+    \"status\": \"succeeded\",\n+    \"result\": {\n+      \"summary\": \"Updated middleware and tests\",\n+      \"stepsExecuted\": 7\n+    }\n+  }\n+}\n+```\n+\n+### GET `/api/workspaces/:id/tasks/:taskId/events?from=0&limit=500`\n+Response `200`:\n+```json\n+{\n+  \"taskId\": \"task_ab12cd34\",\n+  \"events\": [\n+    {\n+      \"seq\": 1,\n+      \"eventType\": \"task_created\",\n+      \"payload\": {\"provider\": \"cloudflare_agents_sdk\"},\n+      \"createdAt\": \"2026-03-08T12:00:00.000Z\"\n+    }\n+  ]\n+}\n+```\n+\n+### POST `/api/workspaces/:id/tasks/:taskId/cancel`\n+Response `202`:\n+```json\n+{\n+  \"task\": {\n+    \"id\": \"task_ab12cd34\",\n+    \"status\": \"running\",\n+    \"cancelRequestedAt\": \"2026-03-08T12:01:00.000Z\"\n+  }\n+}\n+```\n+\n+## Data model\n+\n+### `workspace_tasks`\n+- identity: `id`, `workspace_id`\n+- request: `prompt`, `provider`, `model`, `idempotency_key`, payload hash/json\n+- execution: `status`, `max_steps`, `max_retries`, `attempt_count`, `started_at`, `finished_at`, `cancel_requested_at`\n+- result: `result_json`, `error_code`, `error_message`\n+- observability: `last_event_seq`, timestamps\n+\n+### `workspace_task_events`\n+- sequenced event log (`task_id`, `seq`, `event_type`, `payload_json`, `created_at`)\n+\n+### `workspace_task_idempotency`\n+- dedupe record (`workspace_id`, `idempotency_key`) with `request_payload_sha256`, `task_id`, and 24h `expires_at`\n+\n+## Runtime architecture\n+\n+1. `POST /tasks` creates queued task row + idempotency row.\n+2. API enqueues `workspace_task_created` message.\n+3. Queue consumer claims task atomically (`queued -> running`, increments attempt).\n+4. Runner executes autonomous step loop until:\n+   - `succeeded` with final summary,\n+   - `failed` on permanent/policy errors,\n+   - `cancelled` when cancel requested,\n+   - retried on transient failure and under retry cap.\n+5. Every significant transition emits a durable task event.\n+\n+## Retry policy (recommended)\n+\n+- **Transient retryable classes:** sandbox timeout/temporary unavailability, provider network failures, HTTP 5xx from provider endpoint.\n+- **Permanent failures:** invalid prompt payload, policy violations, invalid tool action, max-steps exceeded.\n+- **Default limits:** `maxRetries = 2` (3 total attempts including first).\n+- **State behavior:** on retry, task returns to `queued` with `error_code=retry_scheduled`; queue message is retried.\n+- **No duplicate side effects:** claim-by-status CAS ensures single active execution at a time.\n \n ## Safety and policy\n-- Explicit allowlist for commands.\n-- Denylist for high-risk operations.\n-- Path sandboxing under workspace root.\n-- Secret-aware output filtering.\n-- Hard limits on runtime, memory, and output volume.\n+\n+- Command allowlist + explicit deny patterns for high-risk operations.\n+- Path confinement to `/workspace` with traversal protection.\n+- `.git` treated as protected path for file tools.\n+- Output truncation and command timeout caps.\n+- Error sanitization for secret/token-like patterns.\n+- Hard stop on `maxSteps`.\n+\n+## Cloudflare Agent SDK provider switching\n+\n+Nimbus treats provider/model selection as task-configurable and environment-configurable:\n+\n+- Request-level: `provider`, `model`\n+- Env defaults:\n+  - `AGENT_PROVIDER`\n+  - `AGENT_MODEL`\n+\n+Cloudflare Agent SDK integration uses:\n+- `provider = cloudflare_agents_sdk`\n+- `AGENT_SDK_URL` (required endpoint)\n+- optional `AGENT_SDK_AUTH_TOKEN`\n+\n+The runtime sends step context (prompt/model/history/step counters) and expects an action envelope back (`tool` action or `final` result). This keeps provider switching isolated from tool/policy code.\n+\n+## Feature flag and config\n+\n+- Runtime gate: `workspace_agent_runtime_enabled`\n+  - Env: `WORKSPACE_AGENT_RUNTIME_ENABLED`\n+  - Runtime override key: `workspace_agent_runtime_enabled`\n+- Additional env controls:\n+  - `WORKSPACE_AGENT_MAX_RETRIES`\n+  - `WORKSPACE_AGENT_MAX_STEPS`\n+  - `WORKSPACE_AGENT_TIMEOUT_MS`\n \n ## Acceptance criteria\n-- Agent task can complete successful code edits with event trace.\n-- Cancellation works and leaves workspace in coherent state.\n-- Policy violations are blocked with clear error codes.\n-- Re-running same idempotent task key does not duplicate side effects.\n+\n+- Autonomous task can perform file edits and reach terminal `succeeded` with event trace.\n+- Cancellation request transitions running/queued tasks to coherent terminal behavior.\n+- Policy violations are blocked with explicit error codes.\n+- Idempotent re-run with same key+payload returns existing task without duplicate side effects.\n \n ## Test plan\n-- Unit: policy enforcement and tool argument validation.\n-- Integration: task create -> run -> diff produced.\n-- Integration: task cancel path and cleanup behavior.\n-- Chaos/failure tests: transient sandbox failures and retry behavior.\n+\n+- Unit:\n+  - queue payload parsing/validation\n+  - retry classification function\n+  - policy checks (command/path)\n+- Integration-style worker tests:\n+  - create -> run -> success with events\n+  - create missing idempotency -> 400\n+  - get events pagination inputs\n+  - cancel request path\n+  - idempotent create replay behavior\n \n ## Rollout\n-- Feature flag: `workspace_agent_runtime_enabled`.\n-- Begin with internal models/prompts and curated tool policy.\n \n-## Interview focus for this phase\n-- Agent autonomy level (fully autonomous vs approval checkpoints).\n-- Model/provider choices per task type.\n-- Retry/idempotency policy and failure classification.\n+1. Ship dark (`workspace_agent_runtime_enabled=false`).\n+2. Enable in internal environments with `provider=scripted` first.\n+3. Enable Cloudflare Agent SDK provider in staging (`cloudflare_agents_sdk`).\n+4. Validate event quality, retries, and cancellation behavior.\n+5. Gradually expand to production workspaces.\n",
+            "title": "Shows staged and unstaged diffs",
+            "metadata": {
+              "output": "diff --git a/packages/worker/src/index.ts b/packages/worker/src/index.ts\nindex a4185ce..44df03e 100644\n--- a/packages/worker/src/index.ts\n+++ b/packages/worker/src/index.ts\n@@ -2,6 +2,12 @@ import { Sandbox } from '@cloudflare/sandbox';\n import { handleGetJob, handleListJobs } from './api/jobs.js';\n import { handleGetJobEvents } from './api/job-events.js';\n import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';\n+import {\n+  handleCancelWorkspaceTask,\n+  handleCreateWorkspaceTask,\n+  handleGetWorkspaceTask,\n+  handleGetWorkspaceTaskEvents,\n+} from './api/workspace-tasks.js';\n import {\n   handleCreateWorkspace,\n   handleCreateWorkspaceGithubFork,\n@@ -20,6 +26,8 @@ import {\n } from './api/workspaces.js';\n import { parseCheckpointJobQueueMessage } from './lib/checkpoint-queue.js';\n import { processCheckpointJob } from './lib/checkpoint-runner.js';\n+import { parseWorkspaceTaskQueueMessage } from './lib/workspace-task-queue.js';\n+import { processWorkspaceTask, shouldRetryWorkspaceTaskError } from './lib/workspace-task-runner.js';\n import type { Env } from './types.js';\n \n // Re-export Sandbox for Durable Object binding\n@@ -100,6 +108,34 @@ export default {\n       );\n     }\n \n+    // Route: POST /api/workspaces/:id/tasks - Queue agentic workspace task\n+    const workspaceTasksCreateMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks$/);\n+    if (workspaceTasksCreateMatch && request.method === 'POST') {\n+      return handleCreateWorkspaceTask(workspaceTasksCreateMatch[1], request, env, ctx);\n+    }\n+\n+    // Route: GET /api/workspaces/:id/tasks/:taskId - Poll workspace task status\n+    const workspaceTaskGetMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)$/);\n+    if (workspaceTaskGetMatch && request.method === 'GET') {\n+      return handleGetWorkspaceTask(workspaceTaskGetMatch[1], workspaceTaskGetMatch[2], env);\n+    }\n+\n+    // Route: GET /api/workspaces/:id/tasks/:taskId/events - Poll workspace task events\n+    const workspaceTaskEventsMatch = url.pathname.match(\n+      /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)\\/events$/\n+    );\n+    if (workspaceTaskEventsMatch && request.method === 'GET') {\n+      return handleGetWorkspaceTaskEvents(workspaceTaskEventsMatch[1], workspaceTaskEventsMatch[2], request, env);\n+    }\n+\n+    // Route: POST /api/workspaces/:id/tasks/:taskId/cancel - Request task cancellation\n+    const workspaceTaskCancelMatch = url.pathname.match(\n+      /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)\\/cancel$/\n+    );\n+    if (workspaceTaskCancelMatch && request.method === 'POST') {\n+      return handleCancelWorkspaceTask(workspaceTaskCancelMatch[1], workspaceTaskCancelMatch[2], env);\n+    }\n+\n     // Route: GET /api/workspaces/:id/files - List files for a path\n     const workspaceFilesMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/files$/);\n     if (workspaceFilesMatch && request.method === 'GET') {\n@@ -164,10 +200,26 @@ export default {\n \n   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {\n     for (const message of batch.messages) {\n-      let payload;\n+      const body = message.body as Record<string, unknown> | null;\n+      const type = typeof body?.type === 'string' ? body.type : '';\n+\n+      if (type === 'workspace_task_created') {\n+        try {\n+          const payload = parseWorkspaceTaskQueueMessage(message.body);\n+          await processWorkspaceTask(env, payload.workspaceId, payload.taskId);\n+        } catch (error) {\n+          const details = error instanceof Error ? error.message : String(error);\n+          console.error(`[workspace-task-queue] message handling failed: ${details}`);\n+          if (shouldRetryWorkspaceTaskError(error)) {\n+            message.retry();\n+          }\n+        }\n+        continue;\n+      }\n \n+      let checkpointPayload;\n       try {\n-        payload = parseCheckpointJobQueueMessage(message.body);\n+        checkpointPayload = parseCheckpointJobQueueMessage(message.body);\n       } catch (error) {\n         const details = error instanceof Error ? error.message : String(error);\n         console.error(`[checkpoint-queue] invalid message dropped: ${details}`);\n@@ -175,7 +227,7 @@ export default {\n       }\n \n       try {\n-        await processCheckpointJob(env, payload.jobId);\n+        await processCheckpointJob(env, checkpointPayload.jobId);\n       } catch (error) {\n         const details = error instanceof Error ? error.message : String(error);\n         console.error(`[checkpoint-queue] message handling failed: ${details}`);\ndiff --git a/packages/worker/src/lib/db.ts b/packages/worker/src/lib/db.ts\nindex b27723e..3837603 100644\n--- a/packages/worker/src/lib/db.ts\n+++ b/packages/worker/src/lib/db.ts\n@@ -15,6 +15,9 @@ import type {\n   WorkspaceArtifactResponse,\n   WorkspaceArtifactType,\n   WorkspaceArtifactStatus,\n+  WorkspaceTaskRecord,\n+  WorkspaceTaskResponse,\n+  WorkspaceTaskStatus,\n } from '../types.js';\n \n export interface CreateCheckpointJobInput {\n@@ -104,6 +107,35 @@ export interface CreateWorkspaceArtifactInput {\n   metadata?: Record<string, unknown>;\n }\n \n+export interface CreateWorkspaceTaskInput {\n+  id: string;\n+  workspaceId: string;\n+  prompt: string;\n+  provider: string;\n+  model: string;\n+  idempotencyKey: string;\n+  requestPayload: unknown;\n+  requestPayloadSha256: string;\n+  maxSteps: number;\n+  maxRetries: number;\n+  actorId?: string | null;\n+  toolPolicy?: Record<string, unknown>;\n+}\n+\n+export interface WorkspaceTaskEventRecord {\n+  seq: number;\n+  event_type: string;\n+  payload_json: string;\n+  created_at: string;\n+}\n+\n+export interface WorkspaceTaskEventItem {\n+  seq: number;\n+  eventType: string;\n+  payload: unknown;\n+  createdAt: string;\n+}\n+\n export class WorkspaceIdempotencyConflictError extends Error {\n   constructor(\n     public readonly key: string,\n@@ -114,6 +146,13 @@ export class WorkspaceIdempotencyConflictError extends Error {\n   }\n }\n \n+export class WorkspaceTaskIdempotencyConflictError extends Error {\n+  constructor(public readonly key: string) {\n+    super(`Task idempotency key conflict: ${key}`);\n+    this.name = 'WorkspaceTaskIdempotencyConflictError';\n+  }\n+}\n+\n function isUniqueConstraintError(error: unknown): boolean {\n   if (!(error instanceof Error)) {\n     return false;\n@@ -171,6 +210,10 @@ export function generateWorkspaceArtifactId(): string {\n   return generatePrefixedId('art');\n }\n \n+export function generateWorkspaceTaskId(): string {\n+  return generatePrefixedId('task');\n+}\n+\n /**\n  * Convert snake_case DB record to camelCase API response\n  */\n@@ -319,6 +362,41 @@ function toWorkspaceArtifactResponse(record: WorkspaceArtifactRecord): Workspace\n   };\n }\n \n+function toWorkspaceTaskResponse(record: WorkspaceTaskRecord): WorkspaceTaskResponse {\n+  const result = parseJsonOrFallback(record.result_json, undefined);\n+\n+  const response: WorkspaceTaskResponse = {\n+    id: record.id,\n+    workspaceId: record.workspace_id,\n+    status: record.status,\n+    prompt: record.prompt,\n+    provider: record.provider,\n+    model: record.model,\n+    idempotencyKey: record.idempotency_key,\n+    maxSteps: record.max_steps,\n+    maxRetries: record.max_retries,\n+    attemptCount: record.attempt_count,\n+    startedAt: record.started_at,\n+    finishedAt: record.finished_at,\n+    cancelRequestedAt: record.cancel_requested_at,\n+    createdAt: record.created_at,\n+    updatedAt: record.updated_at,\n+  };\n+\n+  if (result !== undefined) {\n+    response.result = result;\n+  }\n+\n+  if (record.error_code && record.error_message) {\n+    response.error = {\n+      code: record.error_code,\n+      message: record.error_message,\n+    };\n+  }\n+\n+  return response;\n+}\n+\n /**\n  * Create a new checkpoint job in the database\n  */\n@@ -1223,3 +1301,340 @@ export async function getWorkspaceArtifactById(\n     retentionExpiresAt: record.retention_expires_at,\n   };\n }\n+\n+export async function createWorkspaceTask(\n+  db: D1Database,\n+  input: CreateWorkspaceTaskInput\n+): Promise<{ task: WorkspaceTaskResponse; reused: boolean }> {\n+  const now = new Date().toISOString();\n+  const existingIdempotency = await db\n+    .prepare(\n+      `SELECT task_id, request_payload_sha256, expires_at\n+       FROM workspace_task_idempotency\n+       WHERE workspace_id = ? AND idempotency_key = ?\n+       LIMIT 1`\n+    )\n+    .bind(input.workspaceId, input.idempotencyKey)\n+    .first<{ task_id: string; request_payload_sha256: string; expires_at: string }>();\n+\n+  if (existingIdempotency && existingIdempotency.expires_at > now) {\n+    if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {\n+      throw new WorkspaceTaskIdempotencyConflictError(input.idempotencyKey);\n+    }\n+\n+    const existingTask = await getWorkspaceTask(db, input.workspaceId, existingIdempotency.task_id);\n+    if (!existingTask) {\n+      throw new Error(`Idempotency record references missing task ${existingIdempotency.task_id}`);\n+    }\n+\n+    return { task: existingTask, reused: true };\n+  }\n+\n+  if (existingIdempotency && existingIdempotency.expires_at <= now) {\n+    await db\n+      .prepare('DELETE FROM workspace_task_idempotency WHERE workspace_id = ? AND idempotency_key = ?')\n+      .bind(input.workspaceId, input.idempotencyKey)\n+      .run();\n+  }\n+\n+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();\n+  const taskRecord = await db\n+    .prepare(\n+      `INSERT INTO workspace_tasks (\n+         id,\n+         workspace_id,\n+         status,\n+         prompt,\n+         provider,\n+         model,\n+         idempotency_key,\n+         request_payload_json,\n+         request_payload_sha256,\n+         max_steps,\n+         max_retries,\n+         actor_id,\n+         tool_policy_json\n+       )\n+       VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)\n+       RETURNING *`\n+    )\n+    .bind(\n+      input.id,\n+      input.workspaceId,\n+      input.prompt,\n+      input.provider,\n+      input.model,\n+      input.idempotencyKey,\n+      JSON.stringify(input.requestPayload ?? {}),\n+      input.requestPayloadSha256,\n+      input.maxSteps,\n+      input.maxRetries,\n+      input.actorId ?? null,\n+      JSON.stringify(input.toolPolicy ?? {})\n+    )\n+    .first<WorkspaceTaskRecord>();\n+\n+  if (!taskRecord) {\n+    throw new Error('Failed to create workspace task');\n+  }\n+\n+  try {\n+    await db\n+      .prepare(\n+        `INSERT INTO workspace_task_idempotency (\n+           id,\n+           workspace_id,\n+           idempotency_key,\n+           task_id,\n+           request_payload_sha256,\n+           expires_at\n+         )\n+         VALUES (?, ?, ?, ?, ?, ?)`\n+      )\n+      .bind(\n+        generatePrefixedId('wtsk'),\n+        input.workspaceId,\n+        input.idempotencyKey,\n+        input.id,\n+        input.requestPayloadSha256,\n+        expiresAt\n+      )\n+      .run();\n+  } catch (error) {\n+    if (!isUniqueConstraintError(error)) {\n+      await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+      throw error;\n+    }\n+\n+    const concurrent = await db\n+      .prepare(\n+        `SELECT task_id, request_payload_sha256, expires_at\n+         FROM workspace_task_idempotency\n+         WHERE workspace_id = ? AND idempotency_key = ?\n+         LIMIT 1`\n+      )\n+      .bind(input.workspaceId, input.idempotencyKey)\n+      .first<{ task_id: string; request_payload_sha256: string; expires_at: string }>();\n+\n+    if (!concurrent || concurrent.expires_at <= now) {\n+      await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+      throw new Error('Task idempotency race detected but winner record is unavailable');\n+    }\n+\n+    if (concurrent.request_payload_sha256 !== input.requestPayloadSha256) {\n+      await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+      throw new WorkspaceTaskIdempotencyConflictError(input.idempotencyKey);\n+    }\n+\n+    const existingTask = await getWorkspaceTask(db, input.workspaceId, concurrent.task_id);\n+    if (!existingTask) {\n+      await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+      throw new Error(`Idempotency record references missing task ${concurrent.task_id}`);\n+    }\n+\n+    await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();\n+    return { task: existingTask, reused: true };\n+  }\n+\n+  return { task: toWorkspaceTaskResponse(taskRecord), reused: false };\n+}\n+\n+export async function getWorkspaceTask(\n+  db: D1Database,\n+  workspaceId: string,\n+  taskId: string\n+): Promise<WorkspaceTaskResponse | null> {\n+  const record = await db\n+    .prepare('SELECT * FROM workspace_tasks WHERE id = ? AND workspace_id = ?')\n+    .bind(taskId, workspaceId)\n+    .first<WorkspaceTaskRecord>();\n+\n+  if (!record) {\n+    return null;\n+  }\n+\n+  return toWorkspaceTaskResponse(record);\n+}\n+\n+export async function getWorkspaceTaskRequestPayload(\n+  db: D1Database,\n+  taskId: string\n+): Promise<Record<string, unknown> | null> {\n+  const record = await db\n+    .prepare('SELECT request_payload_json FROM workspace_tasks WHERE id = ?')\n+    .bind(taskId)\n+    .first<{ request_payload_json: string }>();\n+\n+  if (!record) {\n+    return null;\n+  }\n+\n+  try {\n+    const parsed = JSON.parse(record.request_payload_json) as unknown;\n+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n+      return {};\n+    }\n+    return parsed as Record<string, unknown>;\n+  } catch {\n+    return {};\n+  }\n+}\n+\n+export async function claimWorkspaceTaskForExecution(\n+  db: D1Database,\n+  workspaceId: string,\n+  taskId: string\n+): Promise<boolean> {\n+  const now = new Date().toISOString();\n+  const result = await db\n+    .prepare(\n+      `UPDATE workspace_tasks\n+       SET status = 'running',\n+           started_at = COALESCE(started_at, ?),\n+           attempt_count = attempt_count + 1,\n+           updated_at = ?\n+       WHERE id = ? AND workspace_id = ? AND status = 'queued' AND cancel_requested_at IS NULL`\n+    )\n+    .bind(now, now, taskId, workspaceId)\n+    .run();\n+\n+  return (result.meta?.changes ?? 0) > 0;\n+}\n+\n+export async function updateWorkspaceTaskStatus(\n+  db: D1Database,\n+  taskId: string,\n+  status: WorkspaceTaskStatus,\n+  options?: {\n+    result?: unknown;\n+    errorCode?: string | null;\n+    errorMessage?: string | null;\n+    startedAt?: string | null;\n+    finishedAt?: string | null;\n+  }\n+): Promise<void> {\n+  const updates: string[] = ['status = ?', 'updated_at = ?'];\n+  const values: Array<string | null> = [status, new Date().toISOString()];\n+\n+  if (options?.startedAt !== undefined) {\n+    updates.push('started_at = ?');\n+    values.push(options.startedAt);\n+  }\n+\n+  if (options?.finishedAt !== undefined) {\n+    updates.push('finished_at = ?');\n+    values.push(options.finishedAt);\n+  }\n+\n+  if (options?.result !== undefined) {\n+    updates.push('result_json = ?');\n+    values.push(JSON.stringify(options.result));\n+  }\n+\n+  if (options?.errorCode !== undefined) {\n+    updates.push('error_code = ?');\n+    values.push(options.errorCode);\n+  }\n+\n+  if (options?.errorMessage !== undefined) {\n+    updates.push('error_message = ?');\n+    values.push(options.errorMessage);\n+  }\n+\n+  if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {\n+    updates.push('finished_at = COALESCE(finished_at, ?)');\n+    values.push(new Date().toISOString());\n+  }\n+\n+  values.push(taskId);\n+\n+  await db\n+    .prepare(`UPDATE workspace_tasks SET ${updates.join(', ')} WHERE id = ?`)\n+    .bind(...values)\n+    .run();\n+}\n+\n+export async function requestWorkspaceTaskCancel(\n+  db: D1Database,\n+  workspaceId: string,\n+  taskId: string\n+): Promise<WorkspaceTaskResponse | null> {\n+  const now = new Date().toISOString();\n+  await db\n+    .prepare(\n+      `UPDATE workspace_tasks\n+       SET cancel_requested_at = COALESCE(cancel_requested_at, ?),\n+           updated_at = ?\n+       WHERE id = ? AND workspace_id = ? AND status IN ('queued', 'running')`\n+    )\n+    .bind(now, now, taskId, workspaceId)\n+    .run();\n+\n+  return getWorkspaceTask(db, workspaceId, taskId);\n+}\n+\n+export async function appendWorkspaceTaskEvent(\n+  db: D1Database,\n+  input: {\n+    workspaceId: string;\n+    taskId: string;\n+    eventType: string;\n+    payload: unknown;\n+  }\n+): Promise<number> {\n+  const seqResult = await db\n+    .prepare('UPDATE workspace_tasks SET last_event_seq = last_event_seq + 1 WHERE id = ? RETURNING last_event_seq')\n+    .bind(input.taskId)\n+    .first<{ last_event_seq: number }>();\n+\n+  if (!seqResult) {\n+    throw new Error(`Failed to allocate event sequence for workspace task ${input.taskId}`);\n+  }\n+\n+  const seq = Number(seqResult.last_event_seq);\n+\n+  await db\n+    .prepare(\n+      `INSERT INTO workspace_task_events (workspace_id, task_id, seq, event_type, payload_json)\n+       VALUES (?, ?, ?, ?, ?)`\n+    )\n+    .bind(input.workspaceId, input.taskId, seq, input.eventType, JSON.stringify(input.payload))\n+    .run();\n+\n+  return seq;\n+}\n+\n+export async function listWorkspaceTaskEvents(\n+  db: D1Database,\n+  workspaceId: string,\n+  taskId: string,\n+  fromExclusive = 0,\n+  limit = 500\n+): Promise<WorkspaceTaskEventItem[]> {\n+  const result = await db\n+    .prepare(\n+      `SELECT seq, event_type, payload_json, created_at\n+       FROM workspace_task_events\n+       WHERE workspace_id = ? AND task_id = ? AND seq > ?\n+       ORDER BY seq ASC\n+       LIMIT ?`\n+    )\n+    .bind(workspaceId, taskId, fromExclusive, limit)\n+    .all<WorkspaceTaskEventRecord>();\n+\n+  return result.results.map((row) => {\n+    let payload: unknown;\n+    try {\n+      payload = JSON.parse(row.payload_json);\n+    } catch {\n+      payload = { raw: row.payload_json };\n+    }\n+\n+    return {\n+      seq: row.seq,\n+      eventType: row.event_type,\n+      payload,\n+      createdAt: row.created_at,\n+    };\n+  });\n+}\ndiff --git a/packages/worker/src/lib/db.workspace.test.ts b/packages/worker/src/lib/db.workspace.test.ts\nindex 28ef79a..ab46b89 100644\n--- a/packages/worker/src/lib/db.workspace.test.ts\n+++ b/packages/worker/src/lib/db.workspace.test.ts\n@@ -1,14 +1,19 @@\n import { strict as assert } from 'assert';\n import {\n   appendWorkspaceEvent,\n+  appendWorkspaceTaskEvent,\n   createWorkspaceArtifact,\n   createWorkspaceOperation,\n+  createWorkspaceTask,\n   createWorkspace,\n+  getWorkspaceTask,\n   getWorkspaceOperation,\n   listWorkspaceEvents,\n   listWorkspaceArtifacts,\n+  listWorkspaceTaskEvents,\n   markWorkspaceDeleted,\n   markWorkspaceReady,\n+  requestWorkspaceTaskCancel,\n   WorkspaceIdempotencyConflictError,\n } from './db.js';\n \n@@ -424,4 +429,212 @@ export async function runWorkspaceDbTests(): Promise<void> {\n     assert.equal(artifacts.length, 1);\n     assert.equal(artifacts[0].id, 'art_abc');\n   }\n+\n+  {\n+    const db = {\n+      prepare(sql: string) {\n+        if (/SELECT task_id, request_payload_sha256, expires_at/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async first<T>() {\n+                  return null as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/INSERT INTO workspace_tasks/i.test(sql)) {\n+          return {\n+            bind(...values: unknown[]) {\n+              return {\n+                async first<T>() {\n+                  return {\n+                    id: values[0],\n+                    workspace_id: values[1],\n+                    status: 'queued',\n+                    prompt: values[2],\n+                    provider: values[3],\n+                    model: values[4],\n+                    idempotency_key: values[5],\n+                    request_payload_json: values[6],\n+                    request_payload_sha256: values[7],\n+                    max_steps: values[8],\n+                    max_retries: values[9],\n+                    attempt_count: 0,\n+                    actor_id: null,\n+                    tool_policy_json: values[11],\n+                    last_event_seq: 0,\n+                    started_at: null,\n+                    finished_at: null,\n+                    cancel_requested_at: null,\n+                    result_json: null,\n+                    error_code: null,\n+                    error_message: null,\n+                    created_at: '2026-03-08T00:00:00.000Z',\n+                    updated_at: '2026-03-08T00:00:00.000Z',\n+                  } as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/INSERT INTO workspace_task_idempotency/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async run() {\n+                  return { success: true, meta: { changes: 1 } };\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/SELECT \\* FROM workspace_tasks WHERE id = \\? AND workspace_id = \\?/i.test(sql)) {\n+          return {\n+            bind(taskId: string, workspaceId: string) {\n+              return {\n+                async first<T>() {\n+                  return {\n+                    id: taskId,\n+                    workspace_id: workspaceId,\n+                    status: 'queued',\n+                    prompt: 'Do work',\n+                    provider: 'scripted',\n+                    model: 'test',\n+                    idempotency_key: 'idem-task',\n+                    request_payload_json: '{}',\n+                    request_payload_sha256: 'hash',\n+                    max_steps: 12,\n+                    max_retries: 2,\n+                    attempt_count: 0,\n+                    actor_id: null,\n+                    tool_policy_json: '{}',\n+                    last_event_seq: 0,\n+                    started_at: null,\n+                    finished_at: null,\n+                    cancel_requested_at: null,\n+                    result_json: null,\n+                    error_code: null,\n+                    error_message: null,\n+                    created_at: '2026-03-08T00:00:00.000Z',\n+                    updated_at: '2026-03-08T00:00:00.000Z',\n+                  } as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/UPDATE workspace_tasks\\s+SET cancel_requested_at = COALESCE/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async run() {\n+                  return { success: true, meta: { changes: 1 } };\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/UPDATE workspace_tasks SET last_event_seq = last_event_seq \\+ 1/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async first<T>() {\n+                  return { last_event_seq: 2 } as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/INSERT INTO workspace_task_events/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async run() {\n+                  return { success: true, meta: { changes: 1 } };\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        if (/SELECT seq, event_type, payload_json, created_at\\s+FROM workspace_task_events/i.test(sql)) {\n+          return {\n+            bind() {\n+              return {\n+                async all<T>() {\n+                  return {\n+                    results: [\n+                      {\n+                        seq: 1,\n+                        event_type: 'task_created',\n+                        payload_json: '{\"ok\":true}',\n+                        created_at: '2026-03-08T00:00:00.000Z',\n+                      },\n+                    ],\n+                  } as unknown as T;\n+                },\n+              };\n+            },\n+          };\n+        }\n+\n+        return {\n+          bind() {\n+            return {\n+              async first() {\n+                return null;\n+              },\n+              async run() {\n+                return { success: true, meta: { changes: 1 } };\n+              },\n+            };\n+          },\n+        };\n+      },\n+    } as unknown as D1Database;\n+\n+    const created = await createWorkspaceTask(db, {\n+      id: 'task_abcd1234',\n+      workspaceId: 'ws_abc12345',\n+      prompt: 'Do work',\n+      provider: 'scripted',\n+      model: 'test',\n+      idempotencyKey: 'idem-task',\n+      requestPayload: {},\n+      requestPayloadSha256: 'hash',\n+      maxSteps: 12,\n+      maxRetries: 2,\n+    });\n+\n+    assert.equal(created.reused, false);\n+    assert.equal(created.task.id, 'task_abcd1234');\n+\n+    const task = await getWorkspaceTask(db, 'ws_abc12345', 'task_abcd1234');\n+    assert.ok(task);\n+    assert.equal(task?.workspaceId, 'ws_abc12345');\n+\n+    const cancelled = await requestWorkspaceTaskCancel(db, 'ws_abc12345', 'task_abcd1234');\n+    assert.ok(cancelled);\n+    assert.equal(cancelled?.id, 'task_abcd1234');\n+\n+    const seq = await appendWorkspaceTaskEvent(db, {\n+      workspaceId: 'ws_abc12345',\n+      taskId: 'task_abcd1234',\n+      eventType: 'task_created',\n+      payload: { ok: true },\n+    });\n+    assert.equal(seq, 2);\n+\n+    const events = await listWorkspaceTaskEvents(db, 'ws_abc12345', 'task_abcd1234');\n+    assert.equal(events.length, 1);\n+    assert.equal(events[0].eventType, 'task_created');\n+  }\n }\ndiff --git a/packages/worker/src/lib/flags.ts b/packages/worker/src/lib/flags.ts\nindex 043213f..f73b6f3 100644\n--- a/packages/worker/src/lib/flags.ts\n+++ b/packages/worker/src/lib/flags.ts\n@@ -19,6 +19,7 @@ export const DEFAULT_RUNTIME_FLAGS: RuntimeFlags = {\n   autoInstallScriptsFallback: true,\n   rawRetentionDays: 30,\n   summaryRetentionDays: 180,\n+  workspaceAgentRuntimeEnabled: false,\n };\n \n function parseBoolean(value: string | undefined, fallback: boolean): boolean {\n@@ -117,6 +118,10 @@ export function getRuntimeFlagsFromEnv(env: Env): RuntimeFlags {\n       DEFAULT_RUNTIME_FLAGS.summaryRetentionDays,\n       { min: 1 }\n     ),\n+    workspaceAgentRuntimeEnabled: parseBoolean(\n+      env.WORKSPACE_AGENT_RUNTIME_ENABLED,\n+      DEFAULT_RUNTIME_FLAGS.workspaceAgentRuntimeEnabled\n+    ),\n   };\n \n   return normalizeRuntimeFlags(resolved);\n@@ -178,6 +183,9 @@ export function mergeRuntimeFlagOverrides(\n       case 'summary_retention_days':\n         merged.summaryRetentionDays = parseInteger(row.value, merged.summaryRetentionDays, { min: 1 });\n         break;\n+      case 'workspace_agent_runtime_enabled':\n+        merged.workspaceAgentRuntimeEnabled = parseBoolean(row.value, merged.workspaceAgentRuntimeEnabled);\n+        break;\n       default:\n         break;\n     }\ndiff --git a/packages/worker/src/lib/run-tests.ts b/packages/worker/src/lib/run-tests.ts\nindex d66692b..564534a 100644\n--- a/packages/worker/src/lib/run-tests.ts\n+++ b/packages/worker/src/lib/run-tests.ts\n@@ -9,6 +9,9 @@ import { runCheckpointRunnerTests } from './checkpoint-runner.test.js';\n import { runDbEventsTests } from './db.events.test.js';\n import { runWorkspaceDbTests } from './db.workspace.test.js';\n import { runWorkspaceApiTests } from '../api/workspaces.test.js';\n+import { runWorkspaceTaskApiTests } from '../api/workspace-tasks.test.js';\n+import { runWorkspaceTaskQueueTests } from './workspace-task-queue.test.js';\n+import { runWorkspaceTaskRunnerTests } from './workspace-task-runner.test.js';\n \n type TestCase = {\n   name: string;\n@@ -24,6 +27,9 @@ const TEST_CASES: TestCase[] = [\n   { name: 'db-events', run: runDbEventsTests },\n   { name: 'workspace-db', run: runWorkspaceDbTests },\n   { name: 'workspace-api', run: runWorkspaceApiTests },\n+  { name: 'workspace-task-queue', run: runWorkspaceTaskQueueTests },\n+  { name: 'workspace-task-runner', run: runWorkspaceTaskRunnerTests },\n+  { name: 'workspace-task-api', run: runWorkspaceTaskApiTests },\n   { name: 'job-events-api', run: runJobEventsApiTests },\n   { name: 'checkpoint-db', run: runCheckpointDbTests },\n   { name: 'checkpoint-jobs-api', run: runCheckpointJobsApiTests },\ndiff --git a/packages/worker/src/types.ts b/packages/worker/src/types.ts\nindex 5c925dc..6eccb21 100644\n--- a/packages/worker/src/types.ts\n+++ b/packages/worker/src/types.ts\n@@ -22,6 +22,10 @@ export interface Env {\n   AUTO_INSTALL_SCRIPTS_FALLBACK?: string;\n   RAW_RETENTION_DAYS?: string;\n   SUMMARY_RETENTION_DAYS?: string;\n+  WORKSPACE_AGENT_RUNTIME_ENABLED?: string;\n+  WORKSPACE_AGENT_MAX_RETRIES?: string;\n+  WORKSPACE_AGENT_MAX_STEPS?: string;\n+  WORKSPACE_AGENT_TIMEOUT_MS?: string;\n \n   GITHUB_APP_ID?: string;\n   GITHUB_APP_PRIVATE_KEY?: string;\n@@ -30,6 +34,13 @@ export interface Env {\n   GITHUB_FORK_ALLOWED_ORGS?: string;\n   BLOCK_ON_SECRET_MATCH?: string;\n   WORKSPACE_ARTIFACT_DOWNLOAD_SECRET?: string;\n+\n+  WORKSPACE_TASKS_QUEUE?: Queue;\n+\n+  AGENT_PROVIDER?: string;\n+  AGENT_MODEL?: string;\n+  AGENT_SDK_URL?: string;\n+  AGENT_SDK_AUTH_TOKEN?: string;\n }\n \n // Job status type\n@@ -141,6 +152,7 @@ export interface RuntimeFlags {\n   autoInstallScriptsFallback: boolean;\n   rawRetentionDays: number;\n   summaryRetentionDays: number;\n+  workspaceAgentRuntimeEnabled: boolean;\n }\n \n export type WorkspaceStatus = 'creating' | 'ready' | 'failed' | 'deleted';\n@@ -280,3 +292,58 @@ export interface WorkspaceArtifactResponse {\n   warnings: unknown[];\n   metadata: unknown;\n }\n+\n+export type WorkspaceTaskStatus =\n+  | 'queued'\n+  | 'running'\n+  | 'succeeded'\n+  | 'failed'\n+  | 'cancelled';\n+\n+export interface WorkspaceTaskRecord {\n+  id: string;\n+  workspace_id: string;\n+  status: WorkspaceTaskStatus;\n+  prompt: string;\n+  provider: string;\n+  model: string;\n+  idempotency_key: string;\n+  request_payload_json: string;\n+  request_payload_sha256: string;\n+  max_steps: number;\n+  max_retries: number;\n+  attempt_count: number;\n+  actor_id: string | null;\n+  tool_policy_json: string;\n+  started_at: string | null;\n+  finished_at: string | null;\n+  cancel_requested_at: string | null;\n+  result_json: string | null;\n+  error_code: string | null;\n+  error_message: string | null;\n+  created_at: string;\n+  updated_at: string;\n+}\n+\n+export interface WorkspaceTaskResponse {\n+  id: string;\n+  wor\n\n...",
+              "exit": 0,
+              "description": "Shows staged and unstaged diffs",
+              "truncated": false
+            },
+            "time": {
+              "start": 1772952269107,
+              "end": 1772952269160
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_038f275e36ad957e0169ad1acd05ac819b98470e6deabc7fdf"
+            }
+          },
+          "id": "prt_ccc30b121001b8hsE8SCESfgmV",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30a4c8001ly1IZtB42WQDr2"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.01381975,
+          "tokens": {
+            "total": 6091,
+            "input": 5929,
+            "output": 162,
+            "reasoning": 84,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc30b169001XHufUC4Lb10qRK",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30a4c8001ly1IZtB42WQDr2"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952269267,
+          "completed": 1772952273899
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.035882,
+        "tokens": {
+          "total": 17391,
+          "input": 17040,
+          "output": 351,
+          "reasoning": 82,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_ccc30b1d2001DqciqQVPC8WP9R",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc30b4da001R3Q3hBgmXwHqVT",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Planning untracked files inspection**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_09f44e67f4fb3bc10169ad1ace15ec8198af384ab7ec0255d7",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1772952270223,
+            "end": 1772952273413
+          },
+          "id": "prt_ccc30b58f001rDsA023Gp1tQEY",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "tool",
+          "callID": "call_erPQqgd2dQmIeFF3V4Zpm5Yl",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-tasks.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-tasks.ts</path>\n<type>file</type>\n<content>1: import type { Env, WorkspaceTaskResponse } from '../types.js';\n2: import { loadRuntimeFlags } from '../lib/flags.js';\n3: import {\n4:   appendWorkspaceTaskEvent,\n5:   createWorkspaceTask,\n6:   generateWorkspaceTaskId,\n7:   getWorkspace,\n8:   getWorkspaceTask,\n9:   listWorkspaceTaskEvents,\n10:   requestWorkspaceTaskCancel,\n11:   WorkspaceTaskIdempotencyConflictError,\n12: } from '../lib/db.js';\n13: import { createWorkspaceTaskQueueMessage } from '../lib/workspace-task-queue.js';\n14: import { processWorkspaceTask } from '../lib/workspace-task-runner.js';\n15: \n16: const corsHeaders = {\n17:   'Access-Control-Allow-Origin': '*',\n18:   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',\n19:   'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',\n20: };\n21: \n22: function jsonResponse(body: unknown, status = 200): Response {\n23:   return new Response(JSON.stringify(body), {\n24:     status,\n25:     headers: { 'Content-Type': 'application/json', ...corsHeaders },\n26:   });\n27: }\n28: \n29: function parseInteger(input: unknown, fallback: number, min: number, max: number): number {\n30:   if (typeof input !== 'number' || !Number.isFinite(input)) {\n31:     return fallback;\n32:   }\n33:   const value = Math.floor(input);\n34:   if (value < min) {\n35:     return min;\n36:   }\n37:   if (value > max) {\n38:     return max;\n39:   }\n40:   return value;\n41: }\n42: \n43: function parseIntegerString(input: string | undefined, fallback: number, min: number, max: number): number {\n44:   if (input === undefined) {\n45:     return fallback;\n46:   }\n47:   const parsed = Number.parseInt(input.trim(), 10);\n48:   if (Number.isNaN(parsed)) {\n49:     return fallback;\n50:   }\n51:   if (parsed < min) {\n52:     return min;\n53:   }\n54:   if (parsed > max) {\n55:     return max;\n56:   }\n57:   return parsed;\n58: }\n59: \n60: async function sha256Hex(input: string): Promise<string> {\n61:   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));\n62:   return Array.from(new Uint8Array(digest))\n63:     .map((byte) => byte.toString(16).padStart(2, '0'))\n64:     .join('');\n65: }\n66: \n67: async function resolveWorkspaceOrReady(\n68:   env: Env,\n69:   workspaceId: string\n70: ): Promise<{ workspace: Awaited<ReturnType<typeof getWorkspace>> | null; response?: Response }> {\n71:   const workspace = await getWorkspace(env.DB, workspaceId);\n72:   if (!workspace) {\n73:     return { workspace: null, response: jsonResponse({ error: 'Workspace not found' }, 404) };\n74:   }\n75:   if (workspace.status !== 'ready') {\n76:     return {\n77:       workspace,\n78:       response: jsonResponse(\n79:         {\n80:           error: 'Workspace is not ready',\n81:           workspace: {\n82:             id: workspace.id,\n83:             status: workspace.status,\n84:             errorCode: workspace.errorCode,\n85:             errorMessage: workspace.errorMessage,\n86:           },\n87:         },\n88:         409\n89:       ),\n90:     };\n91:   }\n92:   return { workspace };\n93: }\n94: \n95: async function ensureWorkspaceAgentRuntimeEnabled(env: Env): Promise<Response | null> {\n96:   const flags = await loadRuntimeFlags(env);\n97:   if (!flags.workspaceAgentRuntimeEnabled) {\n98:     return jsonResponse(\n99:       {\n100:         error: 'Workspace agent runtime is disabled',\n101:         code: 'workspace_agent_runtime_disabled',\n102:       },\n103:       403\n104:     );\n105:   }\n106:   return null;\n107: }\n108: \n109: function defaultToolPolicy(): Record<string, unknown> {\n110:   return {\n111:     commands: {\n112:       allow: ['npm', 'pnpm', 'bun', 'node', 'git status', 'git diff', 'git add', 'git restore', 'ls', 'pwd', 'python3'],\n113:       deny: ['rm -rf /', 'sudo', 'curl', 'wget', 'ssh', 'dd', 'mkfs'],\n114:     },\n115:     filePaths: {\n116:       root: '/workspace',\n117:       deny: ['.git/**'],\n118:     },\n119:     limits: {\n120:       maxCommandTimeoutMs: 300000,\n121:       maxSteps: 60,\n122:       maxOutputBytes: 32000,\n123:     },\n124:     autonomy: 'full',\n125:   };\n126: }\n127: \n128: export async function handleCreateWorkspaceTask(\n129:   workspaceId: string,\n130:   request: Request,\n131:   env: Env,\n132:   ctx?: ExecutionContext\n133: ): Promise<Response> {\n134:   try {\n135:     const enabledResponse = await ensureWorkspaceAgentRuntimeEnabled(env);\n136:     if (enabledResponse) {\n137:       return enabledResponse;\n138:     }\n139: \n140:     const workspaceCheck = await resolveWorkspaceOrReady(env, workspaceId);\n141:     if (workspaceCheck.response) {\n142:       return workspaceCheck.response;\n143:     }\n144: \n145:     const idempotencyKey = (request.headers.get('Idempotency-Key') ?? '').trim();\n146:     if (!idempotencyKey) {\n147:       return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);\n148:     }\n149: \n150:     const payloadRaw = await request.text();\n151:     let payload: Record<string, unknown> = {};\n152:     if (payloadRaw.trim()) {\n153:       const parsed = JSON.parse(payloadRaw) as unknown;\n154:       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n155:         return jsonResponse({ error: 'Request body must be a JSON object' }, 400);\n156:       }\n157:       payload = parsed as Record<string, unknown>;\n158:     }\n159: \n160:     const prompt = String(payload.prompt ?? '').trim();\n161:     if (!prompt) {\n162:       return jsonResponse({ error: 'Task prompt is required' }, 400);\n163:     }\n164: \n165:     const provider = String(payload.provider ?? env.AGENT_PROVIDER ?? 'cloudflare_agents_sdk').trim();\n166:     const model = String(payload.model ?? env.AGENT_MODEL ?? 'claude-3-7-sonnet').trim();\n167:     const maxStepsDefault = parseIntegerString(env.WORKSPACE_AGENT_MAX_STEPS, 24, 1, 120);\n168:     const maxRetriesDefault = parseIntegerString(env.WORKSPACE_AGENT_MAX_RETRIES, 2, 0, 5);\n169:     const maxSteps = parseInteger(payload.maxSteps, maxStepsDefault, 1, 120);\n170:     const maxRetries = parseInteger(payload.maxRetries, maxRetriesDefault, 0, 5);\n171: \n172:     const requestPayload = {\n173:       prompt,\n174:       provider,\n175:       model,\n176:       maxSteps,\n177:       maxRetries,\n178:       scriptedActions: payload.scriptedActions ?? null,\n179:     };\n180: \n181:     const requestPayloadSha256 = await sha256Hex(JSON.stringify(requestPayload));\n182:     const created = await createWorkspaceTask(env.DB, {\n183:       id: generateWorkspaceTaskId(),\n184:       workspaceId,\n185:       prompt,\n186:       provider,\n187:       model,\n188:       idempotencyKey,\n189:       requestPayload,\n190:       requestPayloadSha256,\n191:       maxSteps,\n192:       maxRetries,\n193:       toolPolicy: defaultToolPolicy(),\n194:     });\n195: \n196:     const task = created.task;\n197:     if (!created.reused) {\n198:       await appendWorkspaceTaskEvent(env.DB, {\n199:         workspaceId,\n200:         taskId: task.id,\n201:         eventType: 'task_created',\n202:         payload: {\n203:           provider: task.provider,\n204:           model: task.model,\n205:           maxSteps: task.maxSteps,\n206:           maxRetries: task.maxRetries,\n207:         },\n208:       });\n209:     }\n210: \n211:     if (task.status === 'queued') {\n212:       if (env.WORKSPACE_TASKS_QUEUE) {\n213:         await env.WORKSPACE_TASKS_QUEUE.send(createWorkspaceTaskQueueMessage(workspaceId, task.id));\n214:       } else if (ctx) {\n215:         ctx.waitUntil(processWorkspaceTask(env, workspaceId, task.id));\n216:       }\n217:     }\n218: \n219:     return jsonResponse({ task }, created.reused ? 200 : 202);\n220:   } catch (error) {\n221:     if (error instanceof WorkspaceTaskIdempotencyConflictError) {\n222:       return jsonResponse(\n223:         {\n224:           error: 'Idempotency key has already been used with different payload',\n225:           code: 'idempotency_key_conflict',\n226:         },\n227:         409\n228:       );\n229:     }\n230: \n231:     if (error instanceof SyntaxError) {\n232:       return jsonResponse({ error: 'Invalid JSON body' }, 400);\n233:     }\n234: \n235:     const message = error instanceof Error ? error.message : String(error);\n236:     return jsonResponse({ error: `Failed to create workspace task: ${message}` }, 500);\n237:   }\n238: }\n239: \n240: export async function handleGetWorkspaceTask(\n241:   workspaceId: string,\n242:   taskId: string,\n243:   env: Env\n244: ): Promise<Response> {\n245:   const enabledResponse = await ensureWorkspaceAgentRuntimeEnabled(env);\n246:   if (enabledResponse) {\n247:     return enabledResponse;\n248:   }\n249: \n250:   const workspaceCheck = await resolveWorkspaceOrReady(env, workspaceId);\n251:   if (workspaceCheck.response && workspaceCheck.response.status === 404) {\n252:     return workspaceCheck.response;\n253:   }\n254: \n255:   const task = await getWorkspaceTask(env.DB, workspaceId, taskId);\n256:   if (!task) {\n257:     return jsonResponse({ error: 'Task not found' }, 404);\n258:   }\n259: \n260:   return jsonResponse({ task });\n261: }\n262: \n263: export async function handleGetWorkspaceTaskEvents(\n264:   workspaceId: string,\n265:   taskId: string,\n266:   request: Request,\n267:   env: Env\n268: ): Promise<Response> {\n269:   const enabledResponse = await ensureWorkspaceAgentRuntimeEnabled(env);\n270:   if (enabledResponse) {\n271:     return enabledResponse;\n272:   }\n273: \n274:   const workspaceCheck = await resolveWorkspaceOrReady(env, workspaceId);\n275:   if (workspaceCheck.response && workspaceCheck.response.status === 404) {\n276:     return workspaceCheck.response;\n277:   }\n278: \n279:   const task = await getWorkspaceTask(env.DB, workspaceId, taskId);\n280:   if (!task) {\n281:     return jsonResponse({ error: 'Task not found' }, 404);\n282:   }\n283: \n284:   const url = new URL(request.url);\n285:   const from = Number.parseInt(url.searchParams.get('from') ?? '0', 10);\n286:   const limit = Number.parseInt(url.searchParams.get('limit') ?? '500', 10);\n287:   const fromExclusive = Number.isFinite(from) && from > 0 ? from : 0;\n288:   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 1000)) : 500;\n289: \n290:   const events = await listWorkspaceTaskEvents(env.DB, workspaceId, taskId, fromExclusive, boundedLimit);\n291:   return jsonResponse({ taskId, events });\n292: }\n293: \n294: export async function handleCancelWorkspaceTask(\n295:   workspaceId: string,\n296:   taskId: string,\n297:   env: Env\n298: ): Promise<Response> {\n299:   const enabledResponse = await ensureWorkspaceAgentRuntimeEnabled(env);\n300:   if (enabledResponse) {\n301:     return enabledResponse;\n302:   }\n303: \n304:   const workspaceCheck = await resolveWorkspaceOrReady(env, workspaceId);\n305:   if (workspaceCheck.response && workspaceCheck.response.status === 404) {\n306:     return workspaceCheck.response;\n307:   }\n308: \n309:   const task = await requestWorkspaceTaskCancel(env.DB, workspaceId, taskId);\n310:   if (!task) {\n311:     return jsonResponse({ error: 'Task not found' }, 404);\n312:   }\n313: \n314:   await appendWorkspaceTaskEvent(env.DB, {\n315:     workspaceId,\n316:     taskId,\n317:     eventType: 'task_cancel_requested',\n318:     payload: {\n319:       status: task.status,\n320:       cancelRequestedAt: task.cancelRequestedAt,\n321:     },\n322:   });\n323: \n324:   return jsonResponse({ task: task as WorkspaceTaskResponse }, 202);\n325: }\n\n(End of file - total 325 lines)\n</content>",
+            "title": "packages/worker/src/api/workspace-tasks.ts",
+            "metadata": {
+              "preview": "import type { Env, WorkspaceTaskResponse } from '../types.js';\nimport { loadRuntimeFlags } from '../lib/flags.js';\nimport {\n  appendWorkspaceTaskEvent,\n  createWorkspaceTask,\n  generateWorkspaceTaskId,\n  getWorkspace,\n  getWorkspaceTask,\n  listWorkspaceTaskEvents,\n  requestWorkspaceTaskCancel,\n  WorkspaceTaskIdempotencyConflictError,\n} from '../lib/db.js';\nimport { createWorkspaceTaskQueueMessage } from '../lib/workspace-task-queue.js';\nimport { processWorkspaceTask } from '../lib/workspace-task-runner.js';\n\nconst corsHeaders = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',\n  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',\n};",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952273422,
+              "end": 1772952273425
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_09f44e67f4fb3bc10169ad1ad142f081988e91739bb6e6179f"
+            }
+          },
+          "id": "prt_ccc30c206001ChgDk1mQJG2Adm",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "tool",
+          "callID": "call_SKtMSMugRhgMNJCAdyxRDIBB",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-task-queue.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-task-queue.ts</path>\n<type>file</type>\n<content>1: const TASK_ID_REGEX = /^task_[a-z0-9]{8}$/;\n2: \n3: export interface WorkspaceTaskQueueMessage {\n4:   type: 'workspace_task_created';\n5:   workspaceId: string;\n6:   taskId: string;\n7:   queuedAt: string;\n8: }\n9: \n10: export function createWorkspaceTaskQueueMessage(\n11:   workspaceId: string,\n12:   taskId: string\n13: ): WorkspaceTaskQueueMessage {\n14:   return {\n15:     type: 'workspace_task_created',\n16:     workspaceId,\n17:     taskId,\n18:     queuedAt: new Date().toISOString(),\n19:   };\n20: }\n21: \n22: export function parseWorkspaceTaskQueueMessage(payload: unknown): WorkspaceTaskQueueMessage {\n23:   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n24:     throw new Error('Invalid workspace task queue payload: expected object');\n25:   }\n26: \n27:   const record = payload as Record<string, unknown>;\n28:   if (record.type !== 'workspace_task_created') {\n29:     throw new Error('Invalid workspace task queue payload type');\n30:   }\n31: \n32:   if (typeof record.workspaceId !== 'string' || !/^ws_[a-z0-9]{8}$/.test(record.workspaceId)) {\n33:     throw new Error('Invalid workspace task queue payload workspaceId');\n34:   }\n35: \n36:   if (typeof record.taskId !== 'string' || !TASK_ID_REGEX.test(record.taskId)) {\n37:     throw new Error('Invalid workspace task queue payload taskId');\n38:   }\n39: \n40:   if (typeof record.queuedAt !== 'string' || Number.isNaN(Date.parse(record.queuedAt))) {\n41:     throw new Error('Invalid workspace task queue payload queuedAt');\n42:   }\n43: \n44:   return {\n45:     type: 'workspace_task_created',\n46:     workspaceId: record.workspaceId,\n47:     taskId: record.taskId,\n48:     queuedAt: record.queuedAt,\n49:   };\n50: }\n\n(End of file - total 50 lines)\n</content>",
+            "title": "packages/worker/src/lib/workspace-task-queue.ts",
+            "metadata": {
+              "preview": "const TASK_ID_REGEX = /^task_[a-z0-9]{8}$/;\n\nexport interface WorkspaceTaskQueueMessage {\n  type: 'workspace_task_created';\n  workspaceId: string;\n  taskId: string;\n  queuedAt: string;\n}\n\nexport function createWorkspaceTaskQueueMessage(\n  workspaceId: string,\n  taskId: string\n): WorkspaceTaskQueueMessage {\n  return {\n    type: 'workspace_task_created',\n    workspaceId,\n    taskId,\n    queuedAt: new Date().toISOString(),\n  };\n}",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952273582,
+              "end": 1772952273588
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_09f44e67f4fb3bc10169ad1ad143008198a053c237383924fc"
+            }
+          },
+          "id": "prt_ccc30c20f0011vgQO3t0mZo2q3",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "tool",
+          "callID": "call_25Bk8ULVi2huuNybUUZj19af",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-task-runner.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-task-runner.ts</path>\n<type>file</type>\n<content>1: import type { Sandbox } from '@cloudflare/sandbox';\n2: import type { Env, WorkspaceTaskResponse } from '../types.js';\n3: import {\n4:   appendWorkspaceTaskEvent,\n5:   claimWorkspaceTaskForExecution,\n6:   getWorkspace,\n7:   getWorkspaceTask,\n8:   getWorkspaceTaskRequestPayload,\n9:   updateWorkspaceTaskStatus,\n10: } from './db.js';\n11: \n12: const WORKSPACE_ROOT = '/workspace';\n13: const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;\n14: const MAX_COMMAND_TIMEOUT_MS = 5 * 60_000;\n15: \n16: interface SandboxClient {\n17:   exec(\n18:     command: string,\n19:     options?: {\n20:       timeout?: number;\n21:     }\n22:   ): Promise<{\n23:     stdout: string;\n24:     stderr: string;\n25:     exitCode: number;\n26:   }>;\n27:   writeFile(path: string, contents: string): Promise<unknown>;\n28: }\n29: \n30: type AgentAction =\n31:   | { type: 'tool'; tool: 'list_files'; args: { path?: string } }\n32:   | { type: 'tool'; tool: 'read_file'; args: { path: string; maxBytes?: number } }\n33:   | { type: 'tool'; tool: 'write_file'; args: { path: string; content: string } }\n34:   | { type: 'tool'; tool: 'run_command'; args: { command: string; timeoutMs?: number } }\n35:   | { type: 'tool'; tool: 'diff_summary'; args: { maxBytes?: number } }\n36:   | { type: 'final'; summary: string };\n37: \n38: type AgentHistoryEntry =\n39:   | { role: 'assistant'; content: string }\n40:   | { role: 'tool'; tool: string; output: unknown };\n41: \n42: interface AgentProvider {\n43:   next(input: {\n44:     prompt: string;\n45:     model: string;\n46:     maxSteps: number;\n47:     step: number;\n48:     history: AgentHistoryEntry[];\n49:   }): Promise<AgentAction>;\n50: }\n51: \n52: class QueueRetryError extends Error {\n53:   constructor(message: string) {\n54:     super(message);\n55:     this.name = 'QueueRetryError';\n56:   }\n57: }\n58: \n59: class PolicyError extends Error {\n60:   constructor(\n61:     public readonly code: string,\n62:     message: string\n63:   ) {\n64:     super(message);\n65:     this.name = 'PolicyError';\n66:   }\n67: }\n68: \n69: function shellQuote(value: string): string {\n70:   return `'${value.replace(/'/g, `\"'\"'`)}'`;\n71: }\n72: \n73: function assertWorkspacePath(pathInput: string): string {\n74:   const trimmed = (pathInput || '.').trim();\n75:   const normalized = trimmed.replace(/\\\\/g, '/');\n76:   if (normalized.includes('\\u0000')) {\n77:     throw new PolicyError('invalid_path', 'Path contains null bytes');\n78:   }\n79:   if (normalized.startsWith('/') || normalized.startsWith('..') || normalized.includes('/../')) {\n80:     throw new PolicyError('invalid_path', 'Path escapes workspace root');\n81:   }\n82: \n83:   const collapsed = normalized\n84:     .split('/')\n85:     .filter((segment) => segment.length > 0 && segment !== '.')\n86:     .join('/');\n87:   if (collapsed.startsWith('..')) {\n88:     throw new PolicyError('invalid_path', 'Path escapes workspace root');\n89:   }\n90: \n91:   return `${WORKSPACE_ROOT}/${collapsed}`;\n92: }\n93: \n94: function sanitizeErrorMessage(input: string): string {\n95:   return input\n96:     .replace(/(authorization:\\s*bearer\\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')\n97:     .replace(/ghs_[a-z0-9_]+/gi, '[REDACTED_TOKEN]');\n98: }\n99: \n100: function isTransientFailure(error: unknown): boolean {\n101:   const message = error instanceof Error ? error.message : String(error);\n102:   return /(timeout|timed out|temporar|network|fetch failed|connection reset|sandbox unavailable)/i.test(message);\n103: }\n104: \n105: function parseNumber(value: unknown, fallback: number, min: number, max: number): number {\n106:   if (typeof value !== 'number' || !Number.isFinite(value)) {\n107:     return fallback;\n108:   }\n109:   const n = Math.floor(value);\n110:   if (n < min) {\n111:     return min;\n112:   }\n113:   if (n > max) {\n114:     return max;\n115:   }\n116:   return n;\n117: }\n118: \n119: function parseBoolean(value: string | undefined, fallback: boolean): boolean {\n120:   if (value === undefined) {\n121:     return fallback;\n122:   }\n123:   const normalized = value.trim().toLowerCase();\n124:   if (['1', 'true', 'yes', 'on'].includes(normalized)) {\n125:     return true;\n126:   }\n127:   if (['0', 'false', 'no', 'off'].includes(normalized)) {\n128:     return false;\n129:   }\n130:   return fallback;\n131: }\n132: \n133: class ScriptedAgentProvider implements AgentProvider {\n134:   private readonly actions: AgentAction[];\n135: \n136:   constructor(actions: AgentAction[]) {\n137:     this.actions = actions;\n138:   }\n139: \n140:   async next(input: { step: number }): Promise<AgentAction> {\n141:     if (input.step - 1 >= this.actions.length) {\n142:       return { type: 'final', summary: 'Scripted task completed' };\n143:     }\n144: \n145:     return this.actions[input.step - 1];\n146:   }\n147: }\n148: \n149: class CloudflareAgentSdkProvider implements AgentProvider {\n150:   constructor(\n151:     private readonly endpoint: string,\n152:     private readonly authToken: string | null\n153:   ) {}\n154: \n155:   async next(input: {\n156:     prompt: string;\n157:     model: string;\n158:     maxSteps: number;\n159:     step: number;\n160:     history: AgentHistoryEntry[];\n161:   }): Promise<AgentAction> {\n162:     const response = await fetch(this.endpoint, {\n163:       method: 'POST',\n164:       headers: {\n165:         'Content-Type': 'application/json',\n166:         ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),\n167:       },\n168:       body: JSON.stringify({\n169:         mode: 'workspace_task',\n170:         prompt: input.prompt,\n171:         model: input.model,\n172:         maxSteps: input.maxSteps,\n173:         step: input.step,\n174:         history: input.history,\n175:       }),\n176:     });\n177: \n178:     if (!response.ok) {\n179:       throw new QueueRetryError(`Cloudflare Agent SDK request failed with status ${response.status}`);\n180:     }\n181: \n182:     const parsed = (await response.json()) as unknown;\n183:     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n184:       throw new Error('Cloudflare Agent SDK returned invalid payload');\n185:     }\n186: \n187:     const action = (parsed as { action?: unknown }).action;\n188:     if (!action || typeof action !== 'object' || Array.isArray(action)) {\n189:       throw new Error('Cloudflare Agent SDK response missing action');\n190:     }\n191: \n192:     return action as AgentAction;\n193:   }\n194: }\n195: \n196: async function getWorkspaceSandbox(env: Env, sandboxId: string): Promise<SandboxClient> {\n197:   const { getSandbox } = await import('@cloudflare/sandbox');\n198:   return getSandbox(env.Sandbox as DurableObjectNamespace<Sandbox>, sandboxId) as SandboxClient;\n199: }\n200: \n201: let sandboxResolver: (env: Env, sandboxId: string) => Promise<SandboxClient> = getWorkspaceSandbox;\n202: \n203: export function setWorkspaceTaskSandboxResolverForTests(\n204:   resolver: ((env: Env, sandboxId: string) => Promise<SandboxClient>) | null\n205: ): void {\n206:   sandboxResolver = resolver ?? getWorkspaceSandbox;\n207: }\n208: \n209: function enforceCommandPolicy(command: string): void {\n210:   const trimmed = command.trim();\n211:   if (!trimmed) {\n212:     throw new PolicyError('command_not_allowed', 'Command cannot be empty');\n213:   }\n214: \n215:   const denyPatterns = [\n216:     /\\brm\\s+-rf\\s+\\//i,\n217:     /\\bsudo\\b/i,\n218:     /\\bcurl\\b/i,\n219:     /\\bwget\\b/i,\n220:     /\\bssh\\b/i,\n221:     /\\bdd\\b/i,\n222:     /\\bmkfs\\b/i,\n223:   ];\n224:   if (denyPatterns.some((pattern) => pattern.test(trimmed))) {\n225:     throw new PolicyError('command_denied', 'Command denied by policy');\n226:   }\n227: \n228:   const firstToken = trimmed.split(/\\s+/)[0] ?? '';\n229:   const allowList = new Set(['npm', 'pnpm', 'bun', 'node', 'git', 'ls', 'pwd', 'python3']);\n230:   if (!allowList.has(firstToken)) {\n231:     throw new PolicyError('command_not_allowed', `Command '${firstToken}' is not in allowlist`);\n232:   }\n233: \n234:   if (firstToken === 'git' && !/^git\\s+(status|diff|add\\b|restore\\b|checkout\\s+--\\s)/i.test(trimmed)) {\n235:     throw new PolicyError('command_not_allowed', 'Git command is outside allowed subset');\n236:   }\n237: }\n238: \n239: async function runSandboxCommand(\n240:   sandbox: SandboxClient,\n241:   command: string,\n242:   timeout?: number\n243: ): Promise<{ stdout: string; stderr: string }> {\n244:   const result = await sandbox.exec(command, { timeout });\n245:   if (result.exitCode !== 0) {\n246:     const output = [result.stdout, result.stderr].filter(Boolean).join('\\n');\n247:     throw new Error(`Sandbox command failed with exit ${result.exitCode}: ${output || 'No output'}`);\n248:   }\n249:   return { stdout: result.stdout, stderr: result.stderr };\n250: }\n251: \n252: async function executeTool(\n253:   sandbox: SandboxClient,\n254:   action: Extract<AgentAction, { type: 'tool' }>\n255: ): Promise<unknown> {\n256:   if (action.tool === 'list_files') {\n257:     const absolutePath = assertWorkspacePath(action.args.path ?? '.');\n258:     const output = await runSandboxCommand(\n259:       sandbox,\n260:       `python3 - ${shellQuote(absolutePath)} <<'PY'\\nimport json\\nimport os\\nimport sys\\n\\npath = sys.argv[1]\\nif not os.path.exists(path):\\n    print(json.dumps({'error':'not_found'}))\\n    raise SystemExit(0)\\nentries = []\\nfor name in sorted(os.listdir(path)):\\n    full = os.path.join(path, name)\\n    entries.append({'name': name, 'type': 'directory' if os.path.isdir(full) else 'file'})\\nprint(json.dumps({'entries': entries[:500]}))\\nPY`\n261:     );\n262:     return JSON.parse(output.stdout || '{}');\n263:   }\n264: \n265:   if (action.tool === 'read_file') {\n266:     const absolutePath = assertWorkspacePath(action.args.path);\n267:     const maxBytes = parseNumber(action.args.maxBytes, 200_000, 1, 2_000_000);\n268:     const output = await runSandboxCommand(\n269:       sandbox,\n270:       `python3 - ${shellQuote(absolutePath)} ${maxBytes} <<'PY'\\nimport json\\nimport os\\nimport sys\\n\\npath = sys.argv[1]\\nmax_bytes = int(sys.argv[2])\\nif not os.path.exists(path):\\n    print(json.dumps({'error':'not_found'}))\\n    raise SystemExit(0)\\nwith open(path, 'rb') as f:\\n    data = f.read(max_bytes + 1)\\ntruncated = len(data) > max_bytes\\nif truncated:\\n    data = data[:max_bytes]\\ntext = data.decode('utf-8', errors='replace')\\nprint(json.dumps({'content': text, 'truncated': truncated, 'bytes': len(data)}))\\nPY`\n271:     );\n272:     return JSON.parse(output.stdout || '{}');\n273:   }\n274: \n275:   if (action.tool === 'write_file') {\n276:     const absolutePath = assertWorkspacePath(action.args.path);\n277:     const directory = absolutePath.slice(0, absolutePath.lastIndexOf('/')) || WORKSPACE_ROOT;\n278:     await runSandboxCommand(sandbox, `mkdir -p ${shellQuote(directory)}`);\n279:     await sandbox.writeFile(absolutePath, action.args.content);\n280:     return { ok: true, path: action.args.path, bytes: new TextEncoder().encode(action.args.content).length };\n281:   }\n282: \n283:   if (action.tool === 'run_command') {\n284:     enforceCommandPolicy(action.args.command);\n285:     const timeout = parseNumber(action.args.timeoutMs, DEFAULT_COMMAND_TIMEOUT_MS, 1_000, MAX_COMMAND_TIMEOUT_MS);\n286:     const output = await runSandboxCommand(\n287:       sandbox,\n288:       `cd ${shellQuote(WORKSPACE_ROOT)} && ${action.args.command}`,\n289:       timeout\n290:     );\n291:     return {\n292:       stdout: output.stdout.slice(0, 32_000),\n293:       stderr: output.stderr.slice(0, 32_000),\n294:       truncated: output.stdout.length > 32_000 || output.stderr.length > 32_000,\n295:     };\n296:   }\n297: \n298:   const maxBytes = parseNumber(action.args.maxBytes, 128_000, 1_024, 1_000_000);\n299:   const output = await runSandboxCommand(\n300:     sandbox,\n301:     `cd ${shellQuote(WORKSPACE_ROOT)} && git diff --name-status && echo '__NIMBUS_PATCH__' && git diff`\n302:   );\n303:   const marker = '__NIMBUS_PATCH__';\n304:   const markerIndex = output.stdout.indexOf(marker);\n305:   const header = markerIndex >= 0 ? output.stdout.slice(0, markerIndex).trim() : '';\n306:   const patch = markerIndex >= 0 ? output.stdout.slice(markerIndex + marker.length).trim() : output.stdout.trim();\n307:   return {\n308:     changedFiles: header ? header.split(/\\r?\\n/).filter((line) => line.trim().length > 0) : [],\n309:     patch: patch.length > maxBytes ? patch.slice(0, maxBytes) : patch,\n310:     truncated: patch.length > maxBytes,\n311:   };\n312: }\n313: \n314: function createProvider(env: Env, payload: Record<string, unknown>, providerName: string): AgentProvider {\n315:   if (providerName === 'scripted') {\n316:     const scriptedActionsRaw = payload.scriptedActions;\n317:     if (!Array.isArray(scriptedActionsRaw)) {\n318:       return new ScriptedAgentProvider([]);\n319:     }\n320:     return new ScriptedAgentProvider(scriptedActionsRaw as AgentAction[]);\n321:   }\n322: \n323:   if (providerName === 'cloudflare_agents_sdk') {\n324:     const endpoint = (env.AGENT_SDK_URL ?? '').trim();\n325:     if (!endpoint) {\n326:       throw new Error('AGENT_SDK_URL is required for cloudflare_agents_sdk provider');\n327:     }\n328:     const authToken = (env.AGENT_SDK_AUTH_TOKEN ?? '').trim() || null;\n329:     return new CloudflareAgentSdkProvider(endpoint, authToken);\n330:   }\n331: \n332:   throw new Error(`Unsupported agent provider: ${providerName}`);\n333: }\n334: \n335: async function isCancelRequested(env: Env, workspaceId: string, taskId: string): Promise<boolean> {\n336:   const task = await getWorkspaceTask(env.DB, workspaceId, taskId);\n337:   if (!task) {\n338:     return true;\n339:   }\n340:   return Boolean(task.cancelRequestedAt);\n341: }\n342: \n343: async function executeWorkspaceTask(\n344:   env: Env,\n345:   workspaceId: string,\n346:   task: WorkspaceTaskResponse,\n347:   payload: Record<string, unknown>\n348: ): Promise<void> {\n349:   const workspace = await getWorkspace(env.DB, workspaceId);\n350:   if (!workspace || workspace.status !== 'ready') {\n351:     throw new Error('Workspace is not ready for task execution');\n352:   }\n353: \n354:   const provider = createProvider(env, payload, task.provider);\n355:   const sandbox = await sandboxResolver(env, workspace.sandboxId);\n356:   const history: AgentHistoryEntry[] = [];\n357: \n358:   await appendWorkspaceTaskEvent(env.DB, {\n359:     workspaceId,\n360:     taskId: task.id,\n361:     eventType: 'task_started',\n362:     payload: {\n363:       provider: task.provider,\n364:       model: task.model,\n365:       attemptCount: task.attemptCount,\n366:       maxSteps: task.maxSteps,\n367:     },\n368:   });\n369: \n370:   for (let step = 1; step <= task.maxSteps; step += 1) {\n371:     if (await isCancelRequested(env, workspaceId, task.id)) {\n372:       await updateWorkspaceTaskStatus(env.DB, task.id, 'cancelled', {\n373:         result: { reason: 'cancel_requested', step },\n374:       });\n375:       await appendWorkspaceTaskEvent(env.DB, {\n376:         workspaceId,\n377:         taskId: task.id,\n378:         eventType: 'task_cancelled',\n379:         payload: { step },\n380:       });\n381:       return;\n382:     }\n383: \n384:     const action = await provider.next({\n385:       prompt: task.prompt,\n386:       model: task.model,\n387:       maxSteps: task.maxSteps,\n388:       step,\n389:       history,\n390:     });\n391: \n392:     if (action.type === 'final') {\n393:       await updateWorkspaceTaskStatus(env.DB, task.id, 'succeeded', {\n394:         result: { summary: action.summary, stepsExecuted: step - 1 },\n395:       });\n396:       await appendWorkspaceTaskEvent(env.DB, {\n397:         workspaceId,\n398:         taskId: task.id,\n399:         eventType: 'task_succeeded',\n400:         payload: { summary: action.summary, stepsExecuted: step - 1 },\n401:       });\n402:       return;\n403:     }\n404: \n405:     await appendWorkspaceTaskEvent(env.DB, {\n406:       workspaceId,\n407:       taskId: task.id,\n408:       eventType: 'tool_call_started',\n409:       payload: {\n410:         step,\n411:         tool: action.tool,\n412:       },\n413:     });\n414: \n415:     const toolOutput = await executeTool(sandbox, action);\n416:     history.push({ role: 'assistant', content: `tool:${action.tool}` });\n417:     history.push({ role: 'tool', tool: action.tool, output: toolOutput });\n418: \n419:     await appendWorkspaceTaskEvent(env.DB, {\n420:       workspaceId,\n421:       taskId: task.id,\n422:       eventType: 'tool_call_completed',\n423:       payload: {\n424:         step,\n425:         tool: action.tool,\n426:         output: toolOutput,\n427:       },\n428:     });\n429:   }\n430: \n431:   throw new PolicyError('max_steps_exceeded', `Task exceeded maximum step count (${task.maxSteps})`);\n432: }\n433: \n434: export async function processWorkspaceTask(env: Env, workspaceId: string, taskId: string): Promise<void> {\n435:   const enabled = parseBoolean(env.WORKSPACE_AGENT_RUNTIME_ENABLED, false);\n436:   if (!enabled) {\n437:     return;\n438:   }\n439: \n440:   const claimed = await claimWorkspaceTaskForExecution(env.DB, workspaceId, taskId);\n441:   if (!claimed) {\n442:     return;\n443:   }\n444: \n445:   const task = await getWorkspaceTask(env.DB, workspaceId, taskId);\n446:   const payload = await getWorkspaceTaskRequestPayload(env.DB, taskId);\n447: \n448:   if (!task || !payload) {\n449:     await updateWorkspaceTaskStatus(env.DB, taskId, 'failed', {\n450:       errorCode: 'task_not_found',\n451:       errorMessage: 'Workspace task no longer exists',\n452:     });\n453:     return;\n454:   }\n455: \n456:   try {\n457:     await executeWorkspaceTask(env, workspaceId, task, payload);\n458:   } catch (error) {\n459:     const freshTask = await getWorkspaceTask(env.DB, workspaceId, taskId);\n460:     const attemptCount = freshTask?.attemptCount ?? task.attemptCount;\n461: \n462:     if (error instanceof PolicyError) {\n463:       await updateWorkspaceTaskStatus(env.DB, taskId, 'failed', {\n464:         errorCode: error.code,\n465:         errorMessage: error.message,\n466:       });\n467:       await appendWorkspaceTaskEvent(env.DB, {\n468:         workspaceId,\n469:         taskId,\n470:         eventType: 'task_failed',\n471:         payload: { code: error.code, message: error.message },\n472:       });\n473:       return;\n474:     }\n475: \n476:     if (isTransientFailure(error) && attemptCount <= task.maxRetries) {\n477:       await updateWorkspaceTaskStatus(env.DB, taskId, 'queued', {\n478:         startedAt: null,\n479:         finishedAt: null,\n480:         errorCode: 'retry_scheduled',\n481:         errorMessage: sanitizeErrorMessage(error instanceof Error ? error.message : String(error)),\n482:       });\n483:       await appendWorkspaceTaskEvent(env.DB, {\n484:         workspaceId,\n485:         taskId,\n486:         eventType: 'task_retry_scheduled',\n487:         payload: {\n488:           attemptCount,\n489:           maxRetries: task.maxRetries,\n490:         },\n491:       });\n492:       throw new QueueRetryError('Workspace task transient failure; retry requested');\n493:     }\n494: \n495:     const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));\n496:     await updateWorkspaceTaskStatus(env.DB, taskId, 'failed', {\n497:       errorCode: 'task_execution_failed',\n498:       errorMessage: message,\n499:     });\n500:     await appendWorkspaceTaskEvent(env.DB, {\n501:       workspaceId,\n502:       taskId,\n503:       eventType: 'task_failed',\n504:       payload: {\n505:         code: 'task_execution_failed',\n506:         message,\n507:       },\n508:     });\n509:   }\n510: }\n511: \n512: export function shouldRetryWorkspaceTaskError(error: unknown): boolean {\n513:   return error instanceof QueueRetryError;\n514: }\n\n(End of file - total 514 lines)\n</content>",
+            "title": "packages/worker/src/lib/workspace-task-runner.ts",
+            "metadata": {
+              "preview": "import type { Sandbox } from '@cloudflare/sandbox';\nimport type { Env, WorkspaceTaskResponse } from '../types.js';\nimport {\n  appendWorkspaceTaskEvent,\n  claimWorkspaceTaskForExecution,\n  getWorkspace,\n  getWorkspaceTask,\n  getWorkspaceTaskRequestPayload,\n  updateWorkspaceTaskStatus,\n} from './db.js';\n\nconst WORKSPACE_ROOT = '/workspace';\nconst DEFAULT_COMMAND_TIMEOUT_MS = 60_000;\nconst MAX_COMMAND_TIMEOUT_MS = 5 * 60_000;\n\ninterface SandboxClient {\n  exec(\n    command: string,\n    options?: {\n      timeout?: number;",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952273584,
+              "end": 1772952273590
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_09f44e67f4fb3bc10169ad1ad143088198962dc27688b086f1"
+            }
+          },
+          "id": "prt_ccc30c2af001hnJMQa95ZgXdsF",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "tool",
+          "callID": "call_LT68pTZFxExwUQ4XBKsngUsx",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/migrations/0006_workspace_agent_runtime.sql"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/migrations/0006_workspace_agent_runtime.sql</path>\n<type>file</type>\n<content>1: -- Migration: 0006_workspace_agent_runtime.sql\n2: -- Description: add workspace agent tasks, events, and idempotency tracking\n3: \n4: CREATE TABLE IF NOT EXISTS workspace_tasks (\n5:     id TEXT PRIMARY KEY,\n6:     workspace_id TEXT NOT NULL,\n7:     status TEXT NOT NULL,\n8:     prompt TEXT NOT NULL,\n9:     provider TEXT NOT NULL,\n10:     model TEXT NOT NULL,\n11:     idempotency_key TEXT NOT NULL,\n12:     request_payload_json TEXT NOT NULL,\n13:     request_payload_sha256 TEXT NOT NULL,\n14:     max_steps INTEGER NOT NULL,\n15:     max_retries INTEGER NOT NULL,\n16:     attempt_count INTEGER NOT NULL DEFAULT 0,\n17:     actor_id TEXT,\n18:     tool_policy_json TEXT NOT NULL DEFAULT '{}',\n19:     last_event_seq INTEGER NOT NULL DEFAULT 0,\n20:     started_at TEXT,\n21:     finished_at TEXT,\n22:     cancel_requested_at TEXT,\n23:     result_json TEXT,\n24:     error_code TEXT,\n25:     error_message TEXT,\n26:     created_at TEXT NOT NULL DEFAULT (datetime('now')),\n27:     updated_at TEXT NOT NULL DEFAULT (datetime('now')),\n28: \n29:     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,\n30:     CHECK (status IN ('queued', 'running', 'succeeded', 'failed', 'cancelled'))\n31: );\n32: \n33: CREATE INDEX IF NOT EXISTS idx_workspace_tasks_workspace_created\n34:     ON workspace_tasks(workspace_id, created_at DESC);\n35: CREATE INDEX IF NOT EXISTS idx_workspace_tasks_workspace_status\n36:     ON workspace_tasks(workspace_id, status, created_at DESC);\n37: \n38: CREATE TABLE IF NOT EXISTS workspace_task_idempotency (\n39:     id TEXT PRIMARY KEY,\n40:     workspace_id TEXT NOT NULL,\n41:     idempotency_key TEXT NOT NULL,\n42:     task_id TEXT NOT NULL,\n43:     request_payload_sha256 TEXT NOT NULL,\n44:     expires_at TEXT NOT NULL,\n45:     created_at TEXT NOT NULL DEFAULT (datetime('now')),\n46: \n47:     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,\n48:     FOREIGN KEY (task_id) REFERENCES workspace_tasks(id) ON DELETE CASCADE,\n49:     UNIQUE (workspace_id, idempotency_key)\n50: );\n51: \n52: CREATE INDEX IF NOT EXISTS idx_workspace_task_idempotency_expires\n53:     ON workspace_task_idempotency(expires_at);\n54: \n55: CREATE TABLE IF NOT EXISTS workspace_task_events (\n56:     id INTEGER PRIMARY KEY AUTOINCREMENT,\n57:     workspace_id TEXT NOT NULL,\n58:     task_id TEXT NOT NULL,\n59:     seq INTEGER NOT NULL,\n60:     event_type TEXT NOT NULL,\n61:     payload_json TEXT NOT NULL,\n62:     created_at TEXT NOT NULL DEFAULT (datetime('now')),\n63: \n64:     FOREIGN KEY (workspace_id) REFERENCES workspaces(id) ON DELETE CASCADE,\n65:     FOREIGN KEY (task_id) REFERENCES workspace_tasks(id) ON DELETE CASCADE,\n66:     UNIQUE (task_id, seq)\n67: );\n68: \n69: CREATE INDEX IF NOT EXISTS idx_workspace_task_events_task_seq\n70:     ON workspace_task_events(task_id, seq ASC);\n\n(End of file - total 70 lines)\n</content>",
+            "title": "packages/worker/migrations/0006_workspace_agent_runtime.sql",
+            "metadata": {
+              "preview": "-- Migration: 0006_workspace_agent_runtime.sql\n-- Description: add workspace agent tasks, events, and idempotency tracking\n\nCREATE TABLE IF NOT EXISTS workspace_tasks (\n    id TEXT PRIMARY KEY,\n    workspace_id TEXT NOT NULL,\n    status TEXT NOT NULL,\n    prompt TEXT NOT NULL,\n    provider TEXT NOT NULL,\n    model TEXT NOT NULL,\n    idempotency_key TEXT NOT NULL,\n    request_payload_json TEXT NOT NULL,\n    request_payload_sha256 TEXT NOT NULL,\n    max_steps INTEGER NOT NULL,\n    max_retries INTEGER NOT NULL,\n    attempt_count INTEGER NOT NULL DEFAULT 0,\n    actor_id TEXT,\n    tool_policy_json TEXT NOT NULL DEFAULT '{}',\n    last_event_seq INTEGER NOT NULL DEFAULT 0,\n    started_at TEXT,",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952273585,
+              "end": 1772952273591
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_09f44e67f4fb3bc10169ad1ad1430c8198ae6eb0c0e719445a"
+            }
+          },
+          "id": "prt_ccc30c2b0001O227PoN2YHz2A3",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "tool",
+          "callID": "call_zOK6GeuC3OcETPr6gPW9tWek",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-tasks.test.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-tasks.test.ts</path>\n<type>file</type>\n<content>1: import { strict as assert } from 'assert';\n2: import {\n3:   handleCancelWorkspaceTask,\n4:   handleCreateWorkspaceTask,\n5:   handleGetWorkspaceTask,\n6:   handleGetWorkspaceTaskEvents,\n7: } from './workspace-tasks.js';\n8: \n9: function createWorkspaceTaskApiEnv(): { env: Record<string, unknown>; state: { taskExists: boolean } } {\n10:   const state = {\n11:     taskExists: false,\n12:   };\n13: \n14:   const env = {\n15:     WORKSPACE_AGENT_RUNTIME_ENABLED: 'true',\n16:     DB: {\n17:       prepare(sql: string) {\n18:         if (/SELECT key, value FROM runtime_flags/i.test(sql)) {\n19:           return {\n20:             async all() {\n21:               return { results: [] };\n22:             },\n23:           };\n24:         }\n25: \n26:         if (/SELECT \\* FROM workspaces WHERE id = \\?/i.test(sql)) {\n27:           return {\n28:             bind() {\n29:               return {\n30:                 async first<T>() {\n31:                   return {\n32:                     id: 'ws_abc12345',\n33:                     status: 'ready',\n34:                     source_type: 'checkpoint',\n35:                     checkpoint_id: null,\n36:                     commit_sha: 'a'.repeat(40),\n37:                     source_ref: 'main',\n38:                     source_project_root: '.',\n39:                     source_bundle_key: 'key',\n40:                     source_bundle_sha256: 'f'.repeat(64),\n41:                     source_bundle_bytes: 1,\n42:                     sandbox_id: 'workspace-ws_abc12345',\n43:                     baseline_ready: 1,\n44:                     error_code: null,\n45:                     error_message: null,\n46:                     last_event_seq: 0,\n47:                     created_at: '2026-03-08T00:00:00.000Z',\n48:                     updated_at: '2026-03-08T00:00:00.000Z',\n49:                     deleted_at: null,\n50:                   } as T;\n51:                 },\n52:               };\n53:             },\n54:           };\n55:         }\n56: \n57:         if (/SELECT task_id, request_payload_sha256, expires_at/i.test(sql)) {\n58:           return {\n59:             bind() {\n60:               return {\n61:                 async first<T>() {\n62:                   return null as T;\n63:                 },\n64:               };\n65:             },\n66:           };\n67:         }\n68: \n69:         if (/INSERT INTO workspace_tasks/i.test(sql)) {\n70:           return {\n71:             bind(...values: unknown[]) {\n72:               return {\n73:                 async first<T>() {\n74:                   state.taskExists = true;\n75:                   return {\n76:                     id: values[0],\n77:                     workspace_id: values[1],\n78:                     status: 'queued',\n79:                     prompt: values[2],\n80:                     provider: values[3],\n81:                     model: values[4],\n82:                     idempotency_key: values[5],\n83:                     request_payload_json: values[6],\n84:                     request_payload_sha256: values[7],\n85:                     max_steps: values[8],\n86:                     max_retries: values[9],\n87:                     attempt_count: 0,\n88:                     actor_id: null,\n89:                     tool_policy_json: values[11],\n90:                     last_event_seq: 0,\n91:                     started_at: null,\n92:                     finished_at: null,\n93:                     cancel_requested_at: null,\n94:                     result_json: null,\n95:                     error_code: null,\n96:                     error_message: null,\n97:                     created_at: '2026-03-08T00:00:00.000Z',\n98:                     updated_at: '2026-03-08T00:00:00.000Z',\n99:                   } as T;\n100:                 },\n101:               };\n102:             },\n103:           };\n104:         }\n105: \n106:         if (/INSERT INTO workspace_task_idempotency/i.test(sql)) {\n107:           return {\n108:             bind() {\n109:               return {\n110:                 async run() {\n111:                   return { success: true, meta: { changes: 1 } };\n112:                 },\n113:               };\n114:             },\n115:           };\n116:         }\n117: \n118:         if (/UPDATE workspace_tasks SET last_event_seq = last_event_seq \\+ 1/i.test(sql)) {\n119:           return {\n120:             bind() {\n121:               return {\n122:                 async first<T>() {\n123:                   return { last_event_seq: 1 } as T;\n124:                 },\n125:               };\n126:             },\n127:           };\n128:         }\n129: \n130:         if (/INSERT INTO workspace_task_events/i.test(sql)) {\n131:           return {\n132:             bind() {\n133:               return {\n134:                 async run() {\n135:                   return { success: true, meta: { changes: 1 } };\n136:                 },\n137:               };\n138:             },\n139:           };\n140:         }\n141: \n142:         if (/SELECT \\* FROM workspace_tasks WHERE id = \\? AND workspace_id = \\?/i.test(sql)) {\n143:           return {\n144:             bind(taskId: string) {\n145:               return {\n146:                 async first<T>() {\n147:                   if (!state.taskExists) {\n148:                     return null as T;\n149:                   }\n150:                   return {\n151:                     id: taskId,\n152:                     workspace_id: 'ws_abc12345',\n153:                     status: 'queued',\n154:                     prompt: 'Do a thing',\n155:                     provider: 'scripted',\n156:                     model: 'test',\n157:                     idempotency_key: 'idem-1',\n158:                     request_payload_json: '{}',\n159:                     request_payload_sha256: 'hash',\n160:                     max_steps: 8,\n161:                     max_retries: 2,\n162:                     attempt_count: 0,\n163:                     actor_id: null,\n164:                     tool_policy_json: '{}',\n165:                     last_event_seq: 1,\n166:                     started_at: null,\n167:                     finished_at: null,\n168:                     cancel_requested_at: null,\n169:                     result_json: null,\n170:                     error_code: null,\n171:                     error_message: null,\n172:                     created_at: '2026-03-08T00:00:00.000Z',\n173:                     updated_at: '2026-03-08T00:00:00.000Z',\n174:                   } as T;\n175:                 },\n176:               };\n177:             },\n178:           };\n179:         }\n180: \n181:         if (/SELECT seq, event_type, payload_json, created_at/i.test(sql)) {\n182:           return {\n183:             bind() {\n184:               return {\n185:                 async all<T>() {\n186:                   return {\n187:                     results: [\n188:                       {\n189:                         seq: 1,\n190:                         event_type: 'task_created',\n191:                         payload_json: '{\"ok\":true}',\n192:                         created_at: '2026-03-08T00:00:00.000Z',\n193:                       },\n194:                     ],\n195:                   } as unknown as T;\n196:                 },\n197:               };\n198:             },\n199:           };\n200:         }\n201: \n202:         if (/UPDATE workspace_tasks\\s+SET cancel_requested_at/i.test(sql)) {\n203:           return {\n204:             bind() {\n205:               return {\n206:                 async run() {\n207:                   return { success: true, meta: { changes: 1 } };\n208:                 },\n209:               };\n210:             },\n211:           };\n212:         }\n213: \n214:         return {\n215:           bind() {\n216:             return {\n217:               async first() {\n218:                 return null;\n219:               },\n220:               async all() {\n221:                 return { results: [] };\n222:               },\n223:               async run() {\n224:                 return { success: true, meta: { changes: 1 } };\n225:               },\n226:             };\n227:           },\n228:         };\n229:       },\n230:     },\n231:     Sandbox: {\n232:       idFromName() {\n233:         return {};\n234:       },\n235:     },\n236:   };\n237: \n238:   return { env, state };\n239: }\n240: \n241: export async function runWorkspaceTaskApiTests(): Promise<void> {\n242:   {\n243:     const { env } = createWorkspaceTaskApiEnv();\n244:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/tasks', {\n245:       method: 'POST',\n246:       body: JSON.stringify({ prompt: 'Do a thing' }),\n247:       headers: { 'Content-Type': 'application/json' },\n248:     });\n249:     const response = await handleCreateWorkspaceTask('ws_abc12345', request, env as never);\n250:     assert.equal(response.status, 400);\n251:   }\n252: \n253:   {\n254:     const { env, state } = createWorkspaceTaskApiEnv();\n255:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/tasks', {\n256:       method: 'POST',\n257:       body: JSON.stringify({ prompt: 'Do a thing', provider: 'scripted' }),\n258:       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-1' },\n259:     });\n260:     const response = await handleCreateWorkspaceTask('ws_abc12345', request, env as never);\n261:     assert.equal(response.status, 202);\n262:     assert.equal(state.taskExists, true);\n263:   }\n264: \n265:   {\n266:     const { env, state } = createWorkspaceTaskApiEnv();\n267:     state.taskExists = true;\n268:     const response = await handleGetWorkspaceTask('ws_abc12345', 'task_abcd1234', env as never);\n269:     assert.equal(response.status, 200);\n270:   }\n271: \n272:   {\n273:     const { env, state } = createWorkspaceTaskApiEnv();\n274:     state.taskExists = true;\n275:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/tasks/task_abcd1234/events?from=0');\n276:     const response = await handleGetWorkspaceTaskEvents('ws_abc12345', 'task_abcd1234', request, env as never);\n277:     assert.equal(response.status, 200);\n278:   }\n279: \n280:   {\n281:     const { env, state } = createWorkspaceTaskApiEnv();\n282:     state.taskExists = true;\n283:     const response = await handleCancelWorkspaceTask('ws_abc12345', 'task_abcd1234', env as never);\n284:     assert.equal(response.status, 202);\n285:   }\n286: }\n\n(End of file - total 286 lines)\n</content>",
+            "title": "packages/worker/src/api/workspace-tasks.test.ts",
+            "metadata": {
+              "preview": "import { strict as assert } from 'assert';\nimport {\n  handleCancelWorkspaceTask,\n  handleCreateWorkspaceTask,\n  handleGetWorkspaceTask,\n  handleGetWorkspaceTaskEvents,\n} from './workspace-tasks.js';\n\nfunction createWorkspaceTaskApiEnv(): { env: Record<string, unknown>; state: { taskExists: boolean } } {\n  const state = {\n    taskExists: false,\n  };\n\n  const env = {\n    WORKSPACE_AGENT_RUNTIME_ENABLED: 'true',\n    DB: {\n      prepare(sql: string) {\n        if (/SELECT key, value FROM runtime_flags/i.test(sql)) {\n          return {\n            async all() {",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952273585,
+              "end": 1772952273590
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_09f44e67f4fb3bc10169ad1ad1431081989f4afbbe1a9f4ed0"
+            }
+          },
+          "id": "prt_ccc30c2b1001stGOWmX6iIryaF",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "tool",
+          "callID": "call_EP0p3UV3YtNLAlvkl6O96Iis",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-task-queue.test.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-task-queue.test.ts</path>\n<type>file</type>\n<content>1: import { strict as assert } from 'assert';\n2: import {\n3:   createWorkspaceTaskQueueMessage,\n4:   parseWorkspaceTaskQueueMessage,\n5: } from './workspace-task-queue.js';\n6: \n7: export async function runWorkspaceTaskQueueTests(): Promise<void> {\n8:   {\n9:     const message = createWorkspaceTaskQueueMessage('ws_abc12345', 'task_abcd1234');\n10:     assert.equal(message.type, 'workspace_task_created');\n11:     assert.equal(message.workspaceId, 'ws_abc12345');\n12:     assert.equal(message.taskId, 'task_abcd1234');\n13:   }\n14: \n15:   {\n16:     const parsed = parseWorkspaceTaskQueueMessage({\n17:       type: 'workspace_task_created',\n18:       workspaceId: 'ws_abc12345',\n19:       taskId: 'task_abcd1234',\n20:       queuedAt: '2026-03-08T00:00:00.000Z',\n21:     });\n22:     assert.equal(parsed.taskId, 'task_abcd1234');\n23:   }\n24: \n25:   {\n26:     assert.throws(() =>\n27:       parseWorkspaceTaskQueueMessage({\n28:         type: 'workspace_task_created',\n29:         workspaceId: 'invalid',\n30:         taskId: 'task_abcd1234',\n31:         queuedAt: '2026-03-08T00:00:00.000Z',\n32:       })\n33:     );\n34:   }\n35: }\n\n(End of file - total 35 lines)\n</content>",
+            "title": "packages/worker/src/lib/workspace-task-queue.test.ts",
+            "metadata": {
+              "preview": "import { strict as assert } from 'assert';\nimport {\n  createWorkspaceTaskQueueMessage,\n  parseWorkspaceTaskQueueMessage,\n} from './workspace-task-queue.js';\n\nexport async function runWorkspaceTaskQueueTests(): Promise<void> {\n  {\n    const message = createWorkspaceTaskQueueMessage('ws_abc12345', 'task_abcd1234');\n    assert.equal(message.type, 'workspace_task_created');\n    assert.equal(message.workspaceId, 'ws_abc12345');\n    assert.equal(message.taskId, 'task_abcd1234');\n  }\n\n  {\n    const parsed = parseWorkspaceTaskQueueMessage({\n      type: 'workspace_task_created',\n      workspaceId: 'ws_abc12345',\n      taskId: 'task_abcd1234',\n      queuedAt: '2026-03-08T00:00:00.000Z',",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952273586,
+              "end": 1772952273589
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_09f44e67f4fb3bc10169ad1ad143148198a37c2156acade12d"
+            }
+          },
+          "id": "prt_ccc30c2b1002COLnNOvFFywnVJ",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "tool",
+          "callID": "call_o0QFRFf42hu7mD4tHqIrVqHI",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-task-runner.test.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-task-runner.test.ts</path>\n<type>file</type>\n<content>1: import { strict as assert } from 'assert';\n2: import {\n3:   processWorkspaceTask,\n4:   setWorkspaceTaskSandboxResolverForTests,\n5:   shouldRetryWorkspaceTaskError,\n6: } from './workspace-task-runner.js';\n7: \n8: function createRunnerEnv(): {\n9:   env: Record<string, unknown>;\n10:   state: {\n11:     status: string;\n12:     attemptCount: number;\n13:     events: Array<{ eventType: string; payload: unknown }>;\n14:     fileContent: string;\n15:   };\n16: } {\n17:   const state = {\n18:     status: 'queued',\n19:     attemptCount: 0,\n20:     events: [] as Array<{ eventType: string; payload: unknown }>,\n21:     fileContent: '',\n22:   };\n23: \n24:   const taskPayload = {\n25:     prompt: 'Update README',\n26:     provider: 'scripted',\n27:     model: 'test-model',\n28:     maxSteps: 5,\n29:     maxRetries: 1,\n30:     scriptedActions: [\n31:       { type: 'tool', tool: 'write_file', args: { path: 'README.md', content: 'hello world\\n' } },\n32:       { type: 'final', summary: 'done' },\n33:     ],\n34:   };\n35: \n36:   const env = {\n37:     WORKSPACE_AGENT_RUNTIME_ENABLED: 'true',\n38:     DB: {\n39:       prepare(sql: string) {\n40:         if (/UPDATE workspace_tasks\\s+SET status = 'running'/i.test(sql)) {\n41:           return {\n42:             bind() {\n43:               return {\n44:                 async run() {\n45:                   if (state.status !== 'queued') {\n46:                     return { success: true, meta: { changes: 0 } };\n47:                   }\n48:                   state.status = 'running';\n49:                   state.attemptCount += 1;\n50:                   return { success: true, meta: { changes: 1 } };\n51:                 },\n52:               };\n53:             },\n54:           };\n55:         }\n56: \n57:         if (/SELECT \\* FROM workspace_tasks WHERE id = \\? AND workspace_id = \\?/i.test(sql)) {\n58:           return {\n59:             bind() {\n60:               return {\n61:                 async first<T>() {\n62:                   return {\n63:                     id: 'task_abcd1234',\n64:                     workspace_id: 'ws_abc12345',\n65:                     status: state.status,\n66:                     prompt: 'Update README',\n67:                     provider: 'scripted',\n68:                     model: 'test-model',\n69:                     idempotency_key: 'idem-1',\n70:                     request_payload_json: JSON.stringify(taskPayload),\n71:                     request_payload_sha256: 'hash',\n72:                     max_steps: 5,\n73:                     max_retries: 1,\n74:                     attempt_count: state.attemptCount,\n75:                     actor_id: null,\n76:                     tool_policy_json: '{}',\n77:                     started_at: null,\n78:                     finished_at: null,\n79:                     cancel_requested_at: null,\n80:                     result_json: null,\n81:                     error_code: null,\n82:                     error_message: null,\n83:                     created_at: '2026-03-08T00:00:00.000Z',\n84:                     updated_at: '2026-03-08T00:00:00.000Z',\n85:                   } as T;\n86:                 },\n87:               };\n88:             },\n89:           };\n90:         }\n91: \n92:         if (/SELECT request_payload_json FROM workspace_tasks WHERE id = \\?/i.test(sql)) {\n93:           return {\n94:             bind() {\n95:               return {\n96:                 async first<T>() {\n97:                   return {\n98:                     request_payload_json: JSON.stringify(taskPayload),\n99:                   } as T;\n100:                 },\n101:               };\n102:             },\n103:           };\n104:         }\n105: \n106:         if (/SELECT \\* FROM workspaces WHERE id = \\?/i.test(sql)) {\n107:           return {\n108:             bind() {\n109:               return {\n110:                 async first<T>() {\n111:                   return {\n112:                     id: 'ws_abc12345',\n113:                     status: 'ready',\n114:                     source_type: 'checkpoint',\n115:                     checkpoint_id: null,\n116:                     commit_sha: 'a'.repeat(40),\n117:                     source_ref: 'main',\n118:                     source_project_root: '.',\n119:                     source_bundle_key: 'key',\n120:                     source_bundle_sha256: 'f'.repeat(64),\n121:                     source_bundle_bytes: 1,\n122:                     sandbox_id: 'workspace-ws_abc12345',\n123:                     baseline_ready: 1,\n124:                     error_code: null,\n125:                     error_message: null,\n126:                     last_event_seq: 0,\n127:                     created_at: '2026-03-08T00:00:00.000Z',\n128:                     updated_at: '2026-03-08T00:00:00.000Z',\n129:                     deleted_at: null,\n130:                   } as T;\n131:                 },\n132:               };\n133:             },\n134:           };\n135:         }\n136: \n137:         if (/UPDATE workspace_tasks SET last_event_seq = last_event_seq \\+ 1/i.test(sql)) {\n138:           return {\n139:             bind() {\n140:               return {\n141:                 async first<T>() {\n142:                   return { last_event_seq: state.events.length + 1 } as T;\n143:                 },\n144:               };\n145:             },\n146:           };\n147:         }\n148: \n149:         if (/INSERT INTO workspace_task_events/i.test(sql)) {\n150:           return {\n151:             bind(_workspaceId: string, _taskId: string, _seq: number, eventType: string, payloadJson: string) {\n152:               return {\n153:                 async run() {\n154:                   state.events.push({ eventType, payload: JSON.parse(payloadJson) });\n155:                   return { success: true, meta: { changes: 1 } };\n156:                 },\n157:               };\n158:             },\n159:           };\n160:         }\n161: \n162:         if (/UPDATE workspace_tasks SET/i.test(sql)) {\n163:           return {\n164:             bind(status: string) {\n165:               return {\n166:                 async run() {\n167:                   state.status = status;\n168:                   return { success: true, meta: { changes: 1 } };\n169:                 },\n170:               };\n171:             },\n172:           };\n173:         }\n174: \n175:         return {\n176:           bind() {\n177:             return {\n178:               async first() {\n179:                 return null;\n180:               },\n181:               async all() {\n182:                 return { results: [] };\n183:               },\n184:               async run() {\n185:                 return { success: true, meta: { changes: 1 } };\n186:               },\n187:             };\n188:           },\n189:         };\n190:       },\n191:     },\n192:     Sandbox: {\n193:       idFromName() {\n194:         return {};\n195:       },\n196:     },\n197:   };\n198: \n199:   return { env, state };\n200: }\n201: \n202: export async function runWorkspaceTaskRunnerTests(): Promise<void> {\n203:   {\n204:     const { env, state } = createRunnerEnv();\n205:     setWorkspaceTaskSandboxResolverForTests(async () => ({\n206:       async exec() {\n207:         return { stdout: '', stderr: '', exitCode: 0 };\n208:       },\n209:       async writeFile(_path: string, contents: string) {\n210:         state.fileContent = contents;\n211:         return {};\n212:       },\n213:     }));\n214: \n215:     await processWorkspaceTask(env as never, 'ws_abc12345', 'task_abcd1234');\n216:     assert.equal(state.status, 'succeeded');\n217:     assert.equal(state.fileContent, 'hello world\\n');\n218:     assert.equal(state.events.some((event) => event.eventType === 'task_succeeded'), true);\n219:   }\n220: \n221:   {\n222:     const retry = shouldRetryWorkspaceTaskError(new Error('x'));\n223:     assert.equal(retry, false);\n224:   }\n225: \n226:   setWorkspaceTaskSandboxResolverForTests(null);\n227: }\n\n(End of file - total 227 lines)\n</content>",
+            "title": "packages/worker/src/lib/workspace-task-runner.test.ts",
+            "metadata": {
+              "preview": "import { strict as assert } from 'assert';\nimport {\n  processWorkspaceTask,\n  setWorkspaceTaskSandboxResolverForTests,\n  shouldRetryWorkspaceTaskError,\n} from './workspace-task-runner.js';\n\nfunction createRunnerEnv(): {\n  env: Record<string, unknown>;\n  state: {\n    status: string;\n    attemptCount: number;\n    events: Array<{ eventType: string; payload: unknown }>;\n    fileContent: string;\n  };\n} {\n  const state = {\n    status: 'queued',\n    attemptCount: 0,\n    events: [] as Array<{ eventType: string; payload: unknown }>,",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952273587,
+              "end": 1772952273589
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_09f44e67f4fb3bc10169ad1ad143188198a806de148246afb3"
+            }
+          },
+          "id": "prt_ccc30c2b20013U8bOoUmNe5Fje",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.035882,
+          "tokens": {
+            "total": 17391,
+            "input": 17040,
+            "output": 351,
+            "reasoning": 82,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc30c379001EZwWh93UDdkzfw",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30b1d2001DqciqQVPC8WP9R"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952273900,
+          "completed": 1772952276481
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0481278,
+        "tokens": {
+          "total": 32024,
+          "input": 25924,
+          "output": 84,
+          "reasoning": 38,
+          "cache": {
+            "read": 6016,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_ccc30c3ec001Fx9lBJBB05m3GH",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc30c6b70016zrZ8jW8uGquUS",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30c3ec001Fx9lBJBB05m3GH"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Planning bug and compatibility review**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_034d7796947157770169ad1ad2ee8c8196ac277d2d6b1725a0",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1772952275082,
+            "end": 1772952276051
+          },
+          "id": "prt_ccc30c88a001aXCou5ev3IGp3V",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30c3ec001Fx9lBJBB05m3GH"
+        },
+        {
+          "type": "tool",
+          "callID": "call_8BOFLNUQmHRF2PUF52UOkjbw",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "workspaceAgentRuntimeEnabled",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker/src",
+              "include": "*.ts"
+            },
+            "output": "Found 6 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-tasks.ts:\n  Line 97:   if (!flags.workspaceAgentRuntimeEnabled) {\n\n/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/flags.ts:\n  Line 22:   workspaceAgentRuntimeEnabled: false,\n  Line 121:     workspaceAgentRuntimeEnabled: parseBoolean(\n  Line 123:       DEFAULT_RUNTIME_FLAGS.workspaceAgentRuntimeEnabled\n  Line 187:         merged.workspaceAgentRuntimeEnabled = parseBoolean(row.value, merged.workspaceAgentRuntimeEnabled);\n\n/Users/nickdejesus/Code/nimbus/packages/worker/src/types.ts:\n  Line 155:   workspaceAgentRuntimeEnabled: boolean;",
+            "title": "workspaceAgentRuntimeEnabled",
+            "metadata": {
+              "matches": 6,
+              "truncated": false
+            },
+            "time": {
+              "start": 1772952276291,
+              "end": 1772952276309
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_034d7796947157770169ad1ad3e4b88196a34ea5bc5c92f146"
+            }
+          },
+          "id": "prt_ccc30ccb2001kdN0ETrNygD09s",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30c3ec001Fx9lBJBB05m3GH"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.0481278,
+          "tokens": {
+            "total": 32024,
+            "input": 25924,
+            "output": 84,
+            "reasoning": 38,
+            "cache": {
+              "read": 6016,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc30cd8f001020yB6GMtxwptx",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30c3ec001Fx9lBJBB05m3GH"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952276482,
+          "completed": 1772952277993
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0071701,
+        "tokens": {
+          "total": 32246,
+          "input": 318,
+          "output": 56,
+          "reasoning": 18,
+          "cache": {
+            "read": 31872,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_ccc30ce020018zFutzbcxfeoHj",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc30d140001Pvz42qwanjjCBA",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30ce020018zFutzbcxfeoHj"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Checking flag normalization**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_02d8aa7cc6606fed0169ad1ad5151081999f243c9dc0e6b268",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1772952277313,
+            "end": 1772952277657
+          },
+          "id": "prt_ccc30d141001n32oKC7MCklN8P",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30ce020018zFutzbcxfeoHj"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/flags.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/flags.ts</path>\n<type>file</type>\n<content>1: import type { Env, RuntimeFlags } from '../types.js';\n2: \n3: export interface RuntimeFlagRow {\n4:   key: string;\n5:   value: string;\n6: }\n7: \n8: export const DEFAULT_RUNTIME_FLAGS: RuntimeFlags = {\n9:   v2Enabled: false,\n10:   v2CodeBrowserEnabled: false,\n11:   maxAttempts: 3,\n12:   attemptTimeoutMs: 600000,\n13:   totalTimeoutMs: 1800000,\n14:   idempotencyTtlHours: 24,\n15:   maxRepairCycles: 2,\n16:   lintBlocking: false,\n17:   testBlocking: true,\n18:   safeInstallIgnoreScripts: true,\n19:   autoInstallScriptsFallback: true,\n20:   rawRetentionDays: 30,\n21:   summaryRetentionDays: 180,\n22:   workspaceAgentRuntimeEnabled: false,\n23: };\n24: \n25: function parseBoolean(value: string | undefined, fallback: boolean): boolean {\n26:   if (value === undefined) {\n27:     return fallback;\n28:   }\n29: \n30:   const normalized = value.trim().toLowerCase();\n31: \n32:   if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {\n33:     return true;\n34:   }\n35: \n36:   if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {\n37:     return false;\n38:   }\n39: \n40:   return fallback;\n41: }\n42: \n43: function parseInteger(\n44:   value: string | undefined,\n45:   fallback: number,\n46:   options?: { min?: number; max?: number }\n47: ): number {\n48:   if (value === undefined) {\n49:     return fallback;\n50:   }\n51: \n52:   const parsed = Number.parseInt(value.trim(), 10);\n53:   if (Number.isNaN(parsed)) {\n54:     return fallback;\n55:   }\n56: \n57:   if (options?.min !== undefined && parsed < options.min) {\n58:     return options.min;\n59:   }\n60: \n61:   if (options?.max !== undefined && parsed > options.max) {\n62:     return options.max;\n63:   }\n64: \n65:   return parsed;\n66: }\n67: \n68: function normalizeRuntimeFlags(flags: RuntimeFlags): RuntimeFlags {\n69:   return {\n70:     ...flags,\n71:     totalTimeoutMs: Math.max(flags.totalTimeoutMs, flags.attemptTimeoutMs),\n72:   };\n73: }\n74: \n75: export function getRuntimeFlagsFromEnv(env: Env): RuntimeFlags {\n76:   const resolved: RuntimeFlags = {\n77:     v2Enabled: parseBoolean(env.V2_ENABLED, DEFAULT_RUNTIME_FLAGS.v2Enabled),\n78:     v2CodeBrowserEnabled: parseBoolean(\n79:       env.V2_CODE_BROWSER_ENABLED,\n80:       DEFAULT_RUNTIME_FLAGS.v2CodeBrowserEnabled\n81:     ),\n82:     maxAttempts: parseInteger(env.MAX_ATTEMPTS, DEFAULT_RUNTIME_FLAGS.maxAttempts, { min: 1, max: 10 }),\n83:     attemptTimeoutMs: parseInteger(\n84:       env.ATTEMPT_TIMEOUT_MS,\n85:       DEFAULT_RUNTIME_FLAGS.attemptTimeoutMs,\n86:       { min: 60000 }\n87:     ),\n88:     totalTimeoutMs: parseInteger(env.TOTAL_TIMEOUT_MS, DEFAULT_RUNTIME_FLAGS.totalTimeoutMs, {\n89:       min: 60000,\n90:     }),\n91:     idempotencyTtlHours: parseInteger(\n92:       env.IDEMPOTENCY_TTL_HOURS,\n93:       DEFAULT_RUNTIME_FLAGS.idempotencyTtlHours,\n94:       { min: 1, max: 168 }\n95:     ),\n96:     maxRepairCycles: parseInteger(\n97:       env.MAX_REPAIR_CYCLES,\n98:       DEFAULT_RUNTIME_FLAGS.maxRepairCycles,\n99:       { min: 0, max: 10 }\n100:     ),\n101:     lintBlocking: parseBoolean(env.LINT_BLOCKING, DEFAULT_RUNTIME_FLAGS.lintBlocking),\n102:     testBlocking: parseBoolean(env.TEST_BLOCKING, DEFAULT_RUNTIME_FLAGS.testBlocking),\n103:     safeInstallIgnoreScripts: parseBoolean(\n104:       env.SAFE_INSTALL_IGNORE_SCRIPTS,\n105:       DEFAULT_RUNTIME_FLAGS.safeInstallIgnoreScripts\n106:     ),\n107:     autoInstallScriptsFallback: parseBoolean(\n108:       env.AUTO_INSTALL_SCRIPTS_FALLBACK,\n109:       DEFAULT_RUNTIME_FLAGS.autoInstallScriptsFallback\n110:     ),\n111:     rawRetentionDays: parseInteger(\n112:       env.RAW_RETENTION_DAYS,\n113:       DEFAULT_RUNTIME_FLAGS.rawRetentionDays,\n114:       { min: 1 }\n115:     ),\n116:     summaryRetentionDays: parseInteger(\n117:       env.SUMMARY_RETENTION_DAYS,\n118:       DEFAULT_RUNTIME_FLAGS.summaryRetentionDays,\n119:       { min: 1 }\n120:     ),\n121:     workspaceAgentRuntimeEnabled: parseBoolean(\n122:       env.WORKSPACE_AGENT_RUNTIME_ENABLED,\n123:       DEFAULT_RUNTIME_FLAGS.workspaceAgentRuntimeEnabled\n124:     ),\n125:   };\n126: \n127:   return normalizeRuntimeFlags(resolved);\n128: }\n129: \n130: export function mergeRuntimeFlagOverrides(\n131:   base: RuntimeFlags,\n132:   rows: RuntimeFlagRow[]\n133: ): RuntimeFlags {\n134:   const merged: RuntimeFlags = { ...base };\n135: \n136:   for (const row of rows) {\n137:     switch (row.key) {\n138:       case 'v2_enabled':\n139:         merged.v2Enabled = parseBoolean(row.value, merged.v2Enabled);\n140:         break;\n141:       case 'v2_code_browser_enabled':\n142:         merged.v2CodeBrowserEnabled = parseBoolean(row.value, merged.v2CodeBrowserEnabled);\n143:         break;\n144:       case 'max_attempts':\n145:         merged.maxAttempts = parseInteger(row.value, merged.maxAttempts, { min: 1, max: 10 });\n146:         break;\n147:       case 'attempt_timeout_ms':\n148:         merged.attemptTimeoutMs = parseInteger(row.value, merged.attemptTimeoutMs, { min: 60000 });\n149:         break;\n150:       case 'total_timeout_ms':\n151:         merged.totalTimeoutMs = parseInteger(row.value, merged.totalTimeoutMs, { min: 60000 });\n152:         break;\n153:       case 'idempotency_ttl_hours':\n154:         merged.idempotencyTtlHours = parseInteger(row.value, merged.idempotencyTtlHours, {\n155:           min: 1,\n156:           max: 168,\n157:         });\n158:         break;\n159:       case 'max_repair_cycles':\n160:         merged.maxRepairCycles = parseInteger(row.value, merged.maxRepairCycles, {\n161:           min: 0,\n162:           max: 10,\n163:         });\n164:         break;\n165:       case 'lint_blocking':\n166:         merged.lintBlocking = parseBoolean(row.value, merged.lintBlocking);\n167:         break;\n168:       case 'test_blocking':\n169:         merged.testBlocking = parseBoolean(row.value, merged.testBlocking);\n170:         break;\n171:       case 'safe_install_ignore_scripts':\n172:         merged.safeInstallIgnoreScripts = parseBoolean(row.value, merged.safeInstallIgnoreScripts);\n173:         break;\n174:       case 'auto_install_scripts_fallback':\n175:         merged.autoInstallScriptsFallback = parseBoolean(\n176:           row.value,\n177:           merged.autoInstallScriptsFallback\n178:         );\n179:         break;\n180:       case 'raw_retention_days':\n181:         merged.rawRetentionDays = parseInteger(row.value, merged.rawRetentionDays, { min: 1 });\n182:         break;\n183:       case 'summary_retention_days':\n184:         merged.summaryRetentionDays = parseInteger(row.value, merged.summaryRetentionDays, { min: 1 });\n185:         break;\n186:       case 'workspace_agent_runtime_enabled':\n187:         merged.workspaceAgentRuntimeEnabled = parseBoolean(row.value, merged.workspaceAgentRuntimeEnabled);\n188:         break;\n189:       default:\n190:         break;\n191:     }\n192:   }\n193: \n194:   return normalizeRuntimeFlags(merged);\n195: }\n196: \n197: export async function loadRuntimeFlags(env: Env): Promise<RuntimeFlags> {\n198:   const fromEnv = getRuntimeFlagsFromEnv(env);\n199: \n200:   try {\n201:     const result = await env.DB\n202:       .prepare('SELECT key, value FROM runtime_flags')\n203:       .all<RuntimeFlagRow>();\n204: \n205:     return mergeRuntimeFlagOverrides(fromEnv, result.results);\n206:   } catch (error) {\n207:     const message = error instanceof Error ? error.message : String(error);\n208:     console.warn(`[flags] Failed to load runtime overrides, using env defaults: ${message}`);\n209:     return fromEnv;\n210:   }\n211: }\n\n(End of file - total 211 lines)\n</content>",
+            "title": "packages/worker/src/lib/flags.ts",
+            "metadata": {
+              "preview": "import type { Env, RuntimeFlags } from '../types.js';\n\nexport interface RuntimeFlagRow {\n  key: string;\n  value: string;\n}\n\nexport const DEFAULT_RUNTIME_FLAGS: RuntimeFlags = {\n  v2Enabled: false,\n  v2CodeBrowserEnabled: false,\n  maxAttempts: 3,\n  attemptTimeoutMs: 600000,\n  totalTimeoutMs: 1800000,\n  idempotencyTtlHours: 24,\n  maxRepairCycles: 2,\n  lintBlocking: false,\n  testBlocking: true,\n  safeInstallIgnoreScripts: true,\n  autoInstallScriptsFallback: true,\n  rawRetentionDays: 30,",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952277840,
+              "end": 1772952277842
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_02d8aa7cc6606fed0169ad1ad5813c819980afd43a7962c456"
+            }
+          },
+          "id": "prt_ccc30d299001DT5Y6y3Np0WMNi",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30ce020018zFutzbcxfeoHj"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.0071701,
+          "tokens": {
+            "total": 32246,
+            "input": 318,
+            "output": 56,
+            "reasoning": 18,
+            "cache": {
+              "read": 31872,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc30d37d0016cZyqyUXr8aS6V",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30ce020018zFutzbcxfeoHj"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952277994,
+          "completed": 1772952281944
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.06248725,
+        "tokens": {
+          "total": 34414,
+          "input": 34283,
+          "output": 131,
+          "reasoning": 47,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_ccc30d3ea001BasGmEk9urfbhv",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc30d6550018LeCoT7geOlBp9",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30d3ea001BasGmEk9urfbhv"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Preparing targeted test run**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_00f1ef89c54577610169ad1ad7fc34819bb0f721ac27a5d3c9",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1772952280130,
+            "end": 1772952281616
+          },
+          "id": "prt_ccc30dc42001DQxhq3RA4lhG8z",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30d3ea001BasGmEk9urfbhv"
+        },
+        {
+          "type": "tool",
+          "callID": "call_b6E7yKvLev4I0N1bE81j2HyV",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/package.json",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker"
+            },
+            "output": "/Users/nickdejesus/Code/nimbus/packages/worker/package.json",
+            "title": "packages/worker",
+            "metadata": {
+              "count": 1,
+              "truncated": false
+            },
+            "time": {
+              "start": 1772952281628,
+              "end": 1772952281637
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_00f1ef89c54577610169ad1ad9771c819ba3deced145548146"
+            }
+          },
+          "id": "prt_ccc30e211001Bisxiajqs94tC9",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30d3ea001BasGmEk9urfbhv"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/package.json"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/package.json</path>\n<type>file</type>\n<content>1: {\n2:   \"name\": \"@dayhaysoos/nimbus-worker\",\n3:   \"version\": \"0.0.1\",\n4:   \"private\": true,\n5:   \"type\": \"module\",\n6:   \"engines\": {\n7:     \"node\": \">=20.0.0\"\n8:   },\n9:   \"scripts\": {\n10:     \"dev\": \"wrangler dev\",\n11:     \"deploy\": \"wrangler deploy\",\n12:     \"cf-typegen\": \"wrangler types\",\n13:     \"test\": \"tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js\"\n14:   },\n15:   \"dependencies\": {\n16:     \"@cloudflare/sandbox\": \"^0.1.1\"\n17:   },\n18:   \"devDependencies\": {\n19:     \"@types/node\": \"^22.10.0\",\n20:     \"@cloudflare/workers-types\": \"^4.20250121.0\",\n21:     \"typescript\": \"^5.7.3\",\n22:     \"wrangler\": \"^4.59.3\"\n23:   }\n24: }\n\n(End of file - total 24 lines)\n</content>",
+            "title": "packages/worker/package.json",
+            "metadata": {
+              "preview": "{\n  \"name\": \"@dayhaysoos/nimbus-worker\",\n  \"version\": \"0.0.1\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"scripts\": {\n    \"dev\": \"wrangler dev\",\n    \"deploy\": \"wrangler deploy\",\n    \"cf-typegen\": \"wrangler types\",\n    \"test\": \"tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js\"\n  },\n  \"dependencies\": {\n    \"@cloudflare/sandbox\": \"^0.1.1\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.10.0\",\n    \"@cloudflare/workers-types\": \"^4.20250121.0\",",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952281789,
+              "end": 1772952281793
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_00f1ef89c54577610169ad1ad9772c819ba40c451416ddb6b5"
+            }
+          },
+          "id": "prt_ccc30e21d001vQkDE8Iuf05m2E",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30d3ea001BasGmEk9urfbhv"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.06248725,
+          "tokens": {
+            "total": 34414,
+            "input": 34283,
+            "output": 131,
+            "reasoning": 47,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc30e2ec001jLaB4G27m52uOL",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30d3ea001BasGmEk9urfbhv"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952281945,
+          "completed": 1772952283763
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.00775845,
+        "tokens": {
+          "total": 34799,
+          "input": 435,
+          "output": 60,
+          "reasoning": 11,
+          "cache": {
+            "read": 34304,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_ccc30e359001sbddoa3v4NNfIu",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc30e5c9001hoDbNIKNdJTrko",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30e359001sbddoa3v4NNfIu"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Considering test execution in worker**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0c73d1f9a1f2a3420169ad1ada8ee0819a86b6632dac08ef53",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1772952282703,
+            "end": 1772952283108
+          },
+          "id": "prt_ccc30e64f0019pF4iYstLxuyU5",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30e359001sbddoa3v4NNfIu"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "npm test",
+              "workdir": "/Users/nickdejesus/Code/nimbus/packages/worker",
+              "description": "Runs worker TypeScript and unit tests"
+            },
+            "output": "internal/modules/cjs/loader.js:883\n  throw err;\n  ^\n\nError: Cannot find module 'node:path'\nRequire stack:\n- /Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/lib/cli.js\n- /Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/bin/npm-cli.js\n    at Function.Module._resolveFilename (internal/modules/cjs/loader.js:880:15)\n    at Function.Module._load (internal/modules/cjs/loader.js:725:27)\n    at Module.require (internal/modules/cjs/loader.js:952:19)\n    at require (internal/modules/cjs/helpers.js:88:18)\n    at Object.<anonymous> (/Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/lib/cli.js:2:18)\n    at Module._compile (internal/modules/cjs/loader.js:1063:30)\n    at Object.Module._extensions..js (internal/modules/cjs/loader.js:1092:10)\n    at Module.load (internal/modules/cjs/loader.js:928:32)\n    at Function.Module._load (internal/modules/cjs/loader.js:769:14)\n    at Module.require (internal/modules/cjs/loader.js:952:19) {\n  code: 'MODULE_NOT_FOUND',\n  requireStack: [\n    '/Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/lib/cli.js',\n    '/Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/bin/npm-cli.js'\n  ]\n}\n",
+            "title": "Runs worker TypeScript and unit tests",
+            "metadata": {
+              "output": "internal/modules/cjs/loader.js:883\n  throw err;\n  ^\n\nError: Cannot find module 'node:path'\nRequire stack:\n- /Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/lib/cli.js\n- /Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/bin/npm-cli.js\n    at Function.Module._resolveFilename (internal/modules/cjs/loader.js:880:15)\n    at Function.Module._load (internal/modules/cjs/loader.js:725:27)\n    at Module.require (internal/modules/cjs/loader.js:952:19)\n    at require (internal/modules/cjs/helpers.js:88:18)\n    at Object.<anonymous> (/Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/lib/cli.js:2:18)\n    at Module._compile (internal/modules/cjs/loader.js:1063:30)\n    at Object.Module._extensions..js (internal/modules/cjs/loader.js:1092:10)\n    at Module.load (internal/modules/cjs/loader.js:928:32)\n    at Function.Module._load (internal/modules/cjs/loader.js:769:14)\n    at Module.require (internal/modules/cjs/loader.js:952:19) {\n  code: 'MODULE_NOT_FOUND',\n  requireStack: [\n    '/Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/lib/cli.js',\n    '/Users/nickdejesus/.nvm/versions/node/v20.19.6/lib/node_modules/npm/bin/npm-cli.js'\n  ]\n}\n",
+              "exit": 1,
+              "description": "Runs worker TypeScript and unit tests",
+              "truncated": false
+            },
+            "time": {
+              "start": 1772952283430,
+              "end": 1772952283653
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0c73d1f9a1f2a3420169ad1adaf628819a89dd34b4eba048c0"
+            }
+          },
+          "id": "prt_ccc30e7e8001TRK0odmYJv1ccM",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30e359001sbddoa3v4NNfIu"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.00775845,
+          "tokens": {
+            "total": 34799,
+            "input": 435,
+            "output": 60,
+            "reasoning": 11,
+            "cache": {
+              "read": 34304,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc30ea06001wQt4T3IaQW0xeW",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30e359001sbddoa3v4NNfIu"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952283764,
+          "completed": 1772952305101
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.04490465,
+        "tokens": {
+          "total": 36410,
+          "input": 3047,
+          "output": 1235,
+          "reasoning": 1190,
+          "cache": {
+            "read": 32128,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_ccc30ea74001udByYYcuYnkgsR",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc30ece7001YkrIIDWuNBLuf0",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30ea74001udByYYcuYnkgsR"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Identifying critical bugs in task handling and DB logic**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0b5814b32e23e41c0169ad1adc6ac0819b894704847e4bba7e",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1772952284555,
+            "end": 1772952304748
+          },
+          "id": "prt_ccc30ed8b001K99DcflUWlVrHo",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30ea74001udByYYcuYnkgsR"
+        },
+        {
+          "type": "tool",
+          "callID": "call_IKtVpZwGKCFNS5mmTtFJCbQ1",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "function generatePrefixedId",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts"
+            },
+            "output": "Found 1 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts:\n  Line 182: function generatePrefixedId(prefix: string, length = 8): string {",
+            "title": "function generatePrefixedId",
+            "metadata": {
+              "matches": 1,
+              "truncated": false
+            },
+            "time": {
+              "start": 1772952304837,
+              "end": 1772952304856
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0b5814b32e23e41c0169ad1af08ed8819b84f2b0f359aaf80d"
+            }
+          },
+          "id": "prt_ccc313c6e0012lJPH7qkr1eLgr",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30ea74001udByYYcuYnkgsR"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.04490465,
+          "tokens": {
+            "total": 36410,
+            "input": 3047,
+            "output": 1235,
+            "reasoning": 1190,
+            "cache": {
+              "read": 32128,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc313d50001Aqn2N3EmAO0ci5",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc30ea74001udByYYcuYnkgsR"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952305102,
+          "completed": 1772952306483
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0097839,
+        "tokens": {
+          "total": 36509,
+          "input": 1778,
+          "output": 43,
+          "reasoning": 0,
+          "cache": {
+            "read": 34688,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_ccc313dce001q756b3lbASXLOf",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc31407b001YMRCaF5AQntmGm",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc313dce001q756b3lbASXLOf"
+        },
+        {
+          "type": "tool",
+          "callID": "call_bPyyHbgteUwXxhhbiFjygszZ",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts",
+              "offset": 170,
+              "limit": 40
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts</path>\n<type>file</type>\n<content>170:     case 'completed':\n171:       return 'completed';\n172:     case 'failed':\n173:       return 'failed';\n174:     case 'cancelled':\n175:       return 'cancelled';\n176:   }\n177: }\n178: \n179: /**\n180:  * Generate a unique job ID\n181:  */\n182: function generatePrefixedId(prefix: string, length = 8): string {\n183:   const chars = 'REDACTED';\n184:   let id = '';\n185:   for (let i = 0; i < length; i++) {\n186:     id += chars[Math.floor(Math.random() * chars.length)];\n187:   }\n188:   return `${prefix}_${id}`;\n189: }\n190: \n191: /**\n192:  * Generate a unique job ID\n193:  */\n194: export function generateJobId(): string {\n195:   return generatePrefixedId('job');\n196: }\n197: \n198: /**\n199:  * Generate a unique workspace ID\n200:  */\n201: export function generateWorkspaceId(): string {\n202:   return generatePrefixedId('ws');\n203: }\n204: \n205: export function generateWorkspaceOperationId(): string {\n206:   return generatePrefixedId('op');\n207: }\n208: \n209: export function generateWorkspaceArtifactId(): string {\n\n(Showing lines 170-209 of 1640. Use offset=210 to continue.)\n</content>",
+            "title": "packages/worker/src/lib/db.ts",
+            "metadata": {
+              "preview": "    case 'completed':\n      return 'completed';\n    case 'failed':\n      return 'failed';\n    case 'cancelled':\n      return 'cancelled';\n  }\n}\n\n/**\n * Generate a unique job ID\n */\nfunction generatePrefixedId(prefix: string, length = 8): string {\n  const chars = 'REDACTED';\n  let id = '';\n  for (let i = 0; i < length; i++) {\n    id += chars[Math.floor(Math.random() * chars.length)];\n  }\n  return `${prefix}_${id}`;\n}",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1772952306309,
+              "end": 1772952306312
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0663755668efeb0e0169ad1af1d804819aa5fc307497ce1d77"
+            }
+          },
+          "id": "prt_ccc31414c001FvSLG5dpDZlx7m",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc313dce001q756b3lbASXLOf"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.0097839,
+          "tokens": {
+            "total": 36509,
+            "input": 1778,
+            "output": 43,
+            "reasoning": 0,
+            "cache": {
+              "read": 34688,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc3142bb001zYe03q3YcthApS",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc313dce001q756b3lbASXLOf"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1772952306484,
+          "completed": 1772952324227
+        },
+        "parentID": "msg_ccc30a4c300153AXnB2OwbH8mx",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0656733,
+        "tokens": {
+          "total": 38052,
+          "input": 19966,
+          "output": 1190,
+          "reasoning": 794,
+          "cache": {
+            "read": 16896,
+            "write": 0
+          }
+        },
+        "finish": "stop",
+        "id": "msg_ccc314334001Ge5Def1oNSzudY",
+        "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "id": "prt_ccc314621001IgHIRrZ7QN1vIy",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc314334001Ge5Def1oNSzudY"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Identifying critical command injection risks**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_01e71b88443b46e90169ad1af34b08819881713980b9e497a5",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1772952307432,
+            "end": 1772952319632
+          },
+          "id": "prt_ccc3146e8001t1s4jcoz1q0Msx",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc314334001Ge5Def1oNSzudY"
+        },
+        {
+          "type": "text",
+          "text": "Found a few important issues in this diff.\n\n- **High – `run_command` policy can be bypassed via shell chaining**  \n  In `packages/worker/src/lib/workspace-task-runner.ts:234`, git validation only checks the command prefix (`/^git\\s+(status|diff|add\\b|restore\\b|checkout\\s+--\\s)/`).  \n  But execution is done with shell interpolation in `packages/worker/src/lib/workspace-task-runner.ts:288` (`cd ... && ${action.args.command}`), so payloads like `git status; python3 -c \"...\"` still pass prefix validation and run arbitrary commands. This breaks the “constrained command” guarantee.\n\n- **High – file tools do not enforce `.git` protection**  \n  `assertWorkspacePath` in `packages/worker/src/lib/workspace-task-runner.ts:73` only blocks traversal/absolute paths. It does not block `.git` paths.  \n  So `read_file`/`write_file` can access `.git/*` (used at `packages/worker/src/lib/workspace-task-runner.ts:265` and `packages/worker/src/lib/workspace-task-runner.ts:275`), which violates the policy/spec that `.git` should be protected.\n\n- **Medium – command allowlist includes effectively unbounded interpreter access**  \n  `python3` is allowlisted in `packages/worker/src/lib/workspace-task-runner.ts:229`, which gives unrestricted filesystem/process access through one allowed command, bypassing most deny-pattern intent. If the goal is bounded command execution, this defeats the model.\n\nIf you want, I can patch these now by:\n1) rejecting shell metacharacters / enforcing full-command regexes,\n2) adding explicit `.git` deny checks in path normalization, and  \n3) removing or heavily constraining `python3` from agent-facing `run_command`.",
+          "time": {
+            "start": 1772952324062,
+            "end": 1772952324062
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "msg_01e71b88443b46e90169ad1aff5d3481989f0a1f147035edf9"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc314334001Ge5Def1oNSzudY"
+        },
+        {
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "149e8fb288a84abc675240ad72d1c7dd9aa583eb",
+          "cost": 0.0656733,
+          "tokens": {
+            "total": 38052,
+            "input": 19966,
+            "output": 1190,
+            "reasoning": 794,
+            "cache": {
+              "read": 16896,
+              "write": 0
+            }
+          },
+          "id": "prt_ccc31880c001AvxXLqesRb5Yc3",
+          "sessionID": "ses_333cf5b3fffeAPX1s1EA02WBIq",
+          "messageID": "msg_ccc314334001Ge5Def1oNSzudY"
+        }
+      ]
+    }
+  ]
+}
