@@ -27,6 +27,9 @@ export interface Env {
   WORKSPACE_AGENT_MAX_STEPS?: string;
   WORKSPACE_AGENT_TIMEOUT_MS?: string;
   WORKSPACE_AGENT_ALLOW_SCRIPTED_PROVIDER?: string;
+  WORKSPACE_DEPLOY_ENABLED?: string;
+  WORKSPACE_DEPLOY_PROVIDER?: string;
+  WORKSPACE_DEPLOY_BASE_URL?: string;
 
   GITHUB_APP_ID?: string;
   GITHUB_APP_PRIVATE_KEY?: string;
@@ -37,6 +40,7 @@ export interface Env {
   WORKSPACE_ARTIFACT_DOWNLOAD_SECRET?: string;
 
   WORKSPACE_TASKS_QUEUE?: Queue;
+  WORKSPACE_DEPLOYS_QUEUE?: Queue;
 
   AGENT_PROVIDER?: string;
   AGENT_MODEL?: string;
@@ -154,6 +158,7 @@ export interface RuntimeFlags {
   rawRetentionDays: number;
   summaryRetentionDays: number;
   workspaceAgentRuntimeEnabled: boolean;
+  workspaceDeployEnabled: boolean;
 }
 
 export type WorkspaceStatus = 'creating' | 'ready' | 'failed' | 'deleted';
@@ -177,6 +182,13 @@ export interface WorkspaceRecord {
 
   error_code: string | null;
   error_message: string | null;
+
+  last_deployment_id: string | null;
+  last_deployment_status: string | null;
+  last_deployed_url: string | null;
+  last_deployed_at: string | null;
+  last_deployment_error_code: string | null;
+  last_deployment_error_message: string | null;
 
   last_event_seq: number;
 
@@ -204,6 +216,13 @@ export interface WorkspaceResponse {
 
   errorCode: string | null;
   errorMessage: string | null;
+
+  lastDeploymentId: string | null;
+  lastDeploymentStatus: WorkspaceDeploymentStatus | null;
+  lastDeployedUrl: string | null;
+  lastDeployedAt: string | null;
+  lastDeploymentErrorCode: string | null;
+  lastDeploymentErrorMessage: string | null;
 
   createdAt: string;
   updatedAt: string;
@@ -342,6 +361,60 @@ export interface WorkspaceTaskResponse {
   cancelRequestedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  result?: unknown;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export type WorkspaceDeploymentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface WorkspaceDeploymentRecord {
+  id: string;
+  workspace_id: string;
+  status: WorkspaceDeploymentStatus;
+  provider: string;
+  idempotency_key: string;
+  request_payload_json: string;
+  request_payload_sha256: string;
+  max_retries: number;
+  attempt_count: number;
+  source_snapshot_sha256: string | null;
+  source_bundle_key: string | null;
+  provenance_json: string;
+  provider_deployment_id: string | null;
+  deployed_url: string | null;
+  last_event_seq: number;
+  cancel_requested_at: string | null;
+  started_at: string | null;
+  finished_at: string | null;
+  duration_ms: number | null;
+  result_json: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceDeploymentResponse {
+  id: string;
+  workspaceId: string;
+  status: WorkspaceDeploymentStatus;
+  provider: string;
+  idempotencyKey: string;
+  maxRetries: number;
+  attemptCount: number;
+  sourceSnapshotSha256: string | null;
+  sourceBundleKey: string | null;
+  deployedUrl: string | null;
+  providerDeploymentId: string | null;
+  cancelRequestedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  provenance: Record<string, unknown>;
   result?: unknown;
   error?: {
     code: string;

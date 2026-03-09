@@ -87,11 +87,13 @@ export async function runFlagsTests(): Promise<void> {
     const merged = mergeRuntimeFlagOverrides(base, [
       { key: 'max_attempts', value: '5' },
       { key: 'v2_enabled', value: 'true' },
+      { key: 'workspace_deploy_enabled', value: 'true' },
       { key: 'unknown_key', value: 'ignored' },
     ]);
 
     assert.equal(merged.maxAttempts, 5);
     assert.equal(merged.v2Enabled, true);
+    assert.equal(merged.workspaceDeployEnabled, true);
     assert.equal(merged.rawRetentionDays, DEFAULT_RUNTIME_FLAGS.rawRetentionDays);
   }
 

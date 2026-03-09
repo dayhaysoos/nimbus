@@ -20,6 +20,7 @@ export const DEFAULT_RUNTIME_FLAGS: RuntimeFlags = {
   rawRetentionDays: 30,
   summaryRetentionDays: 180,
   workspaceAgentRuntimeEnabled: false,
+  workspaceDeployEnabled: false,
 };
 
 function parseBoolean(value: string | undefined, fallback: boolean): boolean {
@@ -122,6 +123,7 @@ export function getRuntimeFlagsFromEnv(env: Env): RuntimeFlags {
       env.WORKSPACE_AGENT_RUNTIME_ENABLED,
       DEFAULT_RUNTIME_FLAGS.workspaceAgentRuntimeEnabled
     ),
+    workspaceDeployEnabled: parseBoolean(env.WORKSPACE_DEPLOY_ENABLED, DEFAULT_RUNTIME_FLAGS.workspaceDeployEnabled),
   };
 
   return normalizeRuntimeFlags(resolved);
@@ -185,6 +187,9 @@ export function mergeRuntimeFlagOverrides(
         break;
       case 'workspace_agent_runtime_enabled':
         merged.workspaceAgentRuntimeEnabled = parseBoolean(row.value, merged.workspaceAgentRuntimeEnabled);
+        break;
+      case 'workspace_deploy_enabled':
+        merged.workspaceDeployEnabled = parseBoolean(row.value, merged.workspaceDeployEnabled);
         break;
       default:
         break;

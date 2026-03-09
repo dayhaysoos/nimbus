@@ -26,6 +26,7 @@ WORKSPACE_AGENT_MAX_RETRIES = "2"
 WORKSPACE_AGENT_MAX_STEPS = "24"
 WORKSPACE_AGENT_TIMEOUT_MS = "900000"
 WORKSPACE_AGENT_ALLOW_SCRIPTED_PROVIDER = "false"
+WORKSPACE_DEPLOY_ENABLED = "false"
 AGENT_PROVIDER = "cloudflare_agents_sdk"
 AGENT_MODEL = "claude-3-7-sonnet"
 
@@ -48,6 +49,10 @@ queue = "nimbus-checkpoint-jobs"
 binding = "WORKSPACE_TASKS_QUEUE"
 queue = "nimbus-workspace-tasks"
 
+[[queues.producers]]
+binding = "WORKSPACE_DEPLOYS_QUEUE"
+queue = "nimbus-workspace-deploys"
+
 [[queues.consumers]]
 queue = "nimbus-checkpoint-jobs"
 max_batch_size = 5
@@ -55,6 +60,11 @@ max_batch_timeout = 3
 
 [[queues.consumers]]
 queue = "nimbus-workspace-tasks"
+max_batch_size = 5
+max_batch_timeout = 3
+
+[[queues.consumers]]
+queue = "nimbus-workspace-deploys"
 max_batch_size = 5
 max_batch_timeout = 3
 

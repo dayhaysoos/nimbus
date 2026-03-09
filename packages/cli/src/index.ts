@@ -27,6 +27,7 @@ import { destroyWorkspaceCommand } from './commands/workspace/destroy.js';
 import { listWorkspaceFilesCommand } from './commands/workspace/files.js';
 import { catWorkspaceFileCommand } from './commands/workspace/cat.js';
 import { workspaceDiffCommand } from './commands/workspace/diff.js';
+import { workspaceDeployCommand } from './commands/workspace/deploy.js';
 import { parseArgs } from './lib/args.js';
 
 const VERSION = '0.1.0';
@@ -68,7 +69,9 @@ Commands:
   workspace cat <workspace-id> <path>
                       Read file content from workspace
   workspace diff <workspace-id>
-                      Show workspace diff summary (use --include-patch for patch)
+                       Show workspace diff summary (use --include-patch for patch)
+  workspace deploy <workspace-id>
+                      Run deploy preflight, queue deploy, and poll status
   list               List all past jobs
   watch <job-id>     Watch a job's progress
 
@@ -83,6 +86,8 @@ Options:
   --no-watch         Disable follow-up watch guidance
   --include-patch    Include unified patch output for workspace diff
   --max-bytes <n>    Max bytes for diff/file output truncation
+  --idempotency-key <key>
+                     Stable idempotency key for workspace deploy retries
   --no-dry-run       Upload source bundle and create checkpoint job
   -h, --help         Show this help message
   -v, --version      Show version
@@ -93,6 +98,8 @@ Examples:
   nimbus workspace show ws_abc12345
   nimbus workspace files ws_abc12345 src
   nimbus workspace diff ws_abc12345 --include-patch --max-bytes 262144
+  nimbus workspace deploy ws_abc12345
+  nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
   nimbus list
   nimbus watch job_abc123
@@ -224,7 +231,21 @@ async function main(): Promise<void> {
           break;
         }
 
-        p.log.error('Unknown workspace command. Use: create, show, destroy, files, cat, diff');
+        if (workspaceAction === 'deploy') {
+          const workspaceId = positional[1];
+          if (!workspaceId) {
+            p.log.error('Usage: nimbus workspace deploy <workspace-id>');
+            process.exit(1);
+          }
+
+          const idempotencyKeyFlag = flags['idempotency-key'];
+          const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
+
+          await workspaceDeployCommand(workspaceId, { idempotencyKey });
+          break;
+        }
+
+        p.log.error('Unknown workspace command. Use: create, show, destroy, files, cat, diff, deploy');
         process.exit(1);
       }
 

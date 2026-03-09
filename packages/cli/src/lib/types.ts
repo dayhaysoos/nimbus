@@ -139,3 +139,53 @@ export interface WorkspaceDiffResponse {
   patchBytes?: number;
   patchTotalBytes?: number;
 }
+
+export type WorkspaceDeploymentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+
+export interface WorkspaceDeploymentResponse {
+  id: string;
+  workspaceId: string;
+  status: WorkspaceDeploymentStatus;
+  provider: string;
+  idempotencyKey: string;
+  maxRetries: number;
+  attemptCount: number;
+  sourceSnapshotSha256: string | null;
+  sourceBundleKey: string | null;
+  deployedUrl: string | null;
+  providerDeploymentId: string | null;
+  cancelRequestedAt: string | null;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  provenance: Record<string, unknown>;
+  result?: unknown;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export interface WorkspaceDeploymentCreateResponse {
+  deployment: WorkspaceDeploymentResponse;
+}
+
+export interface WorkspaceDeploymentGetResponse {
+  deployment: WorkspaceDeploymentResponse;
+  nextAction?: string | null;
+}
+
+export interface WorkspaceDeploymentPreflightCheck {
+  code: string;
+  ok: boolean;
+  details?: string;
+}
+
+export interface WorkspaceDeploymentPreflightResponse {
+  preflight: {
+    ok: boolean;
+    checks: WorkspaceDeploymentPreflightCheck[];
+  };
+  nextAction?: string | null;
+}

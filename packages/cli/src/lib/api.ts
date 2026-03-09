@@ -7,6 +7,9 @@ import type {
   WorkspaceFileListResponse,
   WorkspaceFileResponse,
   WorkspaceResponse,
+  WorkspaceDeploymentCreateResponse,
+  WorkspaceDeploymentGetResponse,
+  WorkspaceDeploymentPreflightResponse,
 } from './types.js';
 
 /**
@@ -195,4 +198,80 @@ export async function getWorkspaceDiff(
   }
 
   return response.json() as Promise<WorkspaceDiffResponse>;
+}
+
+export async function preflightWorkspaceDeployment(
+  workerUrl: string,
+  workspaceId: string,
+  payload: {
+    validation: {
+      runBuildIfPresent: boolean;
+      runTestsIfPresent: boolean;
+    };
+  }
+): Promise<WorkspaceDeploymentPreflightResponse> {
+  const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}/deploy/preflight`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<WorkspaceDeploymentPreflightResponse>;
+}
+
+export async function createWorkspaceDeployment(
+  workerUrl: string,
+  workspaceId: string,
+  idempotencyKey: string,
+  payload: {
+    provider: 'simulated';
+    validation: {
+      runBuildIfPresent: boolean;
+      runTestsIfPresent: boolean;
+    };
+    retry: {
+      maxRetries: number;
+    };
+    rollbackOnFailure: boolean;
+    provenance: {
+      trigger: string;
+      taskId: string | null;
+      operationId: string | null;
+      note: string | null;
+    };
+  }
+): Promise<WorkspaceDeploymentCreateResponse> {
+  const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}/deploy`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<WorkspaceDeploymentCreateResponse>;
+}
+
+export async function getWorkspaceDeployment(
+  workerUrl: string,
+  workspaceId: string,
+  deploymentId: string
+): Promise<WorkspaceDeploymentGetResponse> {
+  const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}/deployments/${deploymentId}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+  return response.json() as Promise<WorkspaceDeploymentGetResponse>;
 }

@@ -1,19 +1,26 @@
 import { strict as assert } from 'assert';
 import {
   appendWorkspaceEvent,
+  appendWorkspaceDeploymentEvent,
   appendWorkspaceTaskEvent,
   createWorkspaceArtifact,
   createWorkspaceOperation,
   createWorkspaceTask,
+  createWorkspaceDeployment,
   createWorkspace,
+  getWorkspaceDeployment,
   getWorkspaceTask,
   getWorkspaceOperation,
   listWorkspaceEvents,
   listWorkspaceArtifacts,
   listWorkspaceTaskEvents,
+  listWorkspaceDeploymentEvents,
   markWorkspaceDeleted,
   markWorkspaceReady,
+  requestWorkspaceDeploymentCancel,
   requestWorkspaceTaskCancel,
+  updateWorkspaceDeploymentSummary,
+  WorkspaceDeploymentIdempotencyConflictError,
   WorkspaceIdempotencyConflictError,
 } from './db.js';
 
@@ -636,5 +643,415 @@ export async function runWorkspaceDbTests(): Promise<void> {
     const events = await listWorkspaceTaskEvents(db, 'ws_abc12345', 'task_abcd1234');
     assert.equal(events.length, 1);
     assert.equal(events[0].eventType, 'task_created');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT deployment_id, request_payload_sha256, expires_at/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return null as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_deployments/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  return {
+                    id: values[0],
+                    workspace_id: values[1],
+                    status: 'queued',
+                    provider: values[2],
+                    idempotency_key: values[3],
+                    request_payload_json: values[4],
+                    request_payload_sha256: values[5],
+                    max_retries: values[6],
+                    attempt_count: 0,
+                    source_snapshot_sha256: null,
+                    source_bundle_key: null,
+                    provenance_json: values[7],
+                    provider_deployment_id: null,
+                    deployed_url: null,
+                    last_event_seq: 0,
+                    cancel_requested_at: null,
+                    started_at: null,
+                    finished_at: null,
+                    duration_ms: null,
+                    result_json: null,
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-08T00:00:00.000Z',
+                    updated_at: '2026-03-08T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_deployment_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM workspace_deployments WHERE id = \? AND workspace_id = \?/i.test(sql)) {
+          return {
+            bind(deploymentId: string, workspaceId: string) {
+              return {
+                async first<T>() {
+                  return {
+                    id: deploymentId,
+                    workspace_id: workspaceId,
+                    status: 'queued',
+                    provider: 'simulated',
+                    idempotency_key: 'idem-deploy',
+                    request_payload_json: '{}',
+                    request_payload_sha256: 'hash',
+                    max_retries: 2,
+                    attempt_count: 0,
+                    source_snapshot_sha256: null,
+                    source_bundle_key: null,
+                    provenance_json: '{}',
+                    provider_deployment_id: null,
+                    deployed_url: null,
+                    last_event_seq: 0,
+                    cancel_requested_at: null,
+                    started_at: null,
+                    finished_at: null,
+                    duration_ms: null,
+                    result_json: null,
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-08T00:00:00.000Z',
+                    updated_at: '2026-03-08T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE workspace_deployments\s+SET cancel_requested_at = COALESCE/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE workspace_deployments\s+SET status = 'cancelled'/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 0 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE\s+workspace_deployments\s+SET\s+last_event_seq\s*=\s*last_event_seq\s*\+\s*1/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return { last_event_seq: 2 } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_deployment_events/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT seq, event_type, payload_json, created_at\s+FROM workspace_deployment_events/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async all<T>() {
+                  return {
+                    results: [
+                      {
+                        seq: 1,
+                        event_type: 'deployment_created',
+                        payload_json: '{"ok":true}',
+                        created_at: '2026-03-08T00:00:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const created = await createWorkspaceDeployment(db, {
+      id: 'dep_abcd1234',
+      workspaceId: 'ws_abc12345',
+      provider: 'simulated',
+      idempotencyKey: 'idem-deploy',
+      requestPayload: {},
+      requestPayloadSha256: 'hash',
+      maxRetries: 2,
+    });
+    assert.equal(created.reused, false);
+    assert.equal(created.deployment.id, 'dep_abcd1234');
+
+    const deployment = await getWorkspaceDeployment(db, 'ws_abc12345', 'dep_abcd1234');
+    assert.ok(deployment);
+
+    const cancelled = await requestWorkspaceDeploymentCancel(db, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(cancelled.updated, true);
+
+    const seq = await appendWorkspaceDeploymentEvent(db, {
+      workspaceId: 'ws_abc12345',
+      deploymentId: 'dep_abcd1234',
+      eventType: 'deployment_created',
+      payload: { ok: true },
+    });
+    assert.equal(seq, 2);
+
+    const events = await listWorkspaceDeploymentEvents(db, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(events.length, 1);
+    assert.equal(events[0].eventType, 'deployment_created');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT deployment_id, request_payload_sha256, expires_at/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    deployment_id: 'dep_existing',
+                    request_payload_sha256: 'different-hash',
+                    expires_at: '2999-01-01T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await assert.rejects(
+      createWorkspaceDeployment(db, {
+        id: 'dep_abcd1234',
+        workspaceId: 'ws_abc12345',
+        provider: 'simulated',
+        idempotencyKey: 'idem-deploy',
+        requestPayload: {},
+        requestPayloadSha256: 'hash',
+        maxRetries: 2,
+      }),
+      (error: unknown) => error instanceof WorkspaceDeploymentIdempotencyConflictError
+    );
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT deployment_id, request_payload_sha256, expires_at/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return null as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM workspace_deployments\s+WHERE workspace_id = \?\s+AND idempotency_key = \?\s+AND julianday\(created_at\) >= julianday\(\?\)/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'dep_existing',
+                    workspace_id: 'ws_abc12345',
+                    status: 'queued',
+                    provider: 'simulated',
+                    idempotency_key: 'idem-deploy',
+                    request_payload_json: '{}',
+                    request_payload_sha256: 'hash',
+                    max_retries: 2,
+                    attempt_count: 0,
+                    source_snapshot_sha256: null,
+                    source_bundle_key: null,
+                    provenance_json: '{}',
+                    provider_deployment_id: null,
+                    deployed_url: null,
+                    last_event_seq: 0,
+                    cancel_requested_at: null,
+                    started_at: null,
+                    finished_at: null,
+                    duration_ms: null,
+                    result_json: null,
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-08T00:00:00.000Z',
+                    updated_at: '2026-03-08T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_deployment_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+              async first() {
+                return null;
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const reused = await createWorkspaceDeployment(db, {
+      id: 'dep_new',
+      workspaceId: 'ws_abc12345',
+      provider: 'simulated',
+      idempotencyKey: 'idem-deploy',
+      requestPayload: {},
+      requestPayloadSha256: 'hash',
+      maxRetries: 2,
+    });
+    assert.equal(reused.reused, true);
+    assert.equal(reused.deployment.id, 'dep_existing');
+  }
+
+  {
+    const statements: string[] = [];
+    const db = {
+      prepare(sql: string) {
+        statements.push(sql);
+        return {
+          bind(...values: unknown[]) {
+            return {
+              async run() {
+                return { success: true, meta: { changes: values.length > 0 ? 1 : 0 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await updateWorkspaceDeploymentSummary(db, 'ws_abc12345', {
+      deploymentId: 'dep_abcd1234',
+      status: 'succeeded',
+      deployedUrl: 'https://deployments.nimbus.local/ws_abc12345/dep_abcd1234',
+      deployedAt: '2026-03-08T00:00:00.000Z',
+      errorCode: null,
+      errorMessage: null,
+    });
+
+    assert.equal(statements.some((sql) => /julianday\(candidate\.created_at\) > julianday\(current\.created_at\)/i.test(sql)), true);
+  }
+
+  {
+    const sqlStatements: string[] = [];
+    const db = {
+      prepare(sql: string) {
+        sqlStatements.push(sql);
+        return {
+          bind(...values: unknown[]) {
+            return {
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await updateWorkspaceDeploymentSummary(db, 'ws_abc12345', {
+      deploymentId: 'dep_failed123',
+      status: 'failed',
+      errorCode: 'deployment_failed',
+      errorMessage: 'boom',
+    });
+
+    assert.equal(sqlStatements.some((sql) => /last_deployed_url = \?/i.test(sql)), false);
+    assert.equal(sqlStatements.some((sql) => /last_deployed_at = \?/i.test(sql)), false);
   }
 }
