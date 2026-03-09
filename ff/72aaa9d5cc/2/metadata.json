@@ -1,9 +1,11 @@
 {
   "cli_version": "0.4.9",
   "checkpoint_id": "ff72aaa9d5cc",
+  "session_id": "ses_32faf04fcffdSqDpag1yObpwtd",
   "strategy": "manual-commit",
+  "created_at": "2026-03-09T02:11:21.90006Z",
   "branch": "phase-4",
-  "checkpoints_count": 3,
+  "checkpoints_count": 1,
   "files_touched": [
     "packages/cli/src/commands/workspace/deploy.ts",
     "packages/cli/src/index.ts",
@@ -29,34 +31,22 @@
     "specs/phases/06-toolchain-parity-deploy-runtime.md",
     "specs/testing/phase-5-deploy-smoke.md"
   ],
-  "sessions": [
-    {
-      "metadata": "/ff/72aaa9d5cc/0/metadata.json",
-      "transcript": "/ff/72aaa9d5cc/0/full.jsonl",
-      "context": "/ff/72aaa9d5cc/0/context.md",
-      "content_hash": "/ff/72aaa9d5cc/0/content_hash.txt",
-      "prompt": "/ff/72aaa9d5cc/0/prompt.txt"
-    },
-    {
-      "metadata": "/ff/72aaa9d5cc/1/metadata.json",
-      "transcript": "/ff/72aaa9d5cc/1/full.jsonl",
-      "context": "/ff/72aaa9d5cc/1/context.md",
-      "content_hash": "/ff/72aaa9d5cc/1/content_hash.txt",
-      "prompt": "/ff/72aaa9d5cc/1/prompt.txt"
-    },
-    {
-      "metadata": "/ff/72aaa9d5cc/2/metadata.json",
-      "transcript": "/ff/72aaa9d5cc/2/full.jsonl",
-      "context": "/ff/72aaa9d5cc/2/context.md",
-      "content_hash": "/ff/72aaa9d5cc/2/content_hash.txt",
-      "prompt": "/ff/72aaa9d5cc/2/prompt.txt"
-    }
-  ],
+  "agent": "OpenCode",
+  "turn_id": "97ec7b7ca496",
   "token_usage": {
-    "input_tokens": 599994,
+    "input_tokens": 135886,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 2372480,
-    "output_tokens": 18243,
-    "api_call_count": 39
+    "cache_read_tokens": 828160,
+    "output_tokens": 6032,
+    "api_call_count": 14
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T02:11:21.530811Z",
+    "agent_lines": 5006,
+    "human_added": 121,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 5127,
+    "agent_percentage": 97.63994538716598
   }
 }
