@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "ff72aaa9d5cc",
+  "session_id": "ses_331b97956ffeOFjrpl1iaJnkcc",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T02:11:45.130997Z",
+  "branch": "phase-4",
+  "checkpoints_count": 58,
+  "files_touched": [
+    "llm-docs/phase-6-toolchain-parity-agent-prompt.md",
+    "packages/cli/src/commands/workspace/deploy.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/migrations/0007_workspace_deployments.sql",
+    "packages/worker/src/api/workspace-deployments.test.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/db.workspace.test.ts",
+    "packages/worker/src/lib/flags.test.ts",
+    "packages/worker/src/lib/flags.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/lib/workspace-deployment-queue.test.ts",
+    "packages/worker/src/lib/workspace-deployment-queue.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "specs/phases/05-deploy-from-workspace.md",
+    "specs/phases/06-toolchain-parity-deploy-runtime.md",
+    "specs/testing/phase-5-deploy-smoke.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "af229d73acaf",
+  "token_usage": {
+    "input_tokens": 6240172,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 51916544,
+    "output_tokens": 148414,
+    "api_call_count": 408
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T02:11:37.618514Z",
+    "agent_lines": 5127,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 5127,
+    "agent_percentage": 100
+  }
+}
