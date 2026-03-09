@@ -9,6 +9,13 @@ import {
   handleGetWorkspaceTaskEvents,
 } from './api/workspace-tasks.js';
 import {
+  handleCancelWorkspaceDeployment,
+  handleCreateWorkspaceDeployment,
+  handleGetWorkspaceDeployment,
+  handleGetWorkspaceDeploymentEvents,
+  handleWorkspaceDeploymentPreflight,
+} from './api/workspace-deployments.js';
+import {
   handleCreateWorkspace,
   handleCreateWorkspaceGithubFork,
   handleCreateWorkspacePatchExport,
@@ -28,6 +35,11 @@ import { parseCheckpointJobQueueMessage } from './lib/checkpoint-queue.js';
 import { processCheckpointJob } from './lib/checkpoint-runner.js';
 import { parseWorkspaceTaskQueueMessage } from './lib/workspace-task-queue.js';
 import { processWorkspaceTask, shouldRetryWorkspaceTaskError } from './lib/workspace-task-runner.js';
+import { parseWorkspaceDeploymentQueueMessage } from './lib/workspace-deployment-queue.js';
+import {
+  processWorkspaceDeployment,
+  shouldRetryWorkspaceDeploymentError,
+} from './lib/workspace-deployment-runner.js';
 import type { Env } from './types.js';
 
 // Re-export Sandbox for Durable Object binding
@@ -136,6 +148,50 @@ export default {
       return handleCancelWorkspaceTask(workspaceTaskCancelMatch[1], workspaceTaskCancelMatch[2], env);
     }
 
+    // Route: POST /api/workspaces/:id/deploy - Queue workspace deployment
+    const workspaceDeployCreateMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/deploy$/);
+    if (workspaceDeployCreateMatch && request.method === 'POST') {
+      return handleCreateWorkspaceDeployment(workspaceDeployCreateMatch[1], request, env, ctx);
+    }
+
+    // Route: POST /api/workspaces/:id/deploy/preflight - Validate deploy readiness
+    const workspaceDeployPreflightMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/deploy\/preflight$/);
+    if (workspaceDeployPreflightMatch && request.method === 'POST') {
+      return handleWorkspaceDeploymentPreflight(workspaceDeployPreflightMatch[1], request, env);
+    }
+
+    // Route: GET /api/workspaces/:id/deployments/:deploymentId - Poll deployment status
+    const workspaceDeploymentGetMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/deployments\/([a-z0-9_]+)$/);
+    if (workspaceDeploymentGetMatch && request.method === 'GET') {
+      return handleGetWorkspaceDeployment(workspaceDeploymentGetMatch[1], workspaceDeploymentGetMatch[2], env);
+    }
+
+    // Route: GET /api/workspaces/:id/deployments/:deploymentId/events - Poll deployment events
+    const workspaceDeploymentEventsMatch = url.pathname.match(
+      /^\/api\/workspaces\/([a-z0-9_]+)\/deployments\/([a-z0-9_]+)\/events$/
+    );
+    if (workspaceDeploymentEventsMatch && request.method === 'GET') {
+      return handleGetWorkspaceDeploymentEvents(
+        workspaceDeploymentEventsMatch[1],
+        workspaceDeploymentEventsMatch[2],
+        request,
+        env
+      );
+    }
+
+    // Route: POST /api/workspaces/:id/deployments/:deploymentId/cancel - Cancel deployment
+    const workspaceDeploymentCancelMatch = url.pathname.match(
+      /^\/api\/workspaces\/([a-z0-9_]+)\/deployments\/([a-z0-9_]+)\/cancel$/
+    );
+    if (workspaceDeploymentCancelMatch && request.method === 'POST') {
+      return handleCancelWorkspaceDeployment(
+        workspaceDeploymentCancelMatch[1],
+        workspaceDeploymentCancelMatch[2],
+        env,
+        ctx
+      );
+    }
+
     // Route: GET /api/workspaces/:id/files - List files for a path
     const workspaceFilesMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/files$/);
     if (workspaceFilesMatch && request.method === 'GET') {
@@ -219,6 +275,28 @@ export default {
           const details = error instanceof Error ? error.message : String(error);
           console.error(`[workspace-task-queue] message handling failed: ${details}`);
           if (shouldRetryWorkspaceTaskError(error)) {
+            message.retry();
+          }
+        }
+        continue;
+      }
+
+      if (type === 'workspace_deployment_requested') {
+        let payload;
+        try {
+          payload = parseWorkspaceDeploymentQueueMessage(message.body);
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          console.error(`[workspace-deploy-queue] invalid message dropped: ${details}`);
+          continue;
+        }
+
+        try {
+          await processWorkspaceDeployment(env, payload.workspaceId, payload.deploymentId);
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          console.error(`[workspace-deploy-queue] message handling failed: ${details}`);
+          if (shouldRetryWorkspaceDeploymentError(error)) {
             message.retry();
           }
         }
