@@ -2,6 +2,7 @@ import * as p from '@clack/prompts';
 import { createHash } from 'crypto';
 import {
   createWorkspaceDeployment,
+  getWorkspace,
   getWorkerUrl,
   getWorkspaceDeployment,
   preflightWorkspaceDeployment,
@@ -39,13 +40,33 @@ export async function workspaceDeployCommand(
   const pollIntervalMs = Math.max(250, options?.pollIntervalMs ?? 1500);
   const autoFixEnabled = Boolean(options?.autoFix);
 
-  const preflight = await preflightWorkspaceDeployment(workerUrl, workspaceId, {
-    validation,
-    autoFix: {
-      rehydrateBaseline: autoFixEnabled,
-      bootstrapToolchain: autoFixEnabled,
-    },
-  });
+  let preflight;
+  try {
+    preflight = await preflightWorkspaceDeployment(workerUrl, workspaceId, {
+      validation,
+      autoFix: {
+        rehydrateBaseline: autoFixEnabled,
+        bootstrapToolchain: autoFixEnabled,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (message.includes('Worker error (404)')) {
+      let workspaceReachable = false;
+      try {
+        await getWorkspace(workerUrl, workspaceId);
+        workspaceReachable = true;
+      } catch {
+        workspaceReachable = false;
+      }
+      if (workspaceReachable) {
+        throw new Error(
+          'Deploy routes returned 404 while workspace routes are reachable. Redeploy worker from this branch, then run `pnpm run setup:worker`.'
+        );
+      }
+    }
+    throw error;
+  }
   const checks = Array.isArray(preflight.preflight.checks) ? preflight.preflight.checks : [];
   const toolchain = preflight.preflight.toolchain ?? null;
   const remediations = Array.isArray(preflight.preflight.remediations)
@@ -69,6 +90,10 @@ export async function workspaceDeployCommand(
 
   if (!preflight.preflight.ok) {
     p.log.error('Workspace deployment preflight failed');
+    const failedCheck = checks.find((check) => !check.ok);
+    if (failedCheck?.code === 'git_baseline' && !autoFixEnabled) {
+      p.log.warning('Tip: rerun with `--auto-fix` to allow safe baseline rehydrate remediation.');
+    }
     if (preflight.nextAction) {
       p.log.warning(`Next action: ${preflight.nextAction}`);
     }
@@ -117,6 +142,9 @@ export async function workspaceDeployCommand(
 
     if (status === 'succeeded') {
       p.log.success(`Deployed URL: ${current.deployment.deployedUrl ?? '(none)'}`);
+      if (current.deployment.provider === 'simulated') {
+        p.log.message('Note: simulated provider returns a synthetic URL; no live site is published yet.');
+      }
       return;
     }
 

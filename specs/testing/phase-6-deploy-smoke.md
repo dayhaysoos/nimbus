@@ -6,6 +6,14 @@ Use this runbook to validate toolchain parity, preflight auto-fix, and deploy CL
 - `NIMBUS_WORKER_URL` points to the target worker.
 - Workspace exists and is `ready`.
 
+## Bootstrap
+Run once to provision queues, migrations, flags, and deploy worker:
+
+```bash
+pnpm run setup:worker
+pnpm --filter @dayhaysoos/nimbus dev -- doctor
+```
+
 ## Smoke path
 1. Run preflight-only with safe remediations enabled:
 

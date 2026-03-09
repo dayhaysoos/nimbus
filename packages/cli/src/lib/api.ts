@@ -10,6 +10,7 @@ import type {
   WorkspaceDeploymentCreateResponse,
   WorkspaceDeploymentGetResponse,
   WorkspaceDeploymentPreflightResponse,
+  DeployReadinessResponse,
 } from './types.js';
 
 /**
@@ -289,4 +290,13 @@ export async function getWorkspaceDeployment(
     throw new Error(`Worker error (${response.status}): ${errorText}`);
   }
   return response.json() as Promise<WorkspaceDeploymentGetResponse>;
+}
+
+export async function getDeployReadiness(workerUrl: string): Promise<DeployReadinessResponse> {
+  const response = await fetch(`${workerUrl}/api/system/deploy-readiness`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+  return response.json() as Promise<DeployReadinessResponse>;
 }

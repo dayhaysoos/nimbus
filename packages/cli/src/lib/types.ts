@@ -212,3 +212,14 @@ export interface WorkspaceDeploymentPreflightResponse {
   };
   nextAction?: string | null;
 }
+
+export interface DeployReadinessCheck {
+  code: string;
+  ok: boolean;
+  details?: string;
+}
+
+export interface DeployReadinessResponse {
+  ok: boolean;
+  checks: DeployReadinessCheck[];
+}

@@ -40,6 +40,7 @@ import {
   processWorkspaceDeployment,
   shouldRetryWorkspaceDeploymentError,
 } from './lib/workspace-deployment-runner.js';
+import { handleGetDeployReadiness } from './api/system.js';
 import type { Env } from './types.js';
 
 // Re-export Sandbox for Durable Object binding
@@ -248,6 +249,11 @@ export default {
       return new Response(JSON.stringify({ status: 'ok' }), {
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       });
+    }
+
+    // Route: GET /api/system/deploy-readiness
+    if (url.pathname === '/api/system/deploy-readiness' && request.method === 'GET') {
+      return handleGetDeployReadiness(env);
     }
 
     // 404 for unknown routes
