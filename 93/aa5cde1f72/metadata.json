@@ -3,7 +3,7 @@
   "checkpoint_id": "93aa5cde1f72",
   "strategy": "manual-commit",
   "branch": "phase-6-toolchain-parity",
-  "checkpoints_count": 10,
+  "checkpoints_count": 11,
   "files_touched": [
     "packages/cli/src/commands/workspace/deploy.test.ts",
     "packages/cli/src/commands/workspace/deploy.ts",
@@ -95,13 +95,20 @@
       "context": "/93/aa5cde1f72/9/context.md",
       "content_hash": "/93/aa5cde1f72/9/content_hash.txt",
       "prompt": "/93/aa5cde1f72/9/prompt.txt"
+    },
+    {
+      "metadata": "/93/aa5cde1f72/10/metadata.json",
+      "transcript": "/93/aa5cde1f72/10/full.jsonl",
+      "context": "/93/aa5cde1f72/10/context.md",
+      "content_hash": "/93/aa5cde1f72/10/content_hash.txt",
+      "prompt": "/93/aa5cde1f72/10/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 2156224,
+    "input_tokens": 2273359,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 6837760,
-    "output_tokens": 52475,
-    "api_call_count": 155
+    "cache_read_tokens": 7330560,
+    "output_tokens": 57301,
+    "api_call_count": 168
   }
 }
