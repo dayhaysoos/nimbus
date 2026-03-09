@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "6c2f11c7902d",
+  "strategy": "manual-commit",
+  "branch": "phase-6-toolchain-parity",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "scripts/setup-worker.mjs",
+    "specs/phases/07-real-deployment-provider.md",
+    "specs/phases/08-live-agent-session-and-watch.md",
+    "specs/phases/09-checkpoint-conversation-and-edit-loop.md",
+    "specs/phases/10-fork-export-and-production-readiness.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/6c/2f11c7902d/0/metadata.json",
+      "transcript": "/6c/2f11c7902d/0/full.jsonl",
+      "context": "/6c/2f11c7902d/0/context.md",
+      "content_hash": "/6c/2f11c7902d/0/content_hash.txt",
+      "prompt": "/6c/2f11c7902d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1697076,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4246016,
+    "output_tokens": 18988,
+    "api_call_count": 43
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "6c2f11c7902d",
+  "session_id": "ses_32f86a047ffeSbgxROphokK4NP",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T15:04:33.950358Z",
+  "branch": "phase-6-toolchain-parity",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "scripts/setup-worker.mjs",
+    "specs/phases/07-real-deployment-provider.md",
+    "specs/phases/08-live-agent-session-and-watch.md",
+    "specs/phases/09-checkpoint-conversation-and-edit-loop.md",
+    "specs/phases/10-fork-export-and-production-readiness.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "d184446673f0",
+  "checkpoint_transcript_start": 233,
+  "transcript_lines_at_start": 233,
+  "token_usage": {
+    "input_tokens": 1697076,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4246016,
+    "output_tokens": 18988,
+    "api_call_count": 43
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T15:04:27.552247Z",
+    "agent_lines": 353,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 353,
+    "agent_percentage": 100
+  }
+}
