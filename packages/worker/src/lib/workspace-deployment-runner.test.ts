@@ -15,9 +15,13 @@ function createDeploymentRunnerEnv(options?: {
   succeedUpdateBlockedByCancel?: boolean;
   requestRunTestsIfPresent?: boolean;
   requestRunBuildIfPresent?: boolean;
+  requestAutoFixRehydrateBaseline?: boolean;
+  requestAutoFixBootstrapToolchain?: boolean;
+  sourceProjectRoot?: string;
   initialStatus?: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   initialStartedAt?: string | null;
   initialCancelRequestedAt?: string | null;
+  dependencyCacheArtifactKey?: string;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -47,6 +51,10 @@ function createDeploymentRunnerEnv(options?: {
     validation: {
       runBuildIfPresent: options?.requestRunBuildIfPresent ?? false,
       runTestsIfPresent: options?.requestRunTestsIfPresent ?? false,
+    },
+    autoFix: {
+      rehydrateBaseline: options?.requestAutoFixRehydrateBaseline ?? false,
+      bootstrapToolchain: options?.requestAutoFixBootstrapToolchain ?? false,
     },
     rollbackOnFailure: true,
     provenance: {
@@ -162,6 +170,60 @@ function createDeploymentRunnerEnv(options?: {
           };
         }
 
+        if (/FROM workspace_dependency_caches\s+WHERE workspace_id = \? AND cache_key = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  if (!options?.dependencyCacheArtifactKey) {
+                    return null as T;
+                  }
+                  return {
+                    id: 'wdc_abc',
+                    workspace_id: 'ws_abc12345',
+                    cache_key: 'cache-key',
+                    manager: 'npm',
+                    manager_version: null,
+                    project_root: '.',
+                    lockfile_name: null,
+                    lockfile_sha256: null,
+                    artifact_key: options.dependencyCacheArtifactKey,
+                    artifact_sha256: 'f'.repeat(64),
+                    artifact_bytes: 3,
+                    last_used_at: '2026-03-08T00:00:00.000Z',
+                    created_at: '2026-03-08T00:00:00.000Z',
+                    updated_at: '2026-03-08T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE workspace_dependency_caches\s+SET last_used_at/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_dependency_caches/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
         if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
           return {
             bind() {
@@ -174,7 +236,7 @@ function createDeploymentRunnerEnv(options?: {
                     checkpoint_id: null,
                     commit_sha: 'a'.repeat(40),
                     source_ref: 'main',
-                    source_project_root: '.',
+                    source_project_root: options?.sourceProjectRoot ?? '.',
                     source_bundle_key: 'key',
                     source_bundle_sha256: 'f'.repeat(64),
                     source_bundle_bytes: 1,
@@ -349,6 +411,16 @@ function createDeploymentRunnerEnv(options?: {
       async put() {
         return;
       },
+      async get(key: string) {
+        if (options?.dependencyCacheArtifactKey && key === options.dependencyCacheArtifactKey) {
+          return {
+            async arrayBuffer() {
+              return new Uint8Array([1, 2, 3]).buffer;
+            },
+          };
+        }
+        return null;
+      },
     },
     Sandbox: {
       idFromName() {
@@ -370,6 +442,18 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         }
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
         }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
@@ -396,6 +480,18 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         }
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
         }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
@@ -443,6 +539,18 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
         }
@@ -468,6 +576,18 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         }
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
         }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
@@ -514,6 +634,18 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         }
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
         }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
@@ -623,6 +755,18 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
         }
@@ -647,6 +791,18 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: JSON.stringify(['.env']), stderr: '', exitCode: 0 };
         }
@@ -669,10 +825,22 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: true }), stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'pnpm@9.15.0',
+              scripts: {},
+              lockfiles: { pnpm: 'abc', yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
         }
-        if (command.includes('npm run -s test')) {
+        if (command.includes('pnpm run -s test')) {
           return { stdout: '', stderr: 'sh: 1: pnpm: not found', exitCode: 127 };
         }
         return { stdout: '', stderr: '', exitCode: 0 };
@@ -720,6 +888,18 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus_detect_scripts')) {
           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
         }
@@ -732,6 +912,265 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
 
     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
     assert.equal(state.status, 'cancelled');
+  }
+
+  {
+    const commands: string[] = [];
+    const { env, state } = createDeploymentRunnerEnv({
+      requestRunTestsIfPresent: true,
+      requestRunBuildIfPresent: true,
+      requestAutoFixBootstrapToolchain: true,
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        commands.push(command);
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: true, hasTest: true }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'pnpm@9.15.0',
+              scripts: {},
+              lockfiles: { pnpm: 'abc', yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('corepack --version')) {
+          return { stdout: '0.29.0', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('corepack enable')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('corepack prepare pnpm@9.15.0 --activate')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pnpm run -s test') || command.includes('pnpm run -s build')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(commands.some((command) => command.includes('corepack prepare pnpm@9.15.0 --activate')), true);
+    assert.equal(commands.some((command) => command.includes('pnpm run -s test')), true);
+    assert.equal(commands.some((command) => command.includes('pnpm run -s build')), true);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({
+      requestRunTestsIfPresent: true,
+      requestAutoFixBootstrapToolchain: true,
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: true }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'pnpm@9.15.0',
+              scripts: {},
+              lockfiles: { pnpm: 'abc', yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('corepack --version')) {
+          return { stdout: '', stderr: 'corepack: command not found', exitCode: 127 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'failed');
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_failed' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { code?: string }).code === 'corepack_missing'
+      ),
+      true
+    );
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({ dependencyCacheArtifactKey: 'cache-key-artifact' });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: 'abc' },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes("tar -xzf - -C")) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(state.events.some((event) => event.eventType === 'deployment_dependency_cache_hit'), true);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({
+      requestRunTestsIfPresent: false,
+      requestRunBuildIfPresent: false,
+      requestAutoFixBootstrapToolchain: true,
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'pnpm@9.15.0',
+              scripts: {},
+              lockfiles: { pnpm: 'abc', yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('corepack --version')) {
+          return { stdout: '', stderr: 'corepack: command not found', exitCode: 127 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+  }
+
+  {
+    const commands: string[] = [];
+    const { env, state } = createDeploymentRunnerEnv({
+      sourceProjectRoot: 'apps/web',
+      requestRunTestsIfPresent: true,
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        commands.push(command);
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: true }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: 'apps/web',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('npm run -s test')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(
+      commands.some((command) => command.includes("cd '/workspace/apps/web' && npm run -s test")),
+      true
+    );
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({ sourceProjectRoot: '../outside' });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec() {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'failed');
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_failed' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { code?: string }).code === 'invalid_project_root'
+      ),
+      true
+    );
   }
 
   setWorkspaceDeploymentSandboxResolverForTests(null);

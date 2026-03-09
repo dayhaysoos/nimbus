@@ -82,12 +82,17 @@ Options:
   --env-file <path>  Extra env file(s), comma-separated
   --env KEY=VALUE    Explicit env override (repeatable)
   --no-tests         Skip tests in checkpoint deploy metadata
+  --no-build         Skip build in workspace deploy metadata
   --no-lint          Skip lint in checkpoint deploy metadata
   --no-watch         Disable follow-up watch guidance
   --include-patch    Include unified patch output for workspace diff
   --max-bytes <n>    Max bytes for diff/file output truncation
   --idempotency-key <key>
                      Stable idempotency key for workspace deploy retries
+  --poll-interval-ms <n>
+                     Poll interval for workspace deploy status checks
+  --preflight-only   Run deploy preflight only (do not queue deploy)
+  --auto-fix         Allow safe preflight/deploy remediations
   --no-dry-run       Upload source bundle and create checkpoint job
   -h, --help         Show this help message
   -v, --version      Show version
@@ -99,7 +104,8 @@ Examples:
   nimbus workspace files ws_abc12345 src
   nimbus workspace diff ws_abc12345 --include-patch --max-bytes 262144
   nimbus workspace deploy ws_abc12345
-  nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123
+  nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123 --auto-fix
+  nimbus workspace deploy ws_abc12345 --preflight-only --no-tests --no-build
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
   nimbus list
   nimbus watch job_abc123
@@ -240,8 +246,20 @@ async function main(): Promise<void> {
 
           const idempotencyKeyFlag = flags['idempotency-key'];
           const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
+          const pollIntervalMs = parsePositiveIntegerFlag(flags['poll-interval-ms']);
+          const runTestsIfPresent = !flags['no-tests'];
+          const runBuildIfPresent = !flags['no-build'];
+          const preflightOnly = Boolean(flags['preflight-only']);
+          const autoFix = Boolean(flags['auto-fix']);
 
-          await workspaceDeployCommand(workspaceId, { idempotencyKey });
+          await workspaceDeployCommand(workspaceId, {
+            idempotencyKey,
+            runTestsIfPresent,
+            runBuildIfPresent,
+            preflightOnly,
+            autoFix,
+            pollIntervalMs,
+          });
           break;
         }
 

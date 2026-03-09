@@ -142,6 +142,23 @@ export interface WorkspaceDiffResponse {
 
 export type WorkspaceDeploymentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
+export interface WorkspaceToolchainProfile {
+  manager: 'pnpm' | 'yarn' | 'npm' | 'unknown';
+  version: string | null;
+  detectedFrom: 'packageManager' | 'lockfile' | 'scripts' | 'fallback' | 'request';
+  projectRoot: string;
+  lockfile: {
+    name: string;
+    sha256: string;
+  } | null;
+}
+
+export interface WorkspaceDeploymentRemediation {
+  code: string;
+  applied: boolean;
+  details?: string;
+}
+
 export interface WorkspaceDeploymentResponse {
   id: string;
   workspaceId: string;
@@ -160,6 +177,10 @@ export interface WorkspaceDeploymentResponse {
   createdAt: string;
   updatedAt: string;
   provenance: Record<string, unknown>;
+  toolchain: WorkspaceToolchainProfile | null;
+  dependencyCacheKey: string | null;
+  dependencyCacheHit: boolean;
+  remediations: WorkspaceDeploymentRemediation[];
   result?: unknown;
   error?: {
     code: string;
@@ -185,7 +206,9 @@ export interface WorkspaceDeploymentPreflightCheck {
 export interface WorkspaceDeploymentPreflightResponse {
   preflight: {
     ok: boolean;
+    toolchain: WorkspaceToolchainProfile | null;
     checks: WorkspaceDeploymentPreflightCheck[];
+    remediations: WorkspaceDeploymentRemediation[];
   };
   nextAction?: string | null;
 }

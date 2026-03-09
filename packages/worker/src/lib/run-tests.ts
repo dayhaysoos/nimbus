@@ -15,6 +15,7 @@ import { runWorkspaceTaskRunnerTests } from './workspace-task-runner.test.js';
 import { runWorkspaceDeploymentApiTests } from '../api/workspace-deployments.test.js';
 import { runWorkspaceDeploymentQueueTests } from './workspace-deployment-queue.test.js';
 import { runWorkspaceDeploymentRunnerTests } from './workspace-deployment-runner.test.js';
+import { runWorkspaceToolchainTests } from './workspace-toolchain.test.js';
 
 type TestCase = {
   name: string;
@@ -36,6 +37,7 @@ const TEST_CASES: TestCase[] = [
   { name: 'workspace-deployment-queue', run: runWorkspaceDeploymentQueueTests },
   { name: 'workspace-deployment-runner', run: runWorkspaceDeploymentRunnerTests },
   { name: 'workspace-deployment-api', run: runWorkspaceDeploymentApiTests },
+  { name: 'workspace-toolchain', run: runWorkspaceToolchainTests },
   { name: 'job-events-api', run: runJobEventsApiTests },
   { name: 'checkpoint-db', run: runCheckpointDbTests },
   { name: 'checkpoint-jobs-api', run: runCheckpointJobsApiTests },

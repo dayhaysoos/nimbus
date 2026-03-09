@@ -208,6 +208,10 @@ export async function preflightWorkspaceDeployment(
       runBuildIfPresent: boolean;
       runTestsIfPresent: boolean;
     };
+    autoFix?: {
+      rehydrateBaseline?: boolean;
+      bootstrapToolchain?: boolean;
+    };
   }
 ): Promise<WorkspaceDeploymentPreflightResponse> {
   const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}/deploy/preflight`, {
@@ -233,6 +237,17 @@ export async function createWorkspaceDeployment(
     validation: {
       runBuildIfPresent: boolean;
       runTestsIfPresent: boolean;
+    };
+    autoFix?: {
+      rehydrateBaseline?: boolean;
+      bootstrapToolchain?: boolean;
+    };
+    toolchain?: {
+      manager?: string | null;
+      version?: string | null;
+    };
+    cache?: {
+      dependencyCache?: boolean;
     };
     retry: {
       maxRetries: number;

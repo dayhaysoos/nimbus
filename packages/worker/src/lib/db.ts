@@ -19,8 +19,11 @@ import type {
   WorkspaceTaskResponse,
   WorkspaceTaskStatus,
   WorkspaceDeploymentRecord,
+  WorkspaceDeploymentRemediation,
   WorkspaceDeploymentResponse,
   WorkspaceDeploymentStatus,
+  WorkspacePackageManager,
+  WorkspaceToolchainProfile,
 } from '../types.js';
 
 export interface CreateCheckpointJobInput {
@@ -162,6 +165,59 @@ export interface WorkspaceDeploymentEventItem {
   eventType: string;
   payload: unknown;
   createdAt: string;
+}
+
+export interface WorkspaceDependencyCacheRecord {
+  id: string;
+  workspace_id: string;
+  cache_key: string;
+  manager: WorkspacePackageManager;
+  manager_version: string | null;
+  project_root: string;
+  lockfile_name: string | null;
+  lockfile_sha256: string | null;
+  artifact_key: string;
+  artifact_sha256: string;
+  artifact_bytes: number;
+  last_used_at: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface WorkspaceDependencyCacheResponse {
+  id: string;
+  workspaceId: string;
+  cacheKey: string;
+  manager: WorkspacePackageManager;
+  managerVersion: string | null;
+  projectRoot: string;
+  lockfileName: string | null;
+  lockfileSha256: string | null;
+  artifactKey: string;
+  artifactSha256: string;
+  artifactBytes: number;
+  lastUsedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function toWorkspaceDependencyCacheResponse(record: WorkspaceDependencyCacheRecord): WorkspaceDependencyCacheResponse {
+  return {
+    id: record.id,
+    workspaceId: record.workspace_id,
+    cacheKey: record.cache_key,
+    manager: record.manager,
+    managerVersion: record.manager_version,
+    projectRoot: record.project_root,
+    lockfileName: record.lockfile_name,
+    lockfileSha256: record.lockfile_sha256,
+    artifactKey: record.artifact_key,
+    artifactSha256: record.artifact_sha256,
+    artifactBytes: record.artifact_bytes,
+    lastUsedAt: record.last_used_at,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+  };
 }
 
 export class WorkspaceIdempotencyConflictError extends Error {
@@ -445,6 +501,8 @@ function toWorkspaceTaskResponse(record: WorkspaceTaskRecord): WorkspaceTaskResp
 function toWorkspaceDeploymentResponse(record: WorkspaceDeploymentRecord): WorkspaceDeploymentResponse {
   const provenance = parseJsonOrFallback(record.provenance_json, {});
   const result = parseJsonOrFallback(record.result_json, undefined);
+  const toolchain = parseJsonOrFallback(record.toolchain_json, null);
+  const remediations = parseJsonOrFallback(record.remediations_json, []);
 
   const response: WorkspaceDeploymentResponse = {
     id: record.id,
@@ -464,6 +522,10 @@ function toWorkspaceDeploymentResponse(record: WorkspaceDeploymentRecord): Works
     createdAt: record.created_at,
     updatedAt: record.updated_at,
     provenance: (provenance as Record<string, unknown>) ?? {},
+    toolchain: (toolchain as WorkspaceToolchainProfile | null) ?? null,
+    dependencyCacheKey: record.dependency_cache_key,
+    dependencyCacheHit: Boolean(record.dependency_cache_hit),
+    remediations: Array.isArray(remediations) ? (remediations as WorkspaceDeploymentRemediation[]) : [],
   };
 
   if (result !== undefined) {
@@ -2045,6 +2107,10 @@ export async function updateWorkspaceDeploymentStatus(
   options?: {
     workspaceId?: string;
     result?: unknown;
+    toolchain?: WorkspaceToolchainProfile | null;
+    dependencyCacheKey?: string | null;
+    dependencyCacheHit?: boolean;
+    remediations?: WorkspaceDeploymentRemediation[];
     errorCode?: string | null;
     errorMessage?: string | null;
     sourceSnapshotSha256?: string | null;
@@ -2056,7 +2122,7 @@ export async function updateWorkspaceDeploymentStatus(
   }
 ): Promise<void> {
   const updates: string[] = ['status = ?', 'updated_at = ?'];
-  const values: Array<string | null> = [status, new Date().toISOString()];
+  const values: Array<string | number | null> = [status, new Date().toISOString()];
   let explicitFinishedAt: string | null | undefined;
 
   if (options?.startedAt !== undefined) {
@@ -2071,6 +2137,22 @@ export async function updateWorkspaceDeploymentStatus(
   if (options?.result !== undefined) {
     updates.push('result_json = ?');
     values.push(JSON.stringify(options.result));
+  }
+  if (options?.toolchain !== undefined) {
+    updates.push('toolchain_json = ?');
+    values.push(options.toolchain ? JSON.stringify(options.toolchain) : null);
+  }
+  if (options?.dependencyCacheKey !== undefined) {
+    updates.push('dependency_cache_key = ?');
+    values.push(options.dependencyCacheKey);
+  }
+  if (options?.dependencyCacheHit !== undefined) {
+    updates.push('dependency_cache_hit = ?');
+    values.push(options.dependencyCacheHit ? 1 : 0);
+  }
+  if (options?.remediations !== undefined) {
+    updates.push('remediations_json = ?');
+    values.push(JSON.stringify(options.remediations));
   }
   if (options?.errorCode !== undefined) {
     updates.push('error_code = ?');
@@ -2315,6 +2397,111 @@ export async function getLatestSuccessfulWorkspaceDeployment(
   }
 
   return toWorkspaceDeploymentResponse(record);
+}
+
+export async function getWorkspaceDependencyCache(
+  db: D1Database,
+  workspaceId: string,
+  cacheKey: string
+): Promise<WorkspaceDependencyCacheResponse | null> {
+  const record = await db
+    .prepare(
+      `SELECT *
+       FROM workspace_dependency_caches
+       WHERE workspace_id = ? AND cache_key = ?
+       LIMIT 1`
+    )
+    .bind(workspaceId, cacheKey)
+    .first<WorkspaceDependencyCacheRecord>();
+
+  if (!record) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `UPDATE workspace_dependency_caches
+       SET last_used_at = ?,
+           updated_at = ?
+       WHERE workspace_id = ? AND cache_key = ?`
+    )
+    .bind(now, now, workspaceId, cacheKey)
+    .run();
+
+  return toWorkspaceDependencyCacheResponse({
+    ...record,
+    last_used_at: now,
+    updated_at: now,
+  });
+}
+
+export async function upsertWorkspaceDependencyCache(
+  db: D1Database,
+  input: {
+    id: string;
+    workspaceId: string;
+    cacheKey: string;
+    manager: WorkspacePackageManager;
+    managerVersion: string | null;
+    projectRoot: string;
+    lockfileName: string | null;
+    lockfileSha256: string | null;
+    artifactKey: string;
+    artifactSha256: string;
+    artifactBytes: number;
+  }
+): Promise<void> {
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO workspace_dependency_caches (
+         id,
+         workspace_id,
+         cache_key,
+         manager,
+         manager_version,
+         project_root,
+         lockfile_name,
+         lockfile_sha256,
+         artifact_key,
+         artifact_sha256,
+         artifact_bytes,
+         last_used_at,
+         created_at,
+         updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(workspace_id, cache_key)
+       DO UPDATE SET
+         manager = excluded.manager,
+         manager_version = excluded.manager_version,
+         project_root = excluded.project_root,
+         lockfile_name = excluded.lockfile_name,
+         lockfile_sha256 = excluded.lockfile_sha256,
+         artifact_key = excluded.artifact_key,
+         artifact_sha256 = excluded.artifact_sha256,
+         artifact_bytes = excluded.artifact_bytes,
+         last_used_at = excluded.last_used_at,
+         updated_at = excluded.updated_at`
+    )
+    .bind(
+      input.id,
+      input.workspaceId,
+      input.cacheKey,
+      input.manager,
+      input.managerVersion,
+      input.projectRoot,
+      input.lockfileName,
+      input.lockfileSha256,
+      input.artifactKey,
+      input.artifactSha256,
+      input.artifactBytes,
+      now,
+      now,
+      now
+    )
+    .run();
 }
 
 export async function updateWorkspaceDeploymentSummary(

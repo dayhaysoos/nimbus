@@ -17,6 +17,20 @@ export function runArgsParsingTests(): void {
     assert.deepEqual(parsed.positional, ['checkpoint', 'HEAD']);
   }
 
+  {
+    const parsed = parseArgs([
+      'workspace',
+      '--idempotency-key',
+      'deploy-1',
+      '--poll-interval-ms',
+      '2000',
+      'deploy',
+      'ws_abc12345',
+    ]);
+    assert.equal(parsed.flags['idempotency-key'], 'deploy-1');
+    assert.equal(parsed.flags['poll-interval-ms'], '2000');
+  }
+
   assert.throws(
     () => parseArgs(['deploy', 'checkpoint', 'HEAD', '--ref']),
     /Missing value for --ref/

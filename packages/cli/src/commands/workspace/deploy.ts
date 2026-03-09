@@ -20,6 +20,11 @@ export async function workspaceDeployCommand(
   workspaceId: string,
   options?: {
     idempotencyKey?: string;
+    runTestsIfPresent?: boolean;
+    runBuildIfPresent?: boolean;
+    preflightOnly?: boolean;
+    autoFix?: boolean;
+    pollIntervalMs?: number;
   }
 ): Promise<void> {
   const workerUrl = getWorkerUrl();
@@ -28,20 +33,51 @@ export async function workspaceDeployCommand(
   }
 
   const validation = {
-    runBuildIfPresent: true,
-    runTestsIfPresent: true,
+    runBuildIfPresent: options?.runBuildIfPresent ?? true,
+    runTestsIfPresent: options?.runTestsIfPresent ?? true,
   };
+  const pollIntervalMs = Math.max(250, options?.pollIntervalMs ?? 1500);
+  const autoFixEnabled = Boolean(options?.autoFix);
 
-  const preflight = await preflightWorkspaceDeployment(workerUrl, workspaceId, { validation });
+  const preflight = await preflightWorkspaceDeployment(workerUrl, workspaceId, {
+    validation,
+    autoFix: {
+      rehydrateBaseline: autoFixEnabled,
+      bootstrapToolchain: autoFixEnabled,
+    },
+  });
+  const checks = Array.isArray(preflight.preflight.checks) ? preflight.preflight.checks : [];
+  const toolchain = preflight.preflight.toolchain ?? null;
+  const remediations = Array.isArray(preflight.preflight.remediations)
+    ? preflight.preflight.remediations
+    : [];
+  p.log.message('Preflight checks:');
+  for (const check of checks) {
+    p.log.message(`- ${check.code}: ${check.ok ? 'ok' : check.details ?? 'failed'}`);
+  }
+  if (toolchain) {
+    p.log.message(
+      `Toolchain: ${toolchain.manager}${toolchain.version ? '@' + toolchain.version : ''} (${toolchain.detectedFrom})`
+    );
+  }
+  if (remediations.length > 0) {
+    p.log.message('Remediations:');
+    for (const remediation of remediations) {
+      p.log.message(`- ${remediation.code}: ${remediation.applied ? 'applied' : remediation.details ?? 'not applied'}`);
+    }
+  }
+
   if (!preflight.preflight.ok) {
     p.log.error('Workspace deployment preflight failed');
-    for (const check of preflight.preflight.checks) {
-      p.log.message(`- ${check.code}: ${check.ok ? 'ok' : check.details ?? 'failed'}`);
-    }
     if (preflight.nextAction) {
       p.log.warning(`Next action: ${preflight.nextAction}`);
     }
     throw new Error('Workspace deploy preflight failed');
+  }
+
+  if (options?.preflightOnly) {
+    p.log.success('Preflight passed (preflight-only mode)');
+    return;
   }
 
   p.log.success('Preflight passed');
@@ -49,6 +85,13 @@ export async function workspaceDeployCommand(
   const created = await createWorkspaceDeployment(workerUrl, workspaceId, idempotencyKey, {
     provider: 'simulated',
     validation,
+    autoFix: {
+      rehydrateBaseline: autoFixEnabled,
+      bootstrapToolchain: autoFixEnabled,
+    },
+    cache: {
+      dependencyCache: true,
+    },
     retry: { maxRetries: 2 },
     rollbackOnFailure: true,
     provenance: {
@@ -63,7 +106,7 @@ export async function workspaceDeployCommand(
   p.log.message(`Deployment queued: ${deploymentId}`);
 
   while (true) {
-    await sleep(1500);
+    await sleep(pollIntervalMs);
     const current = await getWorkspaceDeployment(workerUrl, workspaceId, deploymentId);
     const status = current.deployment.status;
     p.log.message(`Status: ${status}`);

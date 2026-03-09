@@ -5,6 +5,7 @@ import {
   claimWorkspaceDeploymentForExecution,
   getLatestSuccessfulWorkspaceDeployment,
   getWorkspace,
+  getWorkspaceDependencyCache,
   getWorkspaceDeployment,
   getWorkspaceDeploymentRequestPayload,
   hasWorkspaceDeploymentEvent,
@@ -14,8 +15,15 @@ import {
   requestWorkspaceDeploymentCancel,
   updateWorkspaceDeploymentStatus,
   updateWorkspaceDeploymentSummary,
+  upsertWorkspaceDependencyCache,
 } from './db.js';
 import { loadRuntimeFlags } from './flags.js';
+import { normalizeProjectRoot as normalizeCheckpointProjectRoot } from './checkpoint-plan.js';
+import {
+  applyRequestedToolchainOverride,
+  detectWorkspaceToolchainProfile,
+} from './workspace-toolchain.js';
+import type { WorkspaceDeploymentRemediation, WorkspaceToolchainProfile } from '../types.js';
 
 const WORKSPACE_ROOT = '/workspace';
 const STALE_RUNNING_TIMEOUT_MS = 30 * 60 * 1000;
@@ -53,6 +61,15 @@ class PolicyError extends Error {
 interface DeploymentValidationOptions {
   runBuildIfPresent: boolean;
   runTestsIfPresent: boolean;
+}
+
+interface DeploymentAutoFixOptions {
+  rehydrateBaseline: boolean;
+  bootstrapToolchain: boolean;
+}
+
+interface DeploymentCacheOptions {
+  dependencyCache: boolean;
 }
 
 class CancelRequestedError extends Error {
@@ -107,6 +124,67 @@ async function sha256Hex(input: BufferSource): Promise<string> {
   return toHex(new Uint8Array(digest));
 }
 
+async function sha256HexText(input: string): Promise<string> {
+  return sha256Hex(new TextEncoder().encode(input));
+}
+
+function normalizeProjectRoot(projectRoot: string): string {
+  return normalizeCheckpointProjectRoot(projectRoot);
+}
+
+function managerRunScriptCommand(profile: WorkspaceToolchainProfile, scriptName: 'test' | 'build'): string {
+  if (profile.manager === 'pnpm') {
+    return `pnpm run -s ${scriptName}`;
+  }
+  if (profile.manager === 'yarn') {
+    return `yarn -s ${scriptName}`;
+  }
+  return `npm run -s ${scriptName}`;
+}
+
+function managerBinary(profile: WorkspaceToolchainProfile): string {
+  if (profile.manager === 'pnpm' || profile.manager === 'yarn' || profile.manager === 'npm') {
+    return profile.manager;
+  }
+  return 'npm';
+}
+
+async function bootstrapToolchainIfNeeded(
+  sandbox: SandboxClient,
+  profile: WorkspaceToolchainProfile
+): Promise<void> {
+  if (profile.manager !== 'pnpm' && profile.manager !== 'yarn') {
+    return;
+  }
+
+  const corepackVersion = await sandbox.exec('corepack --version');
+  if (corepackVersion.exitCode !== 0) {
+    throw new PolicyError('corepack_missing', 'corepack is required for pnpm/yarn but is not available in sandbox runtime');
+  }
+
+  const enable = await sandbox.exec('corepack enable');
+  if (enable.exitCode !== 0) {
+    const combined = [enable.stdout, enable.stderr].filter(Boolean).join('\n');
+    throw new PolicyError('package_manager_bootstrap_failed', combined || 'corepack enable failed');
+  }
+
+  if (profile.version) {
+    const prepare = await sandbox.exec(`corepack prepare ${profile.manager}@${profile.version} --activate`);
+    if (prepare.exitCode !== 0) {
+      const combined = [prepare.stdout, prepare.stderr].filter(Boolean).join('\n');
+      throw new PolicyError('package_manager_bootstrap_failed', combined || 'corepack prepare failed');
+    }
+  }
+}
+
+async function makeDependencyCacheKey(workspaceId: string, profile: WorkspaceToolchainProfile): Promise<string | null> {
+  if (!profile.lockfile?.sha256) {
+    return null;
+  }
+  const source = [workspaceId, profile.projectRoot, profile.manager, profile.version ?? 'latest', profile.lockfile.sha256].join(':');
+  return sha256HexText(source);
+}
+
 function fromBase64(input: string): Uint8Array {
   const normalized = input.replace(/\s+/g, '');
   if (typeof globalThis.atob === 'function') {
@@ -123,6 +201,20 @@ function fromBase64(input: string): Uint8Array {
   }
 
   throw new Error('No base64 decoder is available in this runtime');
+}
+
+function toBase64(input: Uint8Array): string {
+  if (typeof Buffer !== 'undefined') {
+    return Buffer.from(input).toString('base64');
+  }
+  let binary = '';
+  for (let index = 0; index < input.length; index += 1) {
+    binary += String.fromCharCode(input[index]);
+  }
+  if (typeof globalThis.btoa === 'function') {
+    return globalThis.btoa(binary);
+  }
+  throw new Error('No base64 encoder is available in this runtime');
 }
 
 async function getWorkspaceSandbox(env: Env, sandboxId: string): Promise<SandboxClient> {
@@ -167,12 +259,16 @@ async function tryRehydrateWorkspaceGitBaseline(sandbox: SandboxClient): Promise
   return result.exitCode === 0;
 }
 
-async function detectPackageScripts(sandbox: SandboxClient): Promise<{ hasBuild: boolean; hasTest: boolean }> {
+async function detectPackageScriptsInProjectRoot(
+  sandbox: SandboxClient,
+  projectRoot: string
+): Promise<{ hasBuild: boolean; hasTest: boolean }> {
+  const normalizedRoot = normalizeProjectRoot(projectRoot);
   const output = await runSandboxCommand(
     sandbox,
     `cd ${shellQuote(
       WORKSPACE_ROOT
-    )} && python3 - <<'PY'\n# nimbus_detect_scripts\nimport json\nimport os\n\npath = 'package.json'\nif not os.path.exists(path):\n    print(json.dumps({'hasBuild': False, 'hasTest': False}))\n    raise SystemExit(0)\ntry:\n    with open(path, 'r', encoding='utf-8') as f:\n        payload = json.load(f)\nexcept Exception:\n    print(json.dumps({'hasBuild': False, 'hasTest': False}))\n    raise SystemExit(0)\nscripts = payload.get('scripts', {}) if isinstance(payload, dict) else {}\nprint(json.dumps({'hasBuild': bool(isinstance(scripts, dict) and scripts.get('build')), 'hasTest': bool(isinstance(scripts, dict) and scripts.get('test'))}))\nPY`
+    )} && python3 - <<'PY'\n# nimbus_detect_scripts\nimport json\nimport os\n\nproject_root = ${JSON.stringify(normalizedRoot)}\npath = os.path.join(project_root, 'package.json') if project_root != '.' else 'package.json'\nif not os.path.exists(path):\n    print(json.dumps({'hasBuild': False, 'hasTest': False}))\n    raise SystemExit(0)\ntry:\n    with open(path, 'r', encoding='utf-8') as f:\n        payload = json.load(f)\nexcept Exception:\n    print(json.dumps({'hasBuild': False, 'hasTest': False}))\n    raise SystemExit(0)\nscripts = payload.get('scripts', {}) if isinstance(payload, dict) else {}\nprint(json.dumps({'hasBuild': bool(isinstance(scripts, dict) and scripts.get('build')), 'hasTest': bool(isinstance(scripts, dict) and scripts.get('test'))}))\nPY`
   );
   const parsed = JSON.parse(output) as { hasBuild?: boolean; hasTest?: boolean };
   return {
@@ -215,7 +311,10 @@ async function runValidationStep(
     );
   }
 
-  throw new Error(`Sandbox command failed with exit ${result.exitCode}: ${output || 'No output'}`);
+  throw new PolicyError(
+    'validation_command_failed',
+    `Validation command failed with exit ${result.exitCode}: ${output || 'No output'}`
+  );
 }
 
 async function detectPotentialSecrets(sandbox: SandboxClient): Promise<string[]> {
@@ -251,6 +350,80 @@ async function createDeploymentBundle(
     sha256: sha,
     objectKeySuffix: 'source.tar.gz',
   };
+}
+
+async function createDependencyCacheArchive(
+  sandbox: SandboxClient,
+  profile: WorkspaceToolchainProfile
+): Promise<{ bytes: Uint8Array; sha256: string } | null> {
+  const projectRoot = normalizeProjectRoot(profile.projectRoot);
+  const nodeModules = projectRoot === '.' ? 'node_modules' : `${projectRoot}/node_modules`;
+  const result = await sandbox.exec(
+    `cd ${shellQuote(
+      WORKSPACE_ROOT
+    )} && if [ ! -d ${shellQuote(
+      nodeModules
+    )} ]; then echo '{}'; else tmp_stem=$(mktemp /tmp/nimbus-workspace-cache.XXXXXX) && tmp_bundle="${'$'}{tmp_stem}.tar.gz" && tar -czf "${'$'}tmp_bundle" ${shellQuote(
+      nodeModules
+    )} && base64 "${'$'}tmp_bundle" && rm -f "${'$'}tmp_bundle" "${'$'}tmp_stem"; fi`,
+    { timeout: 5 * 60 * 1000 }
+  );
+  if (result.exitCode !== 0) {
+    return null;
+  }
+  const output = result.stdout.trim();
+  if (!output || output === '{}') {
+    return null;
+  }
+  const bytes = fromBase64(output);
+  return {
+    bytes,
+    sha256: await sha256Hex(bytes),
+  };
+}
+
+async function restoreDependencyCacheArchive(
+  sandbox: SandboxClient,
+  profile: WorkspaceToolchainProfile,
+  bytes: Uint8Array
+): Promise<void> {
+  const projectRoot = normalizeProjectRoot(profile.projectRoot);
+  const payload = toBase64(bytes);
+  const tempPath = `/tmp/nimbus-cache-${Date.now()}-${Math.floor(Math.random() * 1_000_000)}.b64`;
+  const reset = await sandbox.exec(`python3 - <<'PY'\nopen(${JSON.stringify(tempPath)}, 'wb').close()\nPY`);
+  if (reset.exitCode !== 0) {
+    const combined = [reset.stdout, reset.stderr].filter(Boolean).join('\n');
+    throw new Error(combined || 'Failed to initialize dependency cache payload file');
+  }
+
+  const chunkSize = 8 * 1024;
+  for (let offset = 0; offset < payload.length; offset += chunkSize) {
+    const chunk = payload.slice(offset, offset + chunkSize);
+    const append = await sandbox.exec(
+      `python3 - <<'PY'\nwith open(${JSON.stringify(tempPath)}, 'ab') as f:\n    f.write(${JSON.stringify(chunk)}.encode('ascii'))\nPY`
+    );
+    if (append.exitCode !== 0) {
+      const combined = [append.stdout, append.stderr].filter(Boolean).join('\n');
+      throw new Error(combined || 'Failed while streaming dependency cache payload');
+    }
+  }
+
+  const command =
+    `cd ${shellQuote(WORKSPACE_ROOT)} && mkdir -p ${shellQuote(projectRoot)} && python3 - <<'PY'\n` +
+    `import base64\n` +
+    `import pathlib\n` +
+    `import subprocess\n` +
+    `payload_path = pathlib.Path(${JSON.stringify(tempPath)})\n` +
+    `raw = base64.b64decode(payload_path.read_bytes())\n` +
+    `proc = subprocess.run(['tar', '-xzf', '-', '-C', '.'], input=raw)\n` +
+    `payload_path.unlink(missing_ok=True)\n` +
+    `raise SystemExit(proc.returncode)\n` +
+    `PY`;
+  const extract = await sandbox.exec(command, { timeout: 5 * 60 * 1000 });
+  if (extract.exitCode !== 0) {
+    const combined = [extract.stdout, extract.stderr].filter(Boolean).join('\n');
+    throw new Error(combined || 'Failed to restore dependency cache archive');
+  }
 }
 
 async function resolveRollbackContext(workspaceId: string, deploymentId: string, enabled: boolean, env: Env): Promise<unknown> {
@@ -435,11 +608,54 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     throw new PolicyError('workspace_not_ready', 'Workspace is not ready for deployment');
   }
 
+  const validation =
+    payload.validation && typeof payload.validation === 'object' && !Array.isArray(payload.validation)
+      ? (payload.validation as Record<string, unknown>)
+      : {};
+  const autoFix =
+    payload.autoFix && typeof payload.autoFix === 'object' && !Array.isArray(payload.autoFix)
+      ? (payload.autoFix as Record<string, unknown>)
+      : {};
+  const cache =
+    payload.cache && typeof payload.cache === 'object' && !Array.isArray(payload.cache)
+      ? (payload.cache as Record<string, unknown>)
+      : {};
+  const requestedToolchain =
+    payload.toolchain && typeof payload.toolchain === 'object' && !Array.isArray(payload.toolchain)
+      ? (payload.toolchain as Record<string, unknown>)
+      : null;
+  const validationOptions: DeploymentValidationOptions = {
+    runBuildIfPresent: parseBoolean(validation.runBuildIfPresent, true),
+    runTestsIfPresent: parseBoolean(validation.runTestsIfPresent, true),
+  };
+  const autoFixOptions: DeploymentAutoFixOptions = {
+    rehydrateBaseline: parseBoolean(autoFix.rehydrateBaseline, false),
+    bootstrapToolchain: parseBoolean(autoFix.bootstrapToolchain, false),
+  };
+  const cacheOptions: DeploymentCacheOptions = {
+    dependencyCache: parseBoolean(cache.dependencyCache, true),
+  };
+  const { runBuildIfPresent, runTestsIfPresent } = validationOptions;
+  const rollbackOnFailure = parseBoolean(payload.rollbackOnFailure, true);
+  const remediations: WorkspaceDeploymentRemediation[] = [];
+  const workspaceProjectRootRaw =
+    typeof workspace.sourceProjectRoot === 'string' && workspace.sourceProjectRoot.trim() ? workspace.sourceProjectRoot : '.';
+  let workspaceProjectRoot = '.';
+  try {
+    workspaceProjectRoot = normalizeProjectRoot(workspaceProjectRootRaw);
+  } catch (error) {
+    throw new PolicyError('invalid_project_root', error instanceof Error ? error.message : String(error));
+  }
+
   const sandbox = await sandboxResolver(env, workspace.sandboxId);
   try {
     await ensureWorkspaceGitBaseline(sandbox);
   } catch (error) {
     if (!(error instanceof PolicyError) || error.code !== 'baseline_missing') {
+      throw error;
+    }
+
+    if (!autoFixOptions.rehydrateBaseline) {
       throw error;
     }
 
@@ -461,6 +677,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
       throw new PolicyError('baseline_rehydrate_failed', 'Workspace git baseline is missing and could not be rehydrated');
     }
 
+    remediations.push({ code: 'baseline_rehydrated', applied: true });
     await appendWorkspaceDeploymentEvent(env.DB, {
       workspaceId,
       deploymentId,
@@ -488,17 +705,6 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     }
   }
 
-  const validation =
-    payload.validation && typeof payload.validation === 'object' && !Array.isArray(payload.validation)
-      ? (payload.validation as Record<string, unknown>)
-      : {};
-  const validationOptions: DeploymentValidationOptions = {
-    runBuildIfPresent: parseBoolean(validation.runBuildIfPresent, true),
-    runTestsIfPresent: parseBoolean(validation.runTestsIfPresent, true),
-  };
-  const { runBuildIfPresent, runTestsIfPresent } = validationOptions;
-  const rollbackOnFailure = parseBoolean(payload.rollbackOnFailure, true);
-
   await appendWorkspaceDeploymentEvent(env.DB, {
     workspaceId,
     deploymentId,
@@ -508,12 +714,93 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
       attemptCount: deployment.attemptCount,
       runBuildIfPresent,
       runTestsIfPresent,
+      autoFix: autoFixOptions,
+      cache: cacheOptions,
     },
   });
 
   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
 
-  const scripts = await detectPackageScripts(sandbox);
+  let toolchain: WorkspaceToolchainProfile;
+  try {
+    toolchain = applyRequestedToolchainOverride(
+      await detectWorkspaceToolchainProfile(
+        sandbox,
+        workspaceProjectRoot
+      ),
+      requestedToolchain
+    );
+  } catch (error) {
+    throw new PolicyError('toolchain_detect_failed', error instanceof Error ? error.message : String(error));
+  }
+
+  await appendWorkspaceDeploymentEvent(env.DB, {
+    workspaceId,
+    deploymentId,
+    eventType: 'deployment_toolchain_detected',
+    payload: toolchain,
+  });
+
+  if (toolchain.manager === 'unknown') {
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_toolchain_unknown_fallback',
+      payload: { fallbackManager: 'npm' },
+    });
+  }
+
+  await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {
+    workspaceId,
+    toolchain,
+    remediations,
+  });
+
+  const scripts = await detectPackageScriptsInProjectRoot(sandbox, workspaceProjectRoot);
+  const shouldBootstrapForValidation =
+    (runTestsIfPresent && scripts.hasTest) || (runBuildIfPresent && scripts.hasBuild);
+
+  if (autoFixOptions.bootstrapToolchain && shouldBootstrapForValidation) {
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_toolchain_bootstrap_started',
+      payload: {
+        manager: toolchain.manager,
+        version: toolchain.version,
+      },
+    });
+    try {
+      await bootstrapToolchainIfNeeded(sandbox, toolchain);
+      if (toolchain.manager === 'pnpm' || toolchain.manager === 'yarn') {
+        remediations.push({ code: 'toolchain_bootstrapped', applied: true });
+      }
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_toolchain_bootstrap_succeeded',
+        payload: { manager: toolchain.manager },
+      });
+    } catch (error) {
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_toolchain_bootstrap_failed',
+        payload: {
+          manager: toolchain.manager,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
+    }
+  } else {
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_toolchain_bootstrap_succeeded',
+      payload: { manager: toolchain.manager, skipped: true },
+    });
+  }
   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
 
   const potentialSecrets = await detectPotentialSecrets(sandbox);
@@ -522,6 +809,61 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
       'potential_secrets_detected',
       `Potential secrets detected in workspace files: ${potentialSecrets.join(', ')}`
     );
+  }
+
+  const dependencyCacheKey = cacheOptions.dependencyCache ? await makeDependencyCacheKey(workspaceId, toolchain) : null;
+  await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {
+    workspaceId,
+    toolchain,
+    dependencyCacheKey,
+    dependencyCacheHit: false,
+    remediations,
+  });
+
+  if (cacheOptions.dependencyCache && dependencyCacheKey) {
+    const existingCache = await getWorkspaceDependencyCache(env.DB, workspaceId, dependencyCacheKey);
+    if (!existingCache) {
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_dependency_cache_miss',
+        payload: { dependencyCacheKey },
+      });
+    } else {
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_dependency_cache_hit',
+        payload: { dependencyCacheKey, artifactKey: existingCache.artifactKey },
+      });
+      try {
+        const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;
+        const object = bucket ? await bucket.get(existingCache.artifactKey) : null;
+        if (!object) {
+          throw new Error('Dependency cache artifact is unavailable');
+        }
+        const bytes = new Uint8Array(await object.arrayBuffer());
+        const artifactSha256 = await sha256Hex(bytes);
+        if (artifactSha256 !== existingCache.artifactSha256) {
+          throw new Error('Dependency cache integrity check failed: sha256 mismatch');
+        }
+        await restoreDependencyCacheArchive(sandbox, toolchain, bytes);
+        await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {
+          workspaceId,
+          dependencyCacheHit: true,
+        });
+      } catch (error) {
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'deployment_dependency_cache_restore_failed',
+          payload: {
+            dependencyCacheKey,
+            message: error instanceof Error ? error.message : String(error),
+          },
+        });
+      }
+    }
   }
 
   if (runTestsIfPresent && scripts.hasTest) {
@@ -534,7 +876,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     try {
       await runValidationStep(
         sandbox,
-        `cd ${shellQuote(WORKSPACE_ROOT)} && npm run -s test`,
+        `cd ${shellQuote(workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`)} && ${managerRunScriptCommand(toolchain, 'test')}`,
         10 * 60 * 1000,
         'validation_tool_missing'
       );
@@ -561,7 +903,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     try {
       await runValidationStep(
         sandbox,
-        `cd ${shellQuote(WORKSPACE_ROOT)} && npm run -s build`,
+        `cd ${shellQuote(workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`)} && ${managerRunScriptCommand(toolchain, 'build')}`,
         10 * 60 * 1000,
         'validation_tool_missing'
       );
@@ -577,6 +919,47 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
       throw error;
     }
     await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+  }
+
+  if (cacheOptions.dependencyCache && dependencyCacheKey) {
+    const archive = await createDependencyCacheArchive(sandbox, toolchain);
+    if (archive) {
+      const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;
+      if (bucket) {
+        const artifactKey = `workspaces/${workspaceId}/dependency-caches/${dependencyCacheKey}.tar.gz`;
+        await bucket.put(artifactKey, archive.bytes, {
+          httpMetadata: { contentType: 'application/gzip' },
+          customMetadata: {
+            workspace_id: workspaceId,
+            cache_key: dependencyCacheKey,
+            manager: toolchain.manager,
+          },
+        });
+        await upsertWorkspaceDependencyCache(env.DB, {
+          id: `wdc_${dependencyCacheKey.slice(0, 24)}`,
+          workspaceId,
+          cacheKey: dependencyCacheKey,
+          manager: toolchain.manager,
+          managerVersion: toolchain.version,
+          projectRoot: toolchain.projectRoot,
+          lockfileName: toolchain.lockfile?.name ?? null,
+          lockfileSha256: toolchain.lockfile?.sha256 ?? null,
+          artifactKey,
+          artifactSha256: archive.sha256,
+          artifactBytes: archive.bytes.byteLength,
+        });
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'deployment_dependency_cache_saved',
+          payload: {
+            dependencyCacheKey,
+            artifactKey,
+            artifactBytes: archive.bytes.byteLength,
+          },
+        });
+      }
+    }
   }
 
   const { bytes, sha256, objectKeySuffix } = await createDeploymentBundle(sandbox);
@@ -660,29 +1043,64 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
 export async function runWorkspaceDeploymentPreflight(
   env: Env,
   workspaceId: string,
-  options?: Partial<DeploymentValidationOptions>
+  options?: Partial<DeploymentValidationOptions & DeploymentAutoFixOptions>
 ): Promise<{
   ok: boolean;
+  toolchain: WorkspaceToolchainProfile | null;
   checks: Array<{ code: string; ok: boolean; details?: string }>;
+  remediations: WorkspaceDeploymentRemediation[];
 }> {
   const checks: Array<{ code: string; ok: boolean; details?: string }> = [];
+  const remediations: WorkspaceDeploymentRemediation[] = [];
   const workspace = await getWorkspace(env.DB, workspaceId);
   if (!workspace || workspace.status !== 'ready') {
     checks.push({ code: 'workspace_ready', ok: false, details: 'Workspace is not ready' });
-    return { ok: false, checks };
+    return { ok: false, toolchain: null, checks, remediations };
   }
   checks.push({ code: 'workspace_ready', ok: true });
 
   const sandbox = await sandboxResolver(env, workspace.sandboxId);
+  const workspaceProjectRootRaw =
+    typeof workspace.sourceProjectRoot === 'string' && workspace.sourceProjectRoot.trim() ? workspace.sourceProjectRoot : '.';
+  let workspaceProjectRoot = '.';
+  try {
+    workspaceProjectRoot = normalizeProjectRoot(workspaceProjectRootRaw);
+  } catch (error) {
+    checks.push({
+      code: 'project_root',
+      ok: false,
+      details: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, toolchain: null, checks, remediations };
+  }
+  const autoFixBaseline = parseBoolean(options?.rehydrateBaseline, false);
+  const autoFixBootstrapToolchain = parseBoolean(options?.bootstrapToolchain, false);
+  const runBuildIfPresent = parseBoolean(options?.runBuildIfPresent, true);
+  const runTestsIfPresent = parseBoolean(options?.runTestsIfPresent, true);
+
   try {
     await ensureWorkspaceGitBaseline(sandbox);
     checks.push({ code: 'git_baseline', ok: true });
   } catch (error) {
-    checks.push({ code: 'git_baseline', ok: false, details: error instanceof Error ? error.message : String(error) });
-    return { ok: false, checks };
+    const details = error instanceof Error ? error.message : String(error);
+    if (!autoFixBaseline) {
+      checks.push({ code: 'git_baseline', ok: false, details });
+      return { ok: false, toolchain: null, checks, remediations };
+    }
+
+    const rehydrated = await tryRehydrateWorkspaceGitBaseline(sandbox);
+    if (!rehydrated) {
+      checks.push({ code: 'git_baseline', ok: false, details });
+      remediations.push({ code: 'baseline_rehydrated', applied: false, details: 'auto-fix failed' });
+      return { ok: false, toolchain: null, checks, remediations };
+    }
+    remediations.push({ code: 'baseline_rehydrated', applied: true });
+    checks.push({ code: 'git_baseline', ok: true, details: 'auto-fixed baseline rehydrate' });
   }
 
-  const scripts = await detectPackageScripts(sandbox);
+  const scripts = await detectPackageScriptsInProjectRoot(sandbox, workspaceProjectRoot);
+  const shouldBootstrapForValidation =
+    autoFixBootstrapToolchain && ((runBuildIfPresent && scripts.hasBuild) || (runTestsIfPresent && scripts.hasTest));
   checks.push({
     code: 'detected_scripts',
     ok: true,
@@ -692,22 +1110,58 @@ export async function runWorkspaceDeploymentPreflight(
   const secrets = await detectPotentialSecrets(sandbox);
   if (secrets.length > 0) {
     checks.push({ code: 'secret_scan', ok: false, details: secrets.join(', ') });
-    return { ok: false, checks };
+    return { ok: false, toolchain: null, checks, remediations };
   }
   checks.push({ code: 'secret_scan', ok: true });
 
-  const runBuildIfPresent = parseBoolean(options?.runBuildIfPresent, true);
-  const runTestsIfPresent = parseBoolean(options?.runTestsIfPresent, true);
+  let toolchain: WorkspaceToolchainProfile;
+  try {
+    toolchain = await detectWorkspaceToolchainProfile(
+      sandbox,
+      workspaceProjectRoot
+    );
+    checks.push({ code: 'toolchain_detect', ok: true, details: JSON.stringify(toolchain) });
+  } catch (error) {
+    checks.push({
+      code: 'toolchain_detect',
+      ok: false,
+      details: error instanceof Error ? error.message : String(error),
+    });
+    return { ok: false, toolchain: null, checks, remediations };
+  }
+
+  if (shouldBootstrapForValidation) {
+    try {
+      await bootstrapToolchainIfNeeded(sandbox, toolchain);
+      checks.push({ code: 'toolchain_bootstrap', ok: true });
+      remediations.push({
+        code: 'toolchain_bootstrapped',
+        applied: toolchain.manager === 'pnpm' || toolchain.manager === 'yarn',
+      });
+    } catch (error) {
+      checks.push({ code: 'toolchain_bootstrap', ok: false, details: error instanceof Error ? error.message : String(error) });
+      remediations.push({ code: 'toolchain_bootstrapped', applied: false });
+      return { ok: false, toolchain, checks, remediations };
+    }
+  } else {
+    checks.push({ code: 'toolchain_bootstrap', ok: true, details: 'skipped' });
+  }
+
   if ((runBuildIfPresent && scripts.hasBuild) || (runTestsIfPresent && scripts.hasTest)) {
-    const npmCheck = await sandbox.exec('command -v npm >/dev/null 2>&1');
-    if (npmCheck.exitCode !== 0) {
-      checks.push({ code: 'validation_tooling', ok: false, details: 'npm is not available in sandbox runtime' });
-      return { ok: false, checks };
+    const manager = managerBinary(toolchain);
+    const managerCheck = await sandbox.exec(`command -v ${manager} >/dev/null 2>&1`);
+    if (managerCheck.exitCode !== 0) {
+      checks.push({
+        code: 'validation_tooling',
+        ok: false,
+        details: `${manager} is not available in sandbox runtime`,
+      });
+      return { ok: false, toolchain, checks, remediations };
     }
   }
   checks.push({ code: 'validation_tooling', ok: true });
 
-  return { ok: true, checks };
+  return { ok: true, toolchain, checks, remediations };
 }
 
 export async function processWorkspaceDeployment(env: Env, workspaceId: string, deploymentId: string): Promise<void> {
