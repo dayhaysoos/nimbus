@@ -11,6 +11,7 @@ import { setWorkspaceDeploymentSandboxResolverForTests } from '../lib/workspace-
 function createWorkspaceDeploymentApiEnv(options?: {
   workspaceStatus?: 'ready' | 'deleted';
   reuseRetryScheduled?: boolean;
+  sourceProjectRoot?: string;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -67,7 +68,7 @@ function createWorkspaceDeploymentApiEnv(options?: {
                     checkpoint_id: null,
                     commit_sha: 'a'.repeat(40),
                     source_ref: 'main',
-                    source_project_root: '.',
+                    source_project_root: options?.sourceProjectRoot ?? '.',
                     source_bundle_key: 'key',
                     source_bundle_sha256: 'f'.repeat(64),
                     source_bundle_bytes: 1,
@@ -100,12 +101,12 @@ function createWorkspaceDeploymentApiEnv(options?: {
                   if (!options?.reuseRetryScheduled) {
                     return null as T;
                   }
-                  return {
-                    deployment_id: 'dep_existing',
-                    request_payload_sha256:
-                      'bc5770f66f82be23817aea1c4cd23537cec28a833dc39e77ce75f6bf2dcb26cf',
-                    expires_at: '2999-01-01T00:00:00.000Z',
-                  } as T;
+                    return {
+                      deployment_id: 'dep_existing',
+                      request_payload_sha256:
+                        'bc5770f66f82be23817aea1c4cd23537cec28a833dc39e77ce75f6bf2dcb26cf',
+                      expires_at: '2999-01-01T00:00:00.000Z',
+                    } as T;
                 },
               };
             },
@@ -331,6 +332,18 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
       if (command.includes('nimbus_detect_scripts')) {
         return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
       }
+      if (command.includes('nimbus_detect_toolchain')) {
+        return {
+          stdout: JSON.stringify({
+            packageManager: 'npm@10.8.2',
+            scripts: {},
+            lockfiles: { pnpm: null, yarn: null, npm: null },
+            projectRoot: '.',
+          }),
+          stderr: '',
+          exitCode: 0,
+        };
+      }
       if (command.includes('nimbus_detect_secrets')) {
         return { stdout: '[]', stderr: '', exitCode: 0 };
       }
@@ -421,6 +434,109 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
     });
     const response = await handleWorkspaceDeploymentPreflight('ws_abc12345', request, env as never);
     assert.equal(response.status, 200);
+  }
+
+  {
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: 'fatal: needed a single revision', exitCode: 1 };
+        }
+        if (command.includes('git init -q')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    const { env } = createWorkspaceDeploymentApiEnv();
+    const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy/preflight', {
+      method: 'POST',
+      body: JSON.stringify({ autoFix: { rehydrateBaseline: true } }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const response = await handleWorkspaceDeploymentPreflight('ws_abc12345', request, env as never);
+    const body = (await response.json()) as {
+      preflight: { ok: boolean; remediations: Array<{ code: string; applied: boolean }> };
+    };
+    assert.equal(response.status, 200);
+    assert.equal(body.preflight.ok, true);
+    assert.equal(body.preflight.remediations.some((item) => item.code === 'baseline_rehydrated' && item.applied), true);
+
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('command -v npm')) {
+          return { stdout: '/usr/bin/npm\n', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+  }
+
+  {
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec() {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    const { env } = createWorkspaceDeploymentApiEnv({ sourceProjectRoot: '../outside' });
+    const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy/preflight', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const response = await handleWorkspaceDeploymentPreflight('ws_abc12345', request, env as never);
+    const body = (await response.json()) as {
+      preflight: { ok: boolean; checks: Array<{ code: string; ok: boolean }> };
+      nextAction: string | null;
+    };
+    assert.equal(response.status, 200);
+    assert.equal(body.preflight.ok, false);
+    assert.equal(body.preflight.checks.some((check) => check.code === 'project_root' && !check.ok), true);
+    assert.equal(
+      body.nextAction,
+      'Set workspace source project root to a safe relative path and retry preflight.'
+    );
   }
 
   {

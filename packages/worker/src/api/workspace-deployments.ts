@@ -51,10 +51,53 @@ function parseBoolean(input: unknown, fallback: boolean): boolean {
   return input;
 }
 
+function buildDeploymentIdempotencyPayload(requestPayload: {
+  provider: string;
+  retry: { maxRetries: number };
+  validation: { runBuildIfPresent: boolean; runTestsIfPresent: boolean };
+  autoFix: { rehydrateBaseline: boolean; bootstrapToolchain: boolean };
+  toolchain: { manager: string | null; version: string | null };
+  cache: { dependencyCache: boolean };
+  rollbackOnFailure: boolean;
+  provenance: { trigger: string; taskId: string | null; operationId: string | null; note: string | null };
+}): Record<string, unknown> {
+  const payload: Record<string, unknown> = {
+    provider: requestPayload.provider,
+    retry: requestPayload.retry,
+    validation: requestPayload.validation,
+    rollbackOnFailure: requestPayload.rollbackOnFailure,
+    provenance: requestPayload.provenance,
+  };
+
+  if (requestPayload.autoFix.rehydrateBaseline || requestPayload.autoFix.bootstrapToolchain) {
+    payload.autoFix = requestPayload.autoFix;
+  }
+
+  if (requestPayload.toolchain.manager || requestPayload.toolchain.version) {
+    payload.toolchain = requestPayload.toolchain;
+  }
+
+  if (!requestPayload.cache.dependencyCache) {
+    payload.cache = requestPayload.cache;
+  }
+
+  return payload;
+}
+
 function nextActionForDeploymentError(code: string | undefined): string | null {
   switch (code) {
+    case 'toolchain_detect_failed':
+      return 'Verify package.json and lockfile metadata, then retry deploy.';
+    case 'corepack_missing':
+      return 'Use a sandbox image with corepack available, or switch to npm toolchain.';
+    case 'package_manager_bootstrap_failed':
+      return 'Confirm the requested package manager version is valid and retry deploy.';
     case 'validation_tool_missing':
       return 'Disable build/test validation for this deploy or install required tooling in the sandbox image.';
+    case 'validation_command_failed':
+      return 'Review test/build output, fix project errors, and retry deploy.';
+    case 'invalid_project_root':
+      return 'Set workspace source project root to a safe relative path and retry deploy.';
     case 'baseline_missing':
     case 'baseline_rehydrate_failed':
       return 'Reset the workspace and retry deploy to rebuild git baseline.';
@@ -181,6 +224,18 @@ export async function handleCreateWorkspaceDeployment(
       payload.provenance && typeof payload.provenance === 'object' && !Array.isArray(payload.provenance)
         ? (payload.provenance as Record<string, unknown>)
         : {};
+    const autoFix =
+      payload.autoFix && typeof payload.autoFix === 'object' && !Array.isArray(payload.autoFix)
+        ? (payload.autoFix as Record<string, unknown>)
+        : {};
+    const toolchain =
+      payload.toolchain && typeof payload.toolchain === 'object' && !Array.isArray(payload.toolchain)
+        ? (payload.toolchain as Record<string, unknown>)
+        : {};
+    const cache =
+      payload.cache && typeof payload.cache === 'object' && !Array.isArray(payload.cache)
+        ? (payload.cache as Record<string, unknown>)
+        : {};
     const maxRetries = parseInteger(retry.maxRetries, 2, 0, 5);
 
     const requestPayload = {
@@ -192,6 +247,17 @@ export async function handleCreateWorkspaceDeployment(
         runBuildIfPresent: parseBoolean(validation.runBuildIfPresent, true),
         runTestsIfPresent: parseBoolean(validation.runTestsIfPresent, true),
       },
+      autoFix: {
+        rehydrateBaseline: parseBoolean(autoFix.rehydrateBaseline, false),
+        bootstrapToolchain: parseBoolean(autoFix.bootstrapToolchain, false),
+      },
+      toolchain: {
+        manager: typeof toolchain.manager === 'string' && toolchain.manager.trim() ? toolchain.manager.trim() : null,
+        version: typeof toolchain.version === 'string' && toolchain.version.trim() ? toolchain.version.trim() : null,
+      },
+      cache: {
+        dependencyCache: parseBoolean(cache.dependencyCache, true),
+      },
       rollbackOnFailure: parseBoolean(payload.rollbackOnFailure, true),
       provenance: {
         trigger: typeof provenance.trigger === 'string' && provenance.trigger.trim() ? provenance.trigger.trim() : 'manual',
@@ -202,7 +268,9 @@ export async function handleCreateWorkspaceDeployment(
       },
     };
 
-    const requestPayloadSha256 = await sha256Hex(JSON.stringify(requestPayload));
+    const requestPayloadSha256 = await sha256Hex(
+      JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload))
+    );
     const created = await createWorkspaceDeployment(env.DB, {
       id: generateWorkspaceDeploymentId(),
       workspaceId,
@@ -327,28 +395,52 @@ export async function handleWorkspaceDeploymentPreflight(
     payload.validation && typeof payload.validation === 'object' && !Array.isArray(payload.validation)
       ? (payload.validation as Record<string, unknown>)
       : {};
+  const autoFix =
+    payload.autoFix && typeof payload.autoFix === 'object' && !Array.isArray(payload.autoFix)
+      ? (payload.autoFix as Record<string, unknown>)
+      : {};
   const runBuildIfPresent = parseBoolean(validation.runBuildIfPresent, true);
   const runTestsIfPresent = parseBoolean(validation.runTestsIfPresent, true);
+  const rehydrateBaseline = parseBoolean(autoFix.rehydrateBaseline, false);
+  const bootstrapToolchain = parseBoolean(autoFix.bootstrapToolchain, false);
 
   try {
     const preflight = await runWorkspaceDeploymentPreflight(env, workspaceId, {
       runBuildIfPresent,
       runTestsIfPresent,
+      rehydrateBaseline,
+      bootstrapToolchain,
     });
     const failedCheck = preflight.checks.find((check) => !check.ok);
     const nextAction = failedCheck
       ? failedCheck.code === 'validation_tooling'
-        ? 'Disable build/test validation or install npm in sandbox runtime image.'
+        ? 'Disable build/test validation or install the detected package manager in the sandbox runtime image.'
         : failedCheck.code === 'git_baseline'
           ? 'Reset workspace to rebuild git baseline and retry deploy.'
           : failedCheck.code === 'secret_scan'
             ? 'Remove sensitive files from workspace before deploying.'
+            : failedCheck.code === 'toolchain_detect'
+              ? 'Fix package.json/lockfile metadata and retry preflight.'
+              : failedCheck.code === 'toolchain_bootstrap'
+                ? 'Enable auto-fix bootstrap or use a sandbox image with corepack support.'
+                : failedCheck.code === 'project_root'
+                  ? 'Set workspace source project root to a safe relative path and retry preflight.'
             : null
       : null;
     return jsonResponse({ preflight, nextAction });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return jsonResponse({ preflight: { ok: false, checks: [{ code: 'internal_error', ok: false, details: message }] } }, 500);
+    return jsonResponse(
+      {
+        preflight: {
+          ok: false,
+          toolchain: null,
+          checks: [{ code: 'internal_error', ok: false, details: message }],
+          remediations: [],
+        },
+      },
+      500
+    );
   }
 }
 

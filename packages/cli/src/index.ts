@@ -28,6 +28,7 @@ import { listWorkspaceFilesCommand } from './commands/workspace/files.js';
 import { catWorkspaceFileCommand } from './commands/workspace/cat.js';
 import { workspaceDiffCommand } from './commands/workspace/diff.js';
 import { workspaceDeployCommand } from './commands/workspace/deploy.js';
+import { doctorCommand } from './commands/doctor.js';
 import { parseArgs } from './lib/args.js';
 
 const VERSION = '0.1.0';
@@ -48,6 +49,33 @@ function parsePositiveIntegerFlag(
   return Math.floor(parsed);
 }
 
+function normalizeCliToken(token: string): { value: string; changed: boolean } {
+  let value = token;
+  value = value
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/[\u201C\u201D]/g, '"');
+  if (/^[\u2013\u2014]/.test(value)) {
+    value = `--${value.slice(1)}`;
+  }
+  if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+    value = value.slice(1, -1);
+  }
+  return { value, changed: value !== token };
+}
+
+function normalizeCliArgs(rawArgs: string[]): { args: string[]; changed: boolean } {
+  const normalized: string[] = [];
+  let changed = false;
+  for (const token of rawArgs) {
+    const next = normalizeCliToken(token);
+    normalized.push(next.value);
+    if (next.changed) {
+      changed = true;
+    }
+  }
+  return { args: normalized, changed };
+}
+
 function showHelp(): void {
   console.log(`
 nimbus - Entire checkpoint deployment CLI
@@ -56,6 +84,7 @@ Usage:
   nimbus <command> [options]
 
 Commands:
+  doctor             Validate worker deploy readiness and migrations
   deploy checkpoint <checkpoint-id-or-commit-ish>
                       Resolve checkpoint/commit source and queue a deployment job
   workspace create <checkpoint-id-or-commit-ish>
@@ -82,12 +111,17 @@ Options:
   --env-file <path>  Extra env file(s), comma-separated
   --env KEY=VALUE    Explicit env override (repeatable)
   --no-tests         Skip tests in checkpoint deploy metadata
+  --no-build         Skip build in workspace deploy metadata
   --no-lint          Skip lint in checkpoint deploy metadata
   --no-watch         Disable follow-up watch guidance
   --include-patch    Include unified patch output for workspace diff
   --max-bytes <n>    Max bytes for diff/file output truncation
   --idempotency-key <key>
                      Stable idempotency key for workspace deploy retries
+  --poll-interval-ms <n>
+                     Poll interval for workspace deploy status checks
+  --preflight-only   Run deploy preflight only (do not queue deploy)
+  --auto-fix         Allow safe preflight/deploy remediations
   --no-dry-run       Upload source bundle and create checkpoint job
   -h, --help         Show this help message
   -v, --version      Show version
@@ -99,7 +133,9 @@ Examples:
   nimbus workspace files ws_abc12345 src
   nimbus workspace diff ws_abc12345 --include-patch --max-bytes 262144
   nimbus workspace deploy ws_abc12345
-  nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123
+  nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123 --auto-fix
+  nimbus workspace deploy ws_abc12345 --preflight-only --no-tests --no-build
+  nimbus doctor
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
   nimbus list
   nimbus watch job_abc123
@@ -112,9 +148,10 @@ Self-hosting: https://github.com/dayhaysoos/nimbus#self-hosting-guide
 }
 
 async function main(): Promise<void> {
-  const args = process.argv.slice(2);
-  try {
-    const { command, flags, positional } = parseArgs(args);
+    const args = process.argv.slice(2);
+    const normalized = normalizeCliArgs(args);
+    try {
+    const { command, flags, positional } = parseArgs(normalized.args);
     // Handle version flag
     if (flags.version || flags.v) {
       console.log(`nimbus v${VERSION}`);
@@ -129,7 +166,16 @@ async function main(): Promise<void> {
 
     p.intro('@dayhaysoos/nimbus');
 
+    if (normalized.changed) {
+      p.log.warning('Detected smart punctuation in arguments; normalized to ASCII equivalents.');
+    }
+
     switch (command) {
+      case 'doctor': {
+        await doctorCommand();
+        break;
+      }
+
       case 'deploy': {
         const deployTarget = positional[0];
         const deployInput = positional[1];
@@ -240,8 +286,20 @@ async function main(): Promise<void> {
 
           const idempotencyKeyFlag = flags['idempotency-key'];
           const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
+          const pollIntervalMs = parsePositiveIntegerFlag(flags['poll-interval-ms']);
+          const runTestsIfPresent = !flags['no-tests'];
+          const runBuildIfPresent = !flags['no-build'];
+          const preflightOnly = Boolean(flags['preflight-only']);
+          const autoFix = Boolean(flags['auto-fix']);
 
-          await workspaceDeployCommand(workspaceId, { idempotencyKey });
+          await workspaceDeployCommand(workspaceId, {
+            idempotencyKey,
+            runTestsIfPresent,
+            runBuildIfPresent,
+            preflightOnly,
+            autoFix,
+            pollIntervalMs,
+          });
           break;
         }
 

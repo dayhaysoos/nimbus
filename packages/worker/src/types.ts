@@ -161,6 +161,28 @@ export interface RuntimeFlags {
   workspaceDeployEnabled: boolean;
 }
 
+export type WorkspacePackageManager = 'pnpm' | 'yarn' | 'npm' | 'unknown';
+export type WorkspaceToolchainDetectedFrom = 'packageManager' | 'lockfile' | 'scripts' | 'fallback' | 'request';
+
+export interface WorkspaceToolchainLockfile {
+  name: string;
+  sha256: string;
+}
+
+export interface WorkspaceToolchainProfile {
+  manager: WorkspacePackageManager;
+  version: string | null;
+  detectedFrom: WorkspaceToolchainDetectedFrom;
+  projectRoot: string;
+  lockfile: WorkspaceToolchainLockfile | null;
+}
+
+export interface WorkspaceDeploymentRemediation {
+  code: string;
+  applied: boolean;
+  details?: string;
+}
+
 export type WorkspaceStatus = 'creating' | 'ready' | 'failed' | 'deleted';
 
 export interface WorkspaceRecord {
@@ -391,6 +413,10 @@ export interface WorkspaceDeploymentRecord {
   finished_at: string | null;
   duration_ms: number | null;
   result_json: string | null;
+  toolchain_json: string | null;
+  dependency_cache_key: string | null;
+  dependency_cache_hit: number;
+  remediations_json: string | null;
   error_code: string | null;
   error_message: string | null;
   created_at: string;
@@ -415,6 +441,10 @@ export interface WorkspaceDeploymentResponse {
   createdAt: string;
   updatedAt: string;
   provenance: Record<string, unknown>;
+  toolchain: WorkspaceToolchainProfile | null;
+  dependencyCacheKey: string | null;
+  dependencyCacheHit: boolean;
+  remediations: WorkspaceDeploymentRemediation[];
   result?: unknown;
   error?: {
     code: string;
