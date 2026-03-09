@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "4a0b203ac35e",
+  "strategy": "manual-commit",
+  "branch": "phase-6-toolchain-parity",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "package.json",
+    "packages/cli/src/commands/doctor.ts",
+    "packages/cli/src/commands/workspace/deploy.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/src/api/system.ts",
+    "packages/worker/src/index.ts",
+    "scripts/setup-worker.mjs",
+    "specs/testing/phase-6-deploy-smoke.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/4a/0b203ac35e/0/metadata.json",
+      "transcript": "/4a/0b203ac35e/0/full.jsonl",
+      "context": "/4a/0b203ac35e/0/context.md",
+      "content_hash": "/4a/0b203ac35e/0/content_hash.txt",
+      "prompt": "/4a/0b203ac35e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 117819,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 214784,
+    "output_tokens": 3676,
+    "api_call_count": 13
+  }
+}
