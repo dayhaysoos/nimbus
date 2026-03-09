@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "ff72aaa9d5cc",
+  "session_id": "ses_330a51733ffeIqCp7wogU8pAkI",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T02:11:28.087945Z",
+  "branch": "phase-4",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/migrations/0007_workspace_deployments.sql",
+    "packages/worker/src/api/workspace-deployments.test.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/db.workspace.test.ts",
+    "packages/worker/src/lib/flags.test.ts",
+    "packages/worker/src/lib/flags.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/lib/workspace-deployment-queue.test.ts",
+    "packages/worker/src/lib/workspace-deployment-queue.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "specs/phases/05-deploy-from-workspace.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "b4f65a643990",
+  "token_usage": {
+    "input_tokens": 246479,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 379904,
+    "output_tokens": 7491,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T02:11:27.622227Z",
+    "agent_lines": 4368,
+    "human_added": 759,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 5127,
+    "agent_percentage": 85.19602106495027
+  }
+}
