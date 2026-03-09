@@ -10,10 +10,32 @@ function run(command, options = {}) {
 
 function runAllowAlreadyExists(command) {
   try {
-    run(command);
+    const output = execSync(command, {
+      stdio: 'pipe',
+      cwd: process.cwd(),
+      encoding: 'utf8',
+    });
+    if (output) {
+      process.stdout.write(output);
+    }
   } catch (error) {
-    const output = String(error?.stderr ?? '') + String(error?.stdout ?? '') + String(error?.message ?? '');
-    if (output.toLowerCase().includes('already exists')) {
+    const stdout = String(error?.stdout ?? '');
+    const stderr = String(error?.stderr ?? '');
+    if (stdout) {
+      process.stdout.write(stdout);
+    }
+    if (stderr) {
+      process.stderr.write(stderr);
+    }
+    const output = [
+      stderr,
+      stdout,
+      String(error?.message ?? ''),
+      String(error?.stack ?? ''),
+    ]
+      .join('\n')
+      .toLowerCase();
+    if (output.includes('already exists') || output.includes('already taken')) {
       return;
     }
     throw error;
