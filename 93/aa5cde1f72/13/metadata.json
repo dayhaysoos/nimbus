@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "93aa5cde1f72",
+  "session_id": "ses_32f7ccf33ffeLpb1w5AgpDhZ9A",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-09T12:33:29.884675Z",
+  "branch": "phase-6-toolchain-parity",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/workspace/deploy.test.ts",
+    "packages/cli/src/commands/workspace/deploy.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.test.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/run-tests.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/migrations/0008_workspace_toolchain_parity.sql",
+    "packages/worker/src/api/workspace-deployments.test.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.ts",
+    "packages/worker/src/lib/workspace-toolchain.test.ts",
+    "packages/worker/src/lib/workspace-toolchain.ts",
+    "packages/worker/src/types.ts",
+    "specs/testing/phase-6-deploy-smoke.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "9e3d9932f57d",
+  "token_usage": {
+    "input_tokens": 185052,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 252672,
+    "output_tokens": 2594,
+    "api_call_count": 12
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-09T12:33:29.735803Z",
+    "agent_lines": 1651,
+    "human_added": 265,
+    "human_modified": 89,
+    "human_removed": 0,
+    "total_committed": 2005,
+    "agent_percentage": 82.34413965087282
+  }
+}
