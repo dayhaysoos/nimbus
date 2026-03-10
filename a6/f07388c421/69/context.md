@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Final blocker-only review after latest fixes for duplicate provider create on retry and inline cancel reconciliation in workspace-deployment-runner.ts. Focus on idempotency and terminal-state correctness.
+
