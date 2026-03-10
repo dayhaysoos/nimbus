@@ -1,0 +1,1 @@
+/review Final blocker-only review after latest fixes for inline cancel reconciliation terminalization and CAS hardening in workspace-deployment-runner.ts/db.ts. Focus on terminal-state clobber and cancel/reconcile concurrency correctness.
