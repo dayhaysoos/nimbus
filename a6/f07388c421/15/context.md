@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Verify latest fix for cancelRequested running deployments with missing providerDeploymentId in workspace-deployment-runner.ts. Confirm no blocker remains for stuck-running cancel loop and reconciliation correctness. Blocking issues only.
+
