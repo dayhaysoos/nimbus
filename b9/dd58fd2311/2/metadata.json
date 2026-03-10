@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "b9dd58fd2311",
+  "session_id": "ses_32877ee37ffesHXZX9nU67hyxm",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-10T11:44:42.010486Z",
+  "branch": "phase-07",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "package.json",
+    "scripts/test-cloudflare-contract.mjs",
+    "specs/testing/phase-7-cloudflare-contract.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "b287ae0d63c0",
+  "token_usage": {
+    "input_tokens": 29180,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 139520,
+    "output_tokens": 2431,
+    "api_call_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-10T11:44:41.950491Z",
+    "agent_lines": 196,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 196,
+    "agent_percentage": 100
+  }
+}
