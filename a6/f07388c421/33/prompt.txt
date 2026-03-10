@@ -1,0 +1,1 @@
+/review Do an adversarial, high-risk-only pass on uncommitted Phase 7 changes, focusing exclusively on cancel + retry + provider polling interactions in packages/worker/src/lib/workspace-deployment-runner.ts and related provider API integration. Report confirmed blockers first, then medium-confidence risks.
