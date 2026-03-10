@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Final blocker-only check after reconciliation parity fixes (non-null deployed URL and deployedAt in summary) in workspace-deployment-runner.ts. Focus on success metadata parity and terminal correctness.
+
