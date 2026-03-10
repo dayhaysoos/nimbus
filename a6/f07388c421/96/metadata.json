@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "a6f07388c421",
+  "session_id": "ses_32c8749c7ffesEdktYSoByafpG",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-10T11:29:08.702963Z",
+  "branch": "phase-07",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/workspace/deploy.test.ts",
+    "packages/cli/src/commands/workspace/deploy.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.test.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/worker/src/api/system.ts",
+    "packages/worker/src/api/workspace-deployments.test.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/lib/workspace-deploy-provider.test.ts",
+    "packages/worker/src/lib/workspace-deploy-provider.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "specs/testing/phase-7-real-provider-smoke.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "c331feada399",
+  "token_usage": {
+    "input_tokens": 185352,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 331520,
+    "output_tokens": 3385,
+    "api_call_count": 16
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-10T11:29:08.535441Z",
+    "agent_lines": 2850,
+    "human_added": 7,
+    "human_modified": 7,
+    "human_removed": 0,
+    "total_committed": 2864,
+    "agent_percentage": 99.51117318435753
+  }
+}
