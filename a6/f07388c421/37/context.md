@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Absolute final blocker-only review on uncommitted Phase 7 changes after CAS hardening for stale-timeout and workspaceDeployEnabled=false paths. Focus solely on terminal-state clobber races and cancel/reconcile correctness.
+
