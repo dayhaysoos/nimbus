@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Verify latest fix for success reconciliation metadata completeness in workspace-deployment-runner.ts (running+cancelRequested provider-succeeded branches). Blocking issues only.
+
