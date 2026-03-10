@@ -64,6 +64,20 @@ function parseBoolean(input: unknown, fallback: boolean): boolean {
   return input;
 }
 
+function parseEnvBoolean(input: string | undefined, fallback: boolean): boolean {
+  if (typeof input !== 'string') {
+    return fallback;
+  }
+  const normalized = input.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  return fallback;
+}
+
 function isSafeRelativeOutputDir(input: string): boolean {
   if (!input || input === '.') {
     return false;
@@ -214,6 +228,10 @@ export async function handleCreateWorkspaceDeployment(
   ctx?: ExecutionContext
 ): Promise<Response> {
   try {
+    const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
+    const deployQueue = env.WORKSPACE_DEPLOYS_QUEUE;
+    const useDeployQueue = Boolean(deployQueue) && !forceInlineDeploys;
+
     const enabled = await ensureWorkspaceDeployEnabled(env);
     if (enabled) {
       return enabled;
@@ -224,7 +242,7 @@ export async function handleCreateWorkspaceDeployment(
       return workspaceCheck;
     }
 
-    if (!env.WORKSPACE_DEPLOYS_QUEUE && !ctx) {
+    if (!useDeployQueue && !ctx) {
       return jsonResponse(
         {
           error: 'Workspace deployment runner is unavailable',
@@ -578,8 +596,8 @@ export async function handleCreateWorkspaceDeployment(
         : false;
 
       if (!hasEnqueuedEvent || (shouldRecoverQueued && !hasRecoveredReenqueue)) {
-        if (env.WORKSPACE_DEPLOYS_QUEUE) {
-          await env.WORKSPACE_DEPLOYS_QUEUE.send(
+        if (useDeployQueue) {
+          await deployQueue!.send(
             createWorkspaceDeploymentQueueMessage(workspaceId, deploymentForQueue.id)
           );
         } else if (ctx) {
@@ -593,7 +611,7 @@ export async function handleCreateWorkspaceDeployment(
           deploymentId: deploymentForQueue.id,
           eventType: 'deployment_enqueued',
           payload: {
-            mode: env.WORKSPACE_DEPLOYS_QUEUE ? 'queue' : 'inline',
+            mode: useDeployQueue ? 'queue' : 'inline',
             reused: created.reused,
           },
         });
@@ -849,6 +867,9 @@ export async function handleCancelWorkspaceDeployment(
   env: Env,
   ctx?: ExecutionContext
 ): Promise<Response> {
+  const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
+  const useDeployQueue = Boolean(env.WORKSPACE_DEPLOYS_QUEUE) && !forceInlineDeploys;
+
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
   if (workspaceMissing) {
     return workspaceMissing;
@@ -861,7 +882,7 @@ export async function handleCancelWorkspaceDeployment(
 
   if (cancelResult.updated) {
     if (
-      !env.WORKSPACE_DEPLOYS_QUEUE &&
+      !useDeployQueue &&
       ctx &&
       cancelResult.deployment?.status === 'running' &&
       cancelResult.deployment.cancelRequestedAt

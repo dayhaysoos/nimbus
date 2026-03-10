@@ -28,6 +28,19 @@ pnpm --filter @dayhaysoos/nimbus-worker exec wrangler deploy \
   --var WORKSPACE_DEPLOY_PREVIEW_DOMAIN:<preview-base-domain>
 ```
 
+If your deployment queue consumer is not processing jobs in staging, you can force inline processing temporarily:
+
+```bash
+pnpm --filter @dayhaysoos/nimbus-worker exec wrangler deploy \
+  --var WORKSPACE_DEPLOY_ENABLED:true \
+  --var WORKSPACE_DEPLOY_PROVIDER:cloudflare_workers_assets \
+  --var WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED:true \
+  --var WORKSPACE_DEPLOY_FORCE_INLINE:true \
+  --var CF_ACCOUNT_ID:<cloudflare-account-id> \
+  --var WORKSPACE_DEPLOY_PROJECT_NAME:<worker-script-name> \
+  --var WORKSPACE_DEPLOY_PREVIEW_DOMAIN:<preview-base-domain>
+```
+
 Notes:
 - `WORKSPACE_DEPLOY_PROJECT_NAME` should be your Worker script name (for example `nimbus-worker`).
 - `WORKSPACE_DEPLOY_PREVIEW_DOMAIN` should be the wildcard route base domain (for example `getnimbus.dev` for `*.getnimbus.dev/*`).

@@ -49,10 +49,24 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
     setWorkspaceDeployProviderFetchForTests(async (input: unknown, init?: RequestInit) => {
       const url = String(input);
-      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      let body: Record<string, unknown>;
+      if (init?.body instanceof FormData) {
+        body = {};
+        for (const [key, value] of init.body.entries()) {
+          body[key] = value;
+        }
+      } else {
+        body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      }
       calls.push({ url, body });
-      if (url.endsWith('/workers/scripts/project/assets/upload')) {
-        return new Response(JSON.stringify({ success: true, result: { upload_id: 'upload_123' } }), { status: 200 });
+      if (url.endsWith('/workers/scripts/project/assets-upload-session')) {
+        return new Response(
+          JSON.stringify({ success: true, result: { jwt: 'upload_jwt_123', buckets: [['abc00000000000000000000000000000']] } }),
+          { status: 200 }
+        );
+      }
+      if (url.endsWith('/workers/assets/upload?base64=true')) {
+        return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
       }
       if (url.endsWith('/workers/scripts/project/deployments')) {
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_123' } }), { status: 200 });
@@ -73,16 +87,22 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
     });
     assert.equal(created.providerDeploymentId, 'cfdep_123');
-    assert.equal(calls.length, 2);
-    assert.equal(calls[0].body.artifact_base64, 'AQID');
-    assert.equal(calls[1].body.asset_upload_id, 'upload_123');
+    assert.equal(calls.length, 3);
+    assert.equal(Object.values(calls[1].body).includes('AQID'), true);
+    assert.equal(typeof calls[2].body.assets, 'object');
   }
 
   {
     setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
       const url = String(input);
-      if (url.endsWith('/workers/scripts/project/assets/upload')) {
-        return new Response(JSON.stringify({ success: true, result: { upload_id: 'upload_123' } }), { status: 200 });
+      if (url.endsWith('/workers/scripts/project/assets-upload-session')) {
+        return new Response(
+          JSON.stringify({ success: true, result: { jwt: 'upload_jwt_123', buckets: [['abc00000000000000000000000000000']] } }),
+          { status: 200 }
+        );
+      }
+      if (url.endsWith('/workers/assets/upload?base64=true')) {
+        return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
       }
       if (url.endsWith('/workers/scripts/project/deployments')) {
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_123' } }), { status: 200 });
@@ -109,10 +129,24 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
     const calls: Array<{ url: string; body: Record<string, unknown> }> = [];
     setWorkspaceDeployProviderFetchForTests(async (input: unknown, init?: RequestInit) => {
       const url = String(input);
-      const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      let body: Record<string, unknown>;
+      if (init?.body instanceof FormData) {
+        body = {};
+        for (const [key, value] of init.body.entries()) {
+          body[key] = value;
+        }
+      } else {
+        body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
+      }
       calls.push({ url, body });
-      if (url.endsWith('/workers/scripts/project/assets/upload')) {
-        return new Response(JSON.stringify({ success: true, result: { upload_id: 'upload_123' } }), { status: 200 });
+      if (url.endsWith('/workers/scripts/project/assets-upload-session')) {
+        return new Response(
+          JSON.stringify({ success: true, result: { jwt: 'upload_jwt_123', buckets: [['abc00000000000000000000000000000']] } }),
+          { status: 200 }
+        );
+      }
+      if (url.endsWith('/workers/assets/upload?base64=true')) {
+        return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
       }
       if (url.endsWith('/workers/scripts/project/deployments')) {
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_123' } }), { status: 200 });
@@ -132,8 +166,8 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       outputDir: 'dist',
       outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
     });
-    assert.equal(calls[1].body.alias, 'dep-dep-abcd-1234');
-    assert.equal(calls[1].body.preview_url, 'https://dep-dep-abcd-1234.preview.example.com');
+    assert.equal(calls[2].body.alias, 'dep-dep-abcd-1234');
+    assert.equal(calls[2].body.preview_url, 'https://dep-dep-abcd-1234.preview.example.com');
     assert.equal(created.deployedUrl, 'https://dep-dep-abcd-1234.preview.example.com');
   }
 
