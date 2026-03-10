@@ -1,0 +1,1 @@
+/review Final blocker-only review after latest fixes: skip precheck on providerDeploymentId resume path, stale cancel-pending timeout handling, and QueueRetryError preservation in cancel reconcile. Focus on confirmed bugs only.
