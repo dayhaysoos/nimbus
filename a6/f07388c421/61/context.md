@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Verify latest fix for reconciliation success metadata completeness in workspace-deployment-runner.ts. Ensure provider-succeeded reconciliation paths persist artifact/provenance/result parity with normal success path. Blocking issues only.
+
