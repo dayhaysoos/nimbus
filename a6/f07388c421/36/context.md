@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Conclusive blocker-only review on current uncommitted Phase 7 changes after adding running-state guard in updateWorkspaceDeploymentStatus. Focus only on terminal-state clobber and cancel/reconcile race correctness.
+
