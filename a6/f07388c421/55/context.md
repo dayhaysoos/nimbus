@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Verify latest fix in workspace-deployment-runner.ts that narrows provider precheck catch scope so DB event insert failures are not misclassified as provider failures. Blocking issues only.
+
