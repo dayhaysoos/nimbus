@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Final blocker-only review after latest fix for cancelRequestedAt + missing providerDeploymentId race in workspace-deployment-runner.ts. Focus on terminal-state correctness under concurrency.
+
