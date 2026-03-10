@@ -1,0 +1,1 @@
+/review Final blocker-only review after preserving cancelRequestedAt in inline cancel-reconcile defer path. Focus on cancel semantics and terminal-state correctness in workspace-deployment-runner.ts.
