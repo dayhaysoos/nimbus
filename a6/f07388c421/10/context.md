@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Verify latest fix for duration_ms parity in workspace-deployment-runner.ts manual terminal SQL updates. Confirm no blocker remains for missing duration on failed/cancelled paths. Blocking issues only.
+

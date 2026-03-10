@@ -3,7 +3,7 @@
   "checkpoint_id": "a6f07388c421",
   "strategy": "manual-commit",
   "branch": "phase-07",
-  "checkpoints_count": 10,
+  "checkpoints_count": 11,
   "files_touched": [
     "packages/cli/src/commands/workspace/deploy.test.ts",
     "packages/cli/src/commands/workspace/deploy.ts",
@@ -94,13 +94,20 @@
       "context": "/a6/f07388c421/9/context.md",
       "content_hash": "/a6/f07388c421/9/content_hash.txt",
       "prompt": "/a6/f07388c421/9/prompt.txt"
+    },
+    {
+      "metadata": "/a6/f07388c421/10/metadata.json",
+      "transcript": "/a6/f07388c421/10/full.jsonl",
+      "context": "/a6/f07388c421/10/context.md",
+      "content_hash": "/a6/f07388c421/10/content_hash.txt",
+      "prompt": "/a6/f07388c421/10/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 1877024,
+    "input_tokens": 2069108,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 4052608,
-    "output_tokens": 45761,
-    "api_call_count": 101
+    "cache_read_tokens": 4337792,
+    "output_tokens": 48202,
+    "api_call_count": 112
   }
 }
