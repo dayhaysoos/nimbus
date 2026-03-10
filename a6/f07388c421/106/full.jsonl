@@ -1,0 +1,1461 @@
+{
+  "info": {
+    "id": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+    "slug": "gentle-star",
+    "projectID": "e636a08f504c17bb94725f03ccc30ead67d304f9",
+    "directory": "/Users/nickdejesus/Code/nimbus",
+    "parentID": "REDACTED",
+    "title": "Re-review concurrent precheck (@general subagent)",
+    "version": "1.2.21",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "permission": [
+      {
+        "permission": "todowrite",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "todoread",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "task",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1773072990445,
+      "updated": 1773073037819
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1773072990449
+        },
+        "summary": {
+          "diffs": []
+        },
+        "agent": "general",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "gpt-5.3-codex"
+        },
+        "tools": {
+          "todowrite": false,
+          "todoread": false,
+          "task": false
+        },
+        "id": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "/review Verify latest workspace-deployments.ts fix for replay precheck race and stale status enqueue. Report blocking issues only.",
+          "id": "prt_cd362c0f2001P8i6ZGZp9GfUM0",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362c0f1001Q7Y2mnPkCobkOE"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773072990452,
+          "completed": 1773072994840
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.013006,
+        "tokens": {
+          "total": 6064,
+          "input": 5952,
+          "output": 112,
+          "reasoning": 73,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd362c0f4001umlW9WJh4Dhl3d",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd362c3dc001gSGeawXuWZ74Gq",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362c0f4001umlW9WJh4Dhl3d"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Preparing code review inspection**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0b930e3b1820ceb20169aef25f49b48198baa5c8b10a0242ca",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773072991337,
+            "end": 1773072992789
+          },
+          "id": "prt_cd362c46900147TXVLDi8Dh6pP",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362c0f4001umlW9WJh4Dhl3d"
+        },
+        {
+          "type": "tool",
+          "callID": "call_tzxMon2Pda2sQAp1OPnKFpUZ",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/workspace-deployments.ts",
+              "path": "/Users/nickdejesus/Code/nimbus"
+            },
+            "output": "/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.ts",
+            "title": "",
+            "metadata": {
+              "count": 1,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773072992961,
+              "end": 1773072992980
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0b930e3b1820ceb20169aef260bc24819896487fd7b4c53bcb"
+            }
+          },
+          "id": "prt_cd362ca1a001I1twpzcBt9PO5l",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362c0f4001umlW9WJh4Dhl3d"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.013006,
+          "tokens": {
+            "total": 6064,
+            "input": 5952,
+            "output": 112,
+            "reasoning": 73,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_cd362d1b4001H84jj0ppJ2M82w",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362c0f4001umlW9WJh4Dhl3d"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773072994841,
+          "completed": 1773072997020
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0022484,
+        "tokens": {
+          "total": 6147,
+          "input": 208,
+          "output": 51,
+          "reasoning": 10,
+          "cache": {
+            "read": 5888,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd362d2190014IOg1tRkLKszXy",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "REDACTED",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362d2190014IOg1tRkLKszXy"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_08f83705c02d4d900169aef26438348190ae6bd8bbd50f3657",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773072996276,
+            "end": 1773072996687
+          },
+          "id": "prt_cd362d7b4001edRAu45hGmU01c",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362d2190014IOg1tRkLKszXy"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.ts</path>\n<type>file</type>\n<content>1: import type { Env } from '../types.js';\n2: import { loadRuntimeFlags } from '../lib/flags.js';\n3: import {\n4:   appendWorkspaceDeploymentEvent,\n5:   createWorkspaceDeployment,\n6:   generateWorkspaceDeploymentId,\n7:   getWorkspace,\n8:   getWorkspaceDeployment,\n9:   hasWorkspaceDeploymentEvent,\n10:   listWorkspaceDeploymentEvents,\n11:   updateWorkspaceDeploymentStatus,\n12:   WorkspaceDeploymentIdempotencyConflictError,\n13: } from '../lib/db.js';\n14: import { createWorkspaceDeploymentQueueMessage } from '../lib/workspace-deployment-queue.js';\n15: import {\n16:   cancelWorkspaceDeployment,\n17:   runWorkspaceDeploymentInlineWithRetries,\n18:   runWorkspaceDeploymentPreflight,\n19: } from '../lib/workspace-deployment-runner.js';\n20: import {\n21:   createWorkspaceDeployProvider,\n22:   getWorkspaceDeployProviderName,\n23:   normalizeProviderError,\n24: } from '../lib/workspace-deploy-provider.js';\n25: \n26: const corsHeaders = {\n27:   'Access-Control-Allow-Origin': '*',\n28:   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',\n29:   'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',\n30: };\n31: \n32: function jsonResponse(body: unknown, status = 200): Response {\n33:   return new Response(JSON.stringify(body), {\n34:     status,\n35:     headers: { 'Content-Type': 'application/json', ...corsHeaders },\n36:   });\n37: }\n38: \n39: function parseInteger(input: unknown, fallback: number, min: number, max: number): number {\n40:   if (typeof input !== 'number' || !Number.isFinite(input)) {\n41:     return fallback;\n42:   }\n43:   const value = Math.floor(input);\n44:   if (value < min) {\n45:     return min;\n46:   }\n47:   if (value > max) {\n48:     return max;\n49:   }\n50:   return value;\n51: }\n52: \n53: function parseBoolean(input: unknown, fallback: boolean): boolean {\n54:   if (typeof input !== 'boolean') {\n55:     return fallback;\n56:   }\n57:   return input;\n58: }\n59: \n60: function isSafeRelativeOutputDir(input: string): boolean {\n61:   if (!input || input === '.') {\n62:     return false;\n63:   }\n64:   if (input.startsWith('/') || input.includes('..') || input.includes('\\\\')) {\n65:     return false;\n66:   }\n67:   return input.split('/').every((segment) => Boolean(segment) && segment !== '.');\n68: }\n69: \n70: function parseDeployOutputDir(input: unknown): string | null {\n71:   if (typeof input !== 'string') {\n72:     return null;\n73:   }\n74:   const trimmed = input.trim().replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '');\n75:   return trimmed || null;\n76: }\n77: \n78: function buildDeploymentIdempotencyPayload(requestPayload: {\n79:   provider: string;\n80:   retry: { maxRetries: number };\n81:   validation: { runBuildIfPresent: boolean; runTestsIfPresent: boolean };\n82:   autoFix: { rehydrateBaseline: boolean; bootstrapToolchain: boolean };\n83:   toolchain: { manager: string | null; version: string | null };\n84:   cache: { dependencyCache: boolean };\n85:   deploy: { outputDir: string | null };\n86:   rollbackOnFailure: boolean;\n87:   provenance: { trigger: string; taskId: string | null; operationId: string | null; note: string | null };\n88: }): Record<string, unknown> {\n89:   const payload: Record<string, unknown> = {\n90:     provider: requestPayload.provider,\n91:     retry: requestPayload.retry,\n92:     validation: requestPayload.validation,\n93:     rollbackOnFailure: requestPayload.rollbackOnFailure,\n94:     provenance: requestPayload.provenance,\n95:   };\n96: \n97:   if (requestPayload.autoFix.rehydrateBaseline || requestPayload.autoFix.bootstrapToolchain) {\n98:     payload.autoFix = requestPayload.autoFix;\n99:   }\n100: \n101:   if (requestPayload.toolchain.manager || requestPayload.toolchain.version) {\n102:     payload.toolchain = requestPayload.toolchain;\n103:   }\n104: \n105:   if (!requestPayload.cache.dependencyCache) {\n106:     payload.cache = requestPayload.cache;\n107:   }\n108: \n109:   if (requestPayload.deploy.outputDir) {\n110:     payload.deploy = requestPayload.deploy;\n111:   }\n112: \n113:   return payload;\n114: }\n115: \n116: function nextActionForDeploymentError(code: string | undefined): string | null {\n117:   switch (code) {\n118:     case 'toolchain_detect_failed':\n119:       return 'Verify package.json and lockfile metadata, then retry deploy.';\n120:     case 'corepack_missing':\n121:       return 'Use a sandbox image with corepack available, or switch to npm toolchain.';\n122:     case 'package_manager_bootstrap_failed':\n123:       return 'Confirm the requested package manager version is valid and retry deploy.';\n124:     case 'validation_tool_missing':\n125:       return 'Disable build/test validation for this deploy or install required tooling in the sandbox image.';\n126:     case 'validation_command_failed':\n127:       return 'Review test/build output, fix project errors, and retry deploy.';\n128:     case 'invalid_project_root':\n129:       return 'Set workspace source project root to a safe relative path and retry deploy.';\n130:     case 'baseline_missing':\n131:     case 'baseline_rehydrate_failed':\n132:       return 'Reset the workspace and retry deploy to rebuild git baseline.';\n133:     case 'potential_secrets_detected':\n134:       return 'Remove sensitive files from workspace before deploying (template files like .env.example are allowed).';\n135:     case 'provider_auth_failed':\n136:       return 'Verify CF_ACCOUNT_ID and CF_API_TOKEN, then rerun preflight.';\n137:     case 'provider_scope_missing':\n138:       return 'Grant Workers Scripts/Routes edit scope to CF_API_TOKEN and rerun preflight.';\n139:     case 'provider_project_not_found':\n140:       return 'Set WORKSPACE_DEPLOY_PROJECT_NAME to an existing Workers project and retry.';\n141:     case 'provider_rate_limited':\n142:       return 'Retry deploy after Cloudflare rate limits reset.';\n143:     case 'provider_invalid_output_dir':\n144:       return 'Set deploy.outputDir to a valid static build directory (for example dist or out) and retry.';\n145:     case 'provider_deploy_failed':\n146:       return 'Check provider deployment logs and retry after fixing configuration or build output.';\n147:     default:\n148:       return null;\n149:   }\n150: }\n151: \n152: async function sha256Hex(input: string): Promise<string> {\n153:   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));\n154:   return Array.from(new Uint8Array(digest))\n155:     .map((byte) => byte.toString(16).padStart(2, '0'))\n156:     .join('');\n157: }\n158: \n159: async function ensureWorkspaceReady(env: Env, workspaceId: string): Promise<Response | null> {\n160:   const workspace = await getWorkspace(env.DB, workspaceId);\n161:   if (!workspace || workspace.status === 'deleted') {\n162:     return jsonResponse({ error: 'Workspace not found' }, 404);\n163:   }\n164:   if (workspace.status !== 'ready') {\n165:     return jsonResponse(\n166:       {\n167:         error: 'Workspace is not ready',\n168:         workspace: {\n169:           id: workspace.id,\n170:           status: workspace.status,\n171:           errorCode: workspace.errorCode,\n172:           errorMessage: workspace.errorMessage,\n173:         },\n174:       },\n175:       409\n176:     );\n177:   }\n178:   return null;\n179: }\n180: \n181: async function ensureWorkspaceExists(env: Env, workspaceId: string): Promise<Response | null> {\n182:   const workspace = await getWorkspace(env.DB, workspaceId);\n183:   if (!workspace || workspace.status === 'deleted') {\n184:     return jsonResponse({ error: 'Workspace not found' }, 404);\n185:   }\n186:   return null;\n187: }\n188: \n189: async function ensureWorkspaceDeployEnabled(env: Env): Promise<Response | null> {\n190:   const flags = await loadRuntimeFlags(env);\n191:   if (!flags.workspaceDeployEnabled) {\n192:     return jsonResponse(\n193:       {\n194:         error: 'Workspace deploy is disabled',\n195:         code: 'workspace_deploy_disabled',\n196:       },\n197:       403\n198:     );\n199:   }\n200:   return null;\n201: }\n202: \n203: export async function handleCreateWorkspaceDeployment(\n204:   workspaceId: string,\n205:   request: Request,\n206:   env: Env,\n207:   ctx?: ExecutionContext\n208: ): Promise<Response> {\n209:   try {\n210:     const enabled = await ensureWorkspaceDeployEnabled(env);\n211:     if (enabled) {\n212:       return enabled;\n213:     }\n214: \n215:     const workspaceCheck = await ensureWorkspaceReady(env, workspaceId);\n216:     if (workspaceCheck) {\n217:       return workspaceCheck;\n218:     }\n219: \n220:     if (!env.WORKSPACE_DEPLOYS_QUEUE && !ctx) {\n221:       return jsonResponse(\n222:         {\n223:           error: 'Workspace deployment runner is unavailable',\n224:           code: 'workspace_deploy_runner_unavailable',\n225:         },\n226:         503\n227:       );\n228:     }\n229: \n230:     const idempotencyKey = (request.headers.get('Idempotency-Key') ?? '').trim();\n231:     if (!idempotencyKey) {\n232:       return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);\n233:     }\n234: \n235:     const payloadRaw = await request.text();\n236:     let payload: Record<string, unknown> = {};\n237:     if (payloadRaw.trim()) {\n238:       const parsed = JSON.parse(payloadRaw) as unknown;\n239:       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n240:         return jsonResponse({ error: 'Request body must be a JSON object' }, 400);\n241:       }\n242:       payload = parsed as Record<string, unknown>;\n243:     }\n244: \n245:     const providerInput = typeof payload.provider === 'string' ? payload.provider.trim() : '';\n246:     if (providerInput && providerInput !== 'simulated' && providerInput !== 'cloudflare_workers_assets') {\n247:       return jsonResponse(\n248:         {\n249:           error: 'Unsupported deployment provider',\n250:           code: 'unsupported_deploy_provider',\n251:           allowedProviders: ['simulated', 'cloudflare_workers_assets'],\n252:         },\n253:         400\n254:       );\n255:     }\n256:     const provider = getWorkspaceDeployProviderName(providerInput || undefined, env);\n257:     const retry =\n258:       payload.retry && typeof payload.retry === 'object' && !Array.isArray(payload.retry)\n259:         ? (payload.retry as Record<string, unknown>)\n260:         : {};\n261:     const validation =\n262:       payload.validation && typeof payload.validation === 'object' && !Array.isArray(payload.validation)\n263:         ? (payload.validation as Record<string, unknown>)\n264:         : {};\n265:     const provenance =\n266:       payload.provenance && typeof payload.provenance === 'object' && !Array.isArray(payload.provenance)\n267:         ? (payload.provenance as Record<string, unknown>)\n268:         : {};\n269:     const autoFix =\n270:       payload.autoFix && typeof payload.autoFix === 'object' && !Array.isArray(payload.autoFix)\n271:         ? (payload.autoFix as Record<string, unknown>)\n272:         : {};\n273:     const toolchain =\n274:       payload.toolchain && typeof payload.toolchain === 'object' && !Array.isArray(payload.toolchain)\n275:         ? (payload.toolchain as Record<string, unknown>)\n276:         : {};\n277:     const cache =\n278:       payload.cache && typeof payload.cache === 'object' && !Array.isArray(payload.cache)\n279:         ? (payload.cache as Record<string, unknown>)\n280:         : {};\n281:     const deploy =\n282:       payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)\n283:         ? (payload.deploy as Record<string, unknown>)\n284:         : {};\n285:     const maxRetries = parseInteger(retry.maxRetries, 2, 0, 5);\n286:     const outputDir = parseDeployOutputDir(deploy.outputDir);\n287: \n288:     if (provider === 'cloudflare_workers_assets' && (!outputDir || !isSafeRelativeOutputDir(outputDir))) {\n289:       return jsonResponse(\n290:         {\n291:           error: 'deploy.outputDir is required for cloudflare_workers_assets provider and must be a safe relative directory',\n292:           code: 'provider_invalid_output_dir',\n293:         },\n294:         400\n295:       );\n296:     }\n297: \n298:     const requestPayload = {\n299:       provider,\n300:       retry: {\n301:         maxRetries,\n302:       },\n303:       validation: {\n304:         runBuildIfPresent: parseBoolean(validation.runBuildIfPresent, true),\n305:         runTestsIfPresent: parseBoolean(validation.runTestsIfPresent, true),\n306:       },\n307:       autoFix: {\n308:         rehydrateBaseline: parseBoolean(autoFix.rehydrateBaseline, false),\n309:         bootstrapToolchain: parseBoolean(autoFix.bootstrapToolchain, false),\n310:       },\n311:       toolchain: {\n312:         manager: typeof toolchain.manager === 'string' && toolchain.manager.trim() ? toolchain.manager.trim() : null,\n313:         version: typeof toolchain.version === 'string' && toolchain.version.trim() ? toolchain.version.trim() : null,\n314:       },\n315:       cache: {\n316:         dependencyCache: parseBoolean(cache.dependencyCache, true),\n317:       },\n318:       deploy: {\n319:         outputDir,\n320:       },\n321:       rollbackOnFailure: parseBoolean(payload.rollbackOnFailure, true),\n322:       provenance: {\n323:         trigger: typeof provenance.trigger === 'string' && provenance.trigger.trim() ? provenance.trigger.trim() : 'manual',\n324:         taskId: typeof provenance.taskId === 'string' && provenance.taskId.trim() ? provenance.taskId.trim() : null,\n325:         operationId:\n326:           typeof provenance.operationId === 'string' && provenance.operationId.trim() ? provenance.operationId.trim() : null,\n327:         note: typeof provenance.note === 'string' && provenance.note.trim() ? provenance.note.trim() : null,\n328:       },\n329:     };\n330: \n331:     const requestPayloadSha256 = await sha256Hex(\n332:       JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload))\n333:     );\n334: \n335:     const created = await createWorkspaceDeployment(env.DB, {\n336:       id: generateWorkspaceDeploymentId(),\n337:       workspaceId,\n338:       provider,\n339:       idempotencyKey,\n340:       requestPayload,\n341:       requestPayloadSha256,\n342:       maxRetries,\n343:       provenance: requestPayload.provenance,\n344:     });\n345: \n346:     if (!created.reused) {\n347:       await appendWorkspaceDeploymentEvent(env.DB, {\n348:         workspaceId,\n349:         deploymentId: created.deployment.id,\n350:         eventType: 'deployment_created',\n351:         payload: {\n352:           provider,\n353:           maxRetries,\n354:           provenance: requestPayload.provenance,\n355:         },\n356:       });\n357:     }\n358: \n359:     if (provider === 'cloudflare_workers_assets' && created.deployment.status === 'queued') {\n360:       const hasPrecheckPassed = await hasWorkspaceDeploymentEvent(\n361:         env.DB,\n362:         workspaceId,\n363:         created.deployment.id,\n364:         'deployment_provider_precheck_passed'\n365:       );\n366:       const hasPrecheckFailed = await hasWorkspaceDeploymentEvent(\n367:         env.DB,\n368:         workspaceId,\n369:         created.deployment.id,\n370:         'deployment_provider_precheck_failed'\n371:       );\n372:       const alreadyEnqueued = await hasWorkspaceDeploymentEvent(\n373:         env.DB,\n374:         workspaceId,\n375:         created.deployment.id,\n376:         'deployment_enqueued'\n377:       );\n378:       const shouldRunPrecheck = !hasPrecheckPassed && !hasPrecheckFailed && !alreadyEnqueued;\n379: \n380:       if (hasPrecheckFailed) {\n381:         return jsonResponse(\n382:           {\n383:             error: created.deployment.error?.message ?? 'Provider precheck previously failed',\n384:             code: created.deployment.error?.code ?? 'provider_deploy_failed',\n385:           },\n386:           400\n387:         );\n388:       }\n389: \n390:       if (!shouldRunPrecheck) {\n391:         // Precheck already passed/failed or deployment has already been enqueued.\n392:       } else {\n393:       try {\n394:         const precheckChecks = await createWorkspaceDeployProvider(provider, env).precheck();\n395:         const failed = precheckChecks.find((check) => !check.ok);\n396:         if (failed) {\n397:           await appendWorkspaceDeploymentEvent(env.DB, {\n398:             workspaceId,\n399:             deploymentId: created.deployment.id,\n400:             eventType: 'deployment_provider_precheck_failed',\n401:             payload: {\n402:               code: failed.code,\n403:               message: failed.details ?? 'Provider precheck failed',\n404:             },\n405:           });\n406:           await updateWorkspaceDeploymentStatus(env.DB, created.deployment.id, 'failed', {\n407:             workspaceId,\n408:             errorCode: failed.code,\n409:             errorMessage: failed.details ?? 'Provider precheck failed',\n410:             finishedAt: new Date().toISOString(),\n411:           });\n412:           return jsonResponse(\n413:             {\n414:               error: failed.details ?? 'Provider precheck failed',\n415:               code: failed.code,\n416:             },\n417:             400\n418:           );\n419:         }\n420:         await appendWorkspaceDeploymentEvent(env.DB, {\n421:           workspaceId,\n422:           deploymentId: created.deployment.id,\n423:           eventType: 'deployment_provider_precheck_passed',\n424:           payload: {\n425:             checks: precheckChecks,\n426:           },\n427:         });\n428:       } catch (error) {\n429:         const providerError = normalizeProviderError(error);\n430:         await appendWorkspaceDeploymentEvent(env.DB, {\n431:           workspaceId,\n432:           deploymentId: created.deployment.id,\n433:           eventType: 'deployment_provider_precheck_failed',\n434:           payload: {\n435:             code: providerError.code,\n436:             message: providerError.message,\n437:           },\n438:         });\n439:         await updateWorkspaceDeploymentStatus(env.DB, created.deployment.id, 'failed', {\n440:           workspaceId,\n441:           errorCode: providerError.code,\n442:           errorMessage: providerError.message,\n443:           finishedAt: new Date().toISOString(),\n444:         });\n445:         return jsonResponse({ error: providerError.message, code: providerError.code }, 400);\n446:       }\n447:     }\n448:     }\n449: \n450:     const latestDeployment = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);\n451:     const deploymentForQueue = latestDeployment ?? created.deployment;\n452: \n453:     if (deploymentForQueue.status === 'queued') {\n454:       const hasEnqueuedEvent = await hasWorkspaceDeploymentEvent(\n455:         env.DB,\n456:         workspaceId,\n457:         deploymentForQueue.id,\n458:         'deployment_enqueued'\n459:       );\n460:       const shouldRecoverQueued = created.reused && deploymentForQueue.error?.code === 'retry_scheduled';\n461:       const hasRecoveredReenqueue = shouldRecoverQueued\n462:         ? await hasWorkspaceDeploymentEvent(env.DB, workspaceId, deploymentForQueue.id, 'deployment_reenqueue_recovered')\n463:         : false;\n464: \n465:       if (!hasEnqueuedEvent || (shouldRecoverQueued && !hasRecoveredReenqueue)) {\n466:         if (env.WORKSPACE_DEPLOYS_QUEUE) {\n467:           await env.WORKSPACE_DEPLOYS_QUEUE.send(\n468:             createWorkspaceDeploymentQueueMessage(workspaceId, deploymentForQueue.id)\n469:           );\n470:         } else if (ctx) {\n471:           ctx.waitUntil(\n472:             runWorkspaceDeploymentInlineWithRetries(env, workspaceId, deploymentForQueue.id, deploymentForQueue.maxRetries + 1)\n473:           );\n474:         }\n475: \n476:         await appendWorkspaceDeploymentEvent(env.DB, {\n477:           workspaceId,\n478:           deploymentId: deploymentForQueue.id,\n479:           eventType: 'deployment_enqueued',\n480:           payload: {\n481:             mode: env.WORKSPACE_DEPLOYS_QUEUE ? 'queue' : 'inline',\n482:             reused: created.reused,\n483:           },\n484:         });\n485: \n486:         if (shouldRecoverQueued && !hasRecoveredReenqueue) {\n487:           await appendWorkspaceDeploymentEvent(env.DB, {\n488:             workspaceId,\n489:             deploymentId: deploymentForQueue.id,\n490:             eventType: 'deployment_reenqueue_recovered',\n491:             payload: {\n492:               reason: 'retry_scheduled_replay',\n493:             },\n494:           });\n495:         }\n496:       }\n497:     }\n498: \n499:     return jsonResponse({ deployment: deploymentForQueue }, created.reused ? 200 : 202);\n500:   } catch (error) {\n501:     if (error instanceof WorkspaceDeploymentIdempotencyConflictError) {\n502:       return jsonResponse(\n503:         {\n504:           error: 'Idempotency key has already been used with different payload',\n505:           code: 'idempotency_key_conflict',\n506:         },\n507:         409\n508:       );\n509:     }\n510: \n511:     if (error instanceof SyntaxError) {\n512:       return jsonResponse({ error: 'Invalid JSON body' }, 400);\n513:     }\n514: \n515:     const message = error instanceof Error ? error.message : String(error);\n516:     return jsonResponse({ error: `Failed to create workspace deployment: ${message}` }, 500);\n517:   }\n518: }\n519: \n520: export async function handleWorkspaceDeploymentPreflight(\n521:   workspaceId: string,\n522:   request: Request,\n523:   env: Env\n524: ): Promise<Response> {\n525:   const enabled = await ensureWorkspaceDeployEnabled(env);\n526:   if (enabled) {\n527:     return enabled;\n528:   }\n529: \n530:   const workspaceCheck = await ensureWorkspaceReady(env, workspaceId);\n531:   if (workspaceCheck) {\n532:     return workspaceCheck;\n533:   }\n534: \n535:   let payload: Record<string, unknown> = {};\n536:   try {\n537:     const raw = await request.text();\n538:     if (raw.trim()) {\n539:       const parsed = JSON.parse(raw) as unknown;\n540:       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n541:         return jsonResponse({ error: 'Request body must be a JSON object' }, 400);\n542:       }\n543:       payload = parsed as Record<string, unknown>;\n544:     }\n545:   } catch {\n546:     return jsonResponse({ error: 'Invalid JSON body' }, 400);\n547:   }\n548: \n549:   const validation =\n550:     payload.validation && typeof payload.validation === 'object' && !Array.isArray(payload.validation)\n551:       ? (payload.validation as Record<string, unknown>)\n552:       : {};\n553:   const autoFix =\n554:     payload.autoFix && typeof payload.autoFix === 'object' && !Array.isArray(payload.autoFix)\n555:       ? (payload.autoFix as Record<string, unknown>)\n556:       : {};\n557:   const deploy =\n558:     payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)\n559:       ? (payload.deploy as Record<string, unknown>)\n560:       : {};\n561:   const providerInput = typeof payload.provider === 'string' ? payload.provider.trim() : '';\n562:   if (providerInput && providerInput !== 'simulated' && providerInput !== 'cloudflare_workers_assets') {\n563:     return jsonResponse(\n564:       {\n565:         preflight: {\n566:           ok: false,\n567:           toolchain: null,\n568:           checks: [{ code: 'unsupported_deploy_provider', ok: false, details: `Unsupported provider: ${providerInput}` }],\n569:           remediations: [],\n570:         },\n571:         nextAction: 'Use provider=cloudflare_workers_assets or provider=simulated.',\n572:       },\n573:       200\n574:     );\n575:   }\n576:   const provider = getWorkspaceDeployProviderName(providerInput || undefined, env);\n577:   const outputDir = parseDeployOutputDir(deploy.outputDir);\n578: \n579:   if (provider === 'cloudflare_workers_assets' && (!outputDir || !isSafeRelativeOutputDir(outputDir))) {\n580:     return jsonResponse(\n581:       {\n582:         preflight: {\n583:           ok: false,\n584:           toolchain: null,\n585:           checks: [\n586:             {\n587:               code: 'provider_invalid_output_dir',\n588:               ok: false,\n589:               details: 'deploy.outputDir is required and must be a safe relative directory',\n590:             },\n591:           ],\n592:           remediations: [],\n593:         },\n594:         nextAction: 'Set deploy.outputDir to your static build output directory and retry preflight.',\n595:       },\n596:       200\n597:     );\n598:   }\n599:   const runBuildIfPresent = parseBoolean(validation.runBuildIfPresent, true);\n600:   const runTestsIfPresent = parseBoolean(validation.runTestsIfPresent, true);\n601:   const rehydrateBaseline = parseBoolean(autoFix.rehydrateBaseline, false);\n602:   const bootstrapToolchain = parseBoolean(autoFix.bootstrapToolchain, false);\n603: \n604:   try {\n605:     const preflight = await runWorkspaceDeploymentPreflight(env, workspaceId, {\n606:       runBuildIfPresent,\n607:       runTestsIfPresent,\n608:       rehydrateBaseline,\n609:       bootstrapToolchain,\n610:       provider,\n611:       outputDir,\n612:     });\n613: \n614:     if (provider === 'cloudflare_workers_assets') {\n615:       try {\n616:         const providerChecks = await createWorkspaceDeployProvider(provider, env).precheck();\n617:         preflight.checks.push(...providerChecks);\n618:       } catch (error) {\n619:         const providerError = normalizeProviderError(error);\n620:         preflight.checks.push({ code: providerError.code, ok: false, details: providerError.message });\n621:       }\n622:       preflight.ok = preflight.checks.every((check) => check.ok);\n623:     }\n624: \n625:     const failedCheck = preflight.checks.find((check) => !check.ok);\n626:     const nextAction = failedCheck\n627:       ? failedCheck.code === 'validation_tooling'\n628:         ? 'Disable build/test validation or install the detected package manager in the sandbox runtime image.'\n629:         : failedCheck.code === 'git_baseline'\n630:           ? 'Reset workspace to rebuild git baseline and retry deploy.'\n631:           : failedCheck.code === 'secret_scan'\n632:             ? 'Remove sensitive files from workspace before deploying.'\n633:             : failedCheck.code === 'toolchain_detect'\n634:               ? 'Fix package.json/lockfile metadata and retry preflight.'\n635:               : failedCheck.code === 'toolchain_bootstrap'\n636:                 ? 'Enable auto-fix bootstrap or use a sandbox image with corepack support.'\n637:                 : failedCheck.code === 'project_root'\n638:                   ? 'Set workspace source project root to a safe relative path and retry preflight.'\n639:                   : failedCheck.code === 'provider_invalid_output_dir'\n640:                     ? 'Set deploy.outputDir to a valid static build output directory and retry preflight.'\n641:                     : failedCheck.code === 'provider_auth_failed'\n642:                       ? 'Verify Cloudflare account credentials in worker env and retry preflight.'\n643:                       : failedCheck.code === 'provider_scope_missing'\n644:                         ? 'Grant required Cloudflare token scopes and retry preflight.'\n645:                         : failedCheck.code === 'provider_project_not_found'\n646:                           ? 'Set WORKSPACE_DEPLOY_PROJECT_NAME to a valid Workers project and retry preflight.'\n647:                           : failedCheck.code === 'provider_rate_limited'\n648:                             ? 'Wait for provider rate limits to reset and retry preflight.'\n649:             : null\n650:       : null;\n651:     return jsonResponse({ preflight, nextAction });\n652:   } catch (error) {\n653:     const message = error instanceof Error ? error.message : String(error);\n654:     return jsonResponse(\n655:       {\n656:         preflight: {\n657:           ok: false,\n658:           toolchain: null,\n659:           checks: [{ code: 'internal_error', ok: false, details: message }],\n660:           remediations: [],\n661:         },\n662:       },\n663:       500\n664:     );\n665:   }\n666: }\n667: \n668: export async function handleGetWorkspaceDeployment(\n669:   workspaceId: string,\n670:   deploymentId: string,\n671:   env: Env\n672: ): Promise<Response> {\n673:   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);\n674:   if (workspaceMissing) {\n675:     return workspaceMissing;\n676:   }\n677: \n678:   const deployment = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n679:   if (!deployment) {\n680:     return jsonResponse({ error: 'Deployment not found' }, 404);\n681:   }\n682: \n683:   return jsonResponse({\n684:     deployment,\n685:     nextAction: nextActionForDeploymentError(deployment.error?.code),\n686:   });\n687: }\n688: \n689: export async function handleGetWorkspaceDeploymentEvents(\n690:   workspaceId: string,\n691:   deploymentId: string,\n692:   request: Request,\n693:   env: Env\n694: ): Promise<Response> {\n695:   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);\n696:   if (workspaceMissing) {\n697:     return workspaceMissing;\n698:   }\n699: \n700:   const deployment = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n701:   if (!deployment) {\n702:     return jsonResponse({ error: 'Deployment not found' }, 404);\n703:   }\n704: \n705:   const url = new URL(request.url);\n706:   const from = Number.parseInt(url.searchParams.get('from') ?? '0', 10);\n707:   const limit = Number.parseInt(url.searchParams.get('limit') ?? '500', 10);\n708:   const fromExclusive = Number.isFinite(from) && from > 0 ? from : 0;\n709:   const boundedLimit = Number.isFinite(limit) ? Math.max(1, Math.min(limit, 1000)) : 500;\n710: \n711:   const events = await listWorkspaceDeploymentEvents(env.DB, workspaceId, deploymentId, fromExclusive, boundedLimit);\n712:   return jsonResponse({ deploymentId, events });\n713: }\n714: \n715: export async function handleCancelWorkspaceDeployment(\n716:   workspaceId: string,\n717:   deploymentId: string,\n718:   env: Env,\n719:   ctx?: ExecutionContext\n720: ): Promise<Response> {\n721:   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);\n722:   if (workspaceMissing) {\n723:     return workspaceMissing;\n724:   }\n725: \n726:   const cancelResult = await cancelWorkspaceDeployment(env, workspaceId, deploymentId);\n727:   if (!cancelResult.deployment) {\n728:     return jsonResponse({ error: 'Deployment not found' }, 404);\n729:   }\n730: \n731:   if (cancelResult.updated) {\n732:     if (\n733:       !env.WORKSPACE_DEPLOYS_QUEUE &&\n734:       ctx &&\n735:       cancelResult.deployment?.status === 'running' &&\n736:       cancelResult.deployment.cancelRequestedAt\n737:     ) {\n738:       ctx.waitUntil(runWorkspaceDeploymentInlineWithRetries(env, workspaceId, deploymentId, 2));\n739:     }\n740: \n741:     return jsonResponse({ deployment: cancelResult.deployment }, 202);\n742:   }\n743: \n744:   if (cancelResult.deployment.status === 'running' && cancelResult.deployment.cancelRequestedAt) {\n745:     return jsonResponse({ deployment: cancelResult.deployment }, 202);\n746:   }\n747: \n748:   return jsonResponse(\n749:     {\n750:       error: 'Deployment is already terminal and cannot be cancelled',\n751:       code: 'deployment_not_cancellable',\n752:       deployment: cancelResult.deployment,\n753:     },\n754:     409\n755:   );\n756: }\n\n(End of file - total 756 lines)\n</content>",
+            "title": "packages/worker/src/api/workspace-deployments.ts",
+            "metadata": {
+              "preview": "import type { Env } from '../types.js';\nimport { loadRuntimeFlags } from '../lib/flags.js';\nimport {\n  appendWorkspaceDeploymentEvent,\n  createWorkspaceDeployment,\n  generateWorkspaceDeploymentId,\n  getWorkspace,\n  getWorkspaceDeployment,\n  hasWorkspaceDeploymentEvent,\n  listWorkspaceDeploymentEvents,\n  updateWorkspaceDeploymentStatus,\n  WorkspaceDeploymentIdempotencyConflictError,\n} from '../lib/db.js';\nimport { createWorkspaceDeploymentQueueMessage } from '../lib/workspace-deployment-queue.js';\nimport {\n  cancelWorkspaceDeployment,\n  runWorkspaceDeploymentInlineWithRetries,\n  runWorkspaceDeploymentPreflight,\n} from '../lib/workspace-deployment-runner.js';\nimport {",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773072996837,
+              "end": 1773072996841
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_08f83705c02d4d900169aef2649e308190af5589e87e915c98"
+            }
+          },
+          "id": "prt_cd362d950001MLGN9dgQMKx2wO",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362d2190014IOg1tRkLKszXy"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.0022484,
+          "tokens": {
+            "total": 6147,
+            "input": 208,
+            "output": 51,
+            "reasoning": 10,
+            "cache": {
+              "read": 5888,
+              "write": 0
+            }
+          },
+          "id": "prt_cd362da33001kun47eLPISUcP0",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd362d2190014IOg1tRkLKszXy"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773072997021,
+          "completed": 1773073000648
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0178108,
+        "tokens": {
+          "total": 13839,
+          "input": 7616,
+          "output": 207,
+          "reasoning": 38,
+          "cache": {
+            "read": 6016,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd362dd09001PlIqI0XG2XvOGb",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Reviewing recent race condition fix**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_033006200d5948af0169aef26599ac8199b2bd5ab597cb2e35",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773072997654,
+            "end": 1773072999793
+          },
+          "id": "prt_cd362dd16001iYNkHrvZVeL4xL",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_FJKv6rKNHk5X83AUl34HROw0",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git status --short",
+              "workdir": "/Users/nickdejesus/Code/nimbus",
+              "description": "Shows concise working tree status"
+            },
+            "output": " M packages/cli/src/commands/workspace/deploy.test.ts\n M packages/cli/src/commands/workspace/deploy.ts\n M packages/cli/src/index.ts\n M packages/cli/src/lib/api.ts\n M packages/cli/src/lib/args.test.ts\n M packages/cli/src/lib/args.ts\n M packages/worker/src/api/system.ts\n M packages/worker/src/api/workspace-deployments.test.ts\n M packages/worker/src/api/workspace-deployments.ts\n M packages/worker/src/lib/run-tests.ts\n M packages/worker/src/lib/workspace-deployment-runner.test.ts\n M packages/worker/src/lib/workspace-deployment-runner.ts\n M packages/worker/src/types.ts\n M packages/worker/wrangler.toml\n?? packages/worker/src/lib/workspace-deploy-provider.test.ts\n?? packages/worker/src/lib/workspace-deploy-provider.ts\n?? specs/testing/phase-7-real-provider-smoke.md\n",
+            "title": "Shows concise working tree status",
+            "metadata": {
+              "output": " M packages/cli/src/commands/workspace/deploy.test.ts\n M packages/cli/src/commands/workspace/deploy.ts\n M packages/cli/src/index.ts\n M packages/cli/src/lib/api.ts\n M packages/cli/src/lib/args.test.ts\n M packages/cli/src/lib/args.ts\n M packages/worker/src/api/system.ts\n M packages/worker/src/api/workspace-deployments.test.ts\n M packages/worker/src/api/workspace-deployments.ts\n M packages/worker/src/lib/run-tests.ts\n M packages/worker/src/lib/workspace-deployment-runner.test.ts\n M packages/worker/src/lib/workspace-deployment-runner.ts\n M packages/worker/src/types.ts\n M packages/worker/wrangler.toml\n?? packages/worker/src/lib/workspace-deploy-provider.test.ts\n?? packages/worker/src/lib/workspace-deploy-provider.ts\n?? specs/testing/phase-7-real-provider-smoke.md\n",
+              "exit": 0,
+              "description": "Shows concise working tree status",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773072999812,
+              "end": 1773073000547
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_033006200d5948af0169aef267bbbc8199aab0b400024fd17b"
+            }
+          },
+          "id": "prt_cd362e572001WoP2Z60jypGoHJ",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_iEai44lQbIXmy6o6lMOQpWZI",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff -- packages/worker/src/api/workspace-deployments.ts",
+              "workdir": "/Users/nickdejesus/Code/nimbus",
+              "description": "Shows unstaged changes for deployment API file"
+            },
+            "output": "diff --git a/packages/worker/src/api/workspace-deployments.ts b/packages/worker/src/api/workspace-deployments.ts\nindex 7ce6e96..31f0093 100644\n--- a/packages/worker/src/api/workspace-deployments.ts\n+++ b/packages/worker/src/api/workspace-deployments.ts\n@@ -8,6 +8,7 @@ import {\n   getWorkspaceDeployment,\n   hasWorkspaceDeploymentEvent,\n   listWorkspaceDeploymentEvents,\n+  updateWorkspaceDeploymentStatus,\n   WorkspaceDeploymentIdempotencyConflictError,\n } from '../lib/db.js';\n import { createWorkspaceDeploymentQueueMessage } from '../lib/workspace-deployment-queue.js';\n@@ -16,6 +17,11 @@ import {\n   runWorkspaceDeploymentInlineWithRetries,\n   runWorkspaceDeploymentPreflight,\n } from '../lib/workspace-deployment-runner.js';\n+import {\n+  createWorkspaceDeployProvider,\n+  getWorkspaceDeployProviderName,\n+  normalizeProviderError,\n+} from '../lib/workspace-deploy-provider.js';\n \n const corsHeaders = {\n   'Access-Control-Allow-Origin': '*',\n@@ -51,6 +57,24 @@ function parseBoolean(input: unknown, fallback: boolean): boolean {\n   return input;\n }\n \n+function isSafeRelativeOutputDir(input: string): boolean {\n+  if (!input || input === '.') {\n+    return false;\n+  }\n+  if (input.startsWith('/') || input.includes('..') || input.includes('\\\\')) {\n+    return false;\n+  }\n+  return input.split('/').every((segment) => Boolean(segment) && segment !== '.');\n+}\n+\n+function parseDeployOutputDir(input: unknown): string | null {\n+  if (typeof input !== 'string') {\n+    return null;\n+  }\n+  const trimmed = input.trim().replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '');\n+  return trimmed || null;\n+}\n+\n function buildDeploymentIdempotencyPayload(requestPayload: {\n   provider: string;\n   retry: { maxRetries: number };\n@@ -58,6 +82,7 @@ function buildDeploymentIdempotencyPayload(requestPayload: {\n   autoFix: { rehydrateBaseline: boolean; bootstrapToolchain: boolean };\n   toolchain: { manager: string | null; version: string | null };\n   cache: { dependencyCache: boolean };\n+  deploy: { outputDir: string | null };\n   rollbackOnFailure: boolean;\n   provenance: { trigger: string; taskId: string | null; operationId: string | null; note: string | null };\n }): Record<string, unknown> {\n@@ -81,6 +106,10 @@ function buildDeploymentIdempotencyPayload(requestPayload: {\n     payload.cache = requestPayload.cache;\n   }\n \n+  if (requestPayload.deploy.outputDir) {\n+    payload.deploy = requestPayload.deploy;\n+  }\n+\n   return payload;\n }\n \n@@ -103,6 +132,18 @@ function nextActionForDeploymentError(code: string | undefined): string | null {\n       return 'Reset the workspace and retry deploy to rebuild git baseline.';\n     case 'potential_secrets_detected':\n       return 'Remove sensitive files from workspace before deploying (template files like .env.example are allowed).';\n+    case 'provider_auth_failed':\n+      return 'Verify CF_ACCOUNT_ID and CF_API_TOKEN, then rerun preflight.';\n+    case 'provider_scope_missing':\n+      return 'Grant Workers Scripts/Routes edit scope to CF_API_TOKEN and rerun preflight.';\n+    case 'provider_project_not_found':\n+      return 'Set WORKSPACE_DEPLOY_PROJECT_NAME to an existing Workers project and retry.';\n+    case 'provider_rate_limited':\n+      return 'Retry deploy after Cloudflare rate limits reset.';\n+    case 'provider_invalid_output_dir':\n+      return 'Set deploy.outputDir to a valid static build directory (for example dist or out) and retry.';\n+    case 'provider_deploy_failed':\n+      return 'Check provider deployment logs and retry after fixing configuration or build output.';\n     default:\n       return null;\n   }\n@@ -201,17 +242,18 @@ export async function handleCreateWorkspaceDeployment(\n       payload = parsed as Record<string, unknown>;\n     }\n \n-    const provider = typeof payload.provider === 'string' && payload.provider.trim() ? payload.provider.trim() : 'simulated';\n-    if (provider !== 'simulated') {\n+    const providerInput = typeof payload.provider === 'string' ? payload.provider.trim() : '';\n+    if (providerInput && providerInput !== 'simulated' && providerInput !== 'cloudflare_workers_assets') {\n       return jsonResponse(\n         {\n           error: 'Unsupported deployment provider',\n           code: 'unsupported_deploy_provider',\n-          allowedProviders: ['simulated'],\n+          allowedProviders: ['simulated', 'cloudflare_workers_assets'],\n         },\n         400\n       );\n     }\n+    const provider = getWorkspaceDeployProviderName(providerInput || undefined, env);\n     const retry =\n       payload.retry && typeof payload.retry === 'object' && !Array.isArray(payload.retry)\n         ? (payload.retry as Record<string, unknown>)\n@@ -236,7 +278,22 @@ export async function handleCreateWorkspaceDeployment(\n       payload.cache && typeof payload.cache === 'object' && !Array.isArray(payload.cache)\n         ? (payload.cache as Record<string, unknown>)\n         : {};\n+    const deploy =\n+      payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)\n+        ? (payload.deploy as Record<string, unknown>)\n+        : {};\n     const maxRetries = parseInteger(retry.maxRetries, 2, 0, 5);\n+    const outputDir = parseDeployOutputDir(deploy.outputDir);\n+\n+    if (provider === 'cloudflare_workers_assets' && (!outputDir || !isSafeRelativeOutputDir(outputDir))) {\n+      return jsonResponse(\n+        {\n+          error: 'deploy.outputDir is required for cloudflare_workers_assets provider and must be a safe relative directory',\n+          code: 'provider_invalid_output_dir',\n+        },\n+        400\n+      );\n+    }\n \n     const requestPayload = {\n       provider,\n@@ -258,6 +315,9 @@ export async function handleCreateWorkspaceDeployment(\n       cache: {\n         dependencyCache: parseBoolean(cache.dependencyCache, true),\n       },\n+      deploy: {\n+        outputDir,\n+      },\n       rollbackOnFailure: parseBoolean(payload.rollbackOnFailure, true),\n       provenance: {\n         trigger: typeof provenance.trigger === 'string' && provenance.trigger.trim() ? provenance.trigger.trim() : 'manual',\n@@ -271,6 +331,7 @@ export async function handleCreateWorkspaceDeployment(\n     const requestPayloadSha256 = await sha256Hex(\n       JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload))\n     );\n+\n     const created = await createWorkspaceDeployment(env.DB, {\n       id: generateWorkspaceDeploymentId(),\n       workspaceId,\n@@ -295,32 +356,126 @@ export async function handleCreateWorkspaceDeployment(\n       });\n     }\n \n-    if (created.deployment.status === 'queued') {\n-      const hasEnqueuedEvent = await hasWorkspaceDeploymentEvent(\n+    if (provider === 'cloudflare_workers_assets' && created.deployment.status === 'queued') {\n+      const hasPrecheckPassed = await hasWorkspaceDeploymentEvent(\n+        env.DB,\n+        workspaceId,\n+        created.deployment.id,\n+        'deployment_provider_precheck_passed'\n+      );\n+      const hasPrecheckFailed = await hasWorkspaceDeploymentEvent(\n         env.DB,\n         workspaceId,\n         created.deployment.id,\n+        'deployment_provider_precheck_failed'\n+      );\n+      const alreadyEnqueued = await hasWorkspaceDeploymentEvent(\n+        env.DB,\n+        workspaceId,\n+        created.deployment.id,\n+        'deployment_enqueued'\n+      );\n+      const shouldRunPrecheck = !hasPrecheckPassed && !hasPrecheckFailed && !alreadyEnqueued;\n+\n+      if (hasPrecheckFailed) {\n+        return jsonResponse(\n+          {\n+            error: created.deployment.error?.message ?? 'Provider precheck previously failed',\n+            code: created.deployment.error?.code ?? 'provider_deploy_failed',\n+          },\n+          400\n+        );\n+      }\n+\n+      if (!shouldRunPrecheck) {\n+        // Precheck already passed/failed or deployment has already been enqueued.\n+      } else {\n+      try {\n+        const precheckChecks = await createWorkspaceDeployProvider(provider, env).precheck();\n+        const failed = precheckChecks.find((check) => !check.ok);\n+        if (failed) {\n+          await appendWorkspaceDeploymentEvent(env.DB, {\n+            workspaceId,\n+            deploymentId: created.deployment.id,\n+            eventType: 'deployment_provider_precheck_failed',\n+            payload: {\n+              code: failed.code,\n+              message: failed.details ?? 'Provider precheck failed',\n+            },\n+          });\n+          await updateWorkspaceDeploymentStatus(env.DB, created.deployment.id, 'failed', {\n+            workspaceId,\n+            errorCode: failed.code,\n+            errorMessage: failed.details ?? 'Provider precheck failed',\n+            finishedAt: new Date().toISOString(),\n+          });\n+          return jsonResponse(\n+            {\n+              error: failed.details ?? 'Provider precheck failed',\n+              code: failed.code,\n+            },\n+            400\n+          );\n+        }\n+        await appendWorkspaceDeploymentEvent(env.DB, {\n+          workspaceId,\n+          deploymentId: created.deployment.id,\n+          eventType: 'deployment_provider_precheck_passed',\n+          payload: {\n+            checks: precheckChecks,\n+          },\n+        });\n+      } catch (error) {\n+        const providerError = normalizeProviderError(error);\n+        await appendWorkspaceDeploymentEvent(env.DB, {\n+          workspaceId,\n+          deploymentId: created.deployment.id,\n+          eventType: 'deployment_provider_precheck_failed',\n+          payload: {\n+            code: providerError.code,\n+            message: providerError.message,\n+          },\n+        });\n+        await updateWorkspaceDeploymentStatus(env.DB, created.deployment.id, 'failed', {\n+          workspaceId,\n+          errorCode: providerError.code,\n+          errorMessage: providerError.message,\n+          finishedAt: new Date().toISOString(),\n+        });\n+        return jsonResponse({ error: providerError.message, code: providerError.code }, 400);\n+      }\n+    }\n+    }\n+\n+    const latestDeployment = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);\n+    const deploymentForQueue = latestDeployment ?? created.deployment;\n+\n+    if (deploymentForQueue.status === 'queued') {\n+      const hasEnqueuedEvent = await hasWorkspaceDeploymentEvent(\n+        env.DB,\n+        workspaceId,\n+        deploymentForQueue.id,\n         'deployment_enqueued'\n       );\n-      const shouldRecoverQueued = created.reused && created.deployment.error?.code === 'retry_scheduled';\n+      const shouldRecoverQueued = created.reused && deploymentForQueue.error?.code === 'retry_scheduled';\n       const hasRecoveredReenqueue = shouldRecoverQueued\n-        ? await hasWorkspaceDeploymentEvent(env.DB, workspaceId, created.deployment.id, 'deployment_reenqueue_recovered')\n+        ? await hasWorkspaceDeploymentEvent(env.DB, workspaceId, deploymentForQueue.id, 'deployment_reenqueue_recovered')\n         : false;\n \n       if (!hasEnqueuedEvent || (shouldRecoverQueued && !hasRecoveredReenqueue)) {\n         if (env.WORKSPACE_DEPLOYS_QUEUE) {\n           await env.WORKSPACE_DEPLOYS_QUEUE.send(\n-            createWorkspaceDeploymentQueueMessage(workspaceId, created.deployment.id)\n+            createWorkspaceDeploymentQueueMessage(workspaceId, deploymentForQueue.id)\n           );\n         } else if (ctx) {\n           ctx.waitUntil(\n-            runWorkspaceDeploymentInlineWithRetries(env, workspaceId, created.deployment.id, created.deployment.maxRetries + 1)\n+            runWorkspaceDeploymentInlineWithRetries(env, workspaceId, deploymentForQueue.id, deploymentForQueue.maxRetries + 1)\n           );\n         }\n \n         await appendWorkspaceDeploymentEvent(env.DB, {\n           workspaceId,\n-          deploymentId: created.deployment.id,\n+          deploymentId: deploymentForQueue.id,\n           eventType: 'deployment_enqueued',\n           payload: {\n             mode: env.WORKSPACE_DEPLOYS_QUEUE ? 'queue' : 'inline',\n@@ -331,7 +486,7 @@ export async function handleCreateWorkspaceDeployment(\n         if (shouldRecoverQueued && !hasRecoveredReenqueue) {\n           await appendWorkspaceDeploymentEvent(env.DB, {\n             workspaceId,\n-            deploymentId: created.deployment.id,\n+            deploymentId: deploymentForQueue.id,\n             eventType: 'deployment_reenqueue_recovered',\n             payload: {\n               reason: 'retry_scheduled_replay',\n@@ -341,7 +496,7 @@ export async function handleCreateWorkspaceDeployment(\n       }\n     }\n \n-    return jsonResponse({ deployment: created.deployment }, created.reused ? 200 : 202);\n+    return jsonResponse({ deployment: deploymentForQueue }, created.reused ? 200 : 202);\n   } catch (error) {\n     if (error instanceof WorkspaceDeploymentIdempotencyConflictError) {\n       return jsonResponse(\n@@ -399,6 +554,48 @@ export async function handleWorkspaceDeploymentPreflight(\n     payload.autoFix && typeof payload.autoFix === 'object' && !Array.isArray(payload.autoFix)\n       ? (payload.autoFix as Record<string, unknown>)\n       : {};\n+  const deploy =\n+    payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)\n+      ? (payload.deploy as Record<string, unknown>)\n+      : {};\n+  const providerInput = typeof payload.provider === 'string' ? payload.provider.trim() : '';\n+  if (providerInput && providerInput !== 'simulated' && providerInput !== 'cloudflare_workers_assets') {\n+    return jsonResponse(\n+      {\n+        preflight: {\n+          ok: false,\n+          toolchain: null,\n+          checks: [{ code: 'unsupported_deploy_provider', ok: false, details: `Unsupported provider: ${providerInput}` }],\n+          remediations: [],\n+        },\n+        nextAction: 'Use provider=cloudflare_workers_assets or provider=simulated.',\n+      },\n+      200\n+    );\n+  }\n+  const provider = getWorkspaceDeployProviderName(providerInput || undefined, env);\n+  const outputDir = parseDeployOutputDir(deploy.outputDir);\n+\n+  if (provider === 'cloudflare_workers_assets' && (!outputDir || !isSafeRelativeOutputDir(outputDir))) {\n+    return jsonResponse(\n+      {\n+        preflight: {\n+          ok: false,\n+          toolchain: null,\n+          checks: [\n+            {\n+              code: 'provider_invalid_output_dir',\n+              ok: false,\n+              details: 'deploy.outputDir is required and must be a safe relative directory',\n+            },\n+          ],\n+          remediations: [],\n+        },\n+        nextAction: 'Set deploy.outputDir to your static build output directory and retry preflight.',\n+      },\n+      200\n+    );\n+  }\n   const runBuildIfPresent = parseBoolean(validation.runBuildIfPresent, true);\n   const runTestsIfPresent = parseBoolean(validation.runTestsIfPresent, true);\n   const rehydrateBaseline = parseBoolean(autoFix.rehydrateBaseline, false);\n@@ -410,7 +607,21 @@ export async function handleWorkspaceDeploymentPreflight(\n       runTestsIfPresent,\n       rehydrateBaseline,\n       bootstrapToolchain,\n+      provider,\n+      outputDir,\n     });\n+\n+    if (provider === 'cloudflare_workers_assets') {\n+      try {\n+        const providerChecks = await createWorkspaceDeployProvider(provider, env).precheck();\n+        preflight.checks.push(...providerChecks);\n+      } catch (error) {\n+        const providerError = normalizeProviderError(error);\n+        preflight.checks.push({ code: providerError.code, ok: false, details: providerError.message });\n+      }\n+      preflight.ok = preflight.checks.every((check) => check.ok);\n+    }\n+\n     const failedCheck = preflight.checks.find((check) => !check.ok);\n     const nextAction = failedCheck\n       ? failedCheck.code === 'validation_tooling'\n@@ -425,6 +636,16 @@ export async function handleWorkspaceDeploymentPreflight(\n                 ? 'Enable auto-fix bootstrap or use a sandbox image with corepack support.'\n                 : failedCheck.code === 'project_root'\n                   ? 'Set workspace source project root to a safe relative path and retry preflight.'\n+                  : failedCheck.code === 'provider_invalid_output_dir'\n+                    ? 'Set deploy.outputDir to a valid static build output directory and retry preflight.'\n+                    : failedCheck.code === 'provider_auth_failed'\n+                      ? 'Verify Cloudflare account credentials in worker env and retry preflight.'\n+                      : failedCheck.code === 'provider_scope_missing'\n+                        ? 'Grant required Cloudflare token scopes and retry preflight.'\n+                        : failedCheck.code === 'provider_project_not_found'\n+                          ? 'Set WORKSPACE_DEPLOY_PROJECT_NAME to a valid Workers project and retry preflight.'\n+                          : failedCheck.code === 'provider_rate_limited'\n+                            ? 'Wait for provider rate limits to reset and retry preflight.'\n             : null\n       : null;\n     return jsonResponse({ preflight, nextAction });\n",
+            "title": "Shows unstaged changes for deployment API file",
+            "metadata": {
+              "output": "diff --git a/packages/worker/src/api/workspace-deployments.ts b/packages/worker/src/api/workspace-deployments.ts\nindex 7ce6e96..31f0093 100644\n--- a/packages/worker/src/api/workspace-deployments.ts\n+++ b/packages/worker/src/api/workspace-deployments.ts\n@@ -8,6 +8,7 @@ import {\n   getWorkspaceDeployment,\n   hasWorkspaceDeploymentEvent,\n   listWorkspaceDeploymentEvents,\n+  updateWorkspaceDeploymentStatus,\n   WorkspaceDeploymentIdempotencyConflictError,\n } from '../lib/db.js';\n import { createWorkspaceDeploymentQueueMessage } from '../lib/workspace-deployment-queue.js';\n@@ -16,6 +17,11 @@ import {\n   runWorkspaceDeploymentInlineWithRetries,\n   runWorkspaceDeploymentPreflight,\n } from '../lib/workspace-deployment-runner.js';\n+import {\n+  createWorkspaceDeployProvider,\n+  getWorkspaceDeployProviderName,\n+  normalizeProviderError,\n+} from '../lib/workspace-deploy-provider.js';\n \n const corsHeaders = {\n   'Access-Control-Allow-Origin': '*',\n@@ -51,6 +57,24 @@ function parseBoolean(input: unknown, fallback: boolean): boolean {\n   return input;\n }\n \n+function isSafeRelativeOutputDir(input: string): boolean {\n+  if (!input || input === '.') {\n+    return false;\n+  }\n+  if (input.startsWith('/') || input.includes('..') || input.includes('\\\\')) {\n+    return false;\n+  }\n+  return input.split('/').every((segment) => Boolean(segment) && segment !== '.');\n+}\n+\n+function parseDeployOutputDir(input: unknown): string | null {\n+  if (typeof input !== 'string') {\n+    return null;\n+  }\n+  const trimmed = input.trim().replace(/\\\\/g, '/').replace(/^\\.\\//, '').replace(/\\/+$/, '');\n+  return trimmed || null;\n+}\n+\n function buildDeploymentIdempotencyPayload(requestPayload: {\n   provider: string;\n   retry: { maxRetries: number };\n@@ -58,6 +82,7 @@ function buildDeploymentIdempotencyPayload(requestPayload: {\n   autoFix: { rehydrateBaseline: boolean; bootstrapToolchain: boolean };\n   toolchain: { manager: string | null; version: string | null };\n   cache: { dependencyCache: boolean };\n+  deploy: { outputDir: string | null };\n   rollbackOnFailure: boolean;\n   provenance: { trigger: string; taskId: string | null; operationId: string | null; note: string | null };\n }): Record<string, unknown> {\n@@ -81,6 +106,10 @@ function buildDeploymentIdempotencyPayload(requestPayload: {\n     payload.cache = requestPayload.cache;\n   }\n \n+  if (requestPayload.deploy.outputDir) {\n+    payload.deploy = requestPayload.deploy;\n+  }\n+\n   return payload;\n }\n \n@@ -103,6 +132,18 @@ function nextActionForDeploymentError(code: string | undefined): string | null {\n       return 'Reset the workspace and retry deploy to rebuild git baseline.';\n     case 'potential_secrets_detected':\n       return 'Remove sensitive files from workspace before deploying (template files like .env.example are allowed).';\n+    case 'provider_auth_failed':\n+      return 'Verify CF_ACCOUNT_ID and CF_API_TOKEN, then rerun preflight.';\n+    case 'provider_scope_missing':\n+      return 'Grant Workers Scripts/Routes edit scope to CF_API_TOKEN and rerun preflight.';\n+    case 'provider_project_not_found':\n+      return 'Set WORKSPACE_DEPLOY_PROJECT_NAME to an existing Workers project and retry.';\n+    case 'provider_rate_limited':\n+      return 'Retry deploy after Cloudflare rate limits reset.';\n+    case 'provider_invalid_output_dir':\n+      return 'Set deploy.outputDir to a valid static build directory (for example dist or out) and retry.';\n+    case 'provider_deploy_failed':\n+      return 'Check provider deployment logs and retry after fixing configuration or build output.';\n     default:\n       return null;\n   }\n@@ -201,17 +242,18 @@ export async function handleCreateWorkspaceDeployment(\n       payload = parsed as Record<string, unknown>;\n     }\n \n-    const provider = typeof payload.provider === 'string' && payload.provider.trim() ? payload.provider.trim() : 'simulated';\n-    if (provider !== 'simulated') {\n+    const providerInput = typeof payload.provider === 'string' ? payload.provider.trim() : '';\n+    if (providerInput && providerInput !== 'simulated' && providerInput !== 'cloudflare_workers_assets') {\n       return jsonResponse(\n         {\n           error: 'Unsupported deployment provider',\n           code: 'unsupported_deploy_provider',\n-          allowedProviders: ['simulated'],\n+          allowedProviders: ['simulated', 'cloudflare_workers_assets'],\n         },\n         400\n       );\n     }\n+    const provider = getWorkspaceDeployProviderName(providerInput || undefined, env);\n     const retry =\n       payload.retry && typeof payload.retry === 'object' && !Array.isArray(payload.retry)\n         ? (payload.retry as Record<string, unknown>)\n@@ -236,7 +278,22 @@ export async function handleCreateWorkspaceDeployment(\n       payload.cache && typeof payload.cache === 'object' && !Array.isArray(payload.cache)\n         ? (payload.cache as Record<string, unknown>)\n         : {};\n+    const deploy =\n+      payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)\n+        ? (payload.deploy as Record<string, unknown>)\n+        : {};\n     const maxRetries = parseInteger(retry.maxRetries, 2, 0, 5);\n+    const outputDir = parseDeployOutputDir(deploy.outputDir);\n+\n+    if (provider === 'cloudflare_workers_assets' && (!outputDir || !isSafeRelativeOutputDir(outputDir))) {\n+      return jsonResponse(\n+        {\n+          error: 'deploy.outputDir is required for cloudflare_workers_assets provider and must be a safe relative directory',\n+          code: 'provider_invalid_output_dir',\n+        },\n+        400\n+      );\n+    }\n \n     const requestPayload = {\n       provider,\n@@ -258,6 +315,9 @@ export async function handleCreateWorkspaceDeployment(\n       cache: {\n         dependencyCache: parseBoolean(cache.dependencyCache, true),\n       },\n+      deploy: {\n+        outputDir,\n+      },\n       rollbackOnFailure: parseBoolean(payload.rollbackOnFailure, true),\n       provenance: {\n         trigger: typeof provenance.trigger === 'string' && provenance.trigger.trim() ? provenance.trigger.trim() : 'manual',\n@@ -271,6 +331,7 @@ export async function handleCreateWorkspaceDeployment(\n     const requestPayloadSha256 = await sha256Hex(\n       JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload))\n     );\n+\n     const created = await createWorkspaceDeployment(env.DB, {\n       id: generateWorkspaceDeploymentId(),\n       workspaceId,\n@@ -295,32 +356,126 @@ export async function handleCreateWorkspaceDeployment(\n       });\n     }\n \n-    if (created.deployment.status === 'queued') {\n-      const hasEnqueuedEvent = await hasWorkspaceDeploymentEvent(\n+    if (provider === 'cloudflare_workers_assets' && created.deployment.status === 'queued') {\n+      const hasPrecheckPassed = await hasWorkspaceDeploymentEvent(\n+        env.DB,\n+        workspaceId,\n+        created.deployment.id,\n+        'deployment_provider_precheck_passed'\n+      );\n+      const hasPrecheckFailed = await hasWorkspaceDeploymentEvent(\n         env.DB,\n         workspaceId,\n         created.deployment.id,\n+        'deployment_provider_precheck_failed'\n+      );\n+      const alreadyEnqueued = await hasWorkspaceDeploymentEvent(\n+        env.DB,\n+        workspaceId,\n+        created.deployment.id,\n+        'deployment_enqueued'\n+      );\n+      const shouldRunPrecheck = !hasPrecheckPassed && !hasPrecheckFailed && !alreadyEnqueued;\n+\n+      if (hasPrecheckFailed) {\n+        return jsonResponse(\n+          {\n+            error: created.deployment.error?.message ?? 'Provider precheck previously failed',\n+            code: created.deployment.error?.code ?? 'provider_deploy_failed',\n+          },\n+          400\n+        );\n+      }\n+\n+      if (!shouldRunPrecheck) {\n+        // Precheck already passed/failed or deployment has already been enqueued.\n+      } else {\n+      try {\n+        const precheckChecks = await createWorkspaceDeployProvider(provider, env).precheck();\n+        const failed = precheckChecks.find((check) => !check.ok);\n+        if (failed) {\n+          await appendWorkspaceDeploymentEvent(env.DB, {\n+            workspaceId,\n+            deploymentId: created.deployment.id,\n+            eventType: 'deployment_provider_precheck_failed',\n+            payload: {\n+              code: failed.code,\n+              message: failed.details ?? 'Provider precheck failed',\n+            },\n+          });\n+          await updateWorkspaceDeploymentStatus(env.DB, created.deployment.id, 'failed', {\n+            workspaceId,\n+            errorCode: failed.code,\n+            errorMessage: failed.details ?? 'Provider precheck failed',\n+            finishedAt: new Date().toISOString(),\n+          });\n+          return jsonResponse(\n+            {\n+              error: failed.details ?? 'Provider precheck failed',\n+              code: failed.code,\n+            },\n+            400\n+          );\n+        }\n+        await appendWorkspaceDeploymentEvent(env.DB, {\n+          workspaceId,\n+          deploymentId: created.deployment.id,\n+          eventType: 'deployment_provider_precheck_passed',\n+          payload: {\n+            checks: precheckChecks,\n+          },\n+        });\n+      } catch (error) {\n+        const providerError = normalizeProviderError(error);\n+        await appendWorkspaceDeploymentEvent(env.DB, {\n+          workspaceId,\n+          deploymentId: created.deployment.id,\n+          eventType: 'deployment_provider_precheck_failed',\n+          payload: {\n+            code: providerError.code,\n+            message: providerError.message,\n+          },\n+        });\n+        await updateWorkspaceDeploymentStatus(env.DB, created.deployment.id, 'failed', {\n+          workspaceId,\n+          errorCode: providerError.code,\n+          errorMessage: providerError.message,\n+          finishedAt: new Date().toISOString(),\n+        });\n+        return jsonResponse({ error: providerError.message, code: providerError.code }, 400);\n+      }\n+    }\n+    }\n+\n+    const latestDeployment = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);\n+    const deploymentForQueue = latestDeployment ?? created.deployment;\n+\n+    if (deploymentForQueue.status === 'queued') {\n+      const hasEnqueuedEvent = await hasWorkspaceDeploymentEvent(\n+        env.DB,\n+        workspaceId,\n+        deploymentForQueue.id,\n         'deployment_enqueued'\n       );\n-      const shouldRecoverQueued = created.reused && created.deployment.error?.code === 'retry_scheduled';\n+      const shouldRecoverQueued = created.reused && deploymentForQueue.error?.code === 'retry_scheduled';\n       const hasRecoveredReenqueue = shouldRecoverQueued\n-        ? await hasWorkspaceDeploymentEvent(env.DB, workspaceId, created.deployment.id, 'deployment_reenqueue_recovered')\n+        ? await hasWorkspaceDeploymentEvent(env.DB, workspaceId, deploymentForQueue.id, 'deployment_reenqueue_recovered')\n         : false;\n \n       if (!hasEnqueuedEvent || (shouldRecoverQueued && !hasRecoveredReenqueue)) {\n         if (env.WORKSPACE_DEPLOYS_QUEUE) {\n           await env.WORKSPACE_DEPLOYS_QUEUE.send(\n-            createWorkspaceDeploymentQueueMessage(workspaceId, created.deployment.id)\n+            createWorkspaceDeploymentQueueMessage(workspaceId, deploymentForQueue.id)\n           );\n         } else if (ctx) {\n           ctx.waitUntil(\n-            runWorkspaceDeploymentInlineWithRetries(env, workspaceId, created.deployment.id, created.deployment.maxRetries + 1)\n+            runWorkspaceDeploymentInlineWithRetries(env, workspaceId, deploymentForQueue.id, deploymentForQueue.maxRetries + 1)\n           );\n         }\n \n         await appendWorkspaceDeploymentEvent(env.DB, {\n           workspaceId,\n-          deploymentId: created.deployment.id,\n+          deploymentId: deploymentForQueue.id,\n           eventType: 'deployment_enqueued',\n           payload: {\n             mode: env.WORKSPACE_DEPLOYS_QUEUE ? 'queue' : 'inline',\n@@ -331,7 +486,7 @@ export async function handleCreateWorkspaceDeployment(\n         if (shouldRecoverQueued && !hasRecoveredReenqueue) {\n           await appendWorkspaceDeploymentEvent(env.DB, {\n             workspaceId,\n-            deploymentId: created.deployment.id,\n+            deploymentId: deploymentForQueue.id,\n             eventType: 'deployment_reenqueue_recovered',\n             payload: {\n               reason: 'retry_scheduled_replay',\n@@ -341,7 +496,7 @@ export async function handleCreateWorkspaceDeployment(\n       }\n     }\n \n-    return jsonResponse({ deployment: created.deployment }, created.reused ? 200 : 202);\n+    return jsonResponse({ deployment: deploymentForQueue }, created.reused ? 200 : 202);\n   } catch (error) {\n     if (error instanceof WorkspaceDeploymentIdempotencyConflictError) {\n       return jsonResponse(\n@@ -399,6 +554,48 @@ export async function handleWorkspaceDeploymentPreflight(\n     payload.autoFix && typeof payload.autoFix === 'object' && !Array.isArray(payload.autoFix)\n       ? (payload.autoFix as Record<string, unknown>)\n       : {};\n+  const deploy =\n+    payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)\n+      ? (payload.deploy as Record<string, unknown>)\n+      : {};\n+  const providerInput = typeof payload.provider === 'string' ? payload.provider.trim() : '';\n+  if (providerInput && providerInput !== 'simulated' && providerInput !== 'cloudflare_workers_assets') {\n+    return jsonResponse(\n+      {\n+        preflight: {\n+          ok: false,\n+          toolchain: null,\n+          checks: [{ code: 'unsupported_deploy_provider', ok: false, details: `Unsupported provider: ${providerInput}` }],\n+          remediations: [],\n+        },\n+        nextAction: 'Use provider=cloudflare_workers_assets or provider=simulated.',\n+      },\n+      200\n+    );\n+  }\n+  const provider = getWorkspaceDeployProviderName(providerInput || undefined, env);\n+  const outputDir = parseDeployOutputDir(deploy.outputDir);\n+\n+  if (provider === 'cloudflare_workers_assets' && (!outputDir || !isSafeRelativeOutputDir(outputDir))) {\n+    return jsonResponse(\n+      {\n+        preflight: {\n+          ok: false,\n+          toolchain: null,\n+          checks: [\n+            {\n+              code: 'provider_invalid_output_dir',\n+              ok: false,\n+              details: 'deploy.outputDir is required and must be a safe relative directory',\n+            },\n+          ],\n+          remediations: [],\n+        },\n+        nextAction: 'Set deploy.outputDir to your static build output directory and retry preflight.',\n+      },\n+      200\n+    );\n+  }\n   const runBuildIfPresent = parseBoolean(validation.runBuildIfPresent, true);\n   const runTestsIfPresent = parseBoolean(validation.runTestsIfPresent, true);\n   const rehydrateBaseline = parseBoolean(autoFix.rehydrateBaseline, false);\n@@ -410,7 +607,21 @@ export async function handleWorkspaceDeploymentPreflight(\n       runTestsIfPresent,\n       rehydrateBaseline,\n       bootstrapToolchain,\n+      provider,\n+      outputDir,\n     });\n+\n+    if (provider === 'cloudflare_workers_assets') {\n+      try {\n+        const providerChecks = await createWorkspaceDeployProvider(provider, env).precheck();\n+        preflight.checks.push(...providerChecks);\n+      } catch (error) {\n+        const providerError = normalizeProviderError(error);\n+        preflight.checks.push({ code: providerError.code, ok: false, details: providerError.message });\n+      }\n+      preflight.ok = preflight.checks.every((check) => check.ok);\n+    }\n+\n     const failedCheck = preflight.checks.find((check) => !check.ok);\n     const nextAction = failedCheck\n       ? failedCheck.code === 'validation_tooling'\n@@ -425,6 +636,16 @@ export async function handleWorkspaceDeploymentPreflight(\n                 ? 'Enable auto-fix bootstrap or use a sandbox image with corepack support.'\n                 : failedCheck.code === 'project_root'\n                   ? 'Set workspace source project root to a safe relative path and retry preflight.'\n+                  : failedCheck.code === 'provider_invalid_output_dir'\n+                    ? 'Set deploy.outputDir to a valid static build output directory and retry preflight.'\n+                    : failedCheck.code === 'provider_auth_failed'\n+                      ? 'Verify Cloudflare account credentials in worker env and retry preflight.'\n+                      : failedCheck.code === 'provider_scope_missing'\n+                        ? 'Grant required Cloudflare token scopes and retry preflight.'\n+                        : failedCheck.code === 'provider_project_not_found'\n+                          ? 'Set WORKSPACE_DEPLOY_PROJECT_NAME to a valid Workers project and retry preflight.'\n+                          : failedCheck.code === 'provider_rate_limited'\n+                            ? 'Wait for provider rate limits to reset and retry preflight.'\n             : null\n       : null;\n     return jsonResponse({ preflight, nextAction });\n",
+              "exit": 0,
+              "description": "Shows unstaged changes for deployment API file",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773072999877,
+              "end": 1773073000545
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_033006200d5948af0169aef267bbcc81999ea299ab73384d85"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_s00yzwtRQ6iJvycMRd2usEjI",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff --cached -- packages/worker/src/api/workspace-deployments.ts",
+              "workdir": "/Users/nickdejesus/Code/nimbus",
+              "description": "Shows staged changes for deployment API file"
+            },
+            "output": "",
+            "title": "Shows staged changes for deployment API file",
+            "metadata": {
+              "output": "",
+              "exit": 0,
+              "description": "Shows staged changes for deployment API file",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773072999879,
+              "end": 1773073000546
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_033006200d5948af0169aef267bbd48199b6896700b9190c3f"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.0178108,
+          "tokens": {
+            "total": 13839,
+            "input": 7616,
+            "output": 207,
+            "reasoning": 38,
+            "cache": {
+              "read": 6016,
+              "write": 0
+            }
+          },
+          "id": "prt_cd362e863001I76yHP27yJ4K5b",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073000649,
+          "completed": 1773073017233
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.05035975,
+        "tokens": {
+          "total": 18536,
+          "input": 17817,
+          "output": 719,
+          "reasoning": 651,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "REDACTED",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Analyzing deployment precheck race conditions**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_00cea593830fea600169aef269a0608198bb836fd1be89d2ed",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773073001663,
+            "end": 1773073016479
+          },
+          "id": "prt_cd362ecbf001CzMa3S7USferXc",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "function appendWorkspaceDeploymentEvent|export async function appendWorkspaceDeploymentEvent|hasWorkspaceDeploymentEvent|updateWorkspaceDeploymentStatus|createWorkspaceDeployment\\(",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts"
+            },
+            "output": "Found 4 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts:\n  Line 1857: export async function createWorkspaceDeployment(\n  Line 2103: export async function updateWorkspaceDeploymentStatus(\n  Line 2294: export async function appendWorkspaceDeploymentEvent(\n  Line 2361: export async function hasWorkspaceDeploymentEvent(",
+            "title": "function appendWorkspaceDeploymentEvent|export async function appendWorkspaceDeploymentEvent|hasWorkspaceDeploymentEvent|updateWorkspaceDeploymentStatus|createWorkspaceDeployment\\(",
+            "metadata": {
+              "matches": 4,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773073017049,
+              "end": 1773073017062
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_00cea593830fea600169aef2786e0c8198b734cd7eaec07aac"
+            }
+          },
+          "id": "prt_cd36326a1001GQd42Kw2i4bnBO",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.05035975,
+          "tokens": {
+            "total": 18536,
+            "input": 17817,
+            "output": 719,
+            "reasoning": 651,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_cd363291e0013bY9o6jwDqJtiI",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073017234,
+          "completed": 1773073020247
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0116403,
+        "tokens": {
+          "total": 18670,
+          "input": 4930,
+          "output": 44,
+          "reasoning": 0,
+          "cache": {
+            "read": 13696,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd3632c4c001GUCCLq8hmE9WQW",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_5wipvxEfzs2MIQfV7J6IvlpU",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts",
+              "offset": 1850,
+              "limit": 620
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts</path>\n<type>file</type>\n<content>1850:     )\n1851:     .bind(workspaceId, taskId, eventType)\n1852:     .first<{ '1': number }>();\n1853: \n1854:   return Boolean(record);\n1855: }\n1856: \n1857: export async function createWorkspaceDeployment(\n1858:   db: D1Database,\n1859:   input: CreateWorkspaceDeploymentInput\n1860: ): Promise<{ deployment: WorkspaceDeploymentResponse; reused: boolean }> {\n1861:   const now = new Date().toISOString();\n1862:   const existingIdempotency = await db\n1863:     .prepare(\n1864:       `SELECT deployment_id, request_payload_sha256, expires_at\n1865:        FROM workspace_deployment_idempotency\n1866:        WHERE workspace_id = ? AND idempotency_key = ?\n1867:        LIMIT 1`\n1868:     )\n1869:     .bind(input.workspaceId, input.idempotencyKey)\n1870:     .first<{ deployment_id: string; request_payload_sha256: string; expires_at: string }>();\n1871: \n1872:   if (existingIdempotency && existingIdempotency.expires_at > now) {\n1873:     if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {\n1874:       throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);\n1875:     }\n1876: \n1877:     const existingDeployment = await getWorkspaceDeployment(db, input.workspaceId, existingIdempotency.deployment_id);\n1878:     if (!existingDeployment) {\n1879:       throw new Error(`Idempotency record references missing deployment ${existingIdempotency.deployment_id}`);\n1880:     }\n1881: \n1882:     return { deployment: existingDeployment, reused: true };\n1883:   }\n1884: \n1885:   if (existingIdempotency && existingIdempotency.expires_at <= now) {\n1886:     await db\n1887:       .prepare('DELETE FROM workspace_deployment_idempotency WHERE workspace_id = ? AND idempotency_key = ?')\n1888:       .bind(input.workspaceId, input.idempotencyKey)\n1889:       .run();\n1890:   }\n1891: \n1892:   const idempotencyWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();\n1893:   const existingDeploymentByKey = await db\n1894:     .prepare(\n1895:       `SELECT *\n1896:        FROM workspace_deployments\n1897:        WHERE workspace_id = ?\n1898:          AND idempotency_key = ?\n1899:          AND julianday(created_at) >= julianday(?)\n1900:        ORDER BY created_at DESC\n1901:        LIMIT 1`\n1902:     )\n1903:     .bind(input.workspaceId, input.idempotencyKey, idempotencyWindowStart)\n1904:     .first<WorkspaceDeploymentRecord>();\n1905: \n1906:   if (existingDeploymentByKey) {\n1907:     if (existingDeploymentByKey.request_payload_sha256 !== input.requestPayloadSha256) {\n1908:       throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);\n1909:     }\n1910: \n1911:     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();\n1912:     try {\n1913:       await db\n1914:         .prepare(\n1915:           `INSERT INTO workspace_deployment_idempotency (\n1916:              id,\n1917:              workspace_id,\n1918:              idempotency_key,\n1919:              deployment_id,\n1920:              request_payload_sha256,\n1921:              expires_at\n1922:            )\n1923:            VALUES (?, ?, ?, ?, ?, ?)`\n1924:         )\n1925:         .bind(\n1926:           generatePrefixedId('wdep'),\n1927:           input.workspaceId,\n1928:           input.idempotencyKey,\n1929:           existingDeploymentByKey.id,\n1930:           input.requestPayloadSha256,\n1931:           expiresAt\n1932:         )\n1933:         .run();\n1934:     } catch (error) {\n1935:       if (!isUniqueConstraintError(error)) {\n1936:         throw error;\n1937:       }\n1938:     }\n1939: \n1940:     return { deployment: toWorkspaceDeploymentResponse(existingDeploymentByKey), reused: true };\n1941:   }\n1942: \n1943:   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();\n1944:   const deploymentRecord = await db\n1945:     .prepare(\n1946:       `INSERT INTO workspace_deployments (\n1947:          id,\n1948:          workspace_id,\n1949:          status,\n1950:          provider,\n1951:          idempotency_key,\n1952:          request_payload_json,\n1953:          request_payload_sha256,\n1954:          max_retries,\n1955:          provenance_json,\n1956:          created_at,\n1957:          updated_at\n1958:        )\n1959:        VALUES (?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?, ?)\n1960:        RETURNING *`\n1961:     )\n1962:     .bind(\n1963:       input.id,\n1964:       input.workspaceId,\n1965:       input.provider,\n1966:       input.idempotencyKey,\n1967:       JSON.stringify(input.requestPayload ?? {}),\n1968:       input.requestPayloadSha256,\n1969:       input.maxRetries,\n1970:       JSON.stringify(input.provenance ?? {}),\n1971:       now,\n1972:       now\n1973:     )\n1974:     .first<WorkspaceDeploymentRecord>();\n1975: \n1976:   if (!deploymentRecord) {\n1977:     throw new Error('Failed to create workspace deployment');\n1978:   }\n1979: \n1980:   try {\n1981:     await db\n1982:       .prepare(\n1983:         `INSERT INTO workspace_deployment_idempotency (\n1984:            id,\n1985:            workspace_id,\n1986:            idempotency_key,\n1987:            deployment_id,\n1988:            request_payload_sha256,\n1989:            expires_at\n1990:          )\n1991:          VALUES (?, ?, ?, ?, ?, ?)`\n1992:       )\n1993:       .bind(\n1994:         generatePrefixedId('wdep'),\n1995:         input.workspaceId,\n1996:         input.idempotencyKey,\n1997:         input.id,\n1998:         input.requestPayloadSha256,\n1999:         expiresAt\n2000:       )\n2001:       .run();\n2002:   } catch (error) {\n2003:     if (!isUniqueConstraintError(error)) {\n2004:       await db.prepare('DELETE FROM workspace_deployments WHERE id = ?').bind(input.id).run();\n2005:       throw error;\n2006:     }\n2007: \n2008:     const concurrent = await db\n2009:       .prepare(\n2010:         `SELECT deployment_id, request_payload_sha256, expires_at\n2011:          FROM workspace_deployment_idempotency\n2012:          WHERE workspace_id = ? AND idempotency_key = ?\n2013:          LIMIT 1`\n2014:       )\n2015:       .bind(input.workspaceId, input.idempotencyKey)\n2016:       .first<{ deployment_id: string; request_payload_sha256: string; expires_at: string }>();\n2017: \n2018:     if (!concurrent || concurrent.expires_at <= now) {\n2019:       await db.prepare('DELETE FROM workspace_deployments WHERE id = ?').bind(input.id).run();\n2020:       throw new Error('Deployment idempotency race detected but winner record is unavailable');\n2021:     }\n2022: \n2023:     if (concurrent.request_payload_sha256 !== input.requestPayloadSha256) {\n2024:       await db.prepare('DELETE FROM workspace_deployments WHERE id = ?').bind(input.id).run();\n2025:       throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);\n2026:     }\n2027: \n2028:     const existingDeployment = await getWorkspaceDeployment(db, input.workspaceId, concurrent.deployment_id);\n2029:     if (!existingDeployment) {\n2030:       await db.prepare('DELETE FROM workspace_deployments WHERE id = ?').bind(input.id).run();\n2031:       throw new Error(`Idempotency record references missing deployment ${concurrent.deployment_id}`);\n2032:     }\n2033: \n2034:     await db.prepare('DELETE FROM workspace_deployments WHERE id = ?').bind(input.id).run();\n2035:     return { deployment: existingDeployment, reused: true };\n2036:   }\n2037: \n2038:   return { deployment: toWorkspaceDeploymentResponse(deploymentRecord), reused: false };\n2039: }\n2040: \n2041: export async function getWorkspaceDeployment(\n2042:   db: D1Database,\n2043:   workspaceId: string,\n2044:   deploymentId: string\n2045: ): Promise<WorkspaceDeploymentResponse | null> {\n2046:   const record = await db\n2047:     .prepare('SELECT * FROM workspace_deployments WHERE id = ? AND workspace_id = ?')\n2048:     .bind(deploymentId, workspaceId)\n2049:     .first<WorkspaceDeploymentRecord>();\n2050: \n2051:   if (!record) {\n2052:     return null;\n2053:   }\n2054: \n2055:   return toWorkspaceDeploymentResponse(record);\n2056: }\n2057: \n2058: export async function getWorkspaceDeploymentRequestPayload(\n2059:   db: D1Database,\n2060:   deploymentId: string\n2061: ): Promise<Record<string, unknown> | null> {\n2062:   const record = await db\n2063:     .prepare('SELECT request_payload_json FROM workspace_deployments WHERE id = ?')\n2064:     .bind(deploymentId)\n2065:     .first<{ request_payload_json: string }>();\n2066: \n2067:   if (!record) {\n2068:     return null;\n2069:   }\n2070: \n2071:   try {\n2072:     const parsed = JSON.parse(record.request_payload_json) as unknown;\n2073:     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {\n2074:       return {};\n2075:     }\n2076:     return parsed as Record<string, unknown>;\n2077:   } catch {\n2078:     return {};\n2079:   }\n2080: }\n2081: \n2082: export async function claimWorkspaceDeploymentForExecution(\n2083:   db: D1Database,\n2084:   workspaceId: string,\n2085:   deploymentId: string\n2086: ): Promise<boolean> {\n2087:   const now = new Date().toISOString();\n2088:   const result = await db\n2089:     .prepare(\n2090:       `UPDATE workspace_deployments\n2091:        SET status = 'running',\n2092:            started_at = COALESCE(started_at, ?),\n2093:            attempt_count = attempt_count + 1,\n2094:            updated_at = ?\n2095:        WHERE id = ? AND workspace_id = ? AND status = 'queued' AND cancel_requested_at IS NULL`\n2096:     )\n2097:     .bind(now, now, deploymentId, workspaceId)\n2098:     .run();\n2099: \n2100:   return (result.meta?.changes ?? 0) > 0;\n2101: }\n2102: \n2103: export async function updateWorkspaceDeploymentStatus(\n2104:   db: D1Database,\n2105:   deploymentId: string,\n2106:   status: WorkspaceDeploymentStatus,\n2107:   options?: {\n2108:     workspaceId?: string;\n2109:     result?: unknown;\n2110:     toolchain?: WorkspaceToolchainProfile | null;\n2111:     dependencyCacheKey?: string | null;\n2112:     dependencyCacheHit?: boolean;\n2113:     remediations?: WorkspaceDeploymentRemediation[];\n2114:     errorCode?: string | null;\n2115:     errorMessage?: string | null;\n2116:     sourceSnapshotSha256?: string | null;\n2117:     sourceBundleKey?: string | null;\n2118:     deployedUrl?: string | null;\n2119:     providerDeploymentId?: string | null;\n2120:     startedAt?: string | null;\n2121:     finishedAt?: string | null;\n2122:   }\n2123: ): Promise<void> {\n2124:   const updates: string[] = ['status = ?', 'updated_at = ?'];\n2125:   const values: Array<string | number | null> = [status, new Date().toISOString()];\n2126:   let explicitFinishedAt: string | null | undefined;\n2127: \n2128:   if (options?.startedAt !== undefined) {\n2129:     updates.push('started_at = ?');\n2130:     values.push(options.startedAt);\n2131:   }\n2132:   if (options?.finishedAt !== undefined) {\n2133:     updates.push('finished_at = ?');\n2134:     values.push(options.finishedAt);\n2135:     explicitFinishedAt = options.finishedAt;\n2136:   }\n2137:   if (options?.result !== undefined) {\n2138:     updates.push('result_json = ?');\n2139:     values.push(JSON.stringify(options.result));\n2140:   }\n2141:   if (options?.toolchain !== undefined) {\n2142:     updates.push('toolchain_json = ?');\n2143:     values.push(options.toolchain ? JSON.stringify(options.toolchain) : null);\n2144:   }\n2145:   if (options?.dependencyCacheKey !== undefined) {\n2146:     updates.push('dependency_cache_key = ?');\n2147:     values.push(options.dependencyCacheKey);\n2148:   }\n2149:   if (options?.dependencyCacheHit !== undefined) {\n2150:     updates.push('dependency_cache_hit = ?');\n2151:     values.push(options.dependencyCacheHit ? 1 : 0);\n2152:   }\n2153:   if (options?.remediations !== undefined) {\n2154:     updates.push('remediations_json = ?');\n2155:     values.push(JSON.stringify(options.remediations));\n2156:   }\n2157:   if (options?.errorCode !== undefined) {\n2158:     updates.push('error_code = ?');\n2159:     values.push(options.errorCode);\n2160:   }\n2161:   if (options?.errorMessage !== undefined) {\n2162:     updates.push('error_message = ?');\n2163:     values.push(options.errorMessage);\n2164:   }\n2165:   if (options?.sourceSnapshotSha256 !== undefined) {\n2166:     updates.push('source_snapshot_sha256 = ?');\n2167:     values.push(options.sourceSnapshotSha256);\n2168:   }\n2169:   if (options?.sourceBundleKey !== undefined) {\n2170:     updates.push('source_bundle_key = ?');\n2171:     values.push(options.sourceBundleKey);\n2172:   }\n2173:   if (options?.deployedUrl !== undefined) {\n2174:     updates.push('deployed_url = ?');\n2175:     values.push(options.deployedUrl);\n2176:   }\n2177:   if (options?.providerDeploymentId !== undefined) {\n2178:     updates.push('provider_deployment_id = ?');\n2179:     values.push(options.providerDeploymentId);\n2180:   }\n2181: \n2182:   if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {\n2183:     const finishedAtForDuration =\n2184:       explicitFinishedAt && typeof explicitFinishedAt === 'string' ? explicitFinishedAt : new Date().toISOString();\n2185:     if (explicitFinishedAt === undefined) {\n2186:       updates.push('finished_at = COALESCE(finished_at, ?)');\n2187:       values.push(finishedAtForDuration);\n2188:     }\n2189:     updates.push('duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END');\n2190:     values.push(finishedAtForDuration);\n2191:   }\n2192: \n2193:   values.push(deploymentId);\n2194:   let whereClause = 'id = ?';\n2195:   if (options?.workspaceId) {\n2196:     whereClause += ' AND workspace_id = ?';\n2197:     values.push(options.workspaceId);\n2198:   }\n2199: \n2200:   await db\n2201:     .prepare(`UPDATE workspace_deployments SET ${updates.join(', ')} WHERE ${whereClause}`)\n2202:     .bind(...values)\n2203:     .run();\n2204: }\n2205: \n2206: export async function markWorkspaceDeploymentSucceededIfNotCancelled(\n2207:   db: D1Database,\n2208:   input: {\n2209:     workspaceId: string;\n2210:     deploymentId: string;\n2211:     sourceSnapshotSha256: string;\n2212:     sourceBundleKey: string;\n2213:     deployedUrl: string;\n2214:     providerDeploymentId: string;\n2215:     result: unknown;\n2216:     finishedAt: string;\n2217:   }\n2218: ): Promise<boolean> {\n2219:   const updatedAt = new Date().toISOString();\n2220:   const result = await db\n2221:     .prepare(\n2222:       `UPDATE workspace_deployments\n2223:        SET status = 'succeeded',\n2224:            source_snapshot_sha256 = ?,\n2225:            source_bundle_key = ?,\n2226:            deployed_url = ?,\n2227:            provider_deployment_id = ?,\n2228:            result_json = ?,\n2229:            error_code = NULL,\n2230:            error_message = NULL,\n2231:            finished_at = ?,\n2232:            duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,\n2233:            updated_at = ?\n2234:        WHERE id = ?\n2235:          AND workspace_id = ?\n2236:          AND status = 'running'\n2237:          AND cancel_requested_at IS NULL`\n2238:     )\n2239:     .bind(\n2240:       input.sourceSnapshotSha256,\n2241:       input.sourceBundleKey,\n2242:       input.deployedUrl,\n2243:       input.providerDeploymentId,\n2244:       JSON.stringify(input.result),\n2245:       input.finishedAt,\n2246:       input.finishedAt,\n2247:       updatedAt,\n2248:       input.deploymentId,\n2249:       input.workspaceId\n2250:     )\n2251:     .run();\n2252: \n2253:   return (result.meta?.changes ?? 0) > 0;\n2254: }\n2255: \n2256: export async function requestWorkspaceDeploymentCancel(\n2257:   db: D1Database,\n2258:   workspaceId: string,\n2259:   deploymentId: string\n2260: ): Promise<{ deployment: WorkspaceDeploymentResponse | null; updated: boolean }> {\n2261:   const now = new Date().toISOString();\n2262:   const queuedResult = await db\n2263:     .prepare(\n2264:       `UPDATE workspace_deployments\n2265:        SET status = 'cancelled',\n2266:            cancel_requested_at = COALESCE(cancel_requested_at, ?),\n2267:            finished_at = COALESCE(finished_at, ?),\n2268:            error_code = NULL,\n2269:            error_message = NULL,\n2270:            updated_at = ?\n2271:        WHERE id = ? AND workspace_id = ? AND status = 'queued'`\n2272:     )\n2273:     .bind(now, now, now, deploymentId, workspaceId)\n2274:     .run();\n2275: \n2276:   const runningResult = await db\n2277:     .prepare(\n2278:       `UPDATE workspace_deployments\n2279:        SET cancel_requested_at = COALESCE(cancel_requested_at, ?),\n2280:            updated_at = ?\n2281:        WHERE id = ? AND workspace_id = ? AND status = 'running' AND cancel_requested_at IS NULL`\n2282:     )\n2283:     .bind(now, now, deploymentId, workspaceId)\n2284:     .run();\n2285: \n2286:   const deployment = await getWorkspaceDeployment(db, workspaceId, deploymentId);\n2287: \n2288:   return {\n2289:     deployment,\n2290:     updated: (queuedResult.meta?.changes ?? 0) > 0 || (runningResult.meta?.changes ?? 0) > 0,\n2291:   };\n2292: }\n2293: \n2294: export async function appendWorkspaceDeploymentEvent(\n2295:   db: D1Database,\n2296:   input: {\n2297:     workspaceId: string;\n2298:     deploymentId: string;\n2299:     eventType: string;\n2300:     payload: unknown;\n2301:   }\n2302: ): Promise<number> {\n2303:   const seqResult = await db\n2304:     .prepare(\n2305:       'UPDATE workspace_deployments SET last_event_seq = last_event_seq + 1 WHERE id = ? AND workspace_id = ? RETURNING last_event_seq'\n2306:     )\n2307:     .bind(input.deploymentId, input.workspaceId)\n2308:     .first<{ last_event_seq: number }>();\n2309: \n2310:   if (!seqResult) {\n2311:     throw new Error(`Failed to allocate event sequence for workspace deployment ${input.deploymentId}`);\n2312:   }\n2313: \n2314:   const seq = Number(seqResult.last_event_seq);\n2315:   await db\n2316:     .prepare(\n2317:       `INSERT INTO workspace_deployment_events (workspace_id, deployment_id, seq, event_type, payload_json)\n2318:        VALUES (?, ?, ?, ?, ?)`\n2319:     )\n2320:     .bind(input.workspaceId, input.deploymentId, seq, input.eventType, JSON.stringify(input.payload))\n2321:     .run();\n2322: \n2323:   return seq;\n2324: }\n2325: \n2326: export async function listWorkspaceDeploymentEvents(\n2327:   db: D1Database,\n2328:   workspaceId: string,\n2329:   deploymentId: string,\n2330:   fromExclusive = 0,\n2331:   limit = 500\n2332: ): Promise<WorkspaceDeploymentEventItem[]> {\n2333:   const result = await db\n2334:     .prepare(\n2335:       `SELECT seq, event_type, payload_json, created_at\n2336:        FROM workspace_deployment_events\n2337:        WHERE workspace_id = ? AND deployment_id = ? AND seq > ?\n2338:        ORDER BY seq ASC\n2339:        LIMIT ?`\n2340:     )\n2341:     .bind(workspaceId, deploymentId, fromExclusive, limit)\n2342:     .all<WorkspaceDeploymentEventRecord>();\n2343: \n2344:   return result.results.map((row) => {\n2345:     let payload: unknown;\n2346:     try {\n2347:       payload = JSON.parse(row.payload_json);\n2348:     } catch {\n2349:       payload = { raw: row.payload_json };\n2350:     }\n2351: \n2352:     return {\n2353:       seq: row.seq,\n2354:       eventType: row.event_type,\n2355:       payload,\n2356:       createdAt: row.created_at,\n2357:     };\n2358:   });\n2359: }\n2360: \n2361: export async function hasWorkspaceDeploymentEvent(\n2362:   db: D1Database,\n2363:   workspaceId: string,\n2364:   deploymentId: string,\n2365:   eventType: string\n2366: ): Promise<boolean> {\n2367:   const record = await db\n2368:     .prepare(\n2369:       `SELECT 1\n2370:        FROM workspace_deployment_events\n2371:        WHERE workspace_id = ? AND deployment_id = ? AND event_type = ?\n2372:        LIMIT 1`\n2373:     )\n2374:     .bind(workspaceId, deploymentId, eventType)\n2375:     .first<{ '1': number }>();\n2376: \n2377:   return Boolean(record);\n2378: }\n2379: \n2380: export async function getLatestSuccessfulWorkspaceDeployment(\n2381:   db: D1Database,\n2382:   workspaceId: string\n2383: ): Promise<WorkspaceDeploymentResponse | null> {\n2384:   const record = await db\n2385:     .prepare(\n2386:       `SELECT *\n2387:        FROM workspace_deployments\n2388:        WHERE workspace_id = ? AND status = 'succeeded'\n2389:        ORDER BY julianday(created_at) DESC, rowid DESC\n2390:        LIMIT 1`\n2391:     )\n2392:     .bind(workspaceId)\n2393:     .first<WorkspaceDeploymentRecord>();\n2394: \n2395:   if (!record) {\n2396:     return null;\n2397:   }\n2398: \n2399:   return toWorkspaceDeploymentResponse(record);\n2400: }\n2401: \n2402: export async function getWorkspaceDependencyCache(\n2403:   db: D1Database,\n2404:   workspaceId: string,\n2405:   cacheKey: string\n2406: ): Promise<WorkspaceDependencyCacheResponse | null> {\n2407:   const record = await db\n2408:     .prepare(\n2409:       `SELECT *\n2410:        FROM workspace_dependency_caches\n2411:        WHERE workspace_id = ? AND cache_key = ?\n2412:        LIMIT 1`\n2413:     )\n2414:     .bind(workspaceId, cacheKey)\n2415:     .first<WorkspaceDependencyCacheRecord>();\n2416: \n2417:   if (!record) {\n2418:     return null;\n2419:   }\n2420: \n2421:   const now = new Date().toISOString();\n2422:   await db\n2423:     .prepare(\n2424:       `UPDATE workspace_dependency_caches\n2425:        SET last_used_at = ?,\n2426:            updated_at = ?\n2427:        WHERE workspace_id = ? AND cache_key = ?`\n2428:     )\n2429:     .bind(now, now, workspaceId, cacheKey)\n2430:     .run();\n2431: \n2432:   return toWorkspaceDependencyCacheResponse({\n2433:     ...record,\n2434:     last_used_at: now,\n2435:     updated_at: now,\n2436:   });\n2437: }\n2438: \n2439: export async function upsertWorkspaceDependencyCache(\n2440:   db: D1Database,\n2441:   input: {\n2442:     id: string;\n2443:     workspaceId: string;\n2444:     cacheKey: string;\n2445:     manager: WorkspacePackageManager;\n2446:     managerVersion: string | null;\n2447:     projectRoot: string;\n2448:     lockfileName: string | null;\n2449:     lockfileSha256: string | null;\n2450:     artifactKey: string;\n2451:     artifactSha256: string;\n2452:     artifactBytes: number;\n2453:   }\n2454: ): Promise<void> {\n2455:   const now = new Date().toISOString();\n2456:   await db\n2457:     .prepare(\n2458:       `INSERT INTO workspace_dependency_caches (\n2459:          id,\n2460:          workspace_id,\n2461:          cache_key,\n2462:          manager,\n2463:          manager_version,\n2464:          project_root,\n2465:          lockfile_name,\n2466:          lockfile_sha256,\n2467:          artifact_key,\n2468:          artifact_sha256,\n2469:          artifact_bytes,\n\n(Showing lines 1850-2469 of 2570. Use offset=2470 to continue.)\n</content>",
+            "title": "packages/worker/src/lib/db.ts",
+            "metadata": {
+              "preview": "    )\n    .bind(workspaceId, taskId, eventType)\n    .first<{ '1': number }>();\n\n  return Boolean(record);\n}\n\nexport async function createWorkspaceDeployment(\n  db: D1Database,\n  input: CreateWorkspaceDeploymentInput\n): Promise<{ deployment: WorkspaceDeploymentResponse; reused: boolean }> {\n  const now = new Date().toISOString();\n  const existingIdempotency = await db\n    .prepare(\n      `SELECT deployment_id, request_payload_sha256, expires_at\n       FROM workspace_deployment_idempotency\n       WHERE workspace_id = ? AND idempotency_key = ?\n       LIMIT 1`\n    )\n    .bind(input.workspaceId, input.idempotencyKey)",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773073020070,
+              "end": 1773073020073
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0f49870379a4e9d40169aef27b71088195bff2d21b06934ee6"
+            }
+          },
+          "id": "prt_cd363324f001zx1HQkO1RiuMMe",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.0116403,
+          "tokens": {
+            "total": 18670,
+            "input": 4930,
+            "output": 44,
+            "reasoning": 0,
+            "cache": {
+              "read": 13696,
+              "write": 0
+            }
+          },
+          "id": "prt_cd36334ee001qO60FuyOhkUYZ8",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073020248,
+          "completed": 1773073022317
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01619625,
+        "tokens": {
+          "total": 25092,
+          "input": 6439,
+          "output": 93,
+          "reasoning": 27,
+          "cache": {
+            "read": 18560,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd363355800174F8Ehzil0RV1m",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd36337b10013FyqXUPK4B49KT",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd363355800174F8Ehzil0RV1m"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Flagging event race conditions**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0ec65270e626040e0169aef27cd8548198b6a76f003792c470",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773073020884,
+            "end": 1773073021805
+          },
+          "id": "prt_cd36337d4001swsQMNKFb3H2um",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd363355800174F8Ehzil0RV1m"
+        },
+        {
+          "type": "tool",
+          "callID": "call_WNrCtxMxYTrNHwLH5OkJVgPk",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "precheck|reenqueue|stale|retry_scheduled|deployment_enqueued|cloudflare_workers_assets",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.test.ts"
+            },
+            "output": "Found 6 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.test.ts:\n  Line 38:     deploymentErrorCode: options?.reuseRetryScheduled ? 'retry_scheduled' : null,\n  Line 39:     eventTypes: options?.reuseRetryScheduled ? new Set<string>(['deployment_enqueued']) : new Set<string>(),\n  Line 386:       body: JSON.stringify({ provider: 'cloudflare_workers_assets' }),\n  Line 422:       throw new Error('precheck should not run for reused deployment');\n  Line 432:         body: JSON.stringify({ provider: 'cloudflare_workers_assets', deploy: { outputDir: 'dist' } }),\n  Line 487:       body: JSON.stringify({ provider: 'cloudflare_workers_assets' }),",
+            "title": "precheck|reenqueue|stale|retry_scheduled|deployment_enqueued|cloudflare_workers_assets",
+            "metadata": {
+              "matches": 6,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773073022135,
+              "end": 1773073022141
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0ec65270e626040e0169aef27dc2cc81989b0b36063ef1ae9c"
+            }
+          },
+          "id": "prt_cd3633b6e00183csA02OnmlM4z",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd363355800174F8Ehzil0RV1m"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.01619625,
+          "tokens": {
+            "total": 25092,
+            "input": 6439,
+            "output": 93,
+            "reasoning": 27,
+            "cache": {
+              "read": 18560,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3633d0a00161p6zs98nqwwrN",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd363355800174F8Ehzil0RV1m"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073022318,
+          "completed": 1773073023743
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0158711,
+        "tokens": {
+          "total": 25322,
+          "input": 6842,
+          "output": 48,
+          "reasoning": 0,
+          "cache": {
+            "read": 18432,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3633d6e0014n2BFKIvxOGlxz",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd3633fe5001T6JiQ4q62oXeUm",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3633d6e0014n2BFKIvxOGlxz"
+        },
+        {
+          "type": "tool",
+          "callID": "call_pwdjBfK6dvSXdnbw74xZi6t6",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.test.ts",
+              "offset": 330,
+              "limit": 240
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.test.ts</path>\n<type>file</type>\n<content>330:   return { env, state };\n331: }\n332: \n333: export async function runWorkspaceDeploymentApiTests(): Promise<void> {\n334:   setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n335:     async exec(command: string) {\n336:       if (command.includes('git rev-parse --verify HEAD')) {\n337:         return { stdout: '', stderr: '', exitCode: 0 };\n338:       }\n339:       if (command.includes('nimbus_detect_scripts')) {\n340:         return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };\n341:       }\n342:       if (command.includes('nimbus_detect_toolchain')) {\n343:         return {\n344:           stdout: JSON.stringify({\n345:             packageManager: 'npm@10.8.2',\n346:             scripts: {},\n347:             lockfiles: { pnpm: null, yarn: null, npm: null },\n348:             projectRoot: '.',\n349:           }),\n350:           stderr: '',\n351:           exitCode: 0,\n352:         };\n353:       }\n354:       if (command.includes('nimbus_detect_secrets')) {\n355:         return { stdout: '[]', stderr: '', exitCode: 0 };\n356:       }\n357:       if (command.includes('command -v npm')) {\n358:         return { stdout: '/usr/bin/npm\\n', stderr: '', exitCode: 0 };\n359:       }\n360:       return { stdout: '', stderr: '', exitCode: 0 };\n361:     },\n362:   }));\n363: \n364:   let waitUntilCalls = 0;\n365:   const ctx = {\n366:     waitUntil() {\n367:       waitUntilCalls += 1;\n368:     },\n369:   } as unknown as ExecutionContext;\n370: \n371:   {\n372:     const { env } = createWorkspaceDeploymentApiEnv();\n373:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {\n374:       method: 'POST',\n375:       body: JSON.stringify({ provider: 'simulated' }),\n376:       headers: { 'Content-Type': 'application/json' },\n377:     });\n378:     const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);\n379:     assert.equal(response.status, 400);\n380:   }\n381: \n382:   {\n383:     const { env } = createWorkspaceDeploymentApiEnv();\n384:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {\n385:       method: 'POST',\n386:       body: JSON.stringify({ provider: 'cloudflare_workers_assets' }),\n387:       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-provider-output-missing' },\n388:     });\n389:     const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);\n390:     assert.equal(response.status, 400);\n391:     const body = (await response.json()) as { code?: string };\n392:     assert.equal(body.code, 'provider_invalid_output_dir');\n393:   }\n394: \n395:   {\n396:     const { env, state } = createWorkspaceDeploymentApiEnv();\n397:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {\n398:       method: 'POST',\n399:       body: JSON.stringify({ provider: 'simulated' }),\n400:       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-1' },\n401:     });\n402:     const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);\n403:     assert.equal(response.status, 202);\n404:     assert.equal(state.deploymentExists, true);\n405:   }\n406: \n407:   {\n408:     const { env, state } = createWorkspaceDeploymentApiEnv({ reuseRetryScheduled: true });\n409:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {\n410:       method: 'POST',\n411:       body: JSON.stringify({ provider: 'simulated' }),\n412:       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-1' },\n413:     });\n414:     const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);\n415:     assert.equal(response.status, 200);\n416:     assert.equal(state.queueSendCount, 1);\n417:   }\n418: \n419:   {\n420:     const originalFetch = globalThis.fetch;\n421:     globalThis.fetch = (async () => {\n422:       throw new Error('precheck should not run for reused deployment');\n423:     }) as typeof fetch;\n424: \n425:     try {\n426:       const { env, state } = createWorkspaceDeploymentApiEnv({\n427:         reuseRetryScheduled: true,\n428:         reuseRequestPayloadSha256: 'ce281e4c5ccf595ff5ed74316d66c519a863c09e75128ba9b16de629e9132e31',\n429:       });\n430:       const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {\n431:         method: 'POST',\n432:         body: JSON.stringify({ provider: 'cloudflare_workers_assets', deploy: { outputDir: 'dist' } }),\n433:         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-1' },\n434:       });\n435:       const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);\n436:       assert.equal(response.status, 200);\n437:       assert.equal(state.queueSendCount, 1);\n438:     } finally {\n439:       globalThis.fetch = originalFetch;\n440:     }\n441:   }\n442: \n443:   {\n444:     const { env } = createWorkspaceDeploymentApiEnv({ workspaceStatus: 'deleted' });\n445:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {\n446:       method: 'POST',\n447:       body: JSON.stringify({ provider: 'simulated' }),\n448:       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-deleted' },\n449:     });\n450:     const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);\n451:     assert.equal(response.status, 404);\n452:   }\n453: \n454:   {\n455:     const { env } = createWorkspaceDeploymentApiEnv();\n456:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {\n457:       method: 'POST',\n458:       body: JSON.stringify({ provider: 'vercel' }),\n459:       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-unsupported' },\n460:     });\n461:     const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);\n462:     assert.equal(response.status, 400);\n463:   }\n464: \n465:   {\n466:     const { env, state } = createWorkspaceDeploymentApiEnv();\n467:     state.deploymentExists = true;\n468:     const response = await handleGetWorkspaceDeployment('ws_abc12345', 'dep_abcd1234', env as never);\n469:     assert.equal(response.status, 200);\n470:   }\n471: \n472:   {\n473:     const { env } = createWorkspaceDeploymentApiEnv();\n474:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy/preflight', {\n475:       method: 'POST',\n476:       body: JSON.stringify({ validation: { runBuildIfPresent: true, runTestsIfPresent: true } }),\n477:       headers: { 'Content-Type': 'application/json' },\n478:     });\n479:     const response = await handleWorkspaceDeploymentPreflight('ws_abc12345', request, env as never);\n480:     assert.equal(response.status, 200);\n481:   }\n482: \n483:   {\n484:     const { env } = createWorkspaceDeploymentApiEnv();\n485:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy/preflight', {\n486:       method: 'POST',\n487:       body: JSON.stringify({ provider: 'cloudflare_workers_assets' }),\n488:       headers: { 'Content-Type': 'application/json' },\n489:     });\n490:     const response = await handleWorkspaceDeploymentPreflight('ws_abc12345', request, env as never);\n491:     const body = (await response.json()) as {\n492:       preflight: { ok: boolean; checks: Array<{ code: string; ok: boolean }> };\n493:     };\n494:     assert.equal(response.status, 200);\n495:     assert.equal(body.preflight.ok, false);\n496:     assert.equal(body.preflight.checks.some((check) => check.code === 'provider_invalid_output_dir' && !check.ok), true);\n497:   }\n498: \n499:   {\n500:     setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n501:       async exec(command: string) {\n502:         if (command.includes('git rev-parse --verify HEAD')) {\n503:           return { stdout: '', stderr: 'fatal: needed a single revision', exitCode: 1 };\n504:         }\n505:         if (command.includes('git init -q')) {\n506:           return { stdout: '', stderr: '', exitCode: 0 };\n507:         }\n508:         if (command.includes('nimbus_detect_scripts')) {\n509:           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };\n510:         }\n511:         if (command.includes('nimbus_detect_toolchain')) {\n512:           return {\n513:             stdout: JSON.stringify({\n514:               packageManager: 'npm@10.8.2',\n515:               scripts: {},\n516:               lockfiles: { pnpm: null, yarn: null, npm: null },\n517:               projectRoot: '.',\n518:             }),\n519:             stderr: '',\n520:             exitCode: 0,\n521:           };\n522:         }\n523:         if (command.includes('nimbus_detect_secrets')) {\n524:           return { stdout: '[]', stderr: '', exitCode: 0 };\n525:         }\n526:         return { stdout: '', stderr: '', exitCode: 0 };\n527:       },\n528:     }));\n529: \n530:     const { env } = createWorkspaceDeploymentApiEnv();\n531:     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy/preflight', {\n532:       method: 'POST',\n533:       body: JSON.stringify({ autoFix: { rehydrateBaseline: true } }),\n534:       headers: { 'Content-Type': 'application/json' },\n535:     });\n536:     const response = await handleWorkspaceDeploymentPreflight('ws_abc12345', request, env as never);\n537:     const body = (await response.json()) as {\n538:       preflight: { ok: boolean; remediations: Array<{ code: string; applied: boolean }> };\n539:     };\n540:     assert.equal(response.status, 200);\n541:     assert.equal(body.preflight.ok, true);\n542:     assert.equal(body.preflight.remediations.some((item) => item.code === 'baseline_rehydrated' && item.applied), true);\n543: \n544:     setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n545:       async exec(command: string) {\n546:         if (command.includes('git rev-parse --verify HEAD')) {\n547:           return { stdout: '', stderr: '', exitCode: 0 };\n548:         }\n549:         if (command.includes('nimbus_detect_scripts')) {\n550:           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };\n551:         }\n552:         if (command.includes('nimbus_detect_toolchain')) {\n553:           return {\n554:             stdout: JSON.stringify({\n555:               packageManager: 'npm@10.8.2',\n556:               scripts: {},\n557:               lockfiles: { pnpm: null, yarn: null, npm: null },\n558:               projectRoot: '.',\n559:             }),\n560:             stderr: '',\n561:             exitCode: 0,\n562:           };\n563:         }\n564:         if (command.includes('nimbus_detect_secrets')) {\n565:           return { stdout: '[]', stderr: '', exitCode: 0 };\n566:         }\n567:         if (command.includes('command -v npm')) {\n568:           return { stdout: '/usr/bin/npm\\n', stderr: '', exitCode: 0 };\n569:         }\n\n(Showing lines 330-569 of 651. Use offset=570 to continue.)\n</content>",
+            "title": "packages/worker/src/api/workspace-deployments.test.ts",
+            "metadata": {
+              "preview": "  return { env, state };\n}\n\nexport async function runWorkspaceDeploymentApiTests(): Promise<void> {\n  setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n    async exec(command: string) {\n      if (command.includes('git rev-parse --verify HEAD')) {\n        return { stdout: '', stderr: '', exitCode: 0 };\n      }\n      if (command.includes('nimbus_detect_scripts')) {\n        return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };\n      }\n      if (command.includes('nimbus_detect_toolchain')) {\n        return {\n          stdout: JSON.stringify({\n            packageManager: 'npm@10.8.2',\n            scripts: {},\n            lockfiles: { pnpm: null, yarn: null, npm: null },\n            projectRoot: '.',\n          }),",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773073023565,
+              "end": 1773073023567
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_03d46f86b2f05e8e0169aef27f16b481908754a7987a47cdd8"
+            }
+          },
+          "id": "prt_cd3634098001HUE7iQv3kUbwUc",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3633d6e0014n2BFKIvxOGlxz"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.0158711,
+          "tokens": {
+            "total": 25322,
+            "input": 6842,
+            "output": 48,
+            "reasoning": 0,
+            "cache": {
+              "read": 18432,
+              "write": 0
+            }
+          },
+          "id": "prt_cd36342970011iZp4pnSCQeY4o",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3633d6e0014n2BFKIvxOGlxz"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073023746,
+          "completed": 1773073028076
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01140825,
+        "tokens": {
+          "total": 28333,
+          "input": 3303,
+          "output": 70,
+          "reasoning": 20,
+          "cache": {
+            "read": 24960,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd36343020013rMdPULF5A7WLk",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd36345cc001rMRPymwB3cp1vd",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36343020013rMdPULF5A7WLk"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Reviewing test environment stubs**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0f355e642a87a04d0169aef282d360819389e3f6926e0cc069",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773073026894,
+            "end": 1773073027636
+          },
+          "id": "prt_cd3634f4e001mLMMLtjbQPLnBH",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36343020013rMdPULF5A7WLk"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.test.ts",
+              "offset": 1,
+              "limit": 220
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.test.ts</path>\n<type>file</type>\n<content>1: import { strict as assert } from 'assert';\n2: import {\n3:   handleCancelWorkspaceDeployment,\n4:   handleCreateWorkspaceDeployment,\n5:   handleGetWorkspaceDeployment,\n6:   handleGetWorkspaceDeploymentEvents,\n7:   handleWorkspaceDeploymentPreflight,\n8: } from './workspace-deployments.js';\n9: import { setWorkspaceDeploymentSandboxResolverForTests } from '../lib/workspace-deployment-runner.js';\n10: \n11: function createWorkspaceDeploymentApiEnv(options?: {\n12:   workspaceStatus?: 'ready' | 'deleted';\n13:   reuseRetryScheduled?: boolean;\n14:   reuseRequestPayloadSha256?: string;\n15:   sourceProjectRoot?: string;\n16: }): {\n17:   env: Record<string, unknown>;\n18:   state: {\n19:     deploymentExists: boolean;\n20:     deploymentStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';\n21:     cancelRequestedAt: string | null;\n22:     deploymentErrorCode: string | null;\n23:     eventTypes: Set<string>;\n24:     queueSendCount: number;\n25:   };\n26: } {\n27:   const state: {\n28:     deploymentExists: boolean;\n29:     deploymentStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';\n30:     cancelRequestedAt: string | null;\n31:     deploymentErrorCode: string | null;\n32:     eventTypes: Set<string>;\n33:     queueSendCount: number;\n34:   } = {\n35:     deploymentExists: false,\n36:     deploymentStatus: 'queued',\n37:     cancelRequestedAt: null,\n38:     deploymentErrorCode: options?.reuseRetryScheduled ? 'retry_scheduled' : null,\n39:     eventTypes: options?.reuseRetryScheduled ? new Set<string>(['deployment_enqueued']) : new Set<string>(),\n40:     queueSendCount: 0,\n41:   };\n42: \n43:   const env = {\n44:     WORKSPACE_DEPLOY_ENABLED: 'true',\n45:     WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',\n46:     WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',\n47:     WORKSPACE_DEPLOY_PROJECT_NAME: 'nimbus',\n48:     CF_ACCOUNT_ID: 'acc',\n49:     CF_API_TOKEN: 'token',\n50:     WORKSPACE_DEPLOYS_QUEUE: {\n51:       async send() {\n52:         state.queueSendCount += 1;\n53:       },\n54:     },\n55:     DB: {\n56:       prepare(sql: string) {\n57:         if (/SELECT key, value FROM runtime_flags/i.test(sql)) {\n58:           return {\n59:             async all() {\n60:               return { results: [] };\n61:             },\n62:           };\n63:         }\n64: \n65:         if (/SELECT \\* FROM workspaces WHERE id = \\?/i.test(sql)) {\n66:           return {\n67:             bind() {\n68:               return {\n69:                 async first<T>() {\n70:                   return {\n71:                     id: 'ws_abc12345',\n72:                     status: options?.workspaceStatus ?? 'ready',\n73:                     source_type: 'checkpoint',\n74:                     checkpoint_id: null,\n75:                     commit_sha: 'a'.repeat(40),\n76:                     source_ref: 'main',\n77:                     source_project_root: options?.sourceProjectRoot ?? '.',\n78:                     source_bundle_key: 'key',\n79:                     source_bundle_sha256: 'f'.repeat(64),\n80:                     source_bundle_bytes: 1,\n81:                     sandbox_id: 'workspace-ws_abc12345',\n82:                     baseline_ready: 1,\n83:                     error_code: null,\n84:                     error_message: null,\n85:                     last_deployment_id: null,\n86:                     last_deployment_status: null,\n87:                     last_deployed_url: null,\n88:                     last_deployed_at: null,\n89:                     last_deployment_error_code: null,\n90:                     last_deployment_error_message: null,\n91:                     last_event_seq: 0,\n92:                     created_at: '2026-03-08T00:00:00.000Z',\n93:                     updated_at: '2026-03-08T00:00:00.000Z',\n94:                     deleted_at: null,\n95:                   } as T;\n96:                 },\n97:               };\n98:             },\n99:           };\n100:         }\n101: \n102:         if (/SELECT deployment_id, request_payload_sha256, expires_at/i.test(sql)) {\n103:           return {\n104:             bind() {\n105:               return {\n106:                 async first<T>() {\n107:                   if (!options?.reuseRetryScheduled) {\n108:                     return null as T;\n109:                   }\n110:                     return {\n111:                       deployment_id: 'dep_existing',\n112:                       request_payload_sha256:\n113:                         options?.reuseRequestPayloadSha256 ??\n114:                         'bc5770f66f82be23817aea1c4cd23537cec28a833dc39e77ce75f6bf2dcb26cf',\n115:                       expires_at: '2999-01-01T00:00:00.000Z',\n116:                     } as T;\n117:                 },\n118:               };\n119:             },\n120:           };\n121:         }\n122: \n123:         if (/INSERT INTO workspace_deployments/i.test(sql)) {\n124:           return {\n125:             bind(...values: unknown[]) {\n126:               return {\n127:                 async first<T>() {\n128:                   state.deploymentExists = true;\n129:                   return {\n130:                     id: values[0],\n131:                     workspace_id: values[1],\n132:                     status: 'queued',\n133:                     provider: values[2],\n134:                     idempotency_key: values[3],\n135:                     request_payload_json: values[4],\n136:                     request_payload_sha256: values[5],\n137:                     max_retries: values[6],\n138:                     attempt_count: 0,\n139:                     source_snapshot_sha256: null,\n140:                     source_bundle_key: null,\n141:                     provenance_json: values[7],\n142:                     provider_deployment_id: null,\n143:                     deployed_url: null,\n144:                     last_event_seq: 0,\n145:                     cancel_requested_at: null,\n146:                     started_at: null,\n147:                     finished_at: null,\n148:                     duration_ms: null,\n149:                     result_json: null,\n150:                     error_code: null,\n151:                     error_message: null,\n152:                     created_at: '2026-03-08T00:00:00.000Z',\n153:                     updated_at: '2026-03-08T00:00:00.000Z',\n154:                   } as T;\n155:                 },\n156:               };\n157:             },\n158:           };\n159:         }\n160: \n161:         if (/INSERT INTO workspace_deployment_idempotency/i.test(sql)) {\n162:           return {\n163:             bind() {\n164:               return {\n165:                 async run() {\n166:                   return { success: true, meta: { changes: 1 } };\n167:                 },\n168:               };\n169:             },\n170:           };\n171:         }\n172: \n173:         if (/UPDATE workspace_deployments SET last_event_seq = last_event_seq \\+ 1/i.test(sql)) {\n174:           return {\n175:             bind() {\n176:               return {\n177:                 async first<T>() {\n178:                   return { last_event_seq: 1 } as T;\n179:                 },\n180:               };\n181:             },\n182:           };\n183:         }\n184: \n185:         if (/INSERT INTO workspace_deployment_events/i.test(sql)) {\n186:           return {\n187:             bind(_workspaceId: string, _deploymentId: string, _seq: number, eventType: string) {\n188:               return {\n189:                 async run() {\n190:                   state.eventTypes.add(eventType);\n191:                   return { success: true, meta: { changes: 1 } };\n192:                 },\n193:               };\n194:             },\n195:           };\n196:         }\n197: \n198:         if (/SELECT 1\\s+FROM workspace_deployment_events/i.test(sql)) {\n199:           return {\n200:             bind(_workspaceId: string, _deploymentId: string, eventType: string) {\n201:               return {\n202:                 async first<T>() {\n203:                   return state.eventTypes.has(eventType) ? ({ '1': 1 } as T) : (null as T);\n204:                 },\n205:               };\n206:             },\n207:           };\n208:         }\n209: \n210:         if (/SELECT \\* FROM workspace_deployments WHERE id = \\? AND workspace_id = \\?/i.test(sql)) {\n211:           return {\n212:             bind(deploymentId: string) {\n213:               return {\n214:                 async first<T>() {\n215:                   if (!state.deploymentExists && !(options?.reuseRetryScheduled && deploymentId === 'dep_existing')) {\n216:                     return null as T;\n217:                   }\n218:                   return {\n219:                     id: deploymentId,\n220:                     workspace_id: 'ws_abc12345',\n\n(Showing lines 1-220 of 651. Use offset=221 to continue.)\n</content>",
+            "title": "packages/worker/src/api/workspace-deployments.test.ts",
+            "metadata": {
+              "preview": "import { strict as assert } from 'assert';\nimport {\n  handleCancelWorkspaceDeployment,\n  handleCreateWorkspaceDeployment,\n  handleGetWorkspaceDeployment,\n  handleGetWorkspaceDeploymentEvents,\n  handleWorkspaceDeploymentPreflight,\n} from './workspace-deployments.js';\nimport { setWorkspaceDeploymentSandboxResolverForTests } from '../lib/workspace-deployment-runner.js';\n\nfunction createWorkspaceDeploymentApiEnv(options?: {\n  workspaceStatus?: 'ready' | 'deleted';\n  reuseRetryScheduled?: boolean;\n  reuseRequestPayloadSha256?: string;\n  sourceProjectRoot?: string;\n}): {\n  env: Record<string, unknown>;\n  state: {\n    deploymentExists: boolean;\n    deploymentStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773073027889,
+              "end": 1773073027891
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0f355e642a87a04d0169aef28399a8819383b9d25c670f2659"
+            }
+          },
+          "id": "prt_cd3635235001gCVxFJRHbkA15h",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36343020013rMdPULF5A7WLk"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.01140825,
+          "tokens": {
+            "total": 28333,
+            "input": 3303,
+            "output": 70,
+            "reasoning": 20,
+            "cache": {
+              "read": 24960,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3635382001xx3XbcuqXID6aj",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36343020013rMdPULF5A7WLk"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073028078,
+          "completed": 1773073029421
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.00957075,
+        "tokens": {
+          "total": 30477,
+          "input": 2269,
+          "output": 48,
+          "reasoning": 0,
+          "cache": {
+            "read": 28160,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd36353ee0010xu5kHMHq8YYYe",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd3635647001jwGLSOL6TYDx0R",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36353ee0010xu5kHMHq8YYYe"
+        },
+        {
+          "type": "tool",
+          "callID": "call_opwRpXB9EzS80gTZgma8785o",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.test.ts",
+              "offset": 220,
+              "limit": 140
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/api/workspace-deployments.test.ts</path>\n<type>file</type>\n<content>220:                     workspace_id: 'ws_abc12345',\n221:                     status: state.deploymentStatus,\n222:                     provider: 'simulated',\n223:                     idempotency_key: 'idem-1',\n224:                     request_payload_json: '{}',\n225:                     request_payload_sha256: 'hash',\n226:                     max_retries: 2,\n227:                     attempt_count: options?.reuseRetryScheduled ? 1 : 0,\n228:                     source_snapshot_sha256: null,\n229:                     source_bundle_key: null,\n230:                     provenance_json: '{}',\n231:                     provider_deployment_id: null,\n232:                     deployed_url: null,\n233:                     last_event_seq: 1,\n234:                     cancel_requested_at: state.cancelRequestedAt,\n235:                     started_at: null,\n236:                     finished_at: null,\n237:                     duration_ms: null,\n238:                     result_json: null,\n239:                     error_code: state.deploymentErrorCode,\n240:                     error_message: state.deploymentErrorCode ? 'retry scheduled' : null,\n241:                     created_at: '2026-03-08T00:00:00.000Z',\n242:                     updated_at: '2026-03-08T00:00:00.000Z',\n243:                   } as T;\n244:                 },\n245:               };\n246:             },\n247:           };\n248:         }\n249: \n250:         if (/SELECT seq, event_type, payload_json, created_at/i.test(sql)) {\n251:           return {\n252:             bind() {\n253:               return {\n254:                 async all<T>() {\n255:                   return {\n256:                     results: [\n257:                       {\n258:                         seq: 1,\n259:                         event_type: 'deployment_created',\n260:                         payload_json: '{\"ok\":true}',\n261:                         created_at: '2026-03-08T00:00:00.000Z',\n262:                       },\n263:                     ],\n264:                   } as unknown as T;\n265:                 },\n266:               };\n267:             },\n268:           };\n269:         }\n270: \n271:         if (/UPDATE workspace_deployments\\s+SET cancel_requested_at/i.test(sql)) {\n272:           return {\n273:             bind() {\n274:               return {\n275:                 async run() {\n276:                   state.cancelRequestedAt = '2026-03-08T00:00:10.000Z';\n277:                   state.deploymentStatus = 'running';\n278:                   return { success: true, meta: { changes: 1 } };\n279:                 },\n280:               };\n281:             },\n282:           };\n283:         }\n284: \n285:         if (/UPDATE workspace_deployments\\s+SET status = 'cancelled'/i.test(sql)) {\n286:           return {\n287:             bind() {\n288:               return {\n289:                 async run() {\n290:                   state.deploymentStatus = 'cancelled';\n291:                   state.cancelRequestedAt = '2026-03-08T00:00:10.000Z';\n292:                   return { success: true, meta: { changes: 0 } };\n293:                 },\n294:               };\n295:             },\n296:           };\n297:         }\n298: \n299:         if (/UPDATE workspaces SET/i.test(sql)) {\n300:           return {\n301:             bind() {\n302:               return {\n303:                 async run() {\n304:                   return { success: true, meta: { changes: 1 } };\n305:                 },\n306:               };\n307:             },\n308:           };\n309:         }\n310: \n311:         return {\n312:           bind() {\n313:             return {\n314:               async first() {\n315:                 return null;\n316:               },\n317:               async all() {\n318:                 return { results: [] };\n319:               },\n320:               async run() {\n321:                 return { success: true, meta: { changes: 1 } };\n322:               },\n323:             };\n324:           },\n325:         };\n326:       },\n327:     },\n328:   };\n329: \n330:   return { env, state };\n331: }\n332: \n333: export async function runWorkspaceDeploymentApiTests(): Promise<void> {\n334:   setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n335:     async exec(command: string) {\n336:       if (command.includes('git rev-parse --verify HEAD')) {\n337:         return { stdout: '', stderr: '', exitCode: 0 };\n338:       }\n339:       if (command.includes('nimbus_detect_scripts')) {\n340:         return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };\n341:       }\n342:       if (command.includes('nimbus_detect_toolchain')) {\n343:         return {\n344:           stdout: JSON.stringify({\n345:             packageManager: 'npm@10.8.2',\n346:             scripts: {},\n347:             lockfiles: { pnpm: null, yarn: null, npm: null },\n348:             projectRoot: '.',\n349:           }),\n350:           stderr: '',\n351:           exitCode: 0,\n352:         };\n353:       }\n354:       if (command.includes('nimbus_detect_secrets')) {\n355:         return { stdout: '[]', stderr: '', exitCode: 0 };\n356:       }\n357:       if (command.includes('command -v npm')) {\n358:         return { stdout: '/usr/bin/npm\\n', stderr: '', exitCode: 0 };\n359:       }\n\n(Showing lines 220-359 of 651. Use offset=360 to continue.)\n</content>",
+            "title": "packages/worker/src/api/workspace-deployments.test.ts",
+            "metadata": {
+              "preview": "                    workspace_id: 'ws_abc12345',\n                    status: state.deploymentStatus,\n                    provider: 'simulated',\n                    idempotency_key: 'idem-1',\n                    request_payload_json: '{}',\n                    request_payload_sha256: 'hash',\n                    max_retries: 2,\n                    attempt_count: options?.reuseRetryScheduled ? 1 : 0,\n                    source_snapshot_sha256: null,\n                    source_bundle_key: null,\n                    provenance_json: '{}',\n                    provider_deployment_id: null,\n                    deployed_url: null,\n                    last_event_seq: 1,\n                    cancel_requested_at: state.cancelRequestedAt,\n                    started_at: null,\n                    finished_at: null,\n                    duration_ms: null,\n                    result_json: null,\n                    error_code: state.deploymentErrorCode,",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773073029242,
+              "end": 1773073029250
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0a6924cacda1b8730169aef284b7088190ab528a4cc7c0c561"
+            }
+          },
+          "id": "prt_cd3635688001PyrkQZE8kzYsmt",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36353ee0010xu5kHMHq8YYYe"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.00957075,
+          "tokens": {
+            "total": 30477,
+            "input": 2269,
+            "output": 48,
+            "reasoning": 0,
+            "cache": {
+              "read": 28160,
+              "write": 0
+            }
+          },
+          "id": "prt_cd36358c40015izN7o71hqWhT6",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36353ee0010xu5kHMHq8YYYe"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073029423,
+          "completed": 1773073034321
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01818705,
+        "tokens": {
+          "total": 31869,
+          "input": 6535,
+          "output": 118,
+          "reasoning": 49,
+          "cache": {
+            "read": 25216,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd3635b93001xDnvJHnd0tNVVi",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Investigating event handling logic**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0c7b245dcc5652f40169aef2882cc881958bcd7c3cc7fc9957",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773073032212,
+            "end": 1773073033807
+          },
+          "id": "prt_cd3636414001mn42DtnGLLNUEc",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "retry_scheduled|deployment_provider_precheck|deployment_enqueued|claimWorkspaceDeploymentForExecution|status === 'queued'",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts"
+            },
+            "output": "Found 10 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts:\n  Line 5:   claimWorkspaceDeploymentForExecution,\n  Line 807:       eventType: 'deployment_provider_precheck',\n  Line 1187:   if (providerStatus.status === 'queued' || providerStatus.status === 'running') {\n  Line 1408:   const claimed = await claimWorkspaceDeploymentForExecution(env.DB, workspaceId, deploymentId);\n  Line 1422:     if (existing?.status === 'queued' && existing.cancelRequestedAt) {\n  Line 1545:         errorCode: 'retry_scheduled',\n  Line 1551:         eventType: 'deployment_retry_scheduled',\n  Line 1614:       errorCode: 'retry_scheduled',\n  Line 1620:       eventType: 'deployment_retry_scheduled',\n  Line 1667:     if (latest.error?.code !== 'retry_scheduled') {",
+            "title": "retry_scheduled|deployment_provider_precheck|deployment_enqueued|claimWorkspaceDeploymentForExecution|status === 'queued'",
+            "metadata": {
+              "matches": 10,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773073034142,
+              "end": 1773073034157
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0c7b245dcc5652f40169aef289c43c819594acea9e3973f415"
+            }
+          },
+          "id": "prt_cd3636a50001tw7Wt61fyXBN5s",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.01818705,
+          "tokens": {
+            "total": 31869,
+            "input": 6535,
+            "output": 118,
+            "reasoning": 49,
+            "cache": {
+              "read": 25216,
+              "write": 0
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073034323,
+          "completed": 1773073035632
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.00906605,
+        "tokens": {
+          "total": 32140,
+          "input": 1755,
+          "output": 49,
+          "reasoning": 0,
+          "cache": {
+            "read": 30336,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3636c53001H2z2LTFf1ZCw2q",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd3636eb5001PiiCZlxItgc2zb",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3636c53001H2z2LTFf1ZCw2q"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts",
+              "offset": 1360,
+              "limit": 370
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts</path>\n<type>file</type>\n<content>1360:       sandbox,\n1361:       workspaceProjectRoot\n1362:     );\n1363:     checks.push({ code: 'toolchain_detect', ok: true, details: JSON.stringify(toolchain) });\n1364:   } catch (error) {\n1365:     checks.push({\n1366:       code: 'toolchain_detect',\n1367:       ok: false,\n1368:       details: error instanceof Error ? error.message : String(error),\n1369:     });\n1370:     return { ok: false, toolchain: null, checks, remediations };\n1371:   }\n1372: \n1373:   if (shouldBootstrapForValidation) {\n1374:     try {\n1375:       await bootstrapToolchainIfNeeded(sandbox, toolchain);\n1376:       checks.push({ code: 'toolchain_bootstrap', ok: true });\n1377:       remediations.push({\n1378:         code: 'toolchain_bootstrapped',\n1379:         applied: toolchain.manager === 'pnpm' || toolchain.manager === 'yarn',\n1380:       });\n1381:     } catch (error) {\n1382:       checks.push({ code: 'toolchain_bootstrap', ok: false, details: error instanceof Error ? error.message : String(error) });\n1383:       remediations.push({ code: 'toolchain_bootstrapped', applied: false });\n1384:       return { ok: false, toolchain, checks, remediations };\n1385:     }\n1386:   } else {\n1387:     checks.push({ code: 'toolchain_bootstrap', ok: true, details: 'skipped' });\n1388:   }\n1389: \n1390:   if ((runBuildIfPresent && scripts.hasBuild) || (runTestsIfPresent && scripts.hasTest)) {\n1391:     const manager = managerBinary(toolchain);\n1392:     const managerCheck = await sandbox.exec(`command -v ${manager} >/dev/null 2>&1`);\n1393:     if (managerCheck.exitCode !== 0) {\n1394:       checks.push({\n1395:         code: 'validation_tooling',\n1396:         ok: false,\n1397:         details: `${manager} is not available in sandbox runtime`,\n1398:       });\n1399:       return { ok: false, toolchain, checks, remediations };\n1400:     }\n1401:   }\n1402:   checks.push({ code: 'validation_tooling', ok: true });\n1403: \n1404:   return { ok: true, toolchain, checks, remediations };\n1405: }\n1406: \n1407: export async function processWorkspaceDeployment(env: Env, workspaceId: string, deploymentId: string): Promise<void> {\n1408:   const claimed = await claimWorkspaceDeploymentForExecution(env.DB, workspaceId, deploymentId);\n1409:   if (!claimed) {\n1410:     const existing = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1411:     if (existing && existing.status !== 'queued' && existing.status !== 'running') {\n1412:       try {\n1413:         await reconcileWorkspaceSummaryForTerminalDeployment(env, workspaceId, deploymentId);\n1414:       } catch (reconcileError) {\n1415:         if (shouldRetryWorkspaceDeploymentError(reconcileError)) {\n1416:           throw new QueueRetryError('Terminal deployment reconciliation failed; retry requested');\n1417:         }\n1418:       }\n1419:       return;\n1420:     }\n1421: \n1422:     if (existing?.status === 'queued' && existing.cancelRequestedAt) {\n1423:       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1424:       return;\n1425:     }\n1426: \n1427:     if (existing?.status === 'running') {\n1428:       if (existing.cancelRequestedAt) {\n1429:         await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1430:         return;\n1431:       }\n1432: \n1433:       if (isRunningDeploymentStale(existing.startedAt)) {\n1434:         await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n1435:           workspaceId,\n1436:           errorCode: 'deployment_stale_timeout',\n1437:           errorMessage: 'Deployment execution exceeded stale running timeout and was failed for recovery',\n1438:         });\n1439:         await appendWorkspaceDeploymentEvent(env.DB, {\n1440:           workspaceId,\n1441:           deploymentId,\n1442:           eventType: 'deployment_failed',\n1443:           payload: {\n1444:             code: 'deployment_stale_timeout',\n1445:             message: 'Deployment execution exceeded stale running timeout and was failed for recovery',\n1446:           },\n1447:         });\n1448:         await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1449:           deploymentId,\n1450:           status: 'failed',\n1451:           errorCode: 'deployment_stale_timeout',\n1452:           errorMessage: 'Deployment execution exceeded stale running timeout and was failed for recovery',\n1453:         });\n1454:         return;\n1455:       }\n1456: \n1457:       throw new QueueRetryError('Workspace deployment is already running; defer redelivery');\n1458:     }\n1459:     return;\n1460:   }\n1461: \n1462:   try {\n1463:     const flags = await loadRuntimeFlags(env);\n1464:     if (!flags.workspaceDeployEnabled) {\n1465:       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n1466:         workspaceId,\n1467:         errorCode: 'workspace_deploy_disabled',\n1468:         errorMessage: 'Workspace deploy is disabled',\n1469:       });\n1470:       await appendWorkspaceDeploymentEvent(env.DB, {\n1471:         workspaceId,\n1472:         deploymentId,\n1473:         eventType: 'deployment_failed',\n1474:         payload: { code: 'workspace_deploy_disabled', message: 'Workspace deploy is disabled' },\n1475:       });\n1476:       await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1477:         deploymentId,\n1478:         status: 'failed',\n1479:         errorCode: 'workspace_deploy_disabled',\n1480:         errorMessage: 'Workspace deploy is disabled',\n1481:       });\n1482:       return;\n1483:     }\n1484: \n1485:     await executeWorkspaceDeployment(env, workspaceId, deploymentId);\n1486:   } catch (error) {\n1487:     const deployment = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1488:     if (deployment && deployment.status !== 'queued' && deployment.status !== 'running') {\n1489:       try {\n1490:         await reconcileWorkspaceSummaryForTerminalDeployment(env, workspaceId, deploymentId);\n1491:       } catch (reconcileError) {\n1492:         if (shouldRetryWorkspaceDeploymentError(reconcileError)) {\n1493:           throw new QueueRetryError('Terminal deployment reconciliation failed; retry requested');\n1494:         }\n1495:       }\n1496:       return;\n1497:     }\n1498: \n1499:     if (error instanceof CancelRequestedError || deployment?.cancelRequestedAt) {\n1500:       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1501:       return;\n1502:     }\n1503: \n1504:     if (error instanceof PolicyError) {\n1505:       const rollbackOnFailure = parseBoolean(\n1506:         (await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId))?.rollbackOnFailure,\n1507:         true\n1508:       );\n1509:       const rollback = await resolveRollbackContextSafely(workspaceId, deploymentId, rollbackOnFailure, env);\n1510: \n1511:       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n1512:         workspaceId,\n1513:         errorCode: error.code,\n1514:         errorMessage: error.message,\n1515:         result: { rollback },\n1516:       });\n1517:       await appendWorkspaceDeploymentEvent(env.DB, {\n1518:         workspaceId,\n1519:         deploymentId,\n1520:         eventType: 'deployment_failed',\n1521:         payload: { code: error.code, message: error.message, rollback },\n1522:       });\n1523:       await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1524:         deploymentId,\n1525:         status: 'failed',\n1526:         errorCode: error.code,\n1527:         errorMessage: error.message,\n1528:       });\n1529:       return;\n1530:     }\n1531: \n1532:     const attemptCount = deployment?.attemptCount ?? 0;\n1533:     const maxRetries = deployment?.maxRetries ?? 0;\n1534:     if ((error instanceof QueueRetryError || isTransientFailure(error)) && attemptCount <= maxRetries) {\n1535:       const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1536:       if (latest?.cancelRequestedAt) {\n1537:         await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1538:         return;\n1539:       }\n1540: \n1541:       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'queued', {\n1542:         workspaceId,\n1543:         startedAt: null,\n1544:         finishedAt: null,\n1545:         errorCode: 'retry_scheduled',\n1546:         errorMessage: error instanceof Error ? error.message : String(error),\n1547:       });\n1548:       await appendWorkspaceDeploymentEvent(env.DB, {\n1549:         workspaceId,\n1550:         deploymentId,\n1551:         eventType: 'deployment_retry_scheduled',\n1552:         payload: { attemptCount, maxRetries },\n1553:       });\n1554:       throw new QueueRetryError('Workspace deployment transient failure; retry requested');\n1555:     }\n1556: \n1557:     const message = error instanceof Error ? error.message : String(error);\n1558:     const rollbackOnFailure = parseBoolean(\n1559:       (await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId))?.rollbackOnFailure,\n1560:       true\n1561:     );\n1562:     const rollback = await resolveRollbackContextSafely(workspaceId, deploymentId, rollbackOnFailure, env);\n1563: \n1564:     await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n1565:       workspaceId,\n1566:       errorCode: 'deployment_failed',\n1567:       errorMessage: message,\n1568:       result: { rollback },\n1569:     });\n1570:     await appendWorkspaceDeploymentEvent(env.DB, {\n1571:       workspaceId,\n1572:       deploymentId,\n1573:       eventType: 'deployment_failed',\n1574:       payload: {\n1575:         code: 'deployment_failed',\n1576:         message,\n1577:         rollback,\n1578:       },\n1579:     });\n1580:     await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1581:       deploymentId,\n1582:       status: 'failed',\n1583:       errorCode: 'deployment_failed',\n1584:       errorMessage: message,\n1585:     });\n1586:   }\n1587: }\n1588: \n1589: export async function runWorkspaceDeploymentInlineWithRetries(\n1590:   env: Env,\n1591:   workspaceId: string,\n1592:   deploymentId: string,\n1593:   maxCycles = 8\n1594: ): Promise<void> {\n1595:   async function recoverInlineRunningDeployment(): Promise<boolean> {\n1596:     const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1597:     if (!latest || latest.status !== 'running') {\n1598:       return false;\n1599:     }\n1600: \n1601:     if (latest.cancelRequestedAt) {\n1602:       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1603:       return true;\n1604:     }\n1605: \n1606:     if (latest.attemptCount > latest.maxRetries) {\n1607:       return false;\n1608:     }\n1609: \n1610:     await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'queued', {\n1611:       workspaceId,\n1612:       startedAt: null,\n1613:       finishedAt: null,\n1614:       errorCode: 'retry_scheduled',\n1615:       errorMessage: 'Recovered inline deployment retry after transient failure',\n1616:     });\n1617:     await appendWorkspaceDeploymentEvent(env.DB, {\n1618:       workspaceId,\n1619:       deploymentId,\n1620:       eventType: 'deployment_retry_scheduled',\n1621:       payload: { attemptCount: latest.attemptCount, maxRetries: latest.maxRetries, recoveredInline: true },\n1622:     });\n1623:     return true;\n1624:   }\n1625: \n1626:   for (let cycle = 0; cycle < maxCycles; cycle += 1) {\n1627:     let retryableErrorRaised = false;\n1628:     try {\n1629:       await processWorkspaceDeployment(env, workspaceId, deploymentId);\n1630:     } catch (error) {\n1631:       if (error instanceof QueueRetryError && /already running; defer redelivery/i.test(error.message)) {\n1632:         try {\n1633:           const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1634:           if (latest?.status === 'running' && latest.cancelRequestedAt) {\n1635:             await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1636:             continue;\n1637:           }\n1638:         } catch {\n1639:           // Best-effort inline recovery only.\n1640:         }\n1641:         return;\n1642:       }\n1643: \n1644:       if (shouldRetryWorkspaceDeploymentError(error)) {\n1645:         retryableErrorRaised = true;\n1646:         try {\n1647:           const recovered = await recoverInlineRunningDeployment();\n1648:           if (recovered) {\n1649:             continue;\n1650:           }\n1651:         } catch {\n1652:           // Best-effort inline recovery only.\n1653:         }\n1654:       }\n1655:     }\n1656: \n1657:     const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1658:     if (!latest) {\n1659:       return;\n1660:     }\n1661:     if (latest.status !== 'queued') {\n1662:       return;\n1663:     }\n1664:     if (retryableErrorRaised) {\n1665:       continue;\n1666:     }\n1667:     if (latest.error?.code !== 'retry_scheduled') {\n1668:       return;\n1669:     }\n1670:   }\n1671: }\n1672: \n1673: export async function cancelWorkspaceDeployment(\n1674:   env: Env,\n1675:   workspaceId: string,\n1676:   deploymentId: string\n1677: ): Promise<{ updated: boolean; deployment: Awaited<ReturnType<typeof getWorkspaceDeployment>> }> {\n1678:   const result = await requestWorkspaceDeploymentCancel(env.DB, workspaceId, deploymentId);\n1679:   if (result.updated && result.deployment?.status === 'cancelled') {\n1680:     await appendWorkspaceDeploymentEvent(env.DB, {\n1681:       workspaceId,\n1682:       deploymentId,\n1683:       eventType: 'deployment_cancelled',\n1684:       payload: { reason: 'cancel_requested' },\n1685:     });\n1686:     await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1687:       deploymentId,\n1688:       status: 'cancelled',\n1689:       errorCode: null,\n1690:       errorMessage: null,\n1691:     });\n1692:   }\n1693:   if (result.updated && result.deployment?.status === 'running') {\n1694:     await appendWorkspaceDeploymentEvent(env.DB, {\n1695:       workspaceId,\n1696:       deploymentId,\n1697:       eventType: 'deployment_cancel_requested',\n1698:       payload: { cancelRequestedAt: result.deployment.cancelRequestedAt },\n1699:     });\n1700:   }\n1701:   return result;\n1702: }\n1703: \n1704: export function shouldRetryWorkspaceDeploymentError(error: unknown): boolean {\n1705:   if (error instanceof QueueRetryError) {\n1706:     return true;\n1707:   }\n1708:   if (isTransientFailure(error)) {\n1709:     return true;\n1710:   }\n1711: \n1712:   const message = error instanceof Error ? error.message : String(error);\n1713:   return /(d1|database is locked|sqlite_busy|temporarily unavailable|connection reset)/i.test(message);\n1714: }\n\n(End of file - total 1714 lines)\n</content>",
+            "title": "packages/worker/src/lib/workspace-deployment-runner.ts",
+            "metadata": {
+              "preview": "      sandbox,\n      workspaceProjectRoot\n    );\n    checks.push({ code: 'toolchain_detect', ok: true, details: JSON.stringify(toolchain) });\n  } catch (error) {\n    checks.push({\n      code: 'toolchain_detect',\n      ok: false,\n      details: error instanceof Error ? error.message : String(error),\n    });\n    return { ok: false, toolchain: null, checks, remediations };\n  }\n\n  if (shouldBootstrapForValidation) {\n    try {\n      await bootstrapToolchainIfNeeded(sandbox, toolchain);\n      checks.push({ code: 'toolchain_bootstrap', ok: true });\n      remediations.push({\n        code: 'toolchain_bootstrapped',\n        applied: toolchain.manager === 'pnpm' || toolchain.manager === 'yarn',",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773073035445,
+              "end": 1773073035448
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0834f6fb4eba88d80169aef28af624819383fb382a8d948264"
+            }
+          },
+          "id": "prt_cd3636eef001sDM9deSvDaBVhV",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3636c53001H2z2LTFf1ZCw2q"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.00906605,
+          "tokens": {
+            "total": 32140,
+            "input": 1755,
+            "output": 49,
+            "reasoning": 0,
+            "cache": {
+              "read": 30336,
+              "write": 0
+            }
+          },
+          "id": "prt_cd363710a0019alEIQK7TwwbbD",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3636c53001H2z2LTFf1ZCw2q"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073035634,
+          "completed": 1773073037781
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01447005,
+        "tokens": {
+          "total": 36013,
+          "input": 4323,
+          "output": 74,
+          "reasoning": 24,
+          "cache": {
+            "read": 31616,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3637172001BxDraM83wajxP9",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd363744d001u0aw7fh321nUNi",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3637172001BxDraM83wajxP9"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Noticing deploy includes precheck**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0c70f3c0a809739c0169aef28c78fc8199842b0972bd15e928",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773073036512,
+            "end": 1773073037329
+          },
+          "id": "prt_cd36374e0001JNUTHIfF2ebIx3",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3637172001BxDraM83wajxP9"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts",
+              "offset": 760,
+              "limit": 100
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts</path>\n<type>file</type>\n<content>760:       eventType: 'deployment_baseline_rehydrate_succeeded',\n761:       payload: {},\n762:     });\n763:   }\n764: \n765:   const provenance =\n766:     payload.provenance && typeof payload.provenance === 'object' && !Array.isArray(payload.provenance)\n767:       ? (payload.provenance as Record<string, unknown>)\n768:       : {};\n769:   const taskId = typeof provenance.taskId === 'string' ? provenance.taskId : null;\n770:   const operationId = typeof provenance.operationId === 'string' ? provenance.operationId : null;\n771:   if (taskId) {\n772:     const task = await getWorkspaceTask(env.DB, workspaceId, taskId);\n773:     if (!task) {\n774:       throw new PolicyError('invalid_provenance_task', 'Referenced taskId does not belong to workspace');\n775:     }\n776:   }\n777:   if (operationId) {\n778:     const operation = await getWorkspaceOperation(env.DB, workspaceId, operationId);\n779:     if (!operation) {\n780:       throw new PolicyError('invalid_provenance_operation', 'Referenced operationId does not belong to workspace');\n781:     }\n782:   }\n783: \n784:   await appendWorkspaceDeploymentEvent(env.DB, {\n785:     workspaceId,\n786:     deploymentId,\n787:     eventType: 'deployment_started',\n788:     payload: {\n789:       provider: deployment.provider,\n790:       attemptCount: deployment.attemptCount,\n791:       runBuildIfPresent,\n792:       runTestsIfPresent,\n793:       autoFix: autoFixOptions,\n794:       cache: cacheOptions,\n795:     },\n796:   });\n797: \n798:   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);\n799: \n800:   let provider;\n801:   try {\n802:     provider = createWorkspaceDeployProvider(publishOptions.provider, env);\n803:     const providerChecks = await provider.precheck();\n804:     await appendWorkspaceDeploymentEvent(env.DB, {\n805:       workspaceId,\n806:       deploymentId,\n807:       eventType: 'deployment_provider_precheck',\n808:       payload: {\n809:         provider: publishOptions.provider,\n810:         checks: providerChecks,\n811:       },\n812:     });\n813:     const failedCheck = providerChecks.find((check) => !check.ok);\n814:     if (failedCheck) {\n815:       throw new PolicyError(failedCheck.code, failedCheck.details ?? 'Provider precheck failed');\n816:     }\n817:   } catch (error) {\n818:     const providerError = normalizeProviderError(error);\n819:     throw new PolicyError(providerError.code, providerError.message);\n820:   }\n821: \n822:   let toolchain: WorkspaceToolchainProfile;\n823:   try {\n824:     toolchain = applyRequestedToolchainOverride(\n825:       await detectWorkspaceToolchainProfile(\n826:         sandbox,\n827:         workspaceProjectRoot\n828:       ),\n829:       requestedToolchain\n830:     );\n831:   } catch (error) {\n832:     throw new PolicyError('toolchain_detect_failed', error instanceof Error ? error.message : String(error));\n833:   }\n834: \n835:   await appendWorkspaceDeploymentEvent(env.DB, {\n836:     workspaceId,\n837:     deploymentId,\n838:     eventType: 'deployment_toolchain_detected',\n839:     payload: toolchain,\n840:   });\n841: \n842:   if (toolchain.manager === 'unknown') {\n843:     await appendWorkspaceDeploymentEvent(env.DB, {\n844:       workspaceId,\n845:       deploymentId,\n846:       eventType: 'deployment_toolchain_unknown_fallback',\n847:       payload: { fallbackManager: 'npm' },\n848:     });\n849:   }\n850: \n851:   await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {\n852:     workspaceId,\n853:     toolchain,\n854:     remediations,\n855:   });\n856: \n857:   const scripts = await detectPackageScriptsInProjectRoot(sandbox, workspaceProjectRoot);\n858:   const shouldBootstrapForValidation =\n859:     (runTestsIfPresent && scripts.hasTest) || (runBuildIfPresent && scripts.hasBuild);\n\n(Showing lines 760-859 of 1714. Use offset=860 to continue.)\n</content>",
+            "title": "packages/worker/src/lib/workspace-deployment-runner.ts",
+            "metadata": {
+              "preview": "      eventType: 'deployment_baseline_rehydrate_succeeded',\n      payload: {},\n    });\n  }\n\n  const provenance =\n    payload.provenance && typeof payload.provenance === 'object' && !Array.isArray(payload.provenance)\n      ? (payload.provenance as Record<string, unknown>)\n      : {};\n  const taskId = typeof provenance.taskId === 'string' ? provenance.taskId : null;\n  const operationId = typeof provenance.operationId === 'string' ? provenance.operationId : null;\n  if (taskId) {\n    const task = await getWorkspaceTask(env.DB, workspaceId, taskId);\n    if (!task) {\n      throw new PolicyError('invalid_provenance_task', 'Referenced taskId does not belong to workspace');\n    }\n  }\n  if (operationId) {\n    const operation = await getWorkspaceOperation(env.DB, workspaceId, operationId);\n    if (!operation) {",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773073037594,
+              "end": 1773073037596
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0c70f3c0a809739c0169aef28d47908199a780d58c76b04551"
+            }
+          },
+          "id": "prt_cd3637812001ce0D8WgmlATIuy",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3637172001BxDraM83wajxP9"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.01447005,
+          "tokens": {
+            "total": 36013,
+            "input": 4323,
+            "output": 74,
+            "reasoning": 24,
+            "cache": {
+              "read": 31616,
+              "write": 0
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd3637172001BxDraM83wajxP9"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773073037783,
+          "completed": 1773073060243
+        },
+        "parentID": "msg_cd362c0f1001Q7Y2mnPkCobkOE",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.04188275,
+        "tokens": {
+          "total": 38299,
+          "input": 1165,
+          "output": 1294,
+          "reasoning": 1104,
+          "cache": {
+            "read": 35840,
+            "write": 0
+          }
+        },
+        "finish": "stop",
+        "id": "msg_cd36379d7001Pt7GLDd7LlE0OE",
+        "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "id": "prt_cd3637bfc001EeEv5f5sttNQJ7",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36379d7001Pt7GLDd7LlE0OE"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Identifying race condition in precheck status update**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_08ba496ee5e675860169aef28e6b20819a84773b7d18de477f",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773073038458,
+            "end": 1773073057454
+          },
+          "id": "prt_cd3637c7a001Jp7Pa8HeE1VU9k",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36379d7001Pt7GLDd7LlE0OE"
+        },
+        {
+          "type": "text",
+          "text": "Found 1 blocking issue.\n\n- `packages/worker/src/api/workspace-deployments.ts:372` + `packages/worker/src/api/workspace-deployments.ts:467` + `packages/worker/src/api/workspace-deployments.ts:476` still has a TOCTOU race that can incorrectly fail an in-flight deployment: replay request B decides `shouldRunPrecheck` using `deployment_enqueued` event presence, but request A calls `queue.send(...)` before writing that event. In that window, B can run precheck and then unconditionally set status to `failed` via `updateWorkspaceDeploymentStatus(...)` at `packages/worker/src/api/workspace-deployments.ts:406`/`packages/worker/src/api/workspace-deployments.ts:439`, even if worker already claimed the deployment as `running`. This can overwrite active execution and leave deployment incorrectly failed.",
+          "time": {
+            "start": 1773073060061,
+            "end": 1773073060061
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "msg_08ba496ee5e675860169aef2a1676c819a8cb80f2d29b9b52b"
+            }
+          },
+          "id": "prt_cd363c6b0001nClkqBtw1DW2Yk",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36379d7001Pt7GLDd7LlE0OE"
+        },
+        {
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "7ec2f44bdfc3feea9e4841dc5ba6025465b09f32",
+          "cost": 0.04188275,
+          "tokens": {
+            "total": 38299,
+            "input": 1165,
+            "output": 1294,
+            "reasoning": 1104,
+            "cache": {
+              "read": 35840,
+              "write": 0
+            }
+          },
+          "id": "prt_cd363d11e001gbyVEUULtOoh15",
+          "sessionID": "ses_32c9d3f12ffeLXA638MFdSOEi2",
+          "messageID": "msg_cd36379d7001Pt7GLDd7LlE0OE"
+        }
+      ]
+    }
+  ]
+}
