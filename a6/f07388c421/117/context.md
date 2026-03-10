@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Verify latest fixes for provider success=false handling and env error classification in workspace-deploy-provider.ts. Report blocking issues only.
+
