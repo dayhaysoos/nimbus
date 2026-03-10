@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Verify latest fix for idempotent replay response semantics in workspace-deployments.ts: reused failed deployments should not return 200. Also verify associated API tests. Blocking issues only.
+
