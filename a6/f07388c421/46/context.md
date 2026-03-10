@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Do a focused concurrency/race-condition pass on uncommitted Phase 7 changes in packages/worker/src/api/workspace-deployments.ts and packages/worker/src/lib/workspace-deployment-runner.ts. Report blockers first, then list non-blocking risky-but-unproven spots separately.
+
