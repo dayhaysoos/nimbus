@@ -1,0 +1,1048 @@
+{
+  "info": {
+    "id": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+    "slug": "witty-planet",
+    "projectID": "e636a08f504c17bb94725f03ccc30ead67d304f9",
+    "directory": "/Users/nickdejesus/Code/nimbus",
+    "parentID": "REDACTED",
+    "title": "Review cancel marker fix (@general subagent)",
+    "version": "1.2.21",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "permission": [
+      {
+        "permission": "todowrite",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "todoread",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "task",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1773077112663,
+      "updated": 1773077138491
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1773077112665
+        },
+        "summary": {
+          "diffs": []
+        },
+        "agent": "general",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "gpt-5.3-codex"
+        },
+        "tools": {
+          "todowrite": false,
+          "todoread": false,
+          "task": false
+        },
+        "id": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "/review Verify latest fix for clearing cancel_requested_at on cancel-rejected success path in workspace-deployment-runner.ts and db.ts. Blocking issues only.",
+          "id": "prt_cd3a1a7590022rFod28emB08nF",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1a759001DblJmPzGkTdLdP"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773077112668,
+          "completed": 1773077115211
+        },
+        "parentID": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0131705,
+        "tokens": {
+          "total": 6099,
+          "input": 5958,
+          "output": 141,
+          "reasoning": 55,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3a1a75c001RGqg67unkO9wOc",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "id": "prt_cd3a1a9b70010ZQeC6y2nuRemy",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1a75c001RGqg67unkO9wOc"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Preparing code review inspection**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_00602bb577965f910169af027959d08195b02dbcbf6daba44b",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773077113372,
+            "end": 1773077115024
+          },
+          "id": "prt_cd3a1aa1c001kZP5bOoh2wombQ",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1a75c001RGqg67unkO9wOc"
+        },
+        {
+          "type": "tool",
+          "callID": "call_m9UwS312uXJfl4HxpNSWop9J",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/workspace-deployment-runner.ts",
+              "path": "/Users/nickdejesus/Code/nimbus"
+            },
+            "output": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts",
+            "title": "",
+            "metadata": {
+              "count": 1,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773077115046,
+              "end": 1773077115065
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_00602bb577965f910169af027b00208195b39715847823f54e"
+            }
+          },
+          "id": "prt_cd3a1b092001cgJ0EfzVLFnl4d",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1a75c001RGqg67unkO9wOc"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/db.ts",
+              "path": "/Users/nickdejesus/Code/nimbus"
+            },
+            "output": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts",
+            "title": "",
+            "metadata": {
+              "count": 1,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773077115053,
+              "end": 1773077115065
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_00602bb577965f910169af027b003081958404294f3535f2ad"
+            }
+          },
+          "id": "prt_cd3a1b0a6001lMtZrDqDDpHyxg",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1a75c001RGqg67unkO9wOc"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "cost": 0.0131705,
+          "tokens": {
+            "total": 6099,
+            "input": 5958,
+            "output": 141,
+            "reasoning": 55,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3a1b0dc001S9ojWAnhvprUc5",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1a75c001RGqg67unkO9wOc"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773077115211,
+          "completed": 1773077121112
+        },
+        "parentID": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0038073,
+        "tokens": {
+          "total": 6310,
+          "input": 142,
+          "output": 152,
+          "reasoning": 27,
+          "cache": {
+            "read": 6016,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3a1b14b001M8htsQLzgylQ4L",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "id": "prt_cd3a1b364001zaCdU1n0gHknHh",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1b14b001M8htsQLzgylQ4L"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Planning selective grep search**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_00301d2ba680a5320169af027f23848190b522e40ab3cf8577",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773077119222,
+            "end": 1773077120908
+          },
+          "id": "prt_cd3a1c0f6001atTeXjYSF2N0x7",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1b14b001M8htsQLzgylQ4L"
+        },
+        {
+          "type": "tool",
+          "callID": "call_XOKxPPHGLqyxCXZ2dzGi7bDb",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "cancel_requested_at|cancel-?rejected|cancel rejected|reject",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts"
+            },
+            "output": "Found 3 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts:\n  Line 1179:                    SET cancel_requested_at = NULL,\n  Line 1289:         eventType: 'deployment_cancel_rejected',\n  Line 1621:                    SET cancel_requested_at = NULL,",
+            "title": "cancel_requested_at|cancel-?rejected|cancel rejected|reject",
+            "metadata": {
+              "matches": 3,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773077120928,
+              "end": 1773077120936
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_00301d2ba680a5320169af0280e0c88190934d1e6315c77a7a"
+            }
+          },
+          "id": "prt_cd3a1c78d001Mmh73hpJjS26rl",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1b14b001M8htsQLzgylQ4L"
+        },
+        {
+          "type": "tool",
+          "callID": "call_oBYKcncmYnI7ofoC15nE0ue3",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "cancel_requested_at|cancel-?rejected|cancel rejected|reject",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts"
+            },
+            "output": "Found 18 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts:\n  Line 327:     cancelRequestedAt: record.cancel_requested_at,\n  Line 482:     cancelRequestedAt: record.cancel_requested_at,\n  Line 519:     cancelRequestedAt: record.cancel_requested_at,\n  Line 743:     cancel_requested_at?: string | null;\n  Line 782:     if (additionalFields.cancel_requested_at !== undefined) {\n  Line 783:       updates.push('cancel_requested_at = ?');\n  Line 784:       values.push(additionalFields.cancel_requested_at);\n  Line 880:     cancel_requested_at: now,\n  Line 1666:        WHERE id = ? AND workspace_id = ? AND status = 'queued' AND cancel_requested_at IS NULL`\n  Line 1743:            cancel_requested_at = COALESCE(cancel_requested_at, ?),\n  Line 1756:        SET cancel_requested_at = COALESCE(cancel_requested_at, ?),\n  Line 1758:        WHERE id = ? AND workspace_id = ? AND status = 'running' AND cancel_requested_at IS NULL`\n  Line 2095:        WHERE id = ? AND workspace_id = ? AND status = 'queued' AND cancel_requested_at IS NULL`\n  Line 2183:     updates.push('cancel_requested_at = ?');\n  Line 2242:          AND cancel_requested_at IS NULL`\n  Line 2271:            cancel_requested_at = COALESCE(cancel_requested_at, ?),\n  Line 2284:        SET cancel_requested_at = COALESCE(cancel_requested_at, ?),\n  Line 2286:        WHERE id = ? AND workspace_id = ? AND status = 'running' AND cancel_requested_at IS NULL`",
+            "title": "cancel_requested_at|cancel-?rejected|cancel rejected|reject",
+            "metadata": {
+              "matches": 18,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773077120934,
+              "end": 1773077120941
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_00301d2ba680a5320169af0280e0dc8190a2390d166925b60d"
+            }
+          },
+          "id": "prt_cd3a1c7a10012lBEhgYIze3fon",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1b14b001M8htsQLzgylQ4L"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "cost": 0.0038073,
+          "tokens": {
+            "total": 6310,
+            "input": 142,
+            "output": 152,
+            "reasoning": 27,
+            "cache": {
+              "read": 6016,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3a1c7e8001wQarFM5SBbtlFM",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1b14b001M8htsQLzgylQ4L"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773077121113,
+          "completed": 1773077126246
+        },
+        "parentID": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.00645645,
+        "tokens": {
+          "total": 7017,
+          "input": 627,
+          "output": 246,
+          "reasoning": 60,
+          "cache": {
+            "read": 6144,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "id": "prt_cd3a1ca9d0014FfHUJAAW4ZeUv",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Verifying recent fixes with git diff**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0b3a914bfebedfb30169af0281c8388194b0bc4d5f9f217d96",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773077121825,
+            "end": 1773077125388
+          },
+          "id": "prt_cd3a1cb21001g2AuOX6iuLPEm1",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git status --short",
+              "workdir": "/Users/nickdejesus/Code/nimbus",
+              "description": "Shows concise working tree status"
+            },
+            "output": " M packages/cli/src/commands/workspace/deploy.test.ts\n M packages/cli/src/commands/workspace/deploy.ts\n M packages/cli/src/index.ts\n M packages/cli/src/lib/api.ts\n M packages/cli/src/lib/args.test.ts\n M packages/cli/src/lib/args.ts\n M packages/worker/src/api/system.ts\n M packages/worker/src/api/workspace-deployments.test.ts\n M packages/worker/src/api/workspace-deployments.ts\n M packages/worker/src/lib/db.ts\n M packages/worker/src/lib/run-tests.ts\n M packages/worker/src/lib/workspace-deployment-runner.test.ts\n M packages/worker/src/lib/workspace-deployment-runner.ts\n M packages/worker/src/types.ts\n M packages/worker/wrangler.toml\n?? packages/worker/src/lib/workspace-deploy-provider.test.ts\n?? packages/worker/src/lib/workspace-deploy-provider.ts\n?? specs/testing/phase-7-real-provider-smoke.md\n",
+            "title": "Shows concise working tree status",
+            "metadata": {
+              "output": " M packages/cli/src/commands/workspace/deploy.test.ts\n M packages/cli/src/commands/workspace/deploy.ts\n M packages/cli/src/index.ts\n M packages/cli/src/lib/api.ts\n M packages/cli/src/lib/args.test.ts\n M packages/cli/src/lib/args.ts\n M packages/worker/src/api/system.ts\n M packages/worker/src/api/workspace-deployments.test.ts\n M packages/worker/src/api/workspace-deployments.ts\n M packages/worker/src/lib/db.ts\n M packages/worker/src/lib/run-tests.ts\n M packages/worker/src/lib/workspace-deployment-runner.test.ts\n M packages/worker/src/lib/workspace-deployment-runner.ts\n M packages/worker/src/types.ts\n M packages/worker/wrangler.toml\n?? packages/worker/src/lib/workspace-deploy-provider.test.ts\n?? packages/worker/src/lib/workspace-deploy-provider.ts\n?? specs/testing/phase-7-real-provider-smoke.md\n",
+              "exit": 0,
+              "description": "Shows concise working tree status",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773077125412,
+              "end": 1773077126141
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0b3a914bfebedfb30169af028554f88194b33b9425e634e457"
+            }
+          },
+          "id": "prt_cd3a1d90e001HWEO3P4KoHd3cA",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff -- packages/worker/src/lib/workspace-deployment-runner.ts packages/worker/src/lib/db.ts",
+              "workdir": "/Users/nickdejesus/Code/nimbus",
+              "description": "Shows unstaged diffs for target files"
+            },
+            "output": "diff --git a/packages/worker/src/lib/db.ts b/packages/worker/src/lib/db.ts\nindex f681cc7..36e2c2b 100644\n--- a/packages/worker/src/lib/db.ts\n+++ b/packages/worker/src/lib/db.ts\n@@ -2117,6 +2117,7 @@ export async function updateWorkspaceDeploymentStatus(\n     sourceBundleKey?: string | null;\n     deployedUrl?: string | null;\n     providerDeploymentId?: string | null;\n+    cancelRequestedAt?: string | null;\n     startedAt?: string | null;\n     finishedAt?: string | null;\n   }\n@@ -2178,6 +2179,10 @@ export async function updateWorkspaceDeploymentStatus(\n     updates.push('provider_deployment_id = ?');\n     values.push(options.providerDeploymentId);\n   }\n+  if (options?.cancelRequestedAt !== undefined) {\n+    updates.push('cancel_requested_at = ?');\n+    values.push(options.cancelRequestedAt);\n+  }\n \n   if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {\n     const finishedAtForDuration =\ndiff --git a/packages/worker/src/lib/workspace-deployment-runner.ts b/packages/worker/src/lib/workspace-deployment-runner.ts\nindex 206a1cd..f0d2da3 100644\n--- a/packages/worker/src/lib/workspace-deployment-runner.ts\n+++ b/packages/worker/src/lib/workspace-deployment-runner.ts\n@@ -24,6 +24,13 @@ import {\n   detectWorkspaceToolchainProfile,\n } from './workspace-toolchain.js';\n import type { WorkspaceDeploymentRemediation, WorkspaceToolchainProfile } from '../types.js';\n+import {\n+  createWorkspaceDeployProvider,\n+  getWorkspaceDeployProviderName,\n+  normalizeProviderError,\n+  type WorkspaceDeployStatusResult,\n+  type WorkspaceDeployProviderName,\n+} from './workspace-deploy-provider.js';\n \n const WORKSPACE_ROOT = '/workspace';\n const STALE_RUNNING_TIMEOUT_MS = 30 * 60 * 1000;\n@@ -72,6 +79,11 @@ interface DeploymentCacheOptions {\n   dependencyCache: boolean;\n }\n \n+interface DeploymentPublishOptions {\n+  provider: WorkspaceDeployProviderName;\n+  outputDir: string | null;\n+}\n+\n class CancelRequestedError extends Error {\n   constructor() {\n     super('Deployment cancel requested');\n@@ -104,6 +116,32 @@ function parseInteger(value: unknown, fallback: number, min: number, max: number\n   return normalized;\n }\n \n+function parseString(value: unknown): string | null {\n+  if (typeof value !== 'string') {\n+    return null;\n+  }\n+  const trimmed = value.trim();\n+  return trimmed.length > 0 ? trimmed : null;\n+}\n+\n+function parseIntegerString(value: string | undefined, fallback: number, min: number, max: number): number {\n+  if (typeof value !== 'string') {\n+    return fallback;\n+  }\n+  const parsed = Number.parseInt(value.trim(), 10);\n+  if (!Number.isFinite(parsed)) {\n+    return fallback;\n+  }\n+  return parseInteger(parsed, fallback, min, max);\n+}\n+\n+function isRetryableProviderError(code: string, message: string): boolean {\n+  if (code === 'provider_rate_limited') {\n+    return true;\n+  }\n+  return /(temporarily unavailable|timeout|timed out|network|connection reset|fetch failed)/i.test(message);\n+}\n+\n function isTransientFailure(error: unknown): boolean {\n   const message = error instanceof Error ? error.message : String(error);\n   return /(timeout|timed out|temporar|network|fetch failed|connection reset|sandbox unavailable|rate limit|database is locked|sqlite_busy)/i.test(\n@@ -352,6 +390,36 @@ async function createDeploymentBundle(\n   };\n }\n \n+async function createOutputBundle(\n+  sandbox: SandboxClient,\n+  outputDir: string\n+): Promise<{ bytes: Uint8Array; sha256: string; objectKeySuffix: string }> {\n+  const normalizedOutputDir = normalizeProjectRoot(outputDir);\n+  const base64 = await runSandboxCommand(\n+    sandbox,\n+    `cd ${shellQuote(\n+      WORKSPACE_ROOT\n+    )} && if [ ! -d ${shellQuote(\n+      normalizedOutputDir\n+    )} ]; then echo '__NIMBUS_OUTPUT_DIR_MISSING__'; else tmp_stem=$(mktemp /tmp/nimbus-workspace-output.XXXXXX) && tmp_bundle=\"\\${tmp_stem}.tar.gz\" && tar -czf \"$tmp_bundle\" -C ${shellQuote(\n+      normalizedOutputDir\n+    )} . && base64 \"$tmp_bundle\" && rm -f \"$tmp_bundle\" \"$tmp_stem\"; fi`,\n+    { timeout: 8 * 60 * 1000 }\n+  );\n+\n+  if (base64.trim() === '__NIMBUS_OUTPUT_DIR_MISSING__') {\n+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir directory does not exist: ${normalizedOutputDir}`);\n+  }\n+\n+  const bytes = fromBase64(base64);\n+  const sha = await sha256Hex(bytes);\n+  return {\n+    bytes,\n+    sha256: sha,\n+    objectKeySuffix: 'output.tar.gz',\n+  };\n+}\n+\n async function createDependencyCacheArchive(\n   sandbox: SandboxClient,\n   profile: WorkspaceToolchainProfile\n@@ -624,6 +692,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n     payload.toolchain && typeof payload.toolchain === 'object' && !Array.isArray(payload.toolchain)\n       ? (payload.toolchain as Record<string, unknown>)\n       : null;\n+  const deploy =\n+    payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)\n+      ? (payload.deploy as Record<string, unknown>)\n+      : {};\n   const validationOptions: DeploymentValidationOptions = {\n     runBuildIfPresent: parseBoolean(validation.runBuildIfPresent, true),\n     runTestsIfPresent: parseBoolean(validation.runTestsIfPresent, true),\n@@ -635,6 +707,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n   const cacheOptions: DeploymentCacheOptions = {\n     dependencyCache: parseBoolean(cache.dependencyCache, true),\n   };\n+  const publishOptions: DeploymentPublishOptions = {\n+    provider: getWorkspaceDeployProviderName(payload.provider, env),\n+    outputDir: parseString(deploy.outputDir),\n+  };\n   const { runBuildIfPresent, runTestsIfPresent } = validationOptions;\n   const rollbackOnFailure = parseBoolean(payload.rollbackOnFailure, true);\n   const remediations: WorkspaceDeploymentRemediation[] = [];\n@@ -647,6 +723,13 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n     throw new PolicyError('invalid_project_root', error instanceof Error ? error.message : String(error));\n   }\n \n+  if (publishOptions.provider === 'cloudflare_workers_assets' && !publishOptions.outputDir) {\n+    throw new PolicyError(\n+      'provider_invalid_output_dir',\n+      'deploy.outputDir is required for cloudflare_workers_assets provider'\n+    );\n+  }\n+\n   const sandbox = await sandboxResolver(env, workspace.sandboxId);\n   try {\n     await ensureWorkspaceGitBaseline(sandbox);\n@@ -721,6 +804,31 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n \n   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);\n \n+  let provider;\n+  try {\n+    provider = createWorkspaceDeployProvider(publishOptions.provider, env);\n+    const providerChecks = await provider.precheck();\n+    await appendWorkspaceDeploymentEvent(env.DB, {\n+      workspaceId,\n+      deploymentId,\n+      eventType: 'deployment_provider_precheck',\n+      payload: {\n+        provider: publishOptions.provider,\n+        checks: providerChecks,\n+      },\n+    });\n+    const failedCheck = providerChecks.find((check) => !check.ok);\n+    if (failedCheck) {\n+      throw new PolicyError(failedCheck.code, failedCheck.details ?? 'Provider precheck failed');\n+    }\n+  } catch (error) {\n+    const providerError = normalizeProviderError(error);\n+    if (isRetryableProviderError(providerError.code, providerError.message)) {\n+      throw new QueueRetryError('Provider create deployment request is temporarily unavailable; retry requested');\n+    }\n+    throw new PolicyError(providerError.code, providerError.message);\n+  }\n+\n   let toolchain: WorkspaceToolchainProfile;\n   try {\n     toolchain = applyRequestedToolchainOverride(\n@@ -962,34 +1070,183 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n     }\n   }\n \n-  const { bytes, sha256, objectKeySuffix } = await createDeploymentBundle(sandbox);\n+  const sourceBundle = await createDeploymentBundle(sandbox);\n   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);\n   const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;\n   if (!bucket) {\n     throw new Error('No artifact bucket is configured for workspace deployment');\n   }\n \n-  const sourceBundleKey = `workspaces/${workspaceId}/deployments/${deploymentId}/${objectKeySuffix}`;\n-  await bucket.put(sourceBundleKey, bytes, {\n+  const sourceBundleKey = `workspaces/${workspaceId}/deployments/${deploymentId}/${sourceBundle.objectKeySuffix}`;\n+  await bucket.put(sourceBundleKey, sourceBundle.bytes, {\n     httpMetadata: {\n       contentType: 'application/gzip',\n     },\n     customMetadata: {\n       workspace_id: workspaceId,\n       deployment_id: deploymentId,\n-      source_snapshot_sha256: sha256,\n+      source_snapshot_sha256: sourceBundle.sha256,\n     },\n   });\n   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);\n \n-  const deployBase = (env.WORKSPACE_DEPLOY_BASE_URL ?? 'https://deployments.nimbus.local').replace(/\\/+$/, '');\n-  const deployedUrl = `${deployBase}/${workspaceId}/${deploymentId}`;\n+  let outputBundle = sourceBundle;\n+  let publishOutputDir = workspaceProjectRoot;\n+  if (publishOptions.provider === 'cloudflare_workers_assets') {\n+    const relativeOutputDir = publishOptions.outputDir;\n+    if (!relativeOutputDir) {\n+      throw new PolicyError('provider_invalid_output_dir', 'deploy.outputDir is required for cloudflare_workers_assets provider');\n+    }\n+    publishOutputDir =\n+      workspaceProjectRoot === '.'\n+        ? normalizeProjectRoot(relativeOutputDir)\n+        : normalizeProjectRoot(`${workspaceProjectRoot}/${relativeOutputDir}`);\n+    outputBundle = await createOutputBundle(sandbox, publishOutputDir);\n+  }\n+\n+  let createResult;\n+  try {\n+    createResult = await provider.createDeployment({\n+      workspaceId,\n+      deploymentId,\n+      outputDir: publishOutputDir,\n+      outputBundle: {\n+        bytes: outputBundle.bytes,\n+        sha256: outputBundle.sha256,\n+      },\n+    });\n+  } catch (error) {\n+    const providerError = normalizeProviderError(error);\n+    if (isRetryableProviderError(providerError.code, providerError.message)) {\n+      throw new QueueRetryError('Provider create deployment request is temporarily unavailable; retry requested');\n+    }\n+    throw new PolicyError(providerError.code, providerError.message);\n+  }\n+  await appendWorkspaceDeploymentEvent(env.DB, {\n+    workspaceId,\n+    deploymentId,\n+    eventType: 'deployment_provider_created',\n+    payload: {\n+      provider: publishOptions.provider,\n+      providerDeploymentId: createResult.providerDeploymentId,\n+      status: createResult.status,\n+      deployedUrl: createResult.deployedUrl,\n+      outputDir: publishOutputDir,\n+    },\n+  });\n+  await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {\n+    workspaceId,\n+    providerDeploymentId: createResult.providerDeploymentId,\n+  });\n+\n+  let providerStatus: WorkspaceDeployStatusResult = {\n+    status: createResult.status,\n+    deployedUrl: createResult.deployedUrl,\n+  };\n+  let cancelAttempted = false;\n+  let cancelAccepted = false;\n+  const maxPollAttempts = parseIntegerString(env.WORKSPACE_DEPLOY_PROVIDER_MAX_POLLS, 120, 1, 600);\n+  const pollIntervalMs = parseIntegerString(env.WORKSPACE_DEPLOY_PROVIDER_POLL_INTERVAL_MS, 1500, 50, 10000);\n+  for (let attempt = 0; attempt < maxPollAttempts; attempt += 1) {\n+    await throwIfDeploymentCancelled(env, workspaceId, deploymentId).catch(async (error) => {\n+        if (error instanceof CancelRequestedError) {\n+          if (!cancelAttempted) {\n+            cancelAttempted = true;\n+            let cancel;\n+            try {\n+              cancel = await provider.cancelDeployment(createResult.providerDeploymentId);\n+            } catch (providerCancelError) {\n+              const providerError = normalizeProviderError(providerCancelError);\n+              if (isRetryableProviderError(providerError.code, providerError.message)) {\n+                throw new QueueRetryError('Provider cancel status is temporarily unavailable; retry requested');\n+              }\n+              throw new PolicyError(providerError.code, providerError.message);\n+            }\n+            cancelAccepted = cancel.accepted;\n+            await appendWorkspaceDeploymentEvent(env.DB, {\n+              workspaceId,\n+            deploymentId,\n+            eventType: 'deployment_provider_cancel_requested',\n+            payload: {\n+              providerDeploymentId: createResult.providerDeploymentId,\n+              accepted: cancel.accepted,\n+              },\n+            });\n+            if (!cancel.accepted) {\n+              await env.DB\n+                .prepare(\n+                  `UPDATE workspace_deployments\n+                   SET cancel_requested_at = NULL,\n+                       updated_at = ?\n+                   WHERE id = ? AND workspace_id = ? AND status = 'running'`\n+                )\n+                .bind(new Date().toISOString(), deploymentId, workspaceId)\n+                .run();\n+            }\n+          }\n+          if (cancelAccepted) {\n+            throw new CancelRequestedError();\n+        }\n+        return;\n+      }\n+      throw error;\n+    });\n+\n+    if (providerStatus.status === 'succeeded' || providerStatus.status === 'failed' || providerStatus.status === 'cancelled') {\n+      break;\n+    }\n+\n+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));\n+    try {\n+      providerStatus = await provider.getDeploymentStatus(createResult.providerDeploymentId);\n+    } catch (error) {\n+      const providerError = normalizeProviderError(error);\n+      if (isRetryableProviderError(providerError.code, providerError.message)) {\n+        throw new QueueRetryError('Provider status endpoint is temporarily unavailable; retry requested');\n+      }\n+      throw new PolicyError(providerError.code, providerError.message);\n+    }\n+    await appendWorkspaceDeploymentEvent(env.DB, {\n+      workspaceId,\n+      deploymentId,\n+      eventType: 'deployment_provider_status',\n+      payload: {\n+        providerDeploymentId: createResult.providerDeploymentId,\n+        status: providerStatus.status,\n+        deployedUrl: providerStatus.deployedUrl,\n+      },\n+    });\n+  }\n+\n+  if (providerStatus.status === 'queued' || providerStatus.status === 'running') {\n+    throw new PolicyError(\n+      'provider_deploy_failed',\n+      `Provider deployment did not reach terminal state within polling window (${maxPollAttempts} attempts)`\n+    );\n+  }\n+\n+  if (providerStatus.status === 'failed') {\n+    throw new PolicyError(providerStatus.errorCode ?? 'provider_deploy_failed', providerStatus.errorMessage ?? 'Provider deployment failed');\n+  }\n+\n+  if (providerStatus.status === 'cancelled') {\n+    await markDeploymentCancelled(env, workspaceId, deploymentId, 'provider_cancelled');\n+    return;\n+  }\n+\n+  const deployedUrl = providerStatus.deployedUrl ?? createResult.deployedUrl;\n+  if (!deployedUrl) {\n+    throw new PolicyError('provider_deploy_failed', 'Provider deployment did not return a deployed URL');\n+  }\n+\n   const finishedAt = new Date().toISOString();\n   const successResult = {\n     url: deployedUrl,\n     artifact: {\n       sourceBundleKey,\n-      sourceSnapshotSha256: sha256,\n+      sourceSnapshotSha256: sourceBundle.sha256,\n+      outputBundleSha256: outputBundle.sha256,\n+      outputDir: publishOutputDir,\n     },\n     provenance: {\n       workspaceId,\n@@ -1000,35 +1257,60 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n     rollbackOnFailure,\n   };\n \n-  const markedSucceeded = await markWorkspaceDeploymentSucceededIfNotCancelled(env.DB, {\n+  let markedSucceeded = await markWorkspaceDeploymentSucceededIfNotCancelled(env.DB, {\n     workspaceId,\n     deploymentId,\n-    sourceSnapshotSha256: sha256,\n+    sourceSnapshotSha256: sourceBundle.sha256,\n     sourceBundleKey,\n     deployedUrl,\n-    providerDeploymentId: deploymentId,\n+    providerDeploymentId: createResult.providerDeploymentId,\n     result: successResult,\n     finishedAt,\n   });\n \n   if (!markedSucceeded) {\n     const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n-    if (latest?.cancelRequestedAt) {\n+    if (latest?.status === 'running' && latest.cancelRequestedAt && providerStatus.status === 'succeeded') {\n+      await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'succeeded', {\n+        workspaceId,\n+        sourceSnapshotSha256: sourceBundle.sha256,\n+        sourceBundleKey,\n+        deployedUrl,\n+        providerDeploymentId: createResult.providerDeploymentId,\n+        cancelRequestedAt: null,\n+        result: successResult,\n+        errorCode: null,\n+        errorMessage: null,\n+        finishedAt,\n+      });\n+      await appendWorkspaceDeploymentEvent(env.DB, {\n+        workspaceId,\n+        deploymentId,\n+        eventType: 'deployment_cancel_rejected',\n+        payload: {\n+          providerDeploymentId: createResult.providerDeploymentId,\n+          providerStatus: providerStatus.status,\n+        },\n+      });\n+      markedSucceeded = true;\n+    } else if (latest?.cancelRequestedAt) {\n       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n+      return;\n+    } else {\n+      return;\n     }\n-    return;\n   }\n \n   await appendWorkspaceDeploymentEvent(env.DB, {\n     workspaceId,\n     deploymentId,\n     eventType: 'deployment_succeeded',\n-    payload: {\n-      deployedUrl,\n-      sourceBundleKey,\n-      sourceSnapshotSha256: sha256,\n-    },\n-  });\n+      payload: {\n+        deployedUrl,\n+        sourceBundleKey,\n+        sourceSnapshotSha256: sourceBundle.sha256,\n+      },\n+    });\n \n   await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n     deploymentId,\n@@ -1043,7 +1325,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n export async function runWorkspaceDeploymentPreflight(\n   env: Env,\n   workspaceId: string,\n-  options?: Partial<DeploymentValidationOptions & DeploymentAutoFixOptions>\n+  options?: Partial<DeploymentValidationOptions & DeploymentAutoFixOptions & DeploymentPublishOptions>\n ): Promise<{\n   ok: boolean;\n   toolchain: WorkspaceToolchainProfile | null;\n@@ -1077,6 +1359,23 @@ export async function runWorkspaceDeploymentPreflight(\n   const autoFixBootstrapToolchain = parseBoolean(options?.bootstrapToolchain, false);\n   const runBuildIfPresent = parseBoolean(options?.runBuildIfPresent, true);\n   const runTestsIfPresent = parseBoolean(options?.runTestsIfPresent, true);\n+  const provider = options?.provider ?? getWorkspaceDeployProviderName(undefined, env);\n+  const outputDir = parseString(options?.outputDir);\n+\n+  if (provider === 'cloudflare_workers_assets') {\n+    if (!outputDir) {\n+      checks.push({\n+        code: 'provider_invalid_output_dir',\n+        ok: false,\n+        details: 'deploy.outputDir is required for cloudflare_workers_assets provider',\n+      });\n+      return { ok: false, toolchain: null, checks, remediations };\n+    }\n+\n+    const effectiveOutputDir =\n+      workspaceProjectRoot === '.' ? outputDir : normalizeProjectRoot(`${workspaceProjectRoot}/${outputDir}`);\n+    checks.push({ code: 'provider_output_dir', ok: true, details: effectiveOutputDir });\n+  }\n \n   try {\n     await ensureWorkspaceGitBaseline(sandbox);\n@@ -1185,12 +1484,11 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string,\n     }\n \n     if (existing?.status === 'running') {\n-      if (existing.cancelRequestedAt) {\n-        await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n-        return;\n-      }\n-\n       if (isRunningDeploymentStale(existing.startedAt)) {\n+        if (existing.cancelRequestedAt) {\n+          await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested_stale');\n+          return;\n+        }\n         await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n           workspaceId,\n           errorCode: 'deployment_stale_timeout',\n@@ -1214,6 +1512,10 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string,\n         return;\n       }\n \n+      if (existing.cancelRequestedAt) {\n+        throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');\n+      }\n+\n       throw new QueueRetryError('Workspace deployment is already running; defer redelivery');\n     }\n     return;\n@@ -1256,7 +1558,7 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string,\n       return;\n     }\n \n-    if (error instanceof CancelRequestedError || deployment?.cancelRequestedAt) {\n+    if (error instanceof CancelRequestedError) {\n       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n       return;\n     }\n@@ -1294,8 +1596,52 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string,\n     if ((error instanceof QueueRetryError || isTransientFailure(error)) && attemptCount <= maxRetries) {\n       const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n       if (latest?.cancelRequestedAt) {\n-        await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n-        return;\n+        let shouldCancelLocally = true;\n+        const requestPayload = await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId);\n+        const providerName = getWorkspaceDeployProviderName(requestPayload?.provider, env);\n+\n+        if (latest.providerDeploymentId) {\n+          try {\n+            const provider = createWorkspaceDeployProvider(providerName, env);\n+            const cancel = await provider.cancelDeployment(latest.providerDeploymentId);\n+            await appendWorkspaceDeploymentEvent(env.DB, {\n+              workspaceId,\n+              deploymentId,\n+              eventType: 'deployment_provider_cancel_requested',\n+              payload: {\n+                providerDeploymentId: latest.providerDeploymentId,\n+                accepted: cancel.accepted,\n+                retryPath: true,\n+              },\n+            });\n+            if (!cancel.accepted) {\n+              await env.DB\n+                .prepare(\n+                  `UPDATE workspace_deployments\n+                   SET cancel_requested_at = NULL,\n+                       updated_at = ?\n+                   WHERE id = ? AND workspace_id = ? AND status = 'running'`\n+                )\n+                .bind(new Date().toISOString(), deploymentId, workspaceId)\n+                .run();\n+              shouldCancelLocally = false;\n+            }\n+          } catch (providerCancelError) {\n+            if (providerCancelError instanceof QueueRetryError) {\n+              throw providerCancelError;\n+            }\n+            const providerError = normalizeProviderError(providerCancelError);\n+            if (isRetryableProviderError(providerError.code, providerError.message)) {\n+              throw new QueueRetryError('Provider cancel status is temporarily unavailable; retry requested');\n+            }\n+            throw new PolicyError(providerError.code, providerError.message);\n+          }\n+        }\n+\n+        if (shouldCancelLocally) {\n+          await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n+          return;\n+        }\n       }\n \n       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'queued', {\n@@ -1359,8 +1705,7 @@ export async function runWorkspaceDeploymentInlineWithRetries(\n     }\n \n     if (latest.cancelRequestedAt) {\n-      await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n-      return true;\n+      return false;\n     }\n \n     if (latest.attemptCount > latest.maxRetries) {\n@@ -1389,15 +1734,6 @@ export async function runWorkspaceDeploymentInlineWithRetries(\n       await processWorkspaceDeployment(env, workspaceId, deploymentId);\n     } catch (error) {\n       if (error instanceof QueueRetryError && /already running; defer redelivery/i.test(error.message)) {\n-        try {\n-          const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n-          if (latest?.status === 'running' && latest.cancelRequestedAt) {\n-            await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n-            continue;\n-          }\n-        } catch {\n-          // Best-effort inline recovery only.\n-        }\n         return;\n       }\n \n",
+            "title": "Shows unstaged diffs for target files",
+            "metadata": {
+              "output": "diff --git a/packages/worker/src/lib/db.ts b/packages/worker/src/lib/db.ts\nindex f681cc7..36e2c2b 100644\n--- a/packages/worker/src/lib/db.ts\n+++ b/packages/worker/src/lib/db.ts\n@@ -2117,6 +2117,7 @@ export async function updateWorkspaceDeploymentStatus(\n     sourceBundleKey?: string | null;\n     deployedUrl?: string | null;\n     providerDeploymentId?: string | null;\n+    cancelRequestedAt?: string | null;\n     startedAt?: string | null;\n     finishedAt?: string | null;\n   }\n@@ -2178,6 +2179,10 @@ export async function updateWorkspaceDeploymentStatus(\n     updates.push('provider_deployment_id = ?');\n     values.push(options.providerDeploymentId);\n   }\n+  if (options?.cancelRequestedAt !== undefined) {\n+    updates.push('cancel_requested_at = ?');\n+    values.push(options.cancelRequestedAt);\n+  }\n \n   if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {\n     const finishedAtForDuration =\ndiff --git a/packages/worker/src/lib/workspace-deployment-runner.ts b/packages/worker/src/lib/workspace-deployment-runner.ts\nindex 206a1cd..f0d2da3 100644\n--- a/packages/worker/src/lib/workspace-deployment-runner.ts\n+++ b/packages/worker/src/lib/workspace-deployment-runner.ts\n@@ -24,6 +24,13 @@ import {\n   detectWorkspaceToolchainProfile,\n } from './workspace-toolchain.js';\n import type { WorkspaceDeploymentRemediation, WorkspaceToolchainProfile } from '../types.js';\n+import {\n+  createWorkspaceDeployProvider,\n+  getWorkspaceDeployProviderName,\n+  normalizeProviderError,\n+  type WorkspaceDeployStatusResult,\n+  type WorkspaceDeployProviderName,\n+} from './workspace-deploy-provider.js';\n \n const WORKSPACE_ROOT = '/workspace';\n const STALE_RUNNING_TIMEOUT_MS = 30 * 60 * 1000;\n@@ -72,6 +79,11 @@ interface DeploymentCacheOptions {\n   dependencyCache: boolean;\n }\n \n+interface DeploymentPublishOptions {\n+  provider: WorkspaceDeployProviderName;\n+  outputDir: string | null;\n+}\n+\n class CancelRequestedError extends Error {\n   constructor() {\n     super('Deployment cancel requested');\n@@ -104,6 +116,32 @@ function parseInteger(value: unknown, fallback: number, min: number, max: number\n   return normalized;\n }\n \n+function parseString(value: unknown): string | null {\n+  if (typeof value !== 'string') {\n+    return null;\n+  }\n+  const trimmed = value.trim();\n+  return trimmed.length > 0 ? trimmed : null;\n+}\n+\n+function parseIntegerString(value: string | undefined, fallback: number, min: number, max: number): number {\n+  if (typeof value !== 'string') {\n+    return fallback;\n+  }\n+  const parsed = Number.parseInt(value.trim(), 10);\n+  if (!Number.isFinite(parsed)) {\n+    return fallback;\n+  }\n+  return parseInteger(parsed, fallback, min, max);\n+}\n+\n+function isRetryableProviderError(code: string, message: string): boolean {\n+  if (code === 'provider_rate_limited') {\n+    return true;\n+  }\n+  return /(temporarily unavailable|timeout|timed out|network|connection reset|fetch failed)/i.test(message);\n+}\n+\n function isTransientFailure(error: unknown): boolean {\n   const message = error instanceof Error ? error.message : String(error);\n   return /(timeout|timed out|temporar|network|fetch failed|connection reset|sandbox unavailable|rate limit|database is locked|sqlite_busy)/i.test(\n@@ -352,6 +390,36 @@ async function createDeploymentBundle(\n   };\n }\n \n+async function createOutputBundle(\n+  sandbox: SandboxClient,\n+  outputDir: string\n+): Promise<{ bytes: Uint8Array; sha256: string; objectKeySuffix: string }> {\n+  const normalizedOutputDir = normalizeProjectRoot(outputDir);\n+  const base64 = await runSandboxCommand(\n+    sandbox,\n+    `cd ${shellQuote(\n+      WORKSPACE_ROOT\n+    )} && if [ ! -d ${shellQuote(\n+      normalizedOutputDir\n+    )} ]; then echo '__NIMBUS_OUTPUT_DIR_MISSING__'; else tmp_stem=$(mktemp /tmp/nimbus-workspace-output.XXXXXX) && tmp_bundle=\"\\${tmp_stem}.tar.gz\" && tar -czf \"$tmp_bundle\" -C ${shellQuote(\n+      normalizedOutputDir\n+    )} . && base64 \"$tmp_bundle\" && rm -f \"$tmp_bundle\" \"$tmp_stem\"; fi`,\n+    { timeout: 8 * 60 * 1000 }\n+  );\n+\n+  if (base64.trim() === '__NIMBUS_OUTPUT_DIR_MISSING__') {\n+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir directory does not exist: ${normalizedOutputDir}`);\n+  }\n+\n+  const bytes = fromBase64(base64);\n+  const sha = await sha256Hex(bytes);\n+  return {\n+    bytes,\n+    sha256: sha,\n+    objectKeySuffix: 'output.tar.gz',\n+  };\n+}\n+\n async function createDependencyCacheArchive(\n   sandbox: SandboxClient,\n   profile: WorkspaceToolchainProfile\n@@ -624,6 +692,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n     payload.toolchain && typeof payload.toolchain === 'object' && !Array.isArray(payload.toolchain)\n       ? (payload.toolchain as Record<string, unknown>)\n       : null;\n+  const deploy =\n+    payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)\n+      ? (payload.deploy as Record<string, unknown>)\n+      : {};\n   const validationOptions: DeploymentValidationOptions = {\n     runBuildIfPresent: parseBoolean(validation.runBuildIfPresent, true),\n     runTestsIfPresent: parseBoolean(validation.runTestsIfPresent, true),\n@@ -635,6 +707,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n   const cacheOptions: DeploymentCacheOptions = {\n     dependencyCache: parseBoolean(cache.dependencyCache, true),\n   };\n+  const publishOptions: DeploymentPublishOptions = {\n+    provider: getWorkspaceDeployProviderName(payload.provider, env),\n+    outputDir: parseString(deploy.outputDir),\n+  };\n   const { runBuildIfPresent, runTestsIfPresent } = validationOptions;\n   const rollbackOnFailure = parseBoolean(payload.rollbackOnFailure, true);\n   const remediations: WorkspaceDeploymentRemediation[] = [];\n@@ -647,6 +723,13 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n     throw new PolicyError('invalid_project_root', error instanceof Error ? error.message : String(error));\n   }\n \n+  if (publishOptions.provider === 'cloudflare_workers_assets' && !publishOptions.outputDir) {\n+    throw new PolicyError(\n+      'provider_invalid_output_dir',\n+      'deploy.outputDir is required for cloudflare_workers_assets provider'\n+    );\n+  }\n+\n   const sandbox = await sandboxResolver(env, workspace.sandboxId);\n   try {\n     await ensureWorkspaceGitBaseline(sandbox);\n@@ -721,6 +804,31 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n \n   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);\n \n+  let provider;\n+  try {\n+    provider = createWorkspaceDeployProvider(publishOptions.provider, env);\n+    const providerChecks = await provider.precheck();\n+    await appendWorkspaceDeploymentEvent(env.DB, {\n+      workspaceId,\n+      deploymentId,\n+      eventType: 'deployment_provider_precheck',\n+      payload: {\n+        provider: publishOptions.provider,\n+        checks: providerChecks,\n+      },\n+    });\n+    const failedCheck = providerChecks.find((check) => !check.ok);\n+    if (failedCheck) {\n+      throw new PolicyError(failedCheck.code, failedCheck.details ?? 'Provider precheck failed');\n+    }\n+  } catch (error) {\n+    const providerError = normalizeProviderError(error);\n+    if (isRetryableProviderError(providerError.code, providerError.message)) {\n+      throw new QueueRetryError('Provider create deployment request is temporarily unavailable; retry requested');\n+    }\n+    throw new PolicyError(providerError.code, providerError.message);\n+  }\n+\n   let toolchain: WorkspaceToolchainProfile;\n   try {\n     toolchain = applyRequestedToolchainOverride(\n@@ -962,34 +1070,183 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n     }\n   }\n \n-  const { bytes, sha256, objectKeySuffix } = await createDeploymentBundle(sandbox);\n+  const sourceBundle = await createDeploymentBundle(sandbox);\n   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);\n   const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;\n   if (!bucket) {\n     throw new Error('No artifact bucket is configured for workspace deployment');\n   }\n \n-  const sourceBundleKey = `workspaces/${workspaceId}/deployments/${deploymentId}/${objectKeySuffix}`;\n-  await bucket.put(sourceBundleKey, bytes, {\n+  const sourceBundleKey = `workspaces/${workspaceId}/deployments/${deploymentId}/${sourceBundle.objectKeySuffix}`;\n+  await bucket.put(sourceBundleKey, sourceBundle.bytes, {\n     httpMetadata: {\n       contentType: 'application/gzip',\n     },\n     customMetadata: {\n       workspace_id: workspaceId,\n       deployment_id: deploymentId,\n-      source_snapshot_sha256: sha256,\n+      source_snapshot_sha256: sourceBundle.sha256,\n     },\n   });\n   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);\n \n-  const deployBase = (env.WORKSPACE_DEPLOY_BASE_URL ?? 'https://deployments.nimbus.local').replace(/\\/+$/, '');\n-  const deployedUrl = `${deployBase}/${workspaceId}/${deploymentId}`;\n+  let outputBundle = sourceBundle;\n+  let publishOutputDir = workspaceProjectRoot;\n+  if (publishOptions.provider === 'cloudflare_workers_assets') {\n+    const relativeOutputDir = publishOptions.outputDir;\n+    if (!relativeOutputDir) {\n+      throw new PolicyError('provider_invalid_output_dir', 'deploy.outputDir is required for cloudflare_workers_assets provider');\n+    }\n+    publishOutputDir =\n+      workspaceProjectRoot === '.'\n+        ? normalizeProjectRoot(relativeOutputDir)\n+        : normalizeProjectRoot(`${workspaceProjectRoot}/${relativeOutputDir}`);\n+    outputBundle = await createOutputBundle(sandbox, publishOutputDir);\n+  }\n+\n+  let createResult;\n+  try {\n+    createResult = await provider.createDeployment({\n+      workspaceId,\n+      deploymentId,\n+      outputDir: publishOutputDir,\n+      outputBundle: {\n+        bytes: outputBundle.bytes,\n+        sha256: outputBundle.sha256,\n+      },\n+    });\n+  } catch (error) {\n+    const providerError = normalizeProviderError(error);\n+    if (isRetryableProviderError(providerError.code, providerError.message)) {\n+      throw new QueueRetryError('Provider create deployment request is temporarily unavailable; retry requested');\n+    }\n+    throw new PolicyError(providerError.code, providerError.message);\n+  }\n+  await appendWorkspaceDeploymentEvent(env.DB, {\n+    workspaceId,\n+    deploymentId,\n+    eventType: 'deployment_provider_created',\n+    payload: {\n+      provider: publishOptions.provider,\n+      providerDeploymentId: createResult.providerDeploymentId,\n+      status: createResult.status,\n+      deployedUrl: createResult.deployedUrl,\n+      outputDir: publishOutputDir,\n+    },\n+  });\n+  await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {\n+    workspaceId,\n+    providerDeploymentId: createResult.providerDeploymentId,\n+  });\n+\n+  let providerStatus: WorkspaceDeployStatusResult = {\n+    status: createResult.status,\n+    deployedUrl: createResult.deployedUrl,\n+  };\n+  let cancelAttempted = false;\n+  let cancelAccepted = false;\n+  const maxPollAttempts = parseIntegerString(env.WORKSPACE_DEPLOY_PROVIDER_MAX_POLLS, 120, 1, 600);\n+  const pollIntervalMs = parseIntegerString(env.WORKSPACE_DEPLOY_PROVIDER_POLL_INTERVAL_MS, 1500, 50, 10000);\n+  for (let attempt = 0; attempt < maxPollAttempts; attempt += 1) {\n+    await throwIfDeploymentCancelled(env, workspaceId, deploymentId).catch(async (error) => {\n+        if (error instanceof CancelRequestedError) {\n+          if (!cancelAttempted) {\n+            cancelAttempted = true;\n+            let cancel;\n+            try {\n+              cancel = await provider.cancelDeployment(createResult.providerDeploymentId);\n+            } catch (providerCancelError) {\n+              const providerError = normalizeProviderError(providerCancelError);\n+              if (isRetryableProviderError(providerError.code, providerError.message)) {\n+                throw new QueueRetryError('Provider cancel status is temporarily unavailable; retry requested');\n+              }\n+              throw new PolicyError(providerError.code, providerError.message);\n+            }\n+            cancelAccepted = cancel.accepted;\n+            await appendWorkspaceDeploymentEvent(env.DB, {\n+              workspaceId,\n+            deploymentId,\n+            eventType: 'deployment_provider_cancel_requested',\n+            payload: {\n+              providerDeploymentId: createResult.providerDeploymentId,\n+              accepted: cancel.accepted,\n+              },\n+            });\n+            if (!cancel.accepted) {\n+              await env.DB\n+                .prepare(\n+                  `UPDATE workspace_deployments\n+                   SET cancel_requested_at = NULL,\n+                       updated_at = ?\n+                   WHERE id = ? AND workspace_id = ? AND status = 'running'`\n+                )\n+                .bind(new Date().toISOString(), deploymentId, workspaceId)\n+                .run();\n+            }\n+          }\n+          if (cancelAccepted) {\n+            throw new CancelRequestedError();\n+        }\n+        return;\n+      }\n+      throw error;\n+    });\n+\n+    if (providerStatus.status === 'succeeded' || providerStatus.status === 'failed' || providerStatus.status === 'cancelled') {\n+      break;\n+    }\n+\n+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));\n+    try {\n+      providerStatus = await provider.getDeploymentStatus(createResult.providerDeploymentId);\n+    } catch (error) {\n+      const providerError = normalizeProviderError(error);\n+      if (isRetryableProviderError(providerError.code, providerError.message)) {\n+        throw new QueueRetryError('Provider status endpoint is temporarily unavailable; retry requested');\n+      }\n+      throw new PolicyError(providerError.code, providerError.message);\n+    }\n+    await appendWorkspaceDeploymentEvent(env.DB, {\n+      workspaceId,\n+      deploymentId,\n+      eventType: 'deployment_provider_status',\n+      payload: {\n+        providerDeploymentId: createResult.providerDeploymentId,\n+        status: providerStatus.status,\n+        deployedUrl: providerStatus.deployedUrl,\n+      },\n+    });\n+  }\n+\n+  if (providerStatus.status === 'queued' || providerStatus.status === 'running') {\n+    throw new PolicyError(\n+      'provider_deploy_failed',\n+      `Provider deployment did not reach terminal state within polling window (${maxPollAttempts} attempts)`\n+    );\n+  }\n+\n+  if (providerStatus.status === 'failed') {\n+    throw new PolicyError(providerStatus.errorCode ?? 'provider_deploy_failed', providerStatus.errorMessage ?? 'Provider deployment failed');\n+  }\n+\n+  if (providerStatus.status === 'cancelled') {\n+    await markDeploymentCancelled(env, workspaceId, deploymentId, 'provider_cancelled');\n+    return;\n+  }\n+\n+  const deployedUrl = providerStatus.deployedUrl ?? createResult.deployedUrl;\n+  if (!deployedUrl) {\n+    throw new PolicyError('provider_deploy_failed', 'Provider deployment did not return a deployed URL');\n+  }\n+\n   const finishedAt = new Date().toISOString();\n   const successResult = {\n     url: deployedUrl,\n     artifact: {\n       sourceBundleKey,\n-      sourceSnapshotSha256: sha256,\n+      sourceSnapshotSha256: sourceBundle.sha256,\n+      outputBundleSha256: outputBundle.sha256,\n+      outputDir: publishOutputDir,\n     },\n     provenance: {\n       workspaceId,\n@@ -1000,35 +1257,60 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n     rollbackOnFailure,\n   };\n \n-  const markedSucceeded = await markWorkspaceDeploymentSucceededIfNotCancelled(env.DB, {\n+  let markedSucceeded = await markWorkspaceDeploymentSucceededIfNotCancelled(env.DB, {\n     workspaceId,\n     deploymentId,\n-    sourceSnapshotSha256: sha256,\n+    sourceSnapshotSha256: sourceBundle.sha256,\n     sourceBundleKey,\n     deployedUrl,\n-    providerDeploymentId: deploymentId,\n+    providerDeploymentId: createResult.providerDeploymentId,\n     result: successResult,\n     finishedAt,\n   });\n \n   if (!markedSucceeded) {\n     const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n-    if (latest?.cancelRequestedAt) {\n+    if (latest?.status === 'running' && latest.cancelRequestedAt && providerStatus.status === 'succeeded') {\n+      await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'succeeded', {\n+        workspaceId,\n+        sourceSnapshotSha256: sourceBundle.sha256,\n+        sourceBundleKey,\n+        deployedUrl,\n+        providerDeploymentId: createResult.providerDeploymentId,\n+        cancelRequestedAt: null,\n+        result: successResult,\n+        errorCode: null,\n+        errorMessage: null,\n+        finishedAt,\n+      });\n+      await appendWorkspaceDeploymentEvent(env.DB, {\n+        workspaceId,\n+        deploymentId,\n+        eventType: 'deployment_cancel_rejected',\n+        payload: {\n+          providerDeploymentId: createResult.providerDeploymentId,\n+          providerStatus: providerStatus.status,\n+        },\n+      });\n+      markedSucceeded = true;\n+    } else if (latest?.cancelRequestedAt) {\n       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n+      return;\n+    } else {\n+      return;\n     }\n-    return;\n   }\n \n   await appendWorkspaceDeploymentEvent(env.DB, {\n     workspaceId,\n     deploymentId,\n     eventType: 'deployment_succeeded',\n-    payload: {\n-      deployedUrl,\n-      sourceBundleKey,\n-      sourceSnapshotSha256: sha256,\n-    },\n-  });\n+      payload: {\n+        deployedUrl,\n+        sourceBundleKey,\n+        sourceSnapshotSha256: sourceBundle.sha256,\n+      },\n+    });\n \n   await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n     deploymentId,\n@@ -1043,7 +1325,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym\n export async function runWorkspaceDeploymentPreflight(\n   env: Env,\n   workspaceId: string,\n-  options?: Partial<DeploymentValidationOptions & DeploymentAutoFixOptions>\n+  options?: Partial<DeploymentValidationOptions & DeploymentAutoFixOptions & DeploymentPublishOptions>\n ): Promise<{\n   ok: boolean;\n   toolchain: WorkspaceToolchainProfile | null;\n@@ -1077,6 +1359,23 @@ export async function runWorkspaceDeploymentPreflight(\n   const autoFixBootstrapToolchain = parseBoolean(options?.bootstrapToolchain, false);\n   const runBuildIfPresent = parseBoolean(options?.runBuildIfPresent, true);\n   const runTestsIfPresent = parseBoolean(options?.runTestsIfPresent, true);\n+  const provider = options?.provider ?? getWorkspaceDeployProviderName(undefined, env);\n+  const outputDir = parseString(options?.outputDir);\n+\n+  if (provider === 'cloudflare_workers_assets') {\n+    if (!outputDir) {\n+      checks.push({\n+        code: 'provider_invalid_output_dir',\n+        ok: false,\n+        details: 'deploy.outputDir is required for cloudflare_workers_assets provider',\n+      });\n+      return { ok: false, toolchain: null, checks, remediations };\n+    }\n+\n+    const effectiveOutputDir =\n+      workspaceProjectRoot === '.' ? outputDir : normalizeProjectRoot(`${workspaceProjectRoot}/${outputDir}`);\n+    checks.push({ code: 'provider_output_dir', ok: true, details: effectiveOutputDir });\n+  }\n \n   try {\n     await ensureWorkspaceGitBaseline(sandbox);\n@@ -1185,12 +1484,11 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string,\n     }\n \n     if (existing?.status === 'running') {\n-      if (existing.cancelRequestedAt) {\n-        await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n-        return;\n-      }\n-\n       if (isRunningDeploymentStale(existing.startedAt)) {\n+        if (existing.cancelRequestedAt) {\n+          await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested_stale');\n+          return;\n+        }\n         await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n           workspaceId,\n           errorCode: 'deployment_stale_timeout',\n@@ -1214,6 +1512,10 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string,\n         return;\n       }\n \n+      if (existing.cancelRequestedAt) {\n+        throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');\n+      }\n+\n       throw new QueueRetryError('Workspace deployment is already running; defer redelivery');\n     }\n     return;\n@@ -1256,7 +1558,7 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string,\n       return;\n     }\n \n-    if (error instanceof CancelRequestedError || deployment?.cancelRequestedAt) {\n+    if (error instanceof CancelRequestedError) {\n       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n       return;\n     }\n@@ -1294,8 +1596,52 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string,\n     if ((error instanceof QueueRetryError || isTransientFailure(error)) && attemptCount <= maxRetries) {\n       const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n       if (latest?.cancelRequestedAt) {\n-        await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n-        return;\n+        let shouldCancelLocally = true;\n+        const requestPayload = await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId);\n+        const providerName = getWorkspaceDeployProviderName(requestPayload?.provider, env);\n+\n+        if (latest.providerDeploymentId) {\n+          try {\n+            const provider = createWorkspaceDeployProvider(providerName, env);\n+            const cancel = await provider.cancelDeployment(latest.providerDeploymentId);\n+            await appendWorkspaceDeploymentEvent(env.DB, {\n+              workspaceId,\n+              deploymentId,\n+              eventType: 'deployment_provider_cancel_requested',\n+              payload: {\n+                providerDeploymentId: latest.providerDeploymentId,\n+                accepted: cancel.accepted,\n+                retryPath: true,\n+              },\n+            });\n+            if (!cancel.accepted) {\n+              await env.DB\n+                .prepare(\n+                  `UPDATE workspace_deployments\n+                   SET cancel_requested_at = NULL,\n+                       updated_at = ?\n+                   WHERE id = ? AND workspace_id = ? AND status = 'running'`\n+                )\n+                .bind(new Date().toISOString(), deploymentId, workspaceId)\n+                .run();\n+              shouldCancelLocally = false;\n+            }\n+          } catch (providerCancelError) {\n+            if (providerCancelError instanceof QueueRetryError) {\n+              throw providerCancelError;\n+            }\n+            const providerError = normalizeProviderError(providerCancelError);\n+            if (isRetryableProviderError(providerError.code, providerError.message)) {\n+              throw new QueueRetryError('Provider cancel status is temporarily unavailable; retry requested');\n+            }\n+            throw new PolicyError(providerError.code, providerError.message);\n+          }\n+        }\n+\n+        if (shouldCancelLocally) {\n+          await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n+          return;\n+        }\n       }\n \n       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'queued', {\n@@ -1359,8 +1705,7 @@ export async function runWorkspaceDeploymentInlineWithRetries(\n     }\n \n     if (latest.cancelRequestedAt) {\n-      await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n-      return true;\n+      return false;\n     }\n \n     if (latest.attemptCount > latest.maxRetries) {\n@@ -1389,15 +1734,6 @@ export async function runWorkspaceDeploymentInlineWithRetries(\n       await processWorkspaceDeployment(env, workspaceId, deploymentId);\n     } catch (error) {\n       if (error instanceof QueueRetryError && /already running; defer redelivery/i.test(error.message)) {\n-        try {\n-          const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n-          if (latest?.status === 'running' && latest.cancelRequestedAt) {\n-            await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n-            continue;\n-          }\n-        } catch {\n-          // Best-effort inline recovery only.\n-        }\n         return;\n       }\n \n",
+              "exit": 0,
+              "description": "Shows unstaged diffs for target files",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773077125438,
+              "end": 1773077126143
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0b3a914bfebedfb30169af028555088194a30f1957d4163aad"
+            }
+          },
+          "id": "prt_cd3a1d926001iuRRKE6ta4p22x",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff --staged -- packages/worker/src/lib/workspace-deployment-runner.ts packages/worker/src/lib/db.ts",
+              "workdir": "/Users/nickdejesus/Code/nimbus",
+              "description": "Shows staged diffs for target files"
+            },
+            "output": "",
+            "title": "Shows staged diffs for target files",
+            "metadata": {
+              "output": "",
+              "exit": 0,
+              "description": "Shows staged diffs for target files",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773077125441,
+              "end": 1773077126139
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0b3a914bfebedfb30169af028555148194b086e65ab28067bb"
+            }
+          },
+          "id": "prt_cd3a1d940001Yw98PDPOHD83MX",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "cost": 0.00645645,
+          "tokens": {
+            "total": 7017,
+            "input": 627,
+            "output": 246,
+            "reasoning": 60,
+            "cache": {
+              "read": 6144,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3a1dbff001eMZA8y6941wzr7",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773077126247,
+          "completed": 1773077131912
+        },
+        "parentID": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01724835,
+        "tokens": {
+          "total": 13070,
+          "input": 5933,
+          "output": 225,
+          "reasoning": 179,
+          "cache": {
+            "read": 6912,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3a1dc67001kQZQeAhiiZV76Z",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "id": "prt_cd3a1ded5001SopzxiT07jRlO1",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1dc67001kQZQeAhiiZV76Z"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Verifying cancelRequestedAt reset logic**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_08b55dbca126a7100169af02882f8c81998fc938d85a0fe0e1",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773077128270,
+            "end": 1773077131555
+          },
+          "id": "prt_cd3a1e44e0011si4ES4OFdK3C9",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1dc67001kQZQeAhiiZV76Z"
+        },
+        {
+          "type": "tool",
+          "callID": "call_urnvDH1VArsKJbTvvtxooFJu",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts",
+              "offset": 2080,
+              "limit": 240
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/db.ts</path>\n<type>file</type>\n<content>2080: }\n2081: \n2082: export async function claimWorkspaceDeploymentForExecution(\n2083:   db: D1Database,\n2084:   workspaceId: string,\n2085:   deploymentId: string\n2086: ): Promise<boolean> {\n2087:   const now = new Date().toISOString();\n2088:   const result = await db\n2089:     .prepare(\n2090:       `UPDATE workspace_deployments\n2091:        SET status = 'running',\n2092:            started_at = COALESCE(started_at, ?),\n2093:            attempt_count = attempt_count + 1,\n2094:            updated_at = ?\n2095:        WHERE id = ? AND workspace_id = ? AND status = 'queued' AND cancel_requested_at IS NULL`\n2096:     )\n2097:     .bind(now, now, deploymentId, workspaceId)\n2098:     .run();\n2099: \n2100:   return (result.meta?.changes ?? 0) > 0;\n2101: }\n2102: \n2103: export async function updateWorkspaceDeploymentStatus(\n2104:   db: D1Database,\n2105:   deploymentId: string,\n2106:   status: WorkspaceDeploymentStatus,\n2107:   options?: {\n2108:     workspaceId?: string;\n2109:     result?: unknown;\n2110:     toolchain?: WorkspaceToolchainProfile | null;\n2111:     dependencyCacheKey?: string | null;\n2112:     dependencyCacheHit?: boolean;\n2113:     remediations?: WorkspaceDeploymentRemediation[];\n2114:     errorCode?: string | null;\n2115:     errorMessage?: string | null;\n2116:     sourceSnapshotSha256?: string | null;\n2117:     sourceBundleKey?: string | null;\n2118:     deployedUrl?: string | null;\n2119:     providerDeploymentId?: string | null;\n2120:     cancelRequestedAt?: string | null;\n2121:     startedAt?: string | null;\n2122:     finishedAt?: string | null;\n2123:   }\n2124: ): Promise<void> {\n2125:   const updates: string[] = ['status = ?', 'updated_at = ?'];\n2126:   const values: Array<string | number | null> = [status, new Date().toISOString()];\n2127:   let explicitFinishedAt: string | null | undefined;\n2128: \n2129:   if (options?.startedAt !== undefined) {\n2130:     updates.push('started_at = ?');\n2131:     values.push(options.startedAt);\n2132:   }\n2133:   if (options?.finishedAt !== undefined) {\n2134:     updates.push('finished_at = ?');\n2135:     values.push(options.finishedAt);\n2136:     explicitFinishedAt = options.finishedAt;\n2137:   }\n2138:   if (options?.result !== undefined) {\n2139:     updates.push('result_json = ?');\n2140:     values.push(JSON.stringify(options.result));\n2141:   }\n2142:   if (options?.toolchain !== undefined) {\n2143:     updates.push('toolchain_json = ?');\n2144:     values.push(options.toolchain ? JSON.stringify(options.toolchain) : null);\n2145:   }\n2146:   if (options?.dependencyCacheKey !== undefined) {\n2147:     updates.push('dependency_cache_key = ?');\n2148:     values.push(options.dependencyCacheKey);\n2149:   }\n2150:   if (options?.dependencyCacheHit !== undefined) {\n2151:     updates.push('dependency_cache_hit = ?');\n2152:     values.push(options.dependencyCacheHit ? 1 : 0);\n2153:   }\n2154:   if (options?.remediations !== undefined) {\n2155:     updates.push('remediations_json = ?');\n2156:     values.push(JSON.stringify(options.remediations));\n2157:   }\n2158:   if (options?.errorCode !== undefined) {\n2159:     updates.push('error_code = ?');\n2160:     values.push(options.errorCode);\n2161:   }\n2162:   if (options?.errorMessage !== undefined) {\n2163:     updates.push('error_message = ?');\n2164:     values.push(options.errorMessage);\n2165:   }\n2166:   if (options?.sourceSnapshotSha256 !== undefined) {\n2167:     updates.push('source_snapshot_sha256 = ?');\n2168:     values.push(options.sourceSnapshotSha256);\n2169:   }\n2170:   if (options?.sourceBundleKey !== undefined) {\n2171:     updates.push('source_bundle_key = ?');\n2172:     values.push(options.sourceBundleKey);\n2173:   }\n2174:   if (options?.deployedUrl !== undefined) {\n2175:     updates.push('deployed_url = ?');\n2176:     values.push(options.deployedUrl);\n2177:   }\n2178:   if (options?.providerDeploymentId !== undefined) {\n2179:     updates.push('provider_deployment_id = ?');\n2180:     values.push(options.providerDeploymentId);\n2181:   }\n2182:   if (options?.cancelRequestedAt !== undefined) {\n2183:     updates.push('cancel_requested_at = ?');\n2184:     values.push(options.cancelRequestedAt);\n2185:   }\n2186: \n2187:   if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {\n2188:     const finishedAtForDuration =\n2189:       explicitFinishedAt && typeof explicitFinishedAt === 'string' ? explicitFinishedAt : new Date().toISOString();\n2190:     if (explicitFinishedAt === undefined) {\n2191:       updates.push('finished_at = COALESCE(finished_at, ?)');\n2192:       values.push(finishedAtForDuration);\n2193:     }\n2194:     updates.push('duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END');\n2195:     values.push(finishedAtForDuration);\n2196:   }\n2197: \n2198:   values.push(deploymentId);\n2199:   let whereClause = 'id = ?';\n2200:   if (options?.workspaceId) {\n2201:     whereClause += ' AND workspace_id = ?';\n2202:     values.push(options.workspaceId);\n2203:   }\n2204: \n2205:   await db\n2206:     .prepare(`UPDATE workspace_deployments SET ${updates.join(', ')} WHERE ${whereClause}`)\n2207:     .bind(...values)\n2208:     .run();\n2209: }\n2210: \n2211: export async function markWorkspaceDeploymentSucceededIfNotCancelled(\n2212:   db: D1Database,\n2213:   input: {\n2214:     workspaceId: string;\n2215:     deploymentId: string;\n2216:     sourceSnapshotSha256: string;\n2217:     sourceBundleKey: string;\n2218:     deployedUrl: string;\n2219:     providerDeploymentId: string;\n2220:     result: unknown;\n2221:     finishedAt: string;\n2222:   }\n2223: ): Promise<boolean> {\n2224:   const updatedAt = new Date().toISOString();\n2225:   const result = await db\n2226:     .prepare(\n2227:       `UPDATE workspace_deployments\n2228:        SET status = 'succeeded',\n2229:            source_snapshot_sha256 = ?,\n2230:            source_bundle_key = ?,\n2231:            deployed_url = ?,\n2232:            provider_deployment_id = ?,\n2233:            result_json = ?,\n2234:            error_code = NULL,\n2235:            error_message = NULL,\n2236:            finished_at = ?,\n2237:            duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,\n2238:            updated_at = ?\n2239:        WHERE id = ?\n2240:          AND workspace_id = ?\n2241:          AND status = 'running'\n2242:          AND cancel_requested_at IS NULL`\n2243:     )\n2244:     .bind(\n2245:       input.sourceSnapshotSha256,\n2246:       input.sourceBundleKey,\n2247:       input.deployedUrl,\n2248:       input.providerDeploymentId,\n2249:       JSON.stringify(input.result),\n2250:       input.finishedAt,\n2251:       input.finishedAt,\n2252:       updatedAt,\n2253:       input.deploymentId,\n2254:       input.workspaceId\n2255:     )\n2256:     .run();\n2257: \n2258:   return (result.meta?.changes ?? 0) > 0;\n2259: }\n2260: \n2261: export async function requestWorkspaceDeploymentCancel(\n2262:   db: D1Database,\n2263:   workspaceId: string,\n2264:   deploymentId: string\n2265: ): Promise<{ deployment: WorkspaceDeploymentResponse | null; updated: boolean }> {\n2266:   const now = new Date().toISOString();\n2267:   const queuedResult = await db\n2268:     .prepare(\n2269:       `UPDATE workspace_deployments\n2270:        SET status = 'cancelled',\n2271:            cancel_requested_at = COALESCE(cancel_requested_at, ?),\n2272:            finished_at = COALESCE(finished_at, ?),\n2273:            error_code = NULL,\n2274:            error_message = NULL,\n2275:            updated_at = ?\n2276:        WHERE id = ? AND workspace_id = ? AND status = 'queued'`\n2277:     )\n2278:     .bind(now, now, now, deploymentId, workspaceId)\n2279:     .run();\n2280: \n2281:   const runningResult = await db\n2282:     .prepare(\n2283:       `UPDATE workspace_deployments\n2284:        SET cancel_requested_at = COALESCE(cancel_requested_at, ?),\n2285:            updated_at = ?\n2286:        WHERE id = ? AND workspace_id = ? AND status = 'running' AND cancel_requested_at IS NULL`\n2287:     )\n2288:     .bind(now, now, deploymentId, workspaceId)\n2289:     .run();\n2290: \n2291:   const deployment = await getWorkspaceDeployment(db, workspaceId, deploymentId);\n2292: \n2293:   return {\n2294:     deployment,\n2295:     updated: (queuedResult.meta?.changes ?? 0) > 0 || (runningResult.meta?.changes ?? 0) > 0,\n2296:   };\n2297: }\n2298: \n2299: export async function appendWorkspaceDeploymentEvent(\n2300:   db: D1Database,\n2301:   input: {\n2302:     workspaceId: string;\n2303:     deploymentId: string;\n2304:     eventType: string;\n2305:     payload: unknown;\n2306:   }\n2307: ): Promise<number> {\n2308:   const seqResult = await db\n2309:     .prepare(\n2310:       'UPDATE workspace_deployments SET last_event_seq = last_event_seq + 1 WHERE id = ? AND workspace_id = ? RETURNING last_event_seq'\n2311:     )\n2312:     .bind(input.deploymentId, input.workspaceId)\n2313:     .first<{ last_event_seq: number }>();\n2314: \n2315:   if (!seqResult) {\n2316:     throw new Error(`Failed to allocate event sequence for workspace deployment ${input.deploymentId}`);\n2317:   }\n2318: \n2319:   const seq = Number(seqResult.last_event_seq);\n\n(Showing lines 2080-2319 of 2575. Use offset=2320 to continue.)\n</content>",
+            "title": "packages/worker/src/lib/db.ts",
+            "metadata": {
+              "preview": "}\n\nexport async function claimWorkspaceDeploymentForExecution(\n  db: D1Database,\n  workspaceId: string,\n  deploymentId: string\n): Promise<boolean> {\n  const now = new Date().toISOString();\n  const result = await db\n    .prepare(\n      `UPDATE workspace_deployments\n       SET status = 'running',\n           started_at = COALESCE(started_at, ?),\n           attempt_count = attempt_count + 1,\n           updated_at = ?\n       WHERE id = ? AND workspace_id = ? AND status = 'queued' AND cancel_requested_at IS NULL`\n    )\n    .bind(now, now, deploymentId, workspaceId)\n    .run();\n",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773077131760,
+              "end": 1773077131764
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_08b55dbca126a7100169af028b8218819982f8c6869c1f841a"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1dc67001kQZQeAhiiZV76Z"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "cost": 0.01724835,
+          "tokens": {
+            "total": 13070,
+            "input": 5933,
+            "output": 225,
+            "reasoning": 179,
+            "cache": {
+              "read": 6912,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3a1f21a001w3wbEbIS1qcDZj",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1dc67001kQZQeAhiiZV76Z"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773077131914,
+          "completed": 1773077133502
+        },
+        "parentID": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0083524,
+        "tokens": {
+          "total": 15781,
+          "input": 2784,
+          "output": 69,
+          "reasoning": 18,
+          "cache": {
+            "read": 12928,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3a1f28a001gd6jDe3AmxsnCR",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "id": "REDACTED",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1f28a001gd6jDe3AmxsnCR"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Inspecting cancellation handling**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_099fab97952877a90169af028c7d388198a4d52436a3dc7eb7",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773077132595,
+            "end": 1773077133118
+          },
+          "id": "prt_cd3a1f533001Vu2kYM64CIx0L1",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1f28a001gd6jDe3AmxsnCR"
+        },
+        {
+          "type": "tool",
+          "callID": "call_7ujcjjeC7eM75yES0SXDbHRM",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts",
+              "offset": 1220,
+              "limit": 460
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.ts</path>\n<type>file</type>\n<content>1220: \n1221:   if (providerStatus.status === 'queued' || providerStatus.status === 'running') {\n1222:     throw new PolicyError(\n1223:       'provider_deploy_failed',\n1224:       `Provider deployment did not reach terminal state within polling window (${maxPollAttempts} attempts)`\n1225:     );\n1226:   }\n1227: \n1228:   if (providerStatus.status === 'failed') {\n1229:     throw new PolicyError(providerStatus.errorCode ?? 'provider_deploy_failed', providerStatus.errorMessage ?? 'Provider deployment failed');\n1230:   }\n1231: \n1232:   if (providerStatus.status === 'cancelled') {\n1233:     await markDeploymentCancelled(env, workspaceId, deploymentId, 'provider_cancelled');\n1234:     return;\n1235:   }\n1236: \n1237:   const deployedUrl = providerStatus.deployedUrl ?? createResult.deployedUrl;\n1238:   if (!deployedUrl) {\n1239:     throw new PolicyError('provider_deploy_failed', 'Provider deployment did not return a deployed URL');\n1240:   }\n1241: \n1242:   const finishedAt = new Date().toISOString();\n1243:   const successResult = {\n1244:     url: deployedUrl,\n1245:     artifact: {\n1246:       sourceBundleKey,\n1247:       sourceSnapshotSha256: sourceBundle.sha256,\n1248:       outputBundleSha256: outputBundle.sha256,\n1249:       outputDir: publishOutputDir,\n1250:     },\n1251:     provenance: {\n1252:       workspaceId,\n1253:       taskId,\n1254:       operationId,\n1255:       trigger: typeof provenance.trigger === 'string' ? provenance.trigger : 'manual',\n1256:     },\n1257:     rollbackOnFailure,\n1258:   };\n1259: \n1260:   let markedSucceeded = await markWorkspaceDeploymentSucceededIfNotCancelled(env.DB, {\n1261:     workspaceId,\n1262:     deploymentId,\n1263:     sourceSnapshotSha256: sourceBundle.sha256,\n1264:     sourceBundleKey,\n1265:     deployedUrl,\n1266:     providerDeploymentId: createResult.providerDeploymentId,\n1267:     result: successResult,\n1268:     finishedAt,\n1269:   });\n1270: \n1271:   if (!markedSucceeded) {\n1272:     const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1273:     if (latest?.status === 'running' && latest.cancelRequestedAt && providerStatus.status === 'succeeded') {\n1274:       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'succeeded', {\n1275:         workspaceId,\n1276:         sourceSnapshotSha256: sourceBundle.sha256,\n1277:         sourceBundleKey,\n1278:         deployedUrl,\n1279:         providerDeploymentId: createResult.providerDeploymentId,\n1280:         cancelRequestedAt: null,\n1281:         result: successResult,\n1282:         errorCode: null,\n1283:         errorMessage: null,\n1284:         finishedAt,\n1285:       });\n1286:       await appendWorkspaceDeploymentEvent(env.DB, {\n1287:         workspaceId,\n1288:         deploymentId,\n1289:         eventType: 'deployment_cancel_rejected',\n1290:         payload: {\n1291:           providerDeploymentId: createResult.providerDeploymentId,\n1292:           providerStatus: providerStatus.status,\n1293:         },\n1294:       });\n1295:       markedSucceeded = true;\n1296:     } else if (latest?.cancelRequestedAt) {\n1297:       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1298:       return;\n1299:     } else {\n1300:       return;\n1301:     }\n1302:   }\n1303: \n1304:   await appendWorkspaceDeploymentEvent(env.DB, {\n1305:     workspaceId,\n1306:     deploymentId,\n1307:     eventType: 'deployment_succeeded',\n1308:       payload: {\n1309:         deployedUrl,\n1310:         sourceBundleKey,\n1311:         sourceSnapshotSha256: sourceBundle.sha256,\n1312:       },\n1313:     });\n1314: \n1315:   await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1316:     deploymentId,\n1317:     status: 'succeeded',\n1318:     deployedUrl,\n1319:     deployedAt: finishedAt,\n1320:     errorCode: null,\n1321:     errorMessage: null,\n1322:   });\n1323: }\n1324: \n1325: export async function runWorkspaceDeploymentPreflight(\n1326:   env: Env,\n1327:   workspaceId: string,\n1328:   options?: Partial<DeploymentValidationOptions & DeploymentAutoFixOptions & DeploymentPublishOptions>\n1329: ): Promise<{\n1330:   ok: boolean;\n1331:   toolchain: WorkspaceToolchainProfile | null;\n1332:   checks: Array<{ code: string; ok: boolean; details?: string }>;\n1333:   remediations: WorkspaceDeploymentRemediation[];\n1334: }> {\n1335:   const checks: Array<{ code: string; ok: boolean; details?: string }> = [];\n1336:   const remediations: WorkspaceDeploymentRemediation[] = [];\n1337:   const workspace = await getWorkspace(env.DB, workspaceId);\n1338:   if (!workspace || workspace.status !== 'ready') {\n1339:     checks.push({ code: 'workspace_ready', ok: false, details: 'Workspace is not ready' });\n1340:     return { ok: false, toolchain: null, checks, remediations };\n1341:   }\n1342:   checks.push({ code: 'workspace_ready', ok: true });\n1343: \n1344:   const sandbox = await sandboxResolver(env, workspace.sandboxId);\n1345:   const workspaceProjectRootRaw =\n1346:     typeof workspace.sourceProjectRoot === 'string' && workspace.sourceProjectRoot.trim() ? workspace.sourceProjectRoot : '.';\n1347:   let workspaceProjectRoot = '.';\n1348:   try {\n1349:     workspaceProjectRoot = normalizeProjectRoot(workspaceProjectRootRaw);\n1350:   } catch (error) {\n1351:     checks.push({\n1352:       code: 'project_root',\n1353:       ok: false,\n1354:       details: error instanceof Error ? error.message : String(error),\n1355:     });\n1356:     return { ok: false, toolchain: null, checks, remediations };\n1357:   }\n1358:   const autoFixBaseline = parseBoolean(options?.rehydrateBaseline, false);\n1359:   const autoFixBootstrapToolchain = parseBoolean(options?.bootstrapToolchain, false);\n1360:   const runBuildIfPresent = parseBoolean(options?.runBuildIfPresent, true);\n1361:   const runTestsIfPresent = parseBoolean(options?.runTestsIfPresent, true);\n1362:   const provider = options?.provider ?? getWorkspaceDeployProviderName(undefined, env);\n1363:   const outputDir = parseString(options?.outputDir);\n1364: \n1365:   if (provider === 'cloudflare_workers_assets') {\n1366:     if (!outputDir) {\n1367:       checks.push({\n1368:         code: 'provider_invalid_output_dir',\n1369:         ok: false,\n1370:         details: 'deploy.outputDir is required for cloudflare_workers_assets provider',\n1371:       });\n1372:       return { ok: false, toolchain: null, checks, remediations };\n1373:     }\n1374: \n1375:     const effectiveOutputDir =\n1376:       workspaceProjectRoot === '.' ? outputDir : normalizeProjectRoot(`${workspaceProjectRoot}/${outputDir}`);\n1377:     checks.push({ code: 'provider_output_dir', ok: true, details: effectiveOutputDir });\n1378:   }\n1379: \n1380:   try {\n1381:     await ensureWorkspaceGitBaseline(sandbox);\n1382:     checks.push({ code: 'git_baseline', ok: true });\n1383:   } catch (error) {\n1384:     const details = error instanceof Error ? error.message : String(error);\n1385:     if (!autoFixBaseline) {\n1386:       checks.push({ code: 'git_baseline', ok: false, details });\n1387:       return { ok: false, toolchain: null, checks, remediations };\n1388:     }\n1389: \n1390:     const rehydrated = await tryRehydrateWorkspaceGitBaseline(sandbox);\n1391:     if (!rehydrated) {\n1392:       checks.push({ code: 'git_baseline', ok: false, details });\n1393:       remediations.push({ code: 'baseline_rehydrated', applied: false, details: 'auto-fix failed' });\n1394:       return { ok: false, toolchain: null, checks, remediations };\n1395:     }\n1396:     remediations.push({ code: 'baseline_rehydrated', applied: true });\n1397:     checks.push({ code: 'git_baseline', ok: true, details: 'auto-fixed baseline rehydrate' });\n1398:   }\n1399: \n1400:   const scripts = await detectPackageScriptsInProjectRoot(sandbox, workspaceProjectRoot);\n1401:   const shouldBootstrapForValidation =\n1402:     autoFixBootstrapToolchain && ((runBuildIfPresent && scripts.hasBuild) || (runTestsIfPresent && scripts.hasTest));\n1403:   checks.push({\n1404:     code: 'detected_scripts',\n1405:     ok: true,\n1406:     details: JSON.stringify({ hasBuild: scripts.hasBuild, hasTest: scripts.hasTest }),\n1407:   });\n1408: \n1409:   const secrets = await detectPotentialSecrets(sandbox);\n1410:   if (secrets.length > 0) {\n1411:     checks.push({ code: 'secret_scan', ok: false, details: secrets.join(', ') });\n1412:     return { ok: false, toolchain: null, checks, remediations };\n1413:   }\n1414:   checks.push({ code: 'secret_scan', ok: true });\n1415: \n1416:   let toolchain: WorkspaceToolchainProfile;\n1417:   try {\n1418:     toolchain = await detectWorkspaceToolchainProfile(\n1419:       sandbox,\n1420:       workspaceProjectRoot\n1421:     );\n1422:     checks.push({ code: 'toolchain_detect', ok: true, details: JSON.stringify(toolchain) });\n1423:   } catch (error) {\n1424:     checks.push({\n1425:       code: 'toolchain_detect',\n1426:       ok: false,\n1427:       details: error instanceof Error ? error.message : String(error),\n1428:     });\n1429:     return { ok: false, toolchain: null, checks, remediations };\n1430:   }\n1431: \n1432:   if (shouldBootstrapForValidation) {\n1433:     try {\n1434:       await bootstrapToolchainIfNeeded(sandbox, toolchain);\n1435:       checks.push({ code: 'toolchain_bootstrap', ok: true });\n1436:       remediations.push({\n1437:         code: 'toolchain_bootstrapped',\n1438:         applied: toolchain.manager === 'pnpm' || toolchain.manager === 'yarn',\n1439:       });\n1440:     } catch (error) {\n1441:       checks.push({ code: 'toolchain_bootstrap', ok: false, details: error instanceof Error ? error.message : String(error) });\n1442:       remediations.push({ code: 'toolchain_bootstrapped', applied: false });\n1443:       return { ok: false, toolchain, checks, remediations };\n1444:     }\n1445:   } else {\n1446:     checks.push({ code: 'toolchain_bootstrap', ok: true, details: 'skipped' });\n1447:   }\n1448: \n1449:   if ((runBuildIfPresent && scripts.hasBuild) || (runTestsIfPresent && scripts.hasTest)) {\n1450:     const manager = managerBinary(toolchain);\n1451:     const managerCheck = await sandbox.exec(`command -v ${manager} >/dev/null 2>&1`);\n1452:     if (managerCheck.exitCode !== 0) {\n1453:       checks.push({\n1454:         code: 'validation_tooling',\n1455:         ok: false,\n1456:         details: `${manager} is not available in sandbox runtime`,\n1457:       });\n1458:       return { ok: false, toolchain, checks, remediations };\n1459:     }\n1460:   }\n1461:   checks.push({ code: 'validation_tooling', ok: true });\n1462: \n1463:   return { ok: true, toolchain, checks, remediations };\n1464: }\n1465: \n1466: export async function processWorkspaceDeployment(env: Env, workspaceId: string, deploymentId: string): Promise<void> {\n1467:   const claimed = await claimWorkspaceDeploymentForExecution(env.DB, workspaceId, deploymentId);\n1468:   if (!claimed) {\n1469:     const existing = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1470:     if (existing && existing.status !== 'queued' && existing.status !== 'running') {\n1471:       try {\n1472:         await reconcileWorkspaceSummaryForTerminalDeployment(env, workspaceId, deploymentId);\n1473:       } catch (reconcileError) {\n1474:         if (shouldRetryWorkspaceDeploymentError(reconcileError)) {\n1475:           throw new QueueRetryError('Terminal deployment reconciliation failed; retry requested');\n1476:         }\n1477:       }\n1478:       return;\n1479:     }\n1480: \n1481:     if (existing?.status === 'queued' && existing.cancelRequestedAt) {\n1482:       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1483:       return;\n1484:     }\n1485: \n1486:     if (existing?.status === 'running') {\n1487:       if (isRunningDeploymentStale(existing.startedAt)) {\n1488:         if (existing.cancelRequestedAt) {\n1489:           await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested_stale');\n1490:           return;\n1491:         }\n1492:         await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n1493:           workspaceId,\n1494:           errorCode: 'deployment_stale_timeout',\n1495:           errorMessage: 'Deployment execution exceeded stale running timeout and was failed for recovery',\n1496:         });\n1497:         await appendWorkspaceDeploymentEvent(env.DB, {\n1498:           workspaceId,\n1499:           deploymentId,\n1500:           eventType: 'deployment_failed',\n1501:           payload: {\n1502:             code: 'deployment_stale_timeout',\n1503:             message: 'Deployment execution exceeded stale running timeout and was failed for recovery',\n1504:           },\n1505:         });\n1506:         await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1507:           deploymentId,\n1508:           status: 'failed',\n1509:           errorCode: 'deployment_stale_timeout',\n1510:           errorMessage: 'Deployment execution exceeded stale running timeout and was failed for recovery',\n1511:         });\n1512:         return;\n1513:       }\n1514: \n1515:       if (existing.cancelRequestedAt) {\n1516:         throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');\n1517:       }\n1518: \n1519:       throw new QueueRetryError('Workspace deployment is already running; defer redelivery');\n1520:     }\n1521:     return;\n1522:   }\n1523: \n1524:   try {\n1525:     const flags = await loadRuntimeFlags(env);\n1526:     if (!flags.workspaceDeployEnabled) {\n1527:       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n1528:         workspaceId,\n1529:         errorCode: 'workspace_deploy_disabled',\n1530:         errorMessage: 'Workspace deploy is disabled',\n1531:       });\n1532:       await appendWorkspaceDeploymentEvent(env.DB, {\n1533:         workspaceId,\n1534:         deploymentId,\n1535:         eventType: 'deployment_failed',\n1536:         payload: { code: 'workspace_deploy_disabled', message: 'Workspace deploy is disabled' },\n1537:       });\n1538:       await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1539:         deploymentId,\n1540:         status: 'failed',\n1541:         errorCode: 'workspace_deploy_disabled',\n1542:         errorMessage: 'Workspace deploy is disabled',\n1543:       });\n1544:       return;\n1545:     }\n1546: \n1547:     await executeWorkspaceDeployment(env, workspaceId, deploymentId);\n1548:   } catch (error) {\n1549:     const deployment = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1550:     if (deployment && deployment.status !== 'queued' && deployment.status !== 'running') {\n1551:       try {\n1552:         await reconcileWorkspaceSummaryForTerminalDeployment(env, workspaceId, deploymentId);\n1553:       } catch (reconcileError) {\n1554:         if (shouldRetryWorkspaceDeploymentError(reconcileError)) {\n1555:           throw new QueueRetryError('Terminal deployment reconciliation failed; retry requested');\n1556:         }\n1557:       }\n1558:       return;\n1559:     }\n1560: \n1561:     if (error instanceof CancelRequestedError) {\n1562:       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1563:       return;\n1564:     }\n1565: \n1566:     if (error instanceof PolicyError) {\n1567:       const rollbackOnFailure = parseBoolean(\n1568:         (await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId))?.rollbackOnFailure,\n1569:         true\n1570:       );\n1571:       const rollback = await resolveRollbackContextSafely(workspaceId, deploymentId, rollbackOnFailure, env);\n1572: \n1573:       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n1574:         workspaceId,\n1575:         errorCode: error.code,\n1576:         errorMessage: error.message,\n1577:         result: { rollback },\n1578:       });\n1579:       await appendWorkspaceDeploymentEvent(env.DB, {\n1580:         workspaceId,\n1581:         deploymentId,\n1582:         eventType: 'deployment_failed',\n1583:         payload: { code: error.code, message: error.message, rollback },\n1584:       });\n1585:       await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {\n1586:         deploymentId,\n1587:         status: 'failed',\n1588:         errorCode: error.code,\n1589:         errorMessage: error.message,\n1590:       });\n1591:       return;\n1592:     }\n1593: \n1594:     const attemptCount = deployment?.attemptCount ?? 0;\n1595:     const maxRetries = deployment?.maxRetries ?? 0;\n1596:     if ((error instanceof QueueRetryError || isTransientFailure(error)) && attemptCount <= maxRetries) {\n1597:       const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);\n1598:       if (latest?.cancelRequestedAt) {\n1599:         let shouldCancelLocally = true;\n1600:         const requestPayload = await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId);\n1601:         const providerName = getWorkspaceDeployProviderName(requestPayload?.provider, env);\n1602: \n1603:         if (latest.providerDeploymentId) {\n1604:           try {\n1605:             const provider = createWorkspaceDeployProvider(providerName, env);\n1606:             const cancel = await provider.cancelDeployment(latest.providerDeploymentId);\n1607:             await appendWorkspaceDeploymentEvent(env.DB, {\n1608:               workspaceId,\n1609:               deploymentId,\n1610:               eventType: 'deployment_provider_cancel_requested',\n1611:               payload: {\n1612:                 providerDeploymentId: latest.providerDeploymentId,\n1613:                 accepted: cancel.accepted,\n1614:                 retryPath: true,\n1615:               },\n1616:             });\n1617:             if (!cancel.accepted) {\n1618:               await env.DB\n1619:                 .prepare(\n1620:                   `UPDATE workspace_deployments\n1621:                    SET cancel_requested_at = NULL,\n1622:                        updated_at = ?\n1623:                    WHERE id = ? AND workspace_id = ? AND status = 'running'`\n1624:                 )\n1625:                 .bind(new Date().toISOString(), deploymentId, workspaceId)\n1626:                 .run();\n1627:               shouldCancelLocally = false;\n1628:             }\n1629:           } catch (providerCancelError) {\n1630:             if (providerCancelError instanceof QueueRetryError) {\n1631:               throw providerCancelError;\n1632:             }\n1633:             const providerError = normalizeProviderError(providerCancelError);\n1634:             if (isRetryableProviderError(providerError.code, providerError.message)) {\n1635:               throw new QueueRetryError('Provider cancel status is temporarily unavailable; retry requested');\n1636:             }\n1637:             throw new PolicyError(providerError.code, providerError.message);\n1638:           }\n1639:         }\n1640: \n1641:         if (shouldCancelLocally) {\n1642:           await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');\n1643:           return;\n1644:         }\n1645:       }\n1646: \n1647:       await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'queued', {\n1648:         workspaceId,\n1649:         startedAt: null,\n1650:         finishedAt: null,\n1651:         errorCode: 'retry_scheduled',\n1652:         errorMessage: error instanceof Error ? error.message : String(error),\n1653:       });\n1654:       await appendWorkspaceDeploymentEvent(env.DB, {\n1655:         workspaceId,\n1656:         deploymentId,\n1657:         eventType: 'deployment_retry_scheduled',\n1658:         payload: { attemptCount, maxRetries },\n1659:       });\n1660:       throw new QueueRetryError('Workspace deployment transient failure; retry requested');\n1661:     }\n1662: \n1663:     const message = error instanceof Error ? error.message : String(error);\n1664:     const rollbackOnFailure = parseBoolean(\n1665:       (await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId))?.rollbackOnFailure,\n1666:       true\n1667:     );\n1668:     const rollback = await resolveRollbackContextSafely(workspaceId, deploymentId, rollbackOnFailure, env);\n1669: \n1670:     await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {\n1671:       workspaceId,\n1672:       errorCode: 'deployment_failed',\n1673:       errorMessage: message,\n1674:       result: { rollback },\n1675:     });\n1676:     await appendWorkspaceDeploymentEvent(env.DB, {\n1677:       workspaceId,\n1678:       deploymentId,\n1679:       eventType: 'deployment_failed',\n\n(Showing lines 1220-1679 of 1810. Use offset=1680 to continue.)\n</content>",
+            "title": "packages/worker/src/lib/workspace-deployment-runner.ts",
+            "metadata": {
+              "preview": "\n  if (providerStatus.status === 'queued' || providerStatus.status === 'running') {\n    throw new PolicyError(\n      'provider_deploy_failed',\n      `Provider deployment did not reach terminal state within polling window (${maxPollAttempts} attempts)`\n    );\n  }\n\n  if (providerStatus.status === 'failed') {\n    throw new PolicyError(providerStatus.errorCode ?? 'provider_deploy_failed', providerStatus.errorMessage ?? 'Provider deployment failed');\n  }\n\n  if (providerStatus.status === 'cancelled') {\n    await markDeploymentCancelled(env, workspaceId, deploymentId, 'provider_cancelled');\n    return;\n  }\n\n  const deployedUrl = providerStatus.deployedUrl ?? createResult.deployedUrl;\n  if (!deployedUrl) {\n    throw new PolicyError('provider_deploy_failed', 'Provider deployment did not return a deployed URL');",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773077133330,
+              "end": 1773077133333
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_099fab97952877a90169af028d126881988f818c2259ce1318"
+            }
+          },
+          "id": "prt_cd3a1f743001ARTf4uChfL12LP",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1f28a001gd6jDe3AmxsnCR"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "cost": 0.0083524,
+          "tokens": {
+            "total": 15781,
+            "input": 2784,
+            "output": 69,
+            "reasoning": 18,
+            "cache": {
+              "read": 12928,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3a1f84e001uOLirdipgf6vFt",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1f28a001gd6jDe3AmxsnCR"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773077133503,
+          "completed": 1773077135746
+        },
+        "parentID": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01394505,
+        "tokens": {
+          "total": 21116,
+          "input": 5407,
+          "output": 93,
+          "reasoning": 32,
+          "cache": {
+            "read": 15616,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3a1f8bf001SfIPXkfIRipavR",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "id": "prt_cd3a1fb23001WgeZpbTqb40H9z",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1f8bf001SfIPXkfIRipavR"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Investigating test coverage for bug**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_037e27bc744c8a000169af028e23fc819bbdd8ddfdc7dbd182",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773077134183,
+            "end": 1773077135318
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1f8bf001SfIPXkfIRipavR"
+        },
+        {
+          "type": "tool",
+          "callID": "call_GUIzJJWGehO6NuUQh4xYNkHU",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "cancel_rejected|cancelRequestedAt: null|cancel_requested_at = NULL",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.test.ts"
+            },
+            "output": "Found 1 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.test.ts:\n  Line 951:     assert.equal(state.events.some((event) => event.eventType === 'deployment_cancel_rejected'), true);",
+            "title": "cancel_rejected|cancelRequestedAt: null|cancel_requested_at = NULL",
+            "metadata": {
+              "matches": 1,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773077135594,
+              "end": 1773077135612
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_037e27bc744c8a000169af028f43b8819b8145ce9b529aa019"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1f8bf001SfIPXkfIRipavR"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "cost": 0.01394505,
+          "tokens": {
+            "total": 21116,
+            "input": 5407,
+            "output": 93,
+            "reasoning": 32,
+            "cache": {
+              "read": 15616,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3a20119001Amwlvxn6il7mJq",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a1f8bf001SfIPXkfIRipavR"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773077135747,
+          "completed": 1773077138456
+        },
+        "parentID": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0050316,
+        "tokens": {
+          "total": 21246,
+          "input": 192,
+          "output": 62,
+          "reasoning": 11,
+          "cache": {
+            "read": 20992,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cd3a20183001CajNFIOale2Pyg",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "id": "REDACTED",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a20183001CajNFIOale2Pyg"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Verifying test path usage**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0672b5e58da224ae0169af02918c8881998cb2423c51446c7d",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773077137586,
+            "end": 1773077138037
+          },
+          "id": "prt_cd3a208b2001OZWME1jHV7Qf2M",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a20183001CajNFIOale2Pyg"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.test.ts",
+              "offset": 880,
+              "limit": 140
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/workspace-deployment-runner.test.ts</path>\n<type>file</type>\n<content>880:         }\n881:         return { stdout: '', stderr: '', exitCode: 0 };\n882:       },\n883:     }));\n884: \n885:     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');\n886:     assert.equal(state.status, 'failed');\n887:     assert.equal(\n888:       state.events.some(\n889:         (event) =>\n890:           event.eventType === 'deployment_failed' &&\n891:           typeof event.payload === 'object' &&\n892:           event.payload !== null &&\n893:           (event.payload as { code?: string }).code === 'validation_tool_missing'\n894:       ),\n895:       true\n896:     );\n897:   }\n898: \n899:   {\n900:     const { env, state } = createDeploymentRunnerEnv({\n901:       initialStatus: 'running',\n902:       initialStartedAt: new Date().toISOString(),\n903:       initialCancelRequestedAt: '2026-03-08T00:00:00.000Z',\n904:     });\n905:     setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n906:       async exec() {\n907:         return { stdout: '', stderr: '', exitCode: 0 };\n908:       },\n909:     }));\n910: \n911:     await runWorkspaceDeploymentInlineWithRetries(env as never, 'ws_abc12345', 'dep_abcd1234', 1);\n912:     assert.equal(state.status, 'running');\n913:     assert.equal(state.events.some((event) => event.eventType === 'deployment_cancelled'), false);\n914:   }\n915: \n916:   {\n917:     const { env, state } = createDeploymentRunnerEnv({ succeedUpdateBlockedByCancel: true });\n918:     setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n919:       async exec(command: string) {\n920:         if (command.includes('git rev-parse --verify HEAD')) {\n921:           return { stdout: '', stderr: '', exitCode: 0 };\n922:         }\n923:         if (command.includes('nimbus_detect_scripts')) {\n924:           return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };\n925:         }\n926:         if (command.includes('nimbus_detect_toolchain')) {\n927:           return {\n928:             stdout: JSON.stringify({\n929:               packageManager: 'npm@10.8.2',\n930:               scripts: {},\n931:               lockfiles: { pnpm: null, yarn: null, npm: null },\n932:               projectRoot: '.',\n933:             }),\n934:             stderr: '',\n935:             exitCode: 0,\n936:           };\n937:         }\n938:         if (command.includes('nimbus_detect_secrets')) {\n939:           return { stdout: '[]', stderr: '', exitCode: 0 };\n940:         }\n941:         if (command.includes('base64 \"$tmp_bundle\"')) {\n942:           return { stdout: 'AQID', stderr: '', exitCode: 0 };\n943:         }\n944:         return { stdout: '', stderr: '', exitCode: 0 };\n945:       },\n946:     }));\n947: \n948:     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');\n949:     assert.equal(state.status, 'succeeded');\n950:     assert.equal(state.cancelRequestedAt, null);\n951:     assert.equal(state.events.some((event) => event.eventType === 'deployment_cancel_rejected'), true);\n952:   }\n953: \n954:   {\n955:     const commands: string[] = [];\n956:     const { env, state } = createDeploymentRunnerEnv({\n957:       requestRunTestsIfPresent: true,\n958:       requestRunBuildIfPresent: true,\n959:       requestAutoFixBootstrapToolchain: true,\n960:     });\n961:     setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n962:       async exec(command: string) {\n963:         commands.push(command);\n964:         if (command.includes('git rev-parse --verify HEAD')) {\n965:           return { stdout: '', stderr: '', exitCode: 0 };\n966:         }\n967:         if (command.includes('nimbus_detect_scripts')) {\n968:           return { stdout: JSON.stringify({ hasBuild: true, hasTest: true }), stderr: '', exitCode: 0 };\n969:         }\n970:         if (command.includes('nimbus_detect_toolchain')) {\n971:           return {\n972:             stdout: JSON.stringify({\n973:               packageManager: 'pnpm@9.15.0',\n974:               scripts: {},\n975:               lockfiles: { pnpm: 'abc', yarn: null, npm: null },\n976:               projectRoot: '.',\n977:             }),\n978:             stderr: '',\n979:             exitCode: 0,\n980:           };\n981:         }\n982:         if (command.includes('nimbus_detect_secrets')) {\n983:           return { stdout: '[]', stderr: '', exitCode: 0 };\n984:         }\n985:         if (command.includes('corepack --version')) {\n986:           return { stdout: '0.29.0', stderr: '', exitCode: 0 };\n987:         }\n988:         if (command.includes('corepack enable')) {\n989:           return { stdout: '', stderr: '', exitCode: 0 };\n990:         }\n991:         if (command.includes('corepack prepare pnpm@9.15.0 --activate')) {\n992:           return { stdout: '', stderr: '', exitCode: 0 };\n993:         }\n994:         if (command.includes('pnpm run -s test') || command.includes('pnpm run -s build')) {\n995:           return { stdout: '', stderr: '', exitCode: 0 };\n996:         }\n997:         if (command.includes('base64 \"$tmp_bundle\"')) {\n998:           return { stdout: 'AQID', stderr: '', exitCode: 0 };\n999:         }\n1000:         return { stdout: '', stderr: '', exitCode: 0 };\n1001:       },\n1002:     }));\n1003: \n1004:     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');\n1005:     assert.equal(state.status, 'succeeded');\n1006:     assert.equal(commands.some((command) => command.includes('corepack prepare pnpm@9.15.0 --activate')), true);\n1007:     assert.equal(commands.some((command) => command.includes('pnpm run -s test')), true);\n1008:     assert.equal(commands.some((command) => command.includes('pnpm run -s build')), true);\n1009:   }\n1010: \n1011:   {\n1012:     const { env, state } = createDeploymentRunnerEnv({\n1013:       requestRunTestsIfPresent: true,\n1014:       requestAutoFixBootstrapToolchain: true,\n1015:     });\n1016:     setWorkspaceDeploymentSandboxResolverForTests(async () => ({\n1017:       async exec(command: string) {\n1018:         if (command.includes('git rev-parse --verify HEAD')) {\n1019:           return { stdout: '', stderr: '', exitCode: 0 };\n\n(Showing lines 880-1019 of 1372. Use offset=1020 to continue.)\n</content>",
+            "title": "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+            "metadata": {
+              "preview": "        }\n        return { stdout: '', stderr: '', exitCode: 0 };\n      },\n    }));\n\n    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');\n    assert.equal(state.status, 'failed');\n    assert.equal(\n      state.events.some(\n        (event) =>\n          event.eventType === 'deployment_failed' &&\n          typeof event.payload === 'object' &&\n          event.payload !== null &&\n          (event.payload as { code?: string }).code === 'validation_tool_missing'\n      ),\n      true\n    );\n  }\n\n  {",
+              "truncated": true,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773077138294,
+              "end": 1773077138296
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0672b5e58da224ae0169af0291fdd081998eee6e9793ca9a98"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a20183001CajNFIOale2Pyg"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "cost": 0.0050316,
+          "tokens": {
+            "total": 21246,
+            "input": 192,
+            "output": 62,
+            "reasoning": 11,
+            "cache": {
+              "read": 20992,
+              "write": 0
+            }
+          },
+          "id": "prt_cd3a20bb0001Ypc4IucwxI5dKx",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a20183001CajNFIOale2Pyg"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773077138458,
+          "completed": 1773077164502
+        },
+        "parentID": "msg_cd3a1a759001DblJmPzGkTdLdP",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "general",
+        "agent": "general",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.040775,
+        "tokens": {
+          "total": 24205,
+          "input": 1780,
+          "output": 1305,
+          "reasoning": 1121,
+          "cache": {
+            "read": 21120,
+            "write": 0
+          }
+        },
+        "finish": "stop",
+        "id": "msg_cd3a20c1a001qQOtuH9e4d5tdu",
+        "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "id": "prt_cd3a20e82001mhdPBfNEF3311o",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a20c1a001qQOtuH9e4d5tdu"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Reviewing deployment status update logic for cancelRequestedAt**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_043f3d7f2e9430bf0169af029439ec8195b311b09da60562dc",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773077140352,
+            "end": 1773077162639
+          },
+          "id": "prt_cd3a21380001NXFOjacTCJ4AB5",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a20c1a001qQOtuH9e4d5tdu"
+        },
+        {
+          "type": "text",
+          "text": "No blocking issues found.\n\nI verified the cancel-rejected success path now clears `cancel_requested_at` correctly:\n\n- In `packages/worker/src/lib/workspace-deployment-runner.ts:1274`, the fallback success branch calls `updateWorkspaceDeploymentStatus(..., 'succeeded', { cancelRequestedAt: null, ... })` when provider status is still `succeeded` and cancellation was rejected.\n- In `packages/worker/src/lib/db.ts:2182`, `updateWorkspaceDeploymentStatus` now supports `cancelRequestedAt` and maps it to `cancel_requested_at = ?`, so passing `null` actually clears the DB column.\n- The regression test in `packages/worker/src/lib/workspace-deployment-runner.test.ts:948` asserts status becomes `succeeded`, `cancelRequestedAt` becomes `null`, and `deployment_cancel_rejected` is emitted.",
+          "time": {
+            "start": 1773077164324,
+            "end": 1773077164324
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "msg_043f3d7f2e9430bf0169af02aa979081959c78b801b5e94679"
+            }
+          },
+          "id": "prt_cd3a26a90001FWV09kZ4mAstoW",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a20c1a001qQOtuH9e4d5tdu"
+        },
+        {
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "050dd923be805a6914e0eaa7b055686d9d6e56d9",
+          "cost": 0.040775,
+          "tokens": {
+            "total": 24205,
+            "input": 1780,
+            "output": 1305,
+            "reasoning": 1121,
+            "cache": {
+              "read": 21120,
+              "write": 0
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_32c5e58a8ffegUybzBiu3LCBd4",
+          "messageID": "msg_cd3a20c1a001qQOtuH9e4d5tdu"
+        }
+      ]
+    }
+  ]
+}
