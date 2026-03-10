@@ -22,12 +22,18 @@ export function runArgsParsingTests(): void {
       'workspace',
       '--idempotency-key',
       'deploy-1',
+      '--provider',
+      'cloudflare_workers_assets',
+      '--output-dir',
+      'dist',
       '--poll-interval-ms',
       '2000',
       'deploy',
       'ws_abc12345',
     ]);
     assert.equal(parsed.flags['idempotency-key'], 'deploy-1');
+    assert.equal(parsed.flags.provider, 'cloudflare_workers_assets');
+    assert.equal(parsed.flags['output-dir'], 'dist');
     assert.equal(parsed.flags['poll-interval-ms'], '2000');
   }
 

@@ -1,5 +1,11 @@
 import type { Env } from '../types.js';
 import { loadRuntimeFlags } from '../lib/flags.js';
+import {
+  createWorkspaceDeployProvider,
+  getWorkspaceDeployProviderConfigError,
+  getWorkspaceDeployProviderName,
+  normalizeProviderError,
+} from '../lib/workspace-deploy-provider.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -69,9 +75,27 @@ export async function handleGetDeployReadiness(env: Env): Promise<Response> {
     details: flags.workspaceDeployEnabled ? 'enabled' : 'disabled',
   });
 
-  const ok = checks.every((check) => check.ok);
+  const providerConfigError = getWorkspaceDeployProviderConfigError(env);
+  if (providerConfigError) {
+    checks.push({ code: 'workspace_deploy_provider', ok: false, details: providerConfigError });
+    return jsonResponse({
+      ok: checks.every((check) => check.ok),
+      checks,
+    });
+  }
+
+  const provider = getWorkspaceDeployProviderName(undefined, env);
+  checks.push({ code: 'workspace_deploy_provider', ok: true, details: provider });
+  try {
+    const providerChecks = await createWorkspaceDeployProvider(provider, env).precheck();
+    checks.push(...providerChecks);
+  } catch (error) {
+    const providerError = normalizeProviderError(error);
+    checks.push({ code: providerError.code, ok: false, details: providerError.message });
+  }
+
   return jsonResponse({
-    ok,
+    ok: checks.every((check) => check.ok),
     checks,
   });
 }

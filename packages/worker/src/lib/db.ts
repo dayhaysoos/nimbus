@@ -2117,6 +2117,7 @@ export async function updateWorkspaceDeploymentStatus(
     sourceBundleKey?: string | null;
     deployedUrl?: string | null;
     providerDeploymentId?: string | null;
+    cancelRequestedAt?: string | null;
     startedAt?: string | null;
     finishedAt?: string | null;
   }
@@ -2178,6 +2179,10 @@ export async function updateWorkspaceDeploymentStatus(
     updates.push('provider_deployment_id = ?');
     values.push(options.providerDeploymentId);
   }
+  if (options?.cancelRequestedAt !== undefined) {
+    updates.push('cancel_requested_at = ?');
+    values.push(options.cancelRequestedAt);
+  }
 
   if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {
     const finishedAtForDuration =
@@ -2195,6 +2200,9 @@ export async function updateWorkspaceDeploymentStatus(
   if (options?.workspaceId) {
     whereClause += ' AND workspace_id = ?';
     values.push(options.workspaceId);
+  }
+  if (status === 'running') {
+    whereClause += " AND status IN ('queued', 'running')";
   }
 
   await db

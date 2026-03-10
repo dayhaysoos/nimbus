@@ -11,6 +11,9 @@ import { setWorkspaceDeploymentSandboxResolverForTests } from '../lib/workspace-
 function createWorkspaceDeploymentApiEnv(options?: {
   workspaceStatus?: 'ready' | 'deleted';
   reuseRetryScheduled?: boolean;
+  reuseFailed?: boolean;
+  precheckClaimBlockedConcurrentFailed?: boolean;
+  reuseRequestPayloadSha256?: string;
   sourceProjectRoot?: string;
 }): {
   env: Record<string, unknown>;
@@ -32,15 +35,20 @@ function createWorkspaceDeploymentApiEnv(options?: {
     queueSendCount: number;
   } = {
     deploymentExists: false,
-    deploymentStatus: 'queued',
+    deploymentStatus: options?.reuseFailed ? 'failed' : 'queued',
     cancelRequestedAt: null,
-    deploymentErrorCode: options?.reuseRetryScheduled ? 'retry_scheduled' : null,
+    deploymentErrorCode: options?.reuseFailed ? 'provider_auth_failed' : options?.reuseRetryScheduled ? 'retry_scheduled' : null,
     eventTypes: options?.reuseRetryScheduled ? new Set<string>(['deployment_enqueued']) : new Set<string>(),
     queueSendCount: 0,
   };
 
   const env = {
     WORKSPACE_DEPLOY_ENABLED: 'true',
+    WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+    WORKSPACE_DEPLOY_PROJECT_NAME: 'nimbus',
+    CF_ACCOUNT_ID: 'acc',
+    CF_API_TOKEN: 'token',
     WORKSPACE_DEPLOYS_QUEUE: {
       async send() {
         state.queueSendCount += 1;
@@ -98,12 +106,13 @@ function createWorkspaceDeploymentApiEnv(options?: {
             bind() {
               return {
                 async first<T>() {
-                  if (!options?.reuseRetryScheduled) {
+                  if (!options?.reuseRetryScheduled && !options?.reuseFailed) {
                     return null as T;
                   }
                     return {
                       deployment_id: 'dep_existing',
                       request_payload_sha256:
+                        options?.reuseRequestPayloadSha256 ??
                         'bc5770f66f82be23817aea1c4cd23537cec28a833dc39e77ce75f6bf2dcb26cf',
                       expires_at: '2999-01-01T00:00:00.000Z',
                     } as T;
@@ -188,6 +197,23 @@ function createWorkspaceDeploymentApiEnv(options?: {
           };
         }
 
+        if (/SET error_code = 'provider_precheck_running'/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  if (options?.precheckClaimBlockedConcurrentFailed) {
+                    state.deploymentStatus = 'failed';
+                    state.deploymentErrorCode = 'provider_auth_failed';
+                    return { success: true, meta: { changes: 0 } };
+                  }
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
         if (/SELECT 1\s+FROM workspace_deployment_events/i.test(sql)) {
           return {
             bind(_workspaceId: string, _deploymentId: string, eventType: string) {
@@ -205,7 +231,10 @@ function createWorkspaceDeploymentApiEnv(options?: {
             bind(deploymentId: string) {
               return {
                 async first<T>() {
-                  if (!state.deploymentExists && !(options?.reuseRetryScheduled && deploymentId === 'dep_existing')) {
+                  if (
+                    !state.deploymentExists &&
+                    !((options?.reuseRetryScheduled || options?.reuseFailed) && deploymentId === 'dep_existing')
+                  ) {
                     return null as T;
                   }
                   return {
@@ -217,7 +246,7 @@ function createWorkspaceDeploymentApiEnv(options?: {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     max_retries: 2,
-                    attempt_count: options?.reuseRetryScheduled ? 1 : 0,
+                    attempt_count: options?.reuseRetryScheduled || options?.reuseFailed ? 1 : 0,
                     source_snapshot_sha256: null,
                     source_bundle_key: null,
                     provenance_json: '{}',
@@ -230,7 +259,12 @@ function createWorkspaceDeploymentApiEnv(options?: {
                     duration_ms: null,
                     result_json: null,
                     error_code: state.deploymentErrorCode,
-                    error_message: state.deploymentErrorCode ? 'retry scheduled' : null,
+                    error_message:
+                      state.deploymentErrorCode === 'retry_scheduled'
+                        ? 'retry scheduled'
+                        : state.deploymentErrorCode === 'provider_auth_failed'
+                          ? 'provider auth failed'
+                          : null,
                     created_at: '2026-03-08T00:00:00.000Z',
                     updated_at: '2026-03-08T00:00:00.000Z',
                   } as T;
@@ -373,6 +407,19 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
   }
 
   {
+    const { env } = createWorkspaceDeploymentApiEnv();
+    const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
+      method: 'POST',
+      body: JSON.stringify({ provider: 'cloudflare_workers_assets' }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-provider-output-missing' },
+    });
+    const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as { code?: string };
+    assert.equal(body.code, 'provider_invalid_output_dir');
+  }
+
+  {
     const { env, state } = createWorkspaceDeploymentApiEnv();
     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
       method: 'POST',
@@ -394,6 +441,62 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
     const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
     assert.equal(response.status, 200);
     assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env, state } = createWorkspaceDeploymentApiEnv({ reuseFailed: true });
+    const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
+      method: 'POST',
+      body: JSON.stringify({}),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-1' },
+    });
+    const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error('precheck should not run when claim is blocked');
+    }) as typeof fetch;
+
+    try {
+      const { env } = createWorkspaceDeploymentApiEnv({ precheckClaimBlockedConcurrentFailed: true });
+      const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
+        method: 'POST',
+        body: JSON.stringify({ provider: 'cloudflare_workers_assets', deploy: { outputDir: 'dist' } }),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-precheck-race' },
+      });
+      const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
+      assert.equal(response.status, 200);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error('precheck should not run for reused deployment');
+    }) as typeof fetch;
+
+    try {
+      const { env, state } = createWorkspaceDeploymentApiEnv({
+        reuseRetryScheduled: true,
+        reuseRequestPayloadSha256: 'ce281e4c5ccf595ff5ed74316d66c519a863c09e75128ba9b16de629e9132e31',
+      });
+      const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
+        method: 'POST',
+        body: JSON.stringify({ provider: 'cloudflare_workers_assets', deploy: { outputDir: 'dist' } }),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-1' },
+      });
+      const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
+      assert.equal(response.status, 200);
+      assert.equal(state.queueSendCount, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   }
 
   {
@@ -434,6 +537,22 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
     });
     const response = await handleWorkspaceDeploymentPreflight('ws_abc12345', request, env as never);
     assert.equal(response.status, 200);
+  }
+
+  {
+    const { env } = createWorkspaceDeploymentApiEnv();
+    const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy/preflight', {
+      method: 'POST',
+      body: JSON.stringify({ provider: 'cloudflare_workers_assets' }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const response = await handleWorkspaceDeploymentPreflight('ws_abc12345', request, env as never);
+    const body = (await response.json()) as {
+      preflight: { ok: boolean; checks: Array<{ code: string; ok: boolean }> };
+    };
+    assert.equal(response.status, 200);
+    assert.equal(body.preflight.ok, false);
+    assert.equal(body.preflight.checks.some((check) => check.code === 'provider_invalid_output_dir' && !check.ok), true);
   }
 
   {

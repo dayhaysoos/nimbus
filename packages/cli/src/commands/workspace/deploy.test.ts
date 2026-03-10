@@ -75,6 +75,7 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
         rehydrateBaseline: true,
         bootstrapToolchain: true,
       });
+      assert.equal(requests[0].body?.provider, undefined);
     }
 
     {
@@ -124,6 +125,8 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
         runBuildIfPresent: false,
         autoFix: true,
         pollIntervalMs: 1,
+        provider: 'cloudflare_workers_assets',
+        outputDir: 'dist',
       });
 
       const createRequest = requests.find((request) => request.url.endsWith('/deploy'));
@@ -138,6 +141,10 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
       });
       assert.deepEqual(createRequest?.body?.cache, {
         dependencyCache: true,
+      });
+      assert.equal(createRequest?.body?.provider, 'cloudflare_workers_assets');
+      assert.deepEqual(createRequest?.body?.deploy, {
+        outputDir: 'dist',
       });
     }
   } finally {

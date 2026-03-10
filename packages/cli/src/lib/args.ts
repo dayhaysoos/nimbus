@@ -4,7 +4,17 @@ export interface ParsedCliArgs {
   positional: string[];
 }
 
-const LONG_VALUE_FLAGS = new Set(['ref', 'project-root', 'env-file', 'env', 'max-bytes', 'idempotency-key', 'poll-interval-ms']);
+const LONG_VALUE_FLAGS = new Set([
+  'ref',
+  'project-root',
+  'env-file',
+  'env',
+  'max-bytes',
+  'idempotency-key',
+  'poll-interval-ms',
+  'provider',
+  'output-dir',
+]);
 const SHORT_VALUE_FLAGS = new Set<string>();
 
 function appendFlagValue(
