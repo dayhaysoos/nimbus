@@ -1,0 +1,8 @@
+# Session Context
+
+## User Prompts
+
+### Prompt 1
+
+/review Verify latest fix for idempotent replay + provider precheck race in workspace-deployments.ts. Report blocking issues only.
+
