@@ -1,9 +1,11 @@
 {
   "cli_version": "0.4.9",
   "checkpoint_id": "a6f07388c421",
+  "session_id": "ses_329e0e023ffe3G6H3oTwtDFfuw",
   "strategy": "manual-commit",
+  "created_at": "2026-03-10T11:28:40.731359Z",
   "branch": "phase-07",
-  "checkpoints_count": 2,
+  "checkpoints_count": 1,
   "files_touched": [
     "packages/cli/src/commands/workspace/deploy.test.ts",
     "packages/cli/src/commands/workspace/deploy.ts",
@@ -24,27 +26,22 @@
     "packages/worker/wrangler.toml",
     "specs/testing/phase-7-real-provider-smoke.md"
   ],
-  "sessions": [
-    {
-      "metadata": "/a6/f07388c421/0/metadata.json",
-      "transcript": "/a6/f07388c421/0/full.jsonl",
-      "context": "/a6/f07388c421/0/context.md",
-      "content_hash": "/a6/f07388c421/0/content_hash.txt",
-      "prompt": "/a6/f07388c421/0/prompt.txt"
-    },
-    {
-      "metadata": "/a6/f07388c421/1/metadata.json",
-      "transcript": "/a6/f07388c421/1/full.jsonl",
-      "context": "/a6/f07388c421/1/context.md",
-      "content_hash": "/a6/f07388c421/1/content_hash.txt",
-      "prompt": "/a6/f07388c421/1/prompt.txt"
-    }
-  ],
+  "agent": "OpenCode",
+  "turn_id": "691debbab8d8",
   "token_usage": {
-    "input_tokens": 191113,
+    "input_tokens": 85472,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 595584,
-    "output_tokens": 7102,
-    "api_call_count": 17
+    "cache_read_tokens": 99456,
+    "output_tokens": 1856,
+    "api_call_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-10T11:28:40.655275Z",
+    "agent_lines": 2858,
+    "human_added": 0,
+    "human_modified": 6,
+    "human_removed": 1,
+    "total_committed": 2864,
+    "agent_percentage": 99.79050279329608
   }
 }
