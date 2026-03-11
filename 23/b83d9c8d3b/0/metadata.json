@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "23b83d9c8d3b",
+  "session_id": "ses_3255a6dc6ffdMCXSlgS54AkYg2",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-11T02:14:04.134522Z",
+  "branch": "phase-07",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/lib/workspace-deploy-provider.test.ts",
+    "packages/worker/src/lib/workspace-deploy-provider.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "7c12e8b0271c",
+  "token_usage": {
+    "input_tokens": 78628,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 224384,
+    "output_tokens": 3984,
+    "api_call_count": 12
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-11T02:14:03.937476Z",
+    "agent_lines": 35,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 35,
+    "agent_percentage": 100
+  }
+}
