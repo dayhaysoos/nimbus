@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "da6c04228e1a",
+  "strategy": "manual-commit",
+  "branch": "phase-07",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/lib/workspace-deploy-provider.test.ts",
+    "packages/worker/src/lib/workspace-deploy-provider.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/da/6c04228e1a/0/metadata.json",
+      "transcript": "/da/6c04228e1a/0/full.jsonl",
+      "context": "/da/6c04228e1a/0/context.md",
+      "content_hash": "/da/6c04228e1a/0/content_hash.txt",
+      "prompt": "/da/6c04228e1a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 89524,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 51456,
+    "output_tokens": 4074,
+    "api_call_count": 5
+  }
+}
