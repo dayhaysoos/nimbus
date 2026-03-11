@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "ad0e3643ad82",
+  "session_id": "ses_322294ce9ffeVizDt15szQaONE",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-11T17:33:43.542735Z",
+  "branch": "phase-07",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/workspace-deploy-provider.test.ts",
+    "packages/worker/src/lib/workspace-deploy-provider.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.ts",
+    "packages/worker/src/types.ts",
+    "scripts/test-cloudflare-contract.mjs"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "eadb654bef6b",
+  "token_usage": {
+    "input_tokens": 292436,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 241024,
+    "output_tokens": 6563,
+    "api_call_count": 6
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-11T17:33:43.040312Z",
+    "agent_lines": 1580,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1580,
+    "agent_percentage": 100
+  }
+}
