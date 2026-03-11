@@ -146,6 +146,8 @@ function nextActionForDeploymentError(code: string | undefined): string | null {
       return 'Disable build/test validation for this deploy or install required tooling in the sandbox image.';
     case 'validation_command_failed':
       return 'Review test/build output, fix project errors, and retry deploy.';
+    case 'dependency_install_failed':
+      return 'Dependency installation failed in sandbox; verify lockfile and package manager configuration, then retry deploy.';
     case 'invalid_project_root':
       return 'Set workspace source project root to a safe relative path and retry deploy.';
     case 'baseline_missing':

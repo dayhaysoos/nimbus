@@ -102,6 +102,19 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
   return value;
 }
 
+function isLegacyCloudflareProviderDeploymentId(providerDeploymentId: string): boolean {
+  if (!providerDeploymentId) {
+    return false;
+  }
+  if (providerDeploymentId.startsWith('deployment:')) {
+    return false;
+  }
+  if (providerDeploymentId.startsWith('script-update:') || providerDeploymentId.startsWith('script_update_')) {
+    return false;
+  }
+  return providerDeploymentId.startsWith('cfdep_');
+}
+
 function parseInteger(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
@@ -178,6 +191,28 @@ function managerRunScriptCommand(profile: WorkspaceToolchainProfile, scriptName:
     return `yarn -s ${scriptName}`;
   }
   return `npm run -s ${scriptName}`;
+}
+
+function managerInstallCommand(
+  profile: WorkspaceToolchainProfile,
+  options?: { preferNpmCi?: boolean; ignoreScripts?: boolean }
+): string {
+  const ignoreScripts = options?.ignoreScripts !== false;
+  const ignoreScriptsArg = ignoreScripts ? ' --ignore-scripts' : '';
+  if (profile.manager === 'pnpm') {
+    return `pnpm install --frozen-lockfile${ignoreScriptsArg}`;
+  }
+  if (profile.manager === 'yarn') {
+    const major = profile.version ? Number.parseInt(profile.version.split('.')[0] ?? '', 10) : NaN;
+    if (Number.isFinite(major) && major <= 1) {
+      return `yarn install --frozen-lockfile${ignoreScriptsArg}`;
+    }
+    return ignoreScripts ? 'YARN_ENABLE_SCRIPTS=false yarn install --immutable' : 'yarn install --immutable';
+  }
+  if (options?.preferNpmCi === false) {
+    return `npm install --include=dev${ignoreScriptsArg} --no-audit --no-fund`;
+  }
+  return `npm ci --include=dev${ignoreScriptsArg} --no-audit --no-fund`;
 }
 
 function managerBinary(profile: WorkspaceToolchainProfile): string {
@@ -323,6 +358,10 @@ function parseValidationToolMissing(output: string): { tool: string; raw: string
       return { tool, raw: output };
     }
   }
+  const missingToolMatch = output.match(/(?:^|\s)([A-Za-z0-9._-]+):\s*(?:not found|command not found)/m);
+  if (missingToolMatch?.[1]) {
+    return { tool: missingToolMatch[1], raw: output };
+  }
   if (normalized.includes('command not found')) {
     return { tool: 'unknown', raw: output };
   }
@@ -333,7 +372,8 @@ async function runValidationStep(
   sandbox: SandboxClient,
   command: string,
   timeout: number,
-  missingToolCode: string
+  missingToolCode: string,
+  options?: { allowProjectToolMissing?: boolean }
 ): Promise<void> {
   const result = await sandbox.exec(command, { timeout });
   if (result.exitCode === 0) {
@@ -343,6 +383,15 @@ async function runValidationStep(
   const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
   const missingTool = parseValidationToolMissing(output);
   if (missingTool) {
+    const runtimeTools = new Set(['pnpm', 'npm', 'yarn', 'bun', 'node', 'nodejs', 'corepack']);
+    const isRuntimeTool = runtimeTools.has(missingTool.tool.toLowerCase());
+    const allowProjectToolMissing = options?.allowProjectToolMissing === true;
+    if (!isRuntimeTool && !allowProjectToolMissing) {
+      throw new PolicyError(
+        'validation_command_failed',
+        `Validation command failed with exit ${result.exitCode}: ${output || 'No output'}`
+      );
+    }
     throw new PolicyError(
       missingToolCode,
       `Validation tool is missing in sandbox runtime (${missingTool.tool}); disable this validation step or install the tool`
@@ -353,6 +402,112 @@ async function runValidationStep(
     'validation_command_failed',
     `Validation command failed with exit ${result.exitCode}: ${output || 'No output'}`
   );
+}
+
+async function installDependenciesForValidation(
+  sandbox: SandboxClient,
+  profile: WorkspaceToolchainProfile,
+  workspaceProjectRoot: string,
+  options: {
+    ignoreScripts: boolean;
+    allowNpmFallback: boolean;
+    installFromWorkspaceRoot: boolean;
+    installProjectRoot: string;
+  }
+): Promise<void> {
+  const installRoot = normalizeProjectRoot(options.installProjectRoot);
+  const projectDir = options.installFromWorkspaceRoot
+    ? WORKSPACE_ROOT
+    : installRoot === '.'
+      ? WORKSPACE_ROOT
+      : `${WORKSPACE_ROOT}/${installRoot}`;
+  try {
+    await runValidationStep(
+      sandbox,
+      `cd ${shellQuote(projectDir)} && ${managerInstallCommand(profile, {
+        preferNpmCi: true,
+        ignoreScripts: options.ignoreScripts,
+      })}`,
+      10 * 60 * 1000,
+      'validation_tool_missing'
+    );
+  } catch (error) {
+    if (
+      error instanceof PolicyError &&
+      error.code === 'validation_command_failed' &&
+      profile.manager === 'npm' &&
+      options.allowNpmFallback &&
+      /npm ci|eusage|package\.json.*package-lock\.json.*sync|clean install a project/i.test(error.message)
+    ) {
+      await runValidationStep(
+        sandbox,
+        `cd ${shellQuote(projectDir)} && ${managerInstallCommand(profile, {
+          preferNpmCi: false,
+          ignoreScripts: options.ignoreScripts,
+        })}`,
+        10 * 60 * 1000,
+        'validation_tool_missing'
+      );
+      return;
+    }
+    if (error instanceof PolicyError && error.code === 'validation_command_failed') {
+      throw new PolicyError('dependency_install_failed', error.message);
+    }
+    throw error;
+  }
+}
+
+async function shouldInstallFromWorkspaceRoot(
+  sandbox: SandboxClient,
+  profile: WorkspaceToolchainProfile,
+  workspaceProjectRoot: string
+): Promise<boolean> {
+  if (profile.manager !== 'npm' || workspaceProjectRoot === '.') {
+    return false;
+  }
+
+  const output = await runSandboxCommand(
+    sandbox,
+    `cd ${shellQuote(
+      WORKSPACE_ROOT
+    )} && python3 - <<'PY'\n# nimbus_detect_workspace_membership\nimport fnmatch\nimport json\nimport os\n\nproject_root = ${JSON.stringify(workspaceProjectRoot)}\nif not os.path.exists('package.json') or not os.path.exists('package-lock.json'):\n    print('project')\n    raise SystemExit(0)\n\ntry:\n    with open('package.json', 'r', encoding='utf-8') as f:\n        payload = json.load(f)\nexcept Exception:\n    print('project')\n    raise SystemExit(0)\n\nworkspaces = []\nif isinstance(payload, dict):\n    raw = payload.get('workspaces')\n    if isinstance(raw, list):\n        workspaces = [item for item in raw if isinstance(item, str)]\n    elif isinstance(raw, dict):\n        packages = raw.get('packages')\n        if isinstance(packages, list):\n            workspaces = [item for item in packages if isinstance(item, str)]\n\nif not workspaces:\n    print('project')\n    raise SystemExit(0)\n\nroot = project_root.replace('\\\\', '/').strip('./')\nif not root:\n    print('project')\n    raise SystemExit(0)\nfor pattern in workspaces:\n    normalized = pattern.replace('\\\\', '/').rstrip('/')\n    if not normalized:\n        continue\n    direct = normalized == root\n    wildcard = fnmatch.fnmatch(root, normalized)\n    nested = fnmatch.fnmatch(root + '/placeholder', normalized.rstrip('/') + '/*')\n    if direct or wildcard or nested:\n        print('workspace')\n        raise SystemExit(0)\n\nprint('project')\nPY`
+  );
+  return output.trim() === 'workspace';
+}
+
+async function cleanupValidationInstallArtifacts(
+  sandbox: SandboxClient,
+  workspaceProjectRoot: string,
+  installFromWorkspaceRoot: boolean,
+  installProjectRoot: string
+): Promise<void> {
+  const projectDir = workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`;
+  const installDir = installProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${installProjectRoot}`;
+  const targets: string[] = [];
+  if (installFromWorkspaceRoot || workspaceProjectRoot === '.') {
+    targets.push(`${WORKSPACE_ROOT}/node_modules`);
+  }
+  targets.push(`${projectDir}/node_modules`);
+  targets.push(`${installDir}/node_modules`);
+  const uniqueTargets = Array.from(new Set(targets));
+  if (uniqueTargets.length === 0) {
+    return;
+  }
+  await sandbox.exec(`rm -rf ${uniqueTargets.map((path) => shellQuote(path)).join(' ')}`, { timeout: 5 * 60 * 1000 });
+}
+
+function validationScriptCommand(
+  toolchain: WorkspaceToolchainProfile,
+  scriptName: 'test' | 'build',
+  workspaceProjectRoot: string,
+  installFromWorkspaceRoot: boolean
+): string {
+  if (toolchain.manager === 'npm' && installFromWorkspaceRoot && workspaceProjectRoot !== '.') {
+    return `cd ${shellQuote(WORKSPACE_ROOT)} && npm run -s ${scriptName} -w ${shellQuote(workspaceProjectRoot)}`;
+  }
+  return `cd ${shellQuote(
+    workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`
+  )} && ${managerRunScriptCommand(toolchain, scriptName)}`;
 }
 
 async function detectPotentialSecrets(sandbox: SandboxClient): Promise<string[]> {
@@ -417,6 +572,122 @@ async function createOutputBundle(
     bytes,
     sha256: sha,
     objectKeySuffix: 'output.tar.gz',
+  };
+}
+
+async function createOutputFiles(
+  sandbox: SandboxClient,
+  outputDir: string
+): Promise<Array<{ path: string; bytes: Uint8Array; sha256: string }>> {
+  const normalizedOutputDir = normalizeProjectRoot(outputDir);
+  const output = await runSandboxCommand(
+    sandbox,
+    `cd ${shellQuote(
+      WORKSPACE_ROOT
+    )} && python3 - <<'PY'\n# nimbus_collect_output_files\nimport hashlib\nimport json\nimport os\n\nroot = ${JSON.stringify(normalizedOutputDir)}\nif not os.path.isdir(root):\n    print('__NIMBUS_OUTPUT_DIR_MISSING__')\n    raise SystemExit(0)\nroot_real = os.path.realpath(root)\nfiles = []\nfor dirpath, dirnames, filenames in os.walk(root):\n    dirnames.sort()\n    for dirname in list(dirnames):\n        directory_absolute = os.path.join(dirpath, dirname)\n        directory_rel = os.path.relpath(directory_absolute, root).replace('\\\\', '/')\n        if os.path.islink(directory_absolute):\n            print('__NIMBUS_OUTPUT_DIR_SYMLINK__:' + directory_rel + '/')\n            raise SystemExit(0)\n    filenames.sort()\n    for filename in filenames:\n        absolute = os.path.join(dirpath, filename)\n        rel = os.path.relpath(absolute, root).replace('\\\\', '/')\n        if os.path.islink(absolute):\n            print('__NIMBUS_OUTPUT_DIR_SYMLINK__:' + rel)\n            raise SystemExit(0)\n        resolved = os.path.realpath(absolute)\n        if not (resolved == root_real or resolved.startswith(root_real + os.sep)):\n            print('__NIMBUS_OUTPUT_DIR_ESCAPE__:' + rel)\n            raise SystemExit(0)\n        hasher = hashlib.sha256()\n        size = 0\n        with open(absolute, 'rb') as f:\n            while True:\n                chunk = f.read(1024 * 1024)\n                if not chunk:\n                    break\n                size += len(chunk)\n                hasher.update(chunk)\n        files.append({\n            'path': rel,\n            'size': size,\n            'sha256': hasher.hexdigest(),\n        })\nfiles.sort(key=lambda item: item['path'])\nprint(json.dumps({'files': files}))\nPY`,
+    { timeout: 8 * 60 * 1000 }
+  );
+
+  if (output.trim() === '__NIMBUS_OUTPUT_DIR_MISSING__') {
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir directory does not exist: ${normalizedOutputDir}`);
+  }
+  if (output.trim().startsWith('__NIMBUS_OUTPUT_DIR_SYMLINK__:')) {
+    const path = output.trim().slice('__NIMBUS_OUTPUT_DIR_SYMLINK__:'.length).trim() || 'unknown';
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir contains a symlinked entry: ${path}`);
+  }
+  if (output.trim().startsWith('__NIMBUS_OUTPUT_DIR_ESCAPE__:')) {
+    const path = output.trim().slice('__NIMBUS_OUTPUT_DIR_ESCAPE__:'.length).trim() || 'unknown';
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir contains a file resolving outside output root: ${path}`);
+  }
+
+  const parsed = JSON.parse(output) as { files?: Array<{ path?: string; base64?: string; sha256?: string; size?: number }> };
+  const files = Array.isArray(parsed.files) ? parsed.files : [];
+  if (files.length === 0) {
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir directory does not contain any files: ${normalizedOutputDir}`);
+  }
+
+  const metadata = files.map((file) => {
+    const path = typeof file.path === 'string' ? file.path : '';
+    const sha256 = typeof file.sha256 === 'string' ? file.sha256 : '';
+    const inlineBase64 = typeof file.base64 === 'string' ? file.base64 : '';
+    if (!path || !sha256) {
+      throw new PolicyError('provider_deploy_failed', 'Output file collection returned invalid metadata');
+    }
+    return { path, sha256, inlineBase64 };
+  });
+
+  const payloadByPath = new Map<string, string>();
+  for (const entry of metadata) {
+    if (entry.inlineBase64) {
+      payloadByPath.set(entry.path, entry.inlineBase64);
+    }
+  }
+
+  const pendingPaths = metadata.filter((entry) => !payloadByPath.has(entry.path)).map((entry) => entry.path);
+  const batchSize = 64;
+  for (let offset = 0; offset < pendingPaths.length; offset += batchSize) {
+    const batch = pendingPaths.slice(offset, offset + batchSize);
+    const payload = await runSandboxCommand(
+      sandbox,
+      `cd ${shellQuote(
+        WORKSPACE_ROOT
+      )} && python3 - <<'PY'\n# nimbus_collect_output_file_batch\nimport base64\nimport json\nimport os\n\nroot = ${JSON.stringify(normalizedOutputDir)}\npaths = ${JSON.stringify(batch)}\nroot_real = os.path.realpath(root)\nfiles = []\nfor rel in paths:\n    absolute = os.path.join(root, rel)\n    if not os.path.isfile(absolute):\n        print('__NIMBUS_OUTPUT_FILE_MISSING__:' + rel)\n        raise SystemExit(0)\n    if os.path.islink(absolute):\n        print('__NIMBUS_OUTPUT_DIR_SYMLINK__:' + rel)\n        raise SystemExit(0)\n    resolved = os.path.realpath(absolute)\n    if not (resolved == root_real or resolved.startswith(root_real + os.sep)):\n        print('__NIMBUS_OUTPUT_DIR_ESCAPE__:' + rel)\n        raise SystemExit(0)\n    with open(absolute, 'rb') as f:\n        file_payload = f.read()\n    files.append({\n        'path': rel,\n        'base64': base64.b64encode(file_payload).decode('ascii'),\n    })\nprint(json.dumps({'files': files}))\nPY`,
+      { timeout: 8 * 60 * 1000 }
+    );
+    const trimmed = payload.trim();
+    if (trimmed.startsWith('__NIMBUS_OUTPUT_FILE_MISSING__:')) {
+      const path = trimmed.slice('__NIMBUS_OUTPUT_FILE_MISSING__:'.length).trim() || 'unknown';
+      throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir file disappeared during publish: ${path}`);
+    }
+    if (trimmed.startsWith('__NIMBUS_OUTPUT_DIR_SYMLINK__:')) {
+      const path = trimmed.slice('__NIMBUS_OUTPUT_DIR_SYMLINK__:'.length).trim() || 'unknown';
+      throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir contains a symlinked entry: ${path}`);
+    }
+    if (trimmed.startsWith('__NIMBUS_OUTPUT_DIR_ESCAPE__:')) {
+      const path = trimmed.slice('__NIMBUS_OUTPUT_DIR_ESCAPE__:'.length).trim() || 'unknown';
+      throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir contains a file resolving outside output root: ${path}`);
+    }
+    const parsedBatch = JSON.parse(trimmed) as { files?: Array<{ path?: string; base64?: string }> };
+    const batchFiles = Array.isArray(parsedBatch.files) ? parsedBatch.files : [];
+    for (const batchFile of batchFiles) {
+      const path = typeof batchFile.path === 'string' ? batchFile.path : '';
+      const base64 = typeof batchFile.base64 === 'string' ? batchFile.base64 : '';
+      if (path && base64) {
+        payloadByPath.set(path, base64);
+      }
+    }
+  }
+
+  const resolvedFiles: Array<{ path: string; bytes: Uint8Array; sha256: string }> = [];
+  for (const entry of metadata) {
+    const fileBase64 = payloadByPath.get(entry.path);
+    if (!fileBase64) {
+      throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir file bytes unavailable during publish: ${entry.path}`);
+    }
+    resolvedFiles.push({
+      path: entry.path,
+      bytes: fromBase64(fileBase64),
+      sha256: entry.sha256,
+    });
+  }
+
+  return resolvedFiles.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+async function createSyntheticOutputBundleFromFiles(
+  files: Array<{ path: string; sha256: string }>
+): Promise<{ bytes: Uint8Array; sha256: string; objectKeySuffix: string }> {
+  const manifest = files
+    .slice()
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .map((file) => `${file.path}\0${file.sha256}`)
+    .join('\n');
+  const bytes = new Uint8Array();
+  const manifestSha = await sha256Hex(new TextEncoder().encode(manifest));
+  return {
+    bytes,
+    sha256: manifestSha,
+    objectKeySuffix: 'output.synthetic',
   };
 }
 
@@ -995,6 +1266,60 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     }
   }
 
+  const shouldRunValidation = (runTestsIfPresent && scripts.hasTest) || (runBuildIfPresent && scripts.hasBuild);
+  let installedValidationDependencies = false;
+  let installFromWorkspaceRoot = false;
+  let installProjectRoot = normalizeProjectRoot(toolchain.projectRoot);
+  const allowProjectToolMissing = env.WORKSPACE_DEPLOY_ALLOW_PROJECT_TOOL_MISSING !== 'false';
+  if (shouldRunValidation) {
+    const safeInstallIgnoreScripts = env.SAFE_INSTALL_IGNORE_SCRIPTS !== 'false';
+    const autoInstallScriptsFallback = env.AUTO_INSTALL_SCRIPTS_FALLBACK !== 'false';
+    installFromWorkspaceRoot = await shouldInstallFromWorkspaceRoot(sandbox, toolchain, workspaceProjectRoot);
+    if (installFromWorkspaceRoot) {
+      installProjectRoot = '.';
+    }
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_dependencies_install_started',
+      payload: {
+        manager: toolchain.manager,
+        projectRoot: workspaceProjectRoot,
+        installProjectRoot,
+        installRoot: installFromWorkspaceRoot ? 'workspace' : 'project',
+        ignoreScripts: safeInstallIgnoreScripts,
+        npmFallbackAllowed: autoInstallScriptsFallback,
+      },
+    });
+    try {
+      await installDependenciesForValidation(sandbox, toolchain, workspaceProjectRoot, {
+        ignoreScripts: safeInstallIgnoreScripts,
+        allowNpmFallback: autoInstallScriptsFallback,
+        installFromWorkspaceRoot,
+        installProjectRoot,
+      });
+      installedValidationDependencies = true;
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_dependencies_install_succeeded',
+        payload: { manager: toolchain.manager },
+      });
+    } catch (error) {
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_dependencies_install_failed',
+        payload: {
+          manager: toolchain.manager,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
+    }
+    await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+  }
+
   if (runTestsIfPresent && scripts.hasTest) {
     await appendWorkspaceDeploymentEvent(env.DB, {
       workspaceId,
@@ -1005,9 +1330,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     try {
       await runValidationStep(
         sandbox,
-        `cd ${shellQuote(workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`)} && ${managerRunScriptCommand(toolchain, 'test')}`,
+        validationScriptCommand(toolchain, 'test', workspaceProjectRoot, installFromWorkspaceRoot),
         10 * 60 * 1000,
-        'validation_tool_missing'
+        'validation_tool_missing',
+        { allowProjectToolMissing }
       );
     } catch (error) {
       if (error instanceof PolicyError && error.code === 'validation_tool_missing') {
@@ -1017,8 +1343,16 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
           eventType: 'deployment_validation_tool_missing',
           payload: { step: 'test', message: error.message },
         });
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'validation_skipped',
+          payload: { step: 'test', reason: 'tool_missing' },
+        });
+        await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+      } else {
+        throw error;
       }
-      throw error;
     }
     await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
   }
@@ -1032,9 +1366,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     try {
       await runValidationStep(
         sandbox,
-        `cd ${shellQuote(workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`)} && ${managerRunScriptCommand(toolchain, 'build')}`,
+        validationScriptCommand(toolchain, 'build', workspaceProjectRoot, installFromWorkspaceRoot),
         10 * 60 * 1000,
-        'validation_tool_missing'
+        'validation_tool_missing',
+        { allowProjectToolMissing }
       );
     } catch (error) {
       if (error instanceof PolicyError && error.code === 'validation_tool_missing') {
@@ -1044,51 +1379,76 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
           eventType: 'deployment_validation_tool_missing',
           payload: { step: 'build', message: error.message },
         });
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'validation_skipped',
+          payload: { step: 'build', reason: 'tool_missing' },
+        });
+        await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+      } else {
+        throw error;
       }
-      throw error;
     }
     await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
   }
 
   if (cacheOptions.dependencyCache && dependencyCacheKey) {
-    const archive = await createDependencyCacheArchive(sandbox, toolchain);
-    if (archive) {
-      const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;
-      if (bucket) {
-        const artifactKey = `workspaces/${workspaceId}/dependency-caches/${dependencyCacheKey}.tar.gz`;
-        await bucket.put(artifactKey, archive.bytes, {
-          httpMetadata: { contentType: 'application/gzip' },
-          customMetadata: {
-            workspace_id: workspaceId,
-            cache_key: dependencyCacheKey,
+    try {
+      const archive = await createDependencyCacheArchive(sandbox, toolchain);
+      if (archive) {
+        const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;
+        if (bucket) {
+          const artifactKey = `workspaces/${workspaceId}/dependency-caches/${dependencyCacheKey}.tar.gz`;
+          await bucket.put(artifactKey, archive.bytes, {
+            httpMetadata: { contentType: 'application/gzip' },
+            customMetadata: {
+              workspace_id: workspaceId,
+              cache_key: dependencyCacheKey,
+              manager: toolchain.manager,
+            },
+          });
+          await upsertWorkspaceDependencyCache(env.DB, {
+            id: `wdc_${dependencyCacheKey.slice(0, 24)}`,
+            workspaceId,
+            cacheKey: dependencyCacheKey,
             manager: toolchain.manager,
-          },
-        });
-        await upsertWorkspaceDependencyCache(env.DB, {
-          id: `wdc_${dependencyCacheKey.slice(0, 24)}`,
-          workspaceId,
-          cacheKey: dependencyCacheKey,
-          manager: toolchain.manager,
-          managerVersion: toolchain.version,
-          projectRoot: toolchain.projectRoot,
-          lockfileName: toolchain.lockfile?.name ?? null,
-          lockfileSha256: toolchain.lockfile?.sha256 ?? null,
-          artifactKey,
-          artifactSha256: archive.sha256,
-          artifactBytes: archive.bytes.byteLength,
-        });
-        await appendWorkspaceDeploymentEvent(env.DB, {
-          workspaceId,
-          deploymentId,
-          eventType: 'deployment_dependency_cache_saved',
-          payload: {
-            dependencyCacheKey,
+            managerVersion: toolchain.version,
+            projectRoot: toolchain.projectRoot,
+            lockfileName: toolchain.lockfile?.name ?? null,
+            lockfileSha256: toolchain.lockfile?.sha256 ?? null,
             artifactKey,
+            artifactSha256: archive.sha256,
             artifactBytes: archive.bytes.byteLength,
-          },
-        });
+          });
+          await appendWorkspaceDeploymentEvent(env.DB, {
+            workspaceId,
+            deploymentId,
+            eventType: 'deployment_dependency_cache_saved',
+            payload: {
+              dependencyCacheKey,
+              artifactKey,
+              artifactBytes: archive.bytes.byteLength,
+            },
+          });
+        }
       }
+    } catch (error) {
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_dependency_cache_skipped',
+        payload: {
+          reason: 'cache_save_failed',
+          installedValidationDependencies,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
+  }
+
+  if (shouldRunValidation) {
+    await cleanupValidationInstallArtifacts(sandbox, workspaceProjectRoot, installFromWorkspaceRoot, installProjectRoot);
   }
 
   const sourceBundle = await createDeploymentBundle(sandbox);
@@ -1117,6 +1477,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
   });
 
   let outputBundle = sourceBundle;
+  let outputFiles: Array<{ path: string; bytes: Uint8Array; sha256: string }> = [];
   let publishOutputDir = workspaceProjectRoot;
   let providerOutputDir = publishOutputDir;
   if (publishOptions.provider === 'cloudflare_workers_assets') {
@@ -1129,7 +1490,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
       workspaceProjectRoot === '.'
         ? normalizeProjectRoot(relativeOutputDir)
         : normalizeProjectRoot(`${workspaceProjectRoot}/${relativeOutputDir}`);
-    outputBundle = await createOutputBundle(sandbox, publishOutputDir);
+    outputFiles = await createOutputFiles(sandbox, publishOutputDir);
+    outputBundle = await createSyntheticOutputBundleFromFiles(
+      outputFiles.map((file) => ({ path: file.path, sha256: file.sha256 }))
+    );
   }
 
   const successResultTemplate = {
@@ -1181,6 +1545,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
         workspaceId,
         deploymentId,
         outputDir: providerOutputDir,
+        outputFiles,
         outputBundle: {
           bytes: outputBundle.bytes,
           sha256: outputBundle.sha256,
@@ -1294,6 +1659,9 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     if (cancelAccepted) {
       throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
     }
+    if (providerStatus.errorCode === 'provider_probe_unknown' || providerStatus.errorCode === 'provider_probe_missing') {
+      throw new QueueRetryError('Provider preview probe is temporarily unavailable; retry requested');
+    }
     throw new PolicyError(
       'provider_deploy_failed',
       `Provider deployment did not reach terminal state within polling window (${maxPollAttempts} attempts)`
@@ -1309,15 +1677,16 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     return;
   }
 
-  const deployedUrl = providerStatus.deployedUrl ?? createResult.deployedUrl;
-  if (!deployedUrl) {
+  const resolvedDeployedUrl = providerStatus.deployedUrl ?? createResult.deployedUrl;
+  const allowLegacyNullDeployedUrl = isLegacyCloudflareProviderDeploymentId(createResult.providerDeploymentId);
+  if (!resolvedDeployedUrl && !allowLegacyNullDeployedUrl) {
     throw new PolicyError('provider_deploy_failed', 'Provider deployment did not return a deployed URL');
   }
 
   const finishedAt = new Date().toISOString();
   const successResult = {
     ...successResultTemplate,
-    url: deployedUrl,
+    url: resolvedDeployedUrl,
   };
 
   let markedSucceeded = await markWorkspaceDeploymentSucceededIfNotCancelled(env.DB, {
@@ -1325,7 +1694,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     deploymentId,
     sourceSnapshotSha256: sourceBundle.sha256,
     sourceBundleKey,
-    deployedUrl,
+    deployedUrl: resolvedDeployedUrl,
     providerDeploymentId: createResult.providerDeploymentId,
     result: successResult,
     finishedAt,
@@ -1357,7 +1726,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
         .bind(
           sourceBundle.sha256,
           sourceBundleKey,
-          deployedUrl,
+          resolvedDeployedUrl,
           createResult.providerDeploymentId,
           JSON.stringify(successResult),
           finishedAt,
@@ -1398,7 +1767,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     deploymentId,
     eventType: 'deployment_succeeded',
       payload: {
-        deployedUrl,
+        deployedUrl: resolvedDeployedUrl,
         sourceBundleKey,
         sourceSnapshotSha256: sourceBundle.sha256,
       },
@@ -1407,7 +1776,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
   await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
     deploymentId,
     status: 'succeeded',
-    deployedUrl,
+    deployedUrl: resolvedDeployedUrl,
     deployedAt: finishedAt,
     errorCode: null,
     errorMessage: null,
@@ -1652,7 +2021,8 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
                 throw new QueueRetryError('Workspace deployment success metadata not yet available; retry requested');
               }
               const deployedUrl = providerStatus.deployedUrl ?? existing.deployedUrl ?? null;
-              if (!deployedUrl) {
+              const allowLegacyNullDeployedUrl = isLegacyCloudflareProviderDeploymentId(existing.providerDeploymentId);
+              if (!deployedUrl && !allowLegacyNullDeployedUrl) {
                 throw new QueueRetryError('Provider deployment succeeded but no deployed URL is available yet; retry requested');
               }
               const finishedAt = new Date().toISOString();
@@ -2193,7 +2563,8 @@ export async function runWorkspaceDeploymentInlineWithRetries(
           return false;
         }
         const deployedUrl = providerStatus.deployedUrl ?? latest.deployedUrl ?? null;
-        if (!deployedUrl) {
+        const allowLegacyNullDeployedUrl = isLegacyCloudflareProviderDeploymentId(latest.providerDeploymentId);
+        if (!deployedUrl && !allowLegacyNullDeployedUrl) {
           return false;
         }
         const finishedAt = new Date().toISOString();

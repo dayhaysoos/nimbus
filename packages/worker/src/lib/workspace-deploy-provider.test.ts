@@ -7,6 +7,14 @@ import {
   setWorkspaceDeployProviderFetchForTests,
 } from './workspace-deploy-provider.js';
 
+const sampleOutputFiles = [
+  {
+    path: 'index.html',
+    bytes: new Uint8Array([1, 2, 3]),
+    sha256: 'abc',
+  },
+];
+
 export async function runWorkspaceDeployProviderTests(): Promise<void> {
   {
     const provider = createWorkspaceDeployProvider('simulated', {} as never);
@@ -16,6 +24,7 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       workspaceId: 'ws_abc12345',
       deploymentId: 'dep_abcd1234',
       outputDir: 'dist',
+      outputFiles: sampleOutputFiles,
       outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
     });
     assert.equal(created.status, 'succeeded');
@@ -68,6 +77,9 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       if (url.endsWith('/workers/assets/upload?base64=true')) {
         return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
       }
+      if (url.endsWith('/workers/scripts/project/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_123' } }), { status: 200 });
+      }
       if (url.endsWith('/workers/scripts/project/deployments')) {
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_123' } }), { status: 200 });
       }
@@ -84,12 +96,18 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       workspaceId: 'ws_abc12345',
       deploymentId: 'dep_abcd1234',
       outputDir: 'dist',
+      outputFiles: sampleOutputFiles,
       outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
     });
-    assert.equal(created.providerDeploymentId, 'cfdep_123');
-    assert.equal(calls.length, 3);
+    assert.equal(created.providerDeploymentId, 'deployment:cfdep_123:dep_abcd1234:%2F');
+    assert.equal(calls.length, 4);
     assert.equal(Object.values(calls[1].body).includes('AQID'), true);
-    assert.equal(typeof calls[2].body.assets, 'object');
+    assert.equal(typeof calls[2].body.metadata, 'string');
+    const versionMetadata = JSON.parse(String(calls[2].body.metadata)) as Record<string, unknown>;
+    const annotations = versionMetadata.annotations as Record<string, unknown>;
+    assert.equal(annotations['workers/alias'], 'dep-dep-abcd1234');
+    assert.equal(calls[3].body.strategy, 'percentage');
+    assert.equal(created.deployedUrl, null);
   }
 
   {
@@ -103,6 +121,9 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       }
       if (url.endsWith('/workers/assets/upload?base64=true')) {
         return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
+      }
+      if (url.endsWith('/workers/scripts/project/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_123' } }), { status: 200 });
       }
       if (url.endsWith('/workers/scripts/project/deployments')) {
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_123' } }), { status: 200 });
@@ -120,9 +141,10 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       workspaceId: 'ws_abc12345',
       deploymentId: 'dep_abcd1234',
       outputDir: 'dist..backup',
+      outputFiles: sampleOutputFiles,
       outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
     });
-    assert.equal(created.providerDeploymentId, 'cfdep_123');
+    assert.equal(created.providerDeploymentId, 'deployment:cfdep_123:dep_abcd1234:%2F');
   }
 
   {
@@ -148,6 +170,9 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       if (url.endsWith('/workers/assets/upload?base64=true')) {
         return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
       }
+      if (url.endsWith('/workers/scripts/project/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_123' } }), { status: 200 });
+      }
       if (url.endsWith('/workers/scripts/project/deployments')) {
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_123' } }), { status: 200 });
       }
@@ -164,11 +189,12 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       workspaceId: 'ws_abc12345',
       deploymentId: 'dep_abcd_1234',
       outputDir: 'dist',
+      outputFiles: sampleOutputFiles,
       outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
     });
-    assert.equal(calls[2].body.alias, 'dep-dep-abcd-1234');
-    assert.equal(calls[2].body.preview_url, 'https://dep-dep-abcd-1234.preview.example.com');
-    assert.equal(created.deployedUrl, 'https://dep-dep-abcd-1234.preview.example.com');
+    assert.equal(typeof calls[2].body.metadata, 'string');
+    assert.equal(calls[3].body.strategy, 'percentage');
+    assert.equal(created.deployedUrl, null);
   }
 
   {
@@ -184,6 +210,9 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       }
       if (url.endsWith('/workers/assets/upload?base64=true')) {
         return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
+      }
+      if (url.endsWith('/workers/scripts/project/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_123' } }), { status: 200 });
       }
       if (url.endsWith('/workers/scripts/project/deployments')) {
         return new Response(
@@ -207,6 +236,7 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       workspaceId: 'ws_abc12345',
       deploymentId: 'dep_abcd1234',
       outputDir: 'dist',
+      outputFiles: sampleOutputFiles,
       outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
     });
     assert.equal(created.providerDeploymentId, 'script-update:dep_abcd1234');
@@ -233,6 +263,26 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
     const status = await provider.getDeploymentStatus('script-update:dep_abcd1234');
     assert.equal(status.status, 'succeeded');
     assert.equal(status.deployedUrl, 'https://dep-dep-abcd1234.preview.example.com');
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url === 'https://dep-dep-abcd1234-project.example.workers.dev') {
+        return new Response('ok', { status: 200 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'example.workers.dev',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('script-update:dep_abcd1234');
+    assert.equal(status.status, 'succeeded');
+    assert.equal(status.deployedUrl, 'https://dep-dep-abcd1234-project.example.workers.dev');
   }
 
   {
@@ -306,6 +356,142 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
     const status = await provider.getDeploymentStatus('cfdep_404');
     assert.equal(status.status, 'running');
     assert.equal(status.deployedUrl, null);
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/project/deployments/cfdep_legacy')) {
+        return new Response(JSON.stringify({ success: true, result: { status: 'succeeded' } }), { status: 200 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('cfdep_legacy');
+    assert.equal(status.status, 'succeeded');
+    assert.equal(status.deployedUrl, null);
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/project/deployments/cfdep_456')) {
+        return new Response(JSON.stringify({ success: true, result: { status: 'succeeded' } }), { status: 200 });
+      }
+      if (url === 'https://dep-dep-live.preview.example.com') {
+        return new Response('ok', { status: 200 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('deployment:cfdep_456:dep_live');
+    assert.equal(status.status, 'succeeded');
+    assert.equal(status.deployedUrl, 'https://dep-dep-live.preview.example.com');
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/project/deployments/cfdep_space')) {
+        return new Response(JSON.stringify({ success: true, result: { status: 'succeeded' } }), { status: 200 });
+      }
+      if (url === 'https://dep-dep-space.preview.example.com/my%20file.txt') {
+        return new Response('ok', { status: 200 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('deployment:cfdep_space:dep_space:%2Fmy%20file.txt');
+    assert.equal(status.status, 'succeeded');
+    assert.equal(status.deployedUrl, 'https://dep-dep-space.preview.example.com/my%20file.txt');
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/project/deployments/cfdep_unreachable')) {
+        return new Response(JSON.stringify({ success: true, result: { status: 'succeeded' } }), { status: 200 });
+      }
+      if (url === 'https://dep-dep-unreachable.preview.example.com') {
+        return new Response('missing', { status: 404 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('deployment:cfdep_unreachable:dep_unreachable');
+    assert.equal(status.status, 'running');
+    assert.equal(status.errorCode, 'provider_probe_missing');
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/project/deployments/cfdep_propagating')) {
+        return new Response(JSON.stringify({ success: true, result: { status: 'running' } }), { status: 200 });
+      }
+      if (url === 'https://dep-dep-propagating.preview.example.com') {
+        return new Response('missing', { status: 404 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('deployment:cfdep_propagating:dep_propagating');
+    assert.equal(status.status, 'running');
+    assert.equal(status.deployedUrl, null);
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/project/deployments/cfdep_unknown')) {
+        return new Response(JSON.stringify({ success: true, result: { status: 'succeeded' } }), { status: 200 });
+      }
+      if (url === 'https://dep-dep-unknown.preview.example.com') {
+        throw new Error('network timeout');
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('deployment:cfdep_unknown:dep_unknown');
+    assert.equal(status.status, 'running');
+    assert.equal(status.deployedUrl, null);
+    assert.equal(status.errorCode, 'provider_probe_unknown');
   }
 
   {

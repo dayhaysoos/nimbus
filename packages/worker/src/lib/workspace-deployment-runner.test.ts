@@ -21,6 +21,7 @@ function createDeploymentRunnerEnv(options?: {
   requestAutoFixBootstrapToolchain?: boolean;
   requestProvider?: 'simulated' | 'cloudflare_workers_assets';
   requestOutputDir?: string | null;
+  allowProjectToolMissing?: boolean;
   sourceProjectRoot?: string;
   initialStatus?: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   initialStartedAt?: string | null;
@@ -86,6 +87,7 @@ function createDeploymentRunnerEnv(options?: {
     WORKSPACE_DEPLOY_PROJECT_NAME: 'nimbus',
     WORKSPACE_DEPLOY_PROVIDER_MAX_POLLS: '2',
     WORKSPACE_DEPLOY_PROVIDER_POLL_INTERVAL_MS: '1',
+    WORKSPACE_DEPLOY_ALLOW_PROJECT_TOOL_MISSING: options?.allowProjectToolMissing === false ? 'false' : 'true',
     CF_ACCOUNT_ID: 'acc',
     CF_API_TOKEN: 'token',
     DB: {
@@ -522,6 +524,22 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_collect_output_files')) {
+          return {
+            stdout: JSON.stringify({
+              files: [
+                {
+                  path: 'index.html',
+                  size: 3,
+                  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+                  base64: 'AQID',
+                },
+              ],
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('base64 "$tmp_bundle"')) {
           return { stdout: 'AQID', stderr: '', exitCode: 0 };
         }
@@ -529,7 +547,7 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
       },
     }));
 
-    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    await runWorkspaceDeploymentInlineWithRetries(env as never, 'ws_abc12345', 'dep_abcd1234', 2);
     assert.equal(state.status, 'succeeded');
     assert.equal(Boolean(state.deployedUrl), true);
     assert.equal(state.events.some((event) => event.eventType === 'deployment_succeeded'), true);
@@ -568,7 +586,7 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
       },
     }));
 
-    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    await runWorkspaceDeploymentInlineWithRetries(env as never, 'ws_abc12345', 'dep_abcd1234', 2);
     assert.equal(state.status, 'cancelled');
   }
 
@@ -633,6 +651,22 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         }
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_collect_output_files')) {
+          return {
+            stdout: JSON.stringify({
+              files: [
+                {
+                  path: 'index.html',
+                  size: 3,
+                  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+                  base64: 'AQID',
+                },
+              ],
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
         }
         if (command.includes('base64 "$tmp_bundle"')) {
           return { stdout: 'AQID', stderr: '', exitCode: 0 };
@@ -857,6 +891,95 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
 
   {
     const { env, state } = createDeploymentRunnerEnv({
+      requestProvider: 'cloudflare_workers_assets',
+      requestOutputDir: 'dist',
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_collect_output_files')) {
+          return {
+            stdout: JSON.stringify({
+              files: [
+                {
+                  path: 'index.html',
+                  size: 3,
+                  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+                  base64: 'AQID',
+                },
+              ],
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/nimbus')) {
+        return new Response(JSON.stringify({ success: true, result: {} }), { status: 200 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/assets-upload-session')) {
+        return new Response(
+          JSON.stringify({ success: true, result: { jwt: 'upload_jwt_123', buckets: [['039058c6f2c0cb492c533b0a4d14ef77']] } }),
+          { status: 200 }
+        );
+      }
+      if (url.endsWith('/workers/assets/upload?base64=true')) {
+        return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_dep_abcd1234' } }), { status: 200 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/deployments')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_dep_abcd1234' } }), { status: 200 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/deployments/cfdep_dep_abcd1234')) {
+        return new Response(
+          JSON.stringify({ success: true, result: { status: 'succeeded', preview_url: 'https://dep-dep-abcd1234.preview.example.com' } }),
+          { status: 200 }
+        );
+      }
+      if (url === 'https://dep-dep-abcd1234.preview.example.com') {
+        return new Response('missing', { status: 404 });
+      }
+      throw new Error(`Unexpected provider URL in probe missing timeout test: ${url}`);
+    });
+
+    await runWorkspaceDeploymentInlineWithRetries(env as never, 'ws_abc12345', 'dep_abcd1234', 2);
+    assert.equal(state.status, 'failed');
+    assert.equal(state.events.some((event) => event.eventType === 'deployment_retry_scheduled'), true);
+    setWorkspaceDeployProviderFetchForTests(null);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({
       initialStatus: 'queued',
       initialCancelRequestedAt: '2026-03-08T00:00:00.000Z',
     });
@@ -991,6 +1114,53 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
     }));
 
     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_validation_tool_missing' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { step?: string }).step === 'test'
+      ),
+      true
+    );
+    assert.equal(state.events.some((event) => event.eventType === 'validation_skipped'), true);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({ requestRunTestsIfPresent: true, allowProjectToolMissing: false });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: true }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: 'abc' },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('npm run -s test')) {
+          return { stdout: '', stderr: 'sh: 1: tsc: not found', exitCode: 127 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
     assert.equal(state.status, 'failed');
     assert.equal(
       state.events.some(
@@ -998,7 +1168,53 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
           event.eventType === 'deployment_failed' &&
           typeof event.payload === 'object' &&
           event.payload !== null &&
-          (event.payload as { code?: string }).code === 'validation_tool_missing'
+          (event.payload as { code?: string }).code === 'validation_command_failed'
+      ),
+      true
+    );
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({ requestRunTestsIfPresent: true });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: true }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: 'abc' },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('npm run -s test')) {
+          return { stdout: '', stderr: 'sh: 1: tsc: not found', exitCode: 127 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_validation_tool_missing' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { step?: string }).step === 'test'
       ),
       true
     );
@@ -1112,6 +1328,7 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
     assert.equal(state.status, 'succeeded');
     assert.equal(commands.some((command) => command.includes('corepack prepare pnpm@9.15.0 --activate')), true);
+    assert.equal(commands.some((command) => command.includes('pnpm install --frozen-lockfile --ignore-scripts')), true);
     assert.equal(commands.some((command) => command.includes('pnpm run -s test')), true);
     assert.equal(commands.some((command) => command.includes('pnpm run -s build')), true);
   }
@@ -1163,6 +1380,112 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
       ),
       true
     );
+  }
+
+  {
+    const commands: string[] = [];
+    const { env, state } = createDeploymentRunnerEnv({
+      requestRunTestsIfPresent: true,
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        commands.push(command);
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: true }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'yarn@4.1.1',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: 'abc', npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('yarn install --immutable')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('yarn -s test')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(commands.some((command) => command.includes('YARN_ENABLE_SCRIPTS=false yarn install --immutable')), true);
+    assert.equal(commands.some((command) => command.includes('yarn install --immutable --ignore-scripts')), false);
+  }
+
+  {
+    const commands: string[] = [];
+    const { env, state } = createDeploymentRunnerEnv({
+      sourceProjectRoot: 'apps/web',
+      requestRunTestsIfPresent: true,
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        commands.push(command);
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: true }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'pnpm@9.15.0',
+              scripts: {},
+              lockfiles: { pnpm: 'abc', yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('corepack --version')) {
+          return { stdout: '0.29.0', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('corepack enable')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('corepack prepare pnpm@9.15.0 --activate')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pnpm install --frozen-lockfile --ignore-scripts')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes("cd '/workspace/apps/web' && pnpm run -s test")) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(commands.some((command) => command.includes("cd '/workspace' && pnpm install --frozen-lockfile --ignore-scripts")), true);
+    assert.equal(commands.some((command) => command.includes("cd '/workspace/apps/web' && pnpm install --frozen-lockfile --ignore-scripts")), false);
   }
 
   {
@@ -1297,6 +1620,58 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
   }
 
   {
+    const commands: string[] = [];
+    const { env, state } = createDeploymentRunnerEnv({
+      sourceProjectRoot: 'apps/web',
+      requestRunTestsIfPresent: true,
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        commands.push(command);
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: true }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: 'apps/web',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_workspace_membership')) {
+          return { stdout: 'workspace', stderr: '', exitCode: 0 };
+        }
+        if (command.includes("cd '/workspace' && npm ci")) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes("cd '/workspace' && npm run -s test -w 'apps/web'")) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(commands.some((command) => command.includes("cd '/workspace' && npm ci")), true);
+    assert.equal(commands.some((command) => command.includes("cd '/workspace' && npm run -s test -w 'apps/web'")), true);
+  }
+
+  {
     const { env, state } = createDeploymentRunnerEnv({
       requestProvider: 'cloudflare_workers_assets',
       requestOutputDir: 'dist',
@@ -1327,6 +1702,22 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus-workspace-output')) {
           return { stdout: 'AQID', stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_collect_output_files')) {
+          return {
+            stdout: JSON.stringify({
+              files: [
+                {
+                  path: 'index.html',
+                  size: 3,
+                  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+                  base64: 'AQID',
+                },
+              ],
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('base64 "$tmp_bundle"')) {
           return { stdout: 'AQID', stderr: '', exitCode: 0 };
         }
@@ -1348,6 +1739,9 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
       if (url.endsWith('/workers/assets/upload?base64=true')) {
         return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
       }
+      if (url.endsWith('/workers/scripts/nimbus/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_dep_abcd1234' } }), { status: 200 });
+      }
       if (url.endsWith('/workers/scripts/nimbus/deployments')) {
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_dep_abcd1234' } }), { status: 200 });
       }
@@ -1355,6 +1749,71 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         return new Response(JSON.stringify({ success: true, result: { status: 'running' } }), { status: 200 });
       }
       throw new Error(`Unexpected provider URL in timeout test: ${url}`);
+    });
+
+    await runWorkspaceDeploymentInlineWithRetries(env as never, 'ws_abc12345', 'dep_abcd1234', 2);
+    assert.equal(state.status, 'failed');
+    assert.equal(state.events.some((event) => event.eventType === 'deployment_retry_scheduled'), true);
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_failed' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { code?: string }).code === 'deployment_failed'
+      ),
+      true
+    );
+    setWorkspaceDeployProviderFetchForTests(null);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({
+      requestProvider: 'cloudflare_workers_assets',
+      requestOutputDir: 'dist',
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus-workspace-output')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_collect_output_files')) {
+          return { stdout: '__NIMBUS_OUTPUT_DIR_SYMLINK__:assets/', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/nimbus')) {
+        return new Response(JSON.stringify({ success: true, result: {} }), { status: 200 });
+      }
+      throw new Error(`Unexpected provider URL in symlink directory output test: ${url}`);
     });
 
     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
@@ -1365,7 +1824,109 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
           event.eventType === 'deployment_failed' &&
           typeof event.payload === 'object' &&
           event.payload !== null &&
-          (event.payload as { code?: string }).code === 'provider_deploy_failed'
+          (event.payload as { code?: string }).code === 'provider_invalid_output_dir'
+      ),
+      true
+    );
+    setWorkspaceDeployProviderFetchForTests(null);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({
+      requestProvider: 'cloudflare_workers_assets',
+      requestOutputDir: 'dist',
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus-workspace-output')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_collect_output_files')) {
+          return {
+            stdout: JSON.stringify({
+              files: [
+                {
+                  path: 'index.html',
+                  size: 3,
+                  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+                  base64: 'AQID',
+                },
+              ],
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/nimbus')) {
+        return new Response(JSON.stringify({ success: true, result: {} }), { status: 200 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/assets-upload-session')) {
+        return new Response(
+          JSON.stringify({ success: true, result: { jwt: 'upload_jwt_123', buckets: [['039058c6f2c0cb492c533b0a4d14ef77']] } }),
+          { status: 200 }
+        );
+      }
+      if (url.endsWith('/workers/assets/upload?base64=true')) {
+        return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_dep_abcd1234' } }), { status: 200 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/deployments')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_dep_abcd1234' } }), { status: 200 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/deployments/cfdep_dep_abcd1234')) {
+        return new Response(
+          JSON.stringify({ success: true, result: { status: 'succeeded', preview_url: 'https://dep-dep-abcd1234.preview.example.com' } }),
+          { status: 200 }
+        );
+      }
+      if (url === 'https://dep-dep-abcd1234.preview.example.com') {
+        throw new Error('probe timeout');
+      }
+      throw new Error(`Unexpected provider URL in probe uncertainty timeout test: ${url}`);
+    });
+
+    await runWorkspaceDeploymentInlineWithRetries(env as never, 'ws_abc12345', 'dep_abcd1234', 2);
+    assert.equal(state.status, 'failed');
+    assert.equal(state.events.some((event) => event.eventType === 'deployment_retry_scheduled'), true);
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_failed' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { code?: string }).code === 'deployment_failed'
       ),
       true
     );
@@ -1402,6 +1963,22 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus_detect_secrets')) {
           return { stdout: '[]', stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_collect_output_files')) {
+          return {
+            stdout: JSON.stringify({
+              files: [
+                {
+                  path: 'index.html',
+                  size: 3,
+                  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+                  base64: 'AQID',
+                },
+              ],
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('base64 "$tmp_bundle"')) {
           return { stdout: 'AQID', stderr: '', exitCode: 0 };
         }
@@ -1423,6 +2000,9 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
       if (url.endsWith('/workers/assets/upload?base64=true')) {
         return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
       }
+      if (url.endsWith('/workers/scripts/nimbus/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_dep_abcd1234' } }), { status: 200 });
+      }
       if (url.endsWith('/workers/scripts/nimbus/deployments')) {
         deploymentBody = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_dep_abcd1234' } }), { status: 200 });
@@ -1433,12 +2013,79 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
           { status: 200 }
         );
       }
+      if (url === 'https://dep-dep-abcd1234.preview.example.com') {
+        return new Response('ok', { status: 200 });
+      }
       throw new Error(`Unexpected provider URL in monorepo output_dir test: ${url}`);
     });
 
     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
     assert.equal(state.status, 'succeeded');
-    assert.equal(deploymentBody?.['output_dir'], 'dist');
+    assert.equal(deploymentBody?.['strategy'], 'percentage');
+    setWorkspaceDeployProviderFetchForTests(null);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({
+      requestProvider: 'cloudflare_workers_assets',
+      requestOutputDir: 'dist',
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus-workspace-output')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_collect_output_files')) {
+          return { stdout: '__NIMBUS_OUTPUT_DIR_SYMLINK__:leak.txt', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown): Promise<Response> => {
+      const url = String(input);
+      if (url.endsWith('/workers/scripts/nimbus')) {
+        return new Response(JSON.stringify({ success: true, result: {} }), { status: 200 });
+      }
+      throw new Error(`Unexpected provider URL in symlink output test: ${url}`);
+    });
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'failed');
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_failed' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { code?: string }).code === 'provider_invalid_output_dir'
+      ),
+      true
+    );
     setWorkspaceDeployProviderFetchForTests(null);
   }
 
@@ -1474,6 +2121,22 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
         if (command.includes('nimbus-workspace-output')) {
           return { stdout: 'AQID', stderr: '', exitCode: 0 };
         }
+        if (command.includes('nimbus_collect_output_files')) {
+          return {
+            stdout: JSON.stringify({
+              files: [
+                {
+                  path: 'index.html',
+                  size: 3,
+                  sha256: '039058c6f2c0cb492c533b0a4d14ef77cc0f78abccced5287d84a1a2011cfb81',
+                  base64: 'AQID',
+                },
+              ],
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
         if (command.includes('base64 "$tmp_bundle"')) {
           return { stdout: 'AQID', stderr: '', exitCode: 0 };
         }
@@ -1494,6 +2157,9 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
       }
       if (url.endsWith('/workers/assets/upload?base64=true')) {
         return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
+      }
+      if (url.endsWith('/workers/scripts/nimbus/versions')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'version_dep_abcd1234' } }), { status: 200 });
       }
       if (url.endsWith('/workers/scripts/nimbus/deployments')) {
         return new Response(JSON.stringify({ success: true, result: { id: 'cfdep_dep_abcd1234' } }), { status: 200 });
@@ -1516,6 +2182,9 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
           }),
           { status: 200 }
         );
+      }
+      if (url === 'https://dep-dep_abcd1234.preview.example.com') {
+        return new Response('ok', { status: 200 });
       }
       throw new Error(`Unexpected provider URL in cancel continuation test: ${url}`);
     });

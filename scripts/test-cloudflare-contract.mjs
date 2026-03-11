@@ -136,6 +136,7 @@ async function main() {
   }
 
   console.log('6) Polling deployment to terminal status');
+  let terminalDeployment = null;
   {
     let terminal = null;
     for (let attempt = 0; attempt < maxPolls; attempt += 1) {
@@ -145,6 +146,7 @@ async function main() {
       assert(typeof status === 'string', 'poll response missing deployment.status');
       if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {
         terminal = status;
+        terminalDeployment = body?.deployment ?? null;
         break;
       }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
@@ -153,6 +155,17 @@ async function main() {
     assert(
       terminal === expectedTerminalStatus,
       `terminal status mismatch: expected ${expectedTerminalStatus}, got ${terminal}`
+    );
+  }
+
+  if (expectedTerminalStatus === 'succeeded') {
+    console.log('7) Verifying deployedUrl reachability for succeeded deployment');
+    const deployedUrl = terminalDeployment?.deployedUrl;
+    assert(typeof deployedUrl === 'string' && deployedUrl.length > 0, 'succeeded deployment missing deployedUrl');
+    const probe = await fetch(deployedUrl, { method: 'GET', redirect: 'manual' });
+    assert(
+      probe.status >= 200 && probe.status < 400,
+      `deployedUrl probe expected 2xx/3xx, got ${probe.status} for ${deployedUrl}`
     );
   }
 

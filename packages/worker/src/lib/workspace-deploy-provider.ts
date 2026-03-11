@@ -12,6 +12,11 @@ export interface WorkspaceDeployCreateInput {
   workspaceId: string;
   deploymentId: string;
   outputDir: string;
+  outputFiles?: Array<{
+    path: string;
+    bytes: Uint8Array;
+    sha256: string;
+  }>;
   outputBundle: {
     bytes: Uint8Array;
     sha256: string;
@@ -269,12 +274,35 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     return parsed;
   }
 
+  private previewAliasForDeployment(deploymentId: string): string {
+    return `dep-${dnsSafeLabel(deploymentId)}`;
+  }
+
+  private previewUrlForAlias(alias: string): string {
+    if (this.previewDomain.endsWith('.workers.dev')) {
+      return `https://${alias}-${dnsSafeLabel(this.projectName)}.${this.previewDomain}`;
+    }
+    return `https://${alias}.${this.previewDomain}`;
+  }
+
   private previewUrlForDeployment(deploymentId: string): string {
-    return `https://dep-${dnsSafeLabel(deploymentId)}.${this.previewDomain}`;
+    return this.previewUrlForAlias(this.previewAliasForDeployment(deploymentId));
+  }
+
+  private buildProbeUrl(baseUrl: string, probePath: string | null): string | null {
+    if (!probePath || probePath === '/') {
+      return baseUrl;
+    }
+    try {
+      return new URL(probePath, baseUrl).toString();
+    } catch {
+      return null;
+    }
   }
 
   private static readonly assetsMainModule = 'nimbus-assets-entry.mjs';
   private static readonly scriptUpdateDeploymentPrefix = 'script-update:';
+  private static readonly deploymentHandlePrefix = 'deployment:';
 
   private static assetsWorkerSource(): string {
     return 'export default { async fetch(request, env) { return env.ASSETS.fetch(request); } };';
@@ -290,6 +318,50 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     }
     const value = providerDeploymentId.slice(CloudflareWorkersAssetsProvider.scriptUpdateDeploymentPrefix.length).trim();
     return value ? value : null;
+  }
+
+  private static providerDeploymentHandle(
+    providerDeploymentId: string,
+    deploymentId: string,
+    probePath: string | null
+  ): string {
+    const encodedProbePath = probePath ? encodeURIComponent(probePath) : '';
+    return `${CloudflareWorkersAssetsProvider.deploymentHandlePrefix}${providerDeploymentId}:${deploymentId}:${encodedProbePath}`;
+  }
+
+  private static parseProviderDeploymentHandle(
+    providerDeploymentId: string
+  ): { providerDeploymentId: string; deploymentId: string | null; probePath: string | null } | null {
+    if (!providerDeploymentId.startsWith(CloudflareWorkersAssetsProvider.deploymentHandlePrefix)) {
+      return null;
+    }
+    const payload = providerDeploymentId.slice(CloudflareWorkersAssetsProvider.deploymentHandlePrefix.length);
+    const separator = payload.indexOf(':');
+    if (separator <= 0) {
+      return null;
+    }
+    const providerId = payload.slice(0, separator).trim();
+    const remainder = payload.slice(separator + 1);
+    const secondSeparator = remainder.indexOf(':');
+    const deploymentId = (secondSeparator >= 0 ? remainder.slice(0, secondSeparator) : remainder).trim();
+    const encodedProbePath = secondSeparator >= 0 ? remainder.slice(secondSeparator + 1).trim() : '';
+    let probePath: string | null = null;
+    if (encodedProbePath) {
+      try {
+        const decoded = decodeURIComponent(encodedProbePath);
+        probePath = decoded.startsWith('/') ? decoded : `/${decoded}`;
+      } catch {
+        probePath = null;
+      }
+    }
+    if (!providerId) {
+      return null;
+    }
+    return {
+      providerDeploymentId: providerId,
+      deploymentId: deploymentId || null,
+      probePath,
+    };
   }
 
   private async probePreviewUrl(url: string): Promise<'reachable' | 'missing' | 'unknown'> {
@@ -366,6 +438,70 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     return this.parseCloudflareResult(response);
   }
 
+  private async createVersionWithAssetsJwt(completionJwt: string, alias: string): Promise<string> {
+    const metadata = {
+      main_module: CloudflareWorkersAssetsProvider.assetsMainModule,
+      compatibility_date: new Date().toISOString().slice(0, 10),
+      assets: {
+        jwt: completionJwt,
+      },
+      bindings: [
+        {
+          name: 'ASSETS',
+          type: 'assets',
+        },
+      ],
+      annotations: {
+        'workers/alias': alias,
+      },
+    };
+    const form = new FormData();
+    form.append('metadata', JSON.stringify(metadata));
+    form.append(
+      CloudflareWorkersAssetsProvider.assetsMainModule,
+      new Blob([CloudflareWorkersAssetsProvider.assetsWorkerSource()], {
+        type: 'application/javascript+module',
+      }),
+      CloudflareWorkersAssetsProvider.assetsMainModule
+    );
+
+    const response = await this.request(`/accounts/${this.accountId}/workers/scripts/${this.projectName}/versions`, {
+      method: 'POST',
+      body: form,
+    });
+    const parsed = await this.parseCloudflareResult(response);
+    const result =
+      typeof parsed.result === 'object' && parsed.result !== null ? (parsed.result as Record<string, unknown>) : {};
+    const versionId = typeof result.id === 'string' && result.id.trim() ? result.id.trim() : null;
+    if (!versionId) {
+      throw new ProviderError('provider_deploy_failed', 'Cloudflare version upload did not return an id');
+    }
+    return versionId;
+  }
+
+  private async createDeploymentForVersion(versionId: string): Promise<string> {
+    const response = await this.request(`/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments`, {
+      method: 'POST',
+      body: JSON.stringify({
+        strategy: 'percentage',
+        versions: [
+          {
+            version_id: versionId,
+            percentage: 100,
+          },
+        ],
+      }),
+    });
+    const parsed = await this.parseCloudflareResult(response);
+    const result =
+      typeof parsed.result === 'object' && parsed.result !== null ? (parsed.result as Record<string, unknown>) : {};
+    const deploymentId = typeof result.id === 'string' && result.id.trim() ? result.id.trim() : null;
+    if (!deploymentId) {
+      throw new ProviderError('provider_deploy_failed', 'Cloudflare deployment creation did not return an id');
+    }
+    return deploymentId;
+  }
+
   async precheck(): Promise<WorkspaceDeployProviderPrecheck[]> {
     const checks: WorkspaceDeployProviderPrecheck[] = [];
     checks.push({ code: 'provider_real_enabled', ok: true });
@@ -385,19 +521,37 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
       );
     }
 
-    const assetPath = `/__nimbus/${dnsSafeLabel(input.deploymentId)}.tar.gz`;
-    const manifestHash = CloudflareWorkersAssetsProvider.toManifestHash(input.outputBundle.sha256);
+    const outputFiles = Array.isArray(input.outputFiles) ? input.outputFiles : [];
+    if (outputFiles.length === 0) {
+      throw new ProviderError('provider_invalid_output_dir', 'deploy.outputDir did not produce any publishable output files');
+    }
+
+    const manifest: Record<string, { hash: string; size: number }> = {};
+    const payloadByHash = new Map<string, string>();
+    for (const file of outputFiles) {
+      const normalizedPath = file.path.replace(/\\+/g, '/').replace(/^\/+/, '').trim();
+      if (!normalizedPath || normalizedPath.startsWith('../') || normalizedPath.includes('/../')) {
+        throw new ProviderError('provider_invalid_output_dir', `Invalid output file path: ${file.path}`);
+      }
+      const manifestPath = `/${normalizedPath}`;
+      const hash = CloudflareWorkersAssetsProvider.toManifestHash(file.sha256);
+      manifest[manifestPath] = {
+        hash,
+        size: file.bytes.byteLength,
+      };
+      if (!payloadByHash.has(hash)) {
+        payloadByHash.set(hash, toBase64(file.bytes));
+      }
+    }
+    const manifestPaths = Object.keys(manifest).sort();
+    const probePath = manifestPaths.includes('/index.html') ? '/' : manifestPaths[0] ?? '/';
+
     const sessionResponse = await this.request(
       `/accounts/${this.accountId}/workers/scripts/${this.projectName}/assets-upload-session`,
       {
         method: 'POST',
         body: JSON.stringify({
-          manifest: {
-            [assetPath]: {
-              hash: manifestHash,
-              size: input.outputBundle.bytes.byteLength,
-            },
-          },
+          manifest,
         }),
       }
     );
@@ -413,12 +567,28 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     }
 
     const bucketSets = Array.isArray(sessionResult.buckets) ? sessionResult.buckets : [];
-    const shouldUpload = bucketSets.some((bucket) => Array.isArray(bucket) && bucket.some((value) => value === manifestHash));
-
-    let uploadParsed: Record<string, unknown> | null = null;
-    if (shouldUpload) {
+    let completionJwt = CloudflareWorkersAssetsProvider.completionJwtFromUploadResponse(sessionParsed);
+    for (const bucket of bucketSets) {
+      if (!Array.isArray(bucket)) {
+        continue;
+      }
       const uploadForm = new FormData();
-      uploadForm.append(manifestHash, toBase64(input.outputBundle.bytes));
+      let hasUploadContent = false;
+      for (const value of bucket) {
+        if (typeof value !== 'string') {
+          continue;
+        }
+        const normalizedHash = value.trim();
+        const payload = payloadByHash.get(normalizedHash);
+        if (!payload) {
+          continue;
+        }
+        uploadForm.append(normalizedHash, payload);
+        hasUploadContent = true;
+      }
+      if (!hasUploadContent) {
+        continue;
+      }
       const uploadResponse = await this.request(
         `/accounts/${this.accountId}/workers/assets/upload?base64=true`,
         {
@@ -427,63 +597,43 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
         },
         uploadJwt
       );
-      uploadParsed = await this.parseCloudflareResult(uploadResponse);
+      const uploadParsed = await this.parseCloudflareResult(uploadResponse);
+      completionJwt = CloudflareWorkersAssetsProvider.completionJwtFromUploadResponse(uploadParsed) ?? completionJwt;
     }
 
-    const completionJwt =
-      (uploadParsed ? CloudflareWorkersAssetsProvider.completionJwtFromUploadResponse(uploadParsed) : null) ??
-      CloudflareWorkersAssetsProvider.completionJwtFromUploadResponse(sessionParsed);
     if (!completionJwt) {
       throw new ProviderError('provider_deploy_failed', 'Cloudflare asset upload did not return a completion JWT');
     }
 
-    let parsed: Record<string, unknown>;
-    let createStatus: WorkspaceDeploymentStatus = 'running';
+    let providerDeploymentId: string;
     let fallbackScriptUpdate = false;
     try {
-      const response = await this.request(`/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments`, {
-        method: 'POST',
-        body: JSON.stringify({
-          deployment_id: input.deploymentId,
-          alias: `dep-${dnsSafeLabel(input.deploymentId)}`,
-          output_dir: input.outputDir,
-          assets: {
-            jwt: completionJwt,
-            manifest: {
-              [assetPath]: {
-                hash: manifestHash,
-                size: input.outputBundle.bytes.byteLength,
-              },
-            },
-          },
-          preview_url: this.previewUrlForDeployment(input.deploymentId),
-        }),
-      });
-      parsed = await this.parseCloudflareResult(response);
+      const alias = this.previewAliasForDeployment(input.deploymentId);
+      const versionId = await this.createVersionWithAssetsJwt(completionJwt, alias);
+      const deploymentId = await this.createDeploymentForVersion(versionId);
+      providerDeploymentId = CloudflareWorkersAssetsProvider.providerDeploymentHandle(
+        deploymentId,
+        input.deploymentId,
+        probePath
+      );
     } catch (error) {
       const providerError = normalizeProviderError(error);
       if (
         providerError.code === 'provider_deploy_failed' &&
         providerError.message.toLowerCase().includes('invalid for field "versions"')
       ) {
-        parsed = await this.deployScriptWithAssetsJwt(completionJwt);
+        await this.deployScriptWithAssetsJwt(completionJwt);
         fallbackScriptUpdate = true;
+        providerDeploymentId = CloudflareWorkersAssetsProvider.scriptUpdateProviderDeploymentId(input.deploymentId);
       } else {
         throw error;
       }
     }
-    const result =
-      typeof parsed.result === 'object' && parsed.result !== null ? (parsed.result as Record<string, unknown>) : {};
-    const providerDeploymentId = fallbackScriptUpdate
-      ? CloudflareWorkersAssetsProvider.scriptUpdateProviderDeploymentId(input.deploymentId)
-      : typeof result.id === 'string' && result.id.trim()
-        ? result.id.trim()
-        : `cfdep_${input.deploymentId}`;
 
     return {
       providerDeploymentId,
-      status: createStatus,
-      deployedUrl: fallbackScriptUpdate ? null : this.previewUrlForDeployment(input.deploymentId),
+      status: 'running',
+      deployedUrl: null,
     };
   }
 
@@ -520,8 +670,14 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
       };
     }
 
+    const deploymentHandle = CloudflareWorkersAssetsProvider.parseProviderDeploymentHandle(providerDeploymentId);
+    const providerDeploymentApiId = deploymentHandle?.providerDeploymentId ?? providerDeploymentId;
+    const nimbusDeploymentId = deploymentHandle?.deploymentId ?? null;
+    const probePath = deploymentHandle?.probePath ?? null;
+    const isLegacyDeploymentId = deploymentHandle === null;
+
     const response = await this.request(
-      `/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments/${providerDeploymentId}`
+      `/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments/${providerDeploymentApiId}`
     );
 
     if (response.status === 404) {
@@ -534,23 +690,81 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     const parsed = await this.parseCloudflareResult(response);
     const result =
       typeof parsed.result === 'object' && parsed.result !== null ? (parsed.result as Record<string, unknown>) : {};
-    const hasVersions = Array.isArray(result.versions) && result.versions.length > 0;
-    let state: WorkspaceDeploymentStatus;
+    const errorCode = typeof result.error_code === 'string' ? result.error_code : undefined;
+    const errorMessage = typeof result.error_message === 'string' ? result.error_message : undefined;
+    let state: WorkspaceDeploymentStatus = 'running';
     if (typeof result.status === 'string') {
-      const mapped = mapProviderState(result.status);
-      state = mapped === 'running' && hasVersions ? 'succeeded' : mapped;
-    } else {
-      state = hasVersions ? 'succeeded' : 'running';
+      state = mapProviderState(result.status);
     }
+
+    if (state === 'failed' || state === 'cancelled') {
+      return {
+        status: state,
+        deployedUrl: null,
+        errorCode,
+        errorMessage,
+      };
+    }
+
+    const urlFromProvider =
+      typeof result.preview_url === 'string' && result.preview_url.trim() ? result.preview_url.trim() : null;
+    const baseUrl = urlFromProvider ?? (nimbusDeploymentId ? this.previewUrlForDeployment(nimbusDeploymentId) : null);
+    const candidateUrl = baseUrl ? this.buildProbeUrl(baseUrl, probePath) : null;
+    if (!candidateUrl) {
+      if (state === 'succeeded') {
+        if (isLegacyDeploymentId) {
+          return {
+            status: 'succeeded',
+            deployedUrl: null,
+          };
+        }
+        return {
+          status: 'failed',
+          deployedUrl: null,
+          errorCode: 'provider_deploy_failed',
+          errorMessage: 'Provider deployment completed but did not expose a probeable preview URL',
+        };
+      }
+      return {
+        status: 'running',
+        deployedUrl: null,
+      };
+    }
+
+    const probe = await this.probePreviewUrl(candidateUrl);
+    if (probe === 'reachable') {
+      return {
+        status: 'succeeded',
+        deployedUrl: candidateUrl,
+      };
+    }
+
+    if (probe === 'missing') {
+      if (state !== 'succeeded') {
+        return {
+          status: 'running',
+          deployedUrl: null,
+        };
+      }
+      return {
+        status: 'running',
+        deployedUrl: null,
+        errorCode: 'provider_probe_missing',
+        errorMessage: 'Provider deployment completed but deployed URL alias is not yet reachable',
+      };
+    }
+
     return {
-      status: state,
-      deployedUrl: typeof result.preview_url === 'string' && result.preview_url.trim() ? result.preview_url : null,
-      errorCode: typeof result.error_code === 'string' ? result.error_code : undefined,
-      errorMessage: typeof result.error_message === 'string' ? result.error_message : undefined,
+      status: 'running',
+      deployedUrl: null,
+      errorCode: 'provider_probe_unknown',
+      errorMessage: 'Preview URL probe is temporarily unavailable',
     };
   }
 
   async cancelDeployment(providerDeploymentId: string): Promise<{ accepted: boolean }> {
+    const deploymentHandle = CloudflareWorkersAssetsProvider.parseProviderDeploymentHandle(providerDeploymentId);
+    const providerDeploymentApiId = deploymentHandle?.providerDeploymentId ?? providerDeploymentId;
     if (CloudflareWorkersAssetsProvider.deploymentIdFromScriptUpdateProviderId(providerDeploymentId)) {
       return { accepted: false };
     }
@@ -559,7 +773,7 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     }
 
     const response = await this.request(
-      `/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments/${providerDeploymentId}/cancel`,
+      `/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments/${providerDeploymentApiId}/cancel`,
       { method: 'POST', body: '{}' }
     );
 

@@ -2218,7 +2218,7 @@ export async function markWorkspaceDeploymentSucceededIfNotCancelled(
     deploymentId: string;
     sourceSnapshotSha256: string;
     sourceBundleKey: string;
-    deployedUrl: string;
+    deployedUrl: string | null;
     providerDeploymentId: string;
     result: unknown;
     finishedAt: string;
