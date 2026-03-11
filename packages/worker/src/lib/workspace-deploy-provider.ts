@@ -292,7 +292,7 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     return value ? value : null;
   }
 
-  private async isPreviewUrlReachable(url: string): Promise<boolean> {
+  private async probePreviewUrl(url: string): Promise<'reachable' | 'missing' | 'unknown'> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort('preview_url_probe_timeout'), 2_000);
     try {
@@ -301,9 +301,15 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
         redirect: 'manual',
         signal: controller.signal,
       });
-      return response.status >= 200 && response.status < 400;
+      if (response.status >= 200 && response.status < 400) {
+        return 'reachable';
+      }
+      if (response.status === 404) {
+        return 'missing';
+      }
+      return 'unknown';
     } catch {
-      return false;
+      return 'unknown';
     } finally {
       clearTimeout(timeout);
     }
@@ -485,8 +491,14 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     const scriptUpdateDeploymentId = CloudflareWorkersAssetsProvider.deploymentIdFromScriptUpdateProviderId(providerDeploymentId);
     if (scriptUpdateDeploymentId) {
       const url = this.previewUrlForDeployment(scriptUpdateDeploymentId);
-      const reachable = await this.isPreviewUrlReachable(url);
-      if (!reachable) {
+      const probe = await this.probePreviewUrl(url);
+      if (probe === 'reachable') {
+        return {
+          status: 'succeeded',
+          deployedUrl: url,
+        };
+      }
+      if (probe === 'missing') {
         return {
           status: 'failed',
           deployedUrl: null,
@@ -495,15 +507,16 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
         };
       }
       return {
-        status: 'succeeded',
-        deployedUrl: url,
+        status: 'running',
+        deployedUrl: null,
       };
     }
     if (providerDeploymentId.startsWith('script_update_')) {
-      const reachable = await this.isPreviewUrlReachable(this.previewUrlForDeployment(providerDeploymentId));
       return {
-        status: reachable ? 'succeeded' : 'running',
+        status: 'failed',
         deployedUrl: null,
+        errorCode: 'provider_deploy_failed',
+        errorMessage: 'Legacy script update provider deployment IDs are not resumable',
       };
     }
 

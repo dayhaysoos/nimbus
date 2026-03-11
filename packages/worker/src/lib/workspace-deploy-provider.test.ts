@@ -257,6 +257,19 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
   }
 
   {
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('script_update_123');
+    assert.equal(status.status, 'failed');
+    assert.equal(status.errorCode, 'provider_deploy_failed');
+  }
+
+  {
     setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
       const url = String(input);
       if (url.endsWith('/workers/scripts/project/deployments/cfdep_123')) {
