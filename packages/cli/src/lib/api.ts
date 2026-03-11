@@ -205,6 +205,7 @@ export async function preflightWorkspaceDeployment(
   workerUrl: string,
   workspaceId: string,
   payload: {
+    provider?: 'simulated' | 'cloudflare_workers_assets';
     validation: {
       runBuildIfPresent: boolean;
       runTestsIfPresent: boolean;
@@ -212,6 +213,9 @@ export async function preflightWorkspaceDeployment(
     autoFix?: {
       rehydrateBaseline?: boolean;
       bootstrapToolchain?: boolean;
+    };
+    deploy?: {
+      outputDir?: string | null;
     };
   }
 ): Promise<WorkspaceDeploymentPreflightResponse> {
@@ -234,7 +238,7 @@ export async function createWorkspaceDeployment(
   workspaceId: string,
   idempotencyKey: string,
   payload: {
-    provider: 'simulated';
+    provider?: 'simulated' | 'cloudflare_workers_assets';
     validation: {
       runBuildIfPresent: boolean;
       runTestsIfPresent: boolean;
@@ -249,6 +253,9 @@ export async function createWorkspaceDeployment(
     };
     cache?: {
       dependencyCache?: boolean;
+    };
+    deploy?: {
+      outputDir?: string | null;
     };
     retry: {
       maxRetries: number;

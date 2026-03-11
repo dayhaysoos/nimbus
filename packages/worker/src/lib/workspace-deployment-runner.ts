@@ -24,6 +24,13 @@ import {
   detectWorkspaceToolchainProfile,
 } from './workspace-toolchain.js';
 import type { WorkspaceDeploymentRemediation, WorkspaceToolchainProfile } from '../types.js';
+import {
+  createWorkspaceDeployProvider,
+  getWorkspaceDeployProviderName,
+  normalizeProviderError,
+  type WorkspaceDeployStatusResult,
+  type WorkspaceDeployProviderName,
+} from './workspace-deploy-provider.js';
 
 const WORKSPACE_ROOT = '/workspace';
 const STALE_RUNNING_TIMEOUT_MS = 30 * 60 * 1000;
@@ -72,6 +79,11 @@ interface DeploymentCacheOptions {
   dependencyCache: boolean;
 }
 
+interface DeploymentPublishOptions {
+  provider: WorkspaceDeployProviderName;
+  outputDir: string | null;
+}
+
 class CancelRequestedError extends Error {
   constructor() {
     super('Deployment cancel requested');
@@ -90,6 +102,19 @@ function parseBoolean(value: unknown, fallback: boolean): boolean {
   return value;
 }
 
+function isLegacyCloudflareProviderDeploymentId(providerDeploymentId: string): boolean {
+  if (!providerDeploymentId) {
+    return false;
+  }
+  if (providerDeploymentId.startsWith('deployment:')) {
+    return false;
+  }
+  if (providerDeploymentId.startsWith('script-update:') || providerDeploymentId.startsWith('script_update_')) {
+    return false;
+  }
+  return providerDeploymentId.startsWith('cfdep_');
+}
+
 function parseInteger(value: unknown, fallback: number, min: number, max: number): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
     return fallback;
@@ -102,6 +127,32 @@ function parseInteger(value: unknown, fallback: number, min: number, max: number
     return max;
   }
   return normalized;
+}
+
+function parseString(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function parseIntegerString(value: string | undefined, fallback: number, min: number, max: number): number {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value.trim(), 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return parseInteger(parsed, fallback, min, max);
+}
+
+function isRetryableProviderError(code: string, message: string): boolean {
+  if (code === 'provider_rate_limited') {
+    return true;
+  }
+  return /(temporarily unavailable|timeout|timed out|network|connection reset|fetch failed)/i.test(message);
 }
 
 function isTransientFailure(error: unknown): boolean {
@@ -140,6 +191,28 @@ function managerRunScriptCommand(profile: WorkspaceToolchainProfile, scriptName:
     return `yarn -s ${scriptName}`;
   }
   return `npm run -s ${scriptName}`;
+}
+
+function managerInstallCommand(
+  profile: WorkspaceToolchainProfile,
+  options?: { preferNpmCi?: boolean; ignoreScripts?: boolean }
+): string {
+  const ignoreScripts = options?.ignoreScripts !== false;
+  const ignoreScriptsArg = ignoreScripts ? ' --ignore-scripts' : '';
+  if (profile.manager === 'pnpm') {
+    return `pnpm install --frozen-lockfile${ignoreScriptsArg}`;
+  }
+  if (profile.manager === 'yarn') {
+    const major = profile.version ? Number.parseInt(profile.version.split('.')[0] ?? '', 10) : NaN;
+    if (Number.isFinite(major) && major <= 1) {
+      return `yarn install --frozen-lockfile${ignoreScriptsArg}`;
+    }
+    return ignoreScripts ? 'YARN_ENABLE_SCRIPTS=false yarn install --immutable' : 'yarn install --immutable';
+  }
+  if (options?.preferNpmCi === false) {
+    return `npm install --include=dev${ignoreScriptsArg} --no-audit --no-fund`;
+  }
+  return `npm ci --include=dev${ignoreScriptsArg} --no-audit --no-fund`;
 }
 
 function managerBinary(profile: WorkspaceToolchainProfile): string {
@@ -285,6 +358,10 @@ function parseValidationToolMissing(output: string): { tool: string; raw: string
       return { tool, raw: output };
     }
   }
+  const missingToolMatch = output.match(/(?:^|\s)([A-Za-z0-9._-]+):\s*(?:not found|command not found)/m);
+  if (missingToolMatch?.[1]) {
+    return { tool: missingToolMatch[1], raw: output };
+  }
   if (normalized.includes('command not found')) {
     return { tool: 'unknown', raw: output };
   }
@@ -295,7 +372,8 @@ async function runValidationStep(
   sandbox: SandboxClient,
   command: string,
   timeout: number,
-  missingToolCode: string
+  missingToolCode: string,
+  options?: { allowProjectToolMissing?: boolean }
 ): Promise<void> {
   const result = await sandbox.exec(command, { timeout });
   if (result.exitCode === 0) {
@@ -305,6 +383,15 @@ async function runValidationStep(
   const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
   const missingTool = parseValidationToolMissing(output);
   if (missingTool) {
+    const runtimeTools = new Set(['pnpm', 'npm', 'yarn', 'bun', 'node', 'nodejs', 'corepack']);
+    const isRuntimeTool = runtimeTools.has(missingTool.tool.toLowerCase());
+    const allowProjectToolMissing = options?.allowProjectToolMissing === true;
+    if (!isRuntimeTool && !allowProjectToolMissing) {
+      throw new PolicyError(
+        'validation_command_failed',
+        `Validation command failed with exit ${result.exitCode}: ${output || 'No output'}`
+      );
+    }
     throw new PolicyError(
       missingToolCode,
       `Validation tool is missing in sandbox runtime (${missingTool.tool}); disable this validation step or install the tool`
@@ -315,6 +402,112 @@ async function runValidationStep(
     'validation_command_failed',
     `Validation command failed with exit ${result.exitCode}: ${output || 'No output'}`
   );
+}
+
+async function installDependenciesForValidation(
+  sandbox: SandboxClient,
+  profile: WorkspaceToolchainProfile,
+  workspaceProjectRoot: string,
+  options: {
+    ignoreScripts: boolean;
+    allowNpmFallback: boolean;
+    installFromWorkspaceRoot: boolean;
+    installProjectRoot: string;
+  }
+): Promise<void> {
+  const installRoot = normalizeProjectRoot(options.installProjectRoot);
+  const projectDir = options.installFromWorkspaceRoot
+    ? WORKSPACE_ROOT
+    : installRoot === '.'
+      ? WORKSPACE_ROOT
+      : `${WORKSPACE_ROOT}/${installRoot}`;
+  try {
+    await runValidationStep(
+      sandbox,
+      `cd ${shellQuote(projectDir)} && ${managerInstallCommand(profile, {
+        preferNpmCi: true,
+        ignoreScripts: options.ignoreScripts,
+      })}`,
+      10 * 60 * 1000,
+      'validation_tool_missing'
+    );
+  } catch (error) {
+    if (
+      error instanceof PolicyError &&
+      error.code === 'validation_command_failed' &&
+      profile.manager === 'npm' &&
+      options.allowNpmFallback &&
+      /npm ci|eusage|package\.json.*package-lock\.json.*sync|clean install a project/i.test(error.message)
+    ) {
+      await runValidationStep(
+        sandbox,
+        `cd ${shellQuote(projectDir)} && ${managerInstallCommand(profile, {
+          preferNpmCi: false,
+          ignoreScripts: options.ignoreScripts,
+        })}`,
+        10 * 60 * 1000,
+        'validation_tool_missing'
+      );
+      return;
+    }
+    if (error instanceof PolicyError && error.code === 'validation_command_failed') {
+      throw new PolicyError('dependency_install_failed', error.message);
+    }
+    throw error;
+  }
+}
+
+async function shouldInstallFromWorkspaceRoot(
+  sandbox: SandboxClient,
+  profile: WorkspaceToolchainProfile,
+  workspaceProjectRoot: string
+): Promise<boolean> {
+  if (profile.manager !== 'npm' || workspaceProjectRoot === '.') {
+    return false;
+  }
+
+  const output = await runSandboxCommand(
+    sandbox,
+    `cd ${shellQuote(
+      WORKSPACE_ROOT
+    )} && python3 - <<'PY'\n# nimbus_detect_workspace_membership\nimport fnmatch\nimport json\nimport os\n\nproject_root = ${JSON.stringify(workspaceProjectRoot)}\nif not os.path.exists('package.json') or not os.path.exists('package-lock.json'):\n    print('project')\n    raise SystemExit(0)\n\ntry:\n    with open('package.json', 'r', encoding='utf-8') as f:\n        payload = json.load(f)\nexcept Exception:\n    print('project')\n    raise SystemExit(0)\n\nworkspaces = []\nif isinstance(payload, dict):\n    raw = payload.get('workspaces')\n    if isinstance(raw, list):\n        workspaces = [item for item in raw if isinstance(item, str)]\n    elif isinstance(raw, dict):\n        packages = raw.get('packages')\n        if isinstance(packages, list):\n            workspaces = [item for item in packages if isinstance(item, str)]\n\nif not workspaces:\n    print('project')\n    raise SystemExit(0)\n\nroot = project_root.replace('\\\\', '/').strip('./')\nif not root:\n    print('project')\n    raise SystemExit(0)\nfor pattern in workspaces:\n    normalized = pattern.replace('\\\\', '/').rstrip('/')\n    if not normalized:\n        continue\n    direct = normalized == root\n    wildcard = fnmatch.fnmatch(root, normalized)\n    nested = fnmatch.fnmatch(root + '/placeholder', normalized.rstrip('/') + '/*')\n    if direct or wildcard or nested:\n        print('workspace')\n        raise SystemExit(0)\n\nprint('project')\nPY`
+  );
+  return output.trim() === 'workspace';
+}
+
+async function cleanupValidationInstallArtifacts(
+  sandbox: SandboxClient,
+  workspaceProjectRoot: string,
+  installFromWorkspaceRoot: boolean,
+  installProjectRoot: string
+): Promise<void> {
+  const projectDir = workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`;
+  const installDir = installProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${installProjectRoot}`;
+  const targets: string[] = [];
+  if (installFromWorkspaceRoot || workspaceProjectRoot === '.') {
+    targets.push(`${WORKSPACE_ROOT}/node_modules`);
+  }
+  targets.push(`${projectDir}/node_modules`);
+  targets.push(`${installDir}/node_modules`);
+  const uniqueTargets = Array.from(new Set(targets));
+  if (uniqueTargets.length === 0) {
+    return;
+  }
+  await sandbox.exec(`rm -rf ${uniqueTargets.map((path) => shellQuote(path)).join(' ')}`, { timeout: 5 * 60 * 1000 });
+}
+
+function validationScriptCommand(
+  toolchain: WorkspaceToolchainProfile,
+  scriptName: 'test' | 'build',
+  workspaceProjectRoot: string,
+  installFromWorkspaceRoot: boolean
+): string {
+  if (toolchain.manager === 'npm' && installFromWorkspaceRoot && workspaceProjectRoot !== '.') {
+    return `cd ${shellQuote(WORKSPACE_ROOT)} && npm run -s ${scriptName} -w ${shellQuote(workspaceProjectRoot)}`;
+  }
+  return `cd ${shellQuote(
+    workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`
+  )} && ${managerRunScriptCommand(toolchain, scriptName)}`;
 }
 
 async function detectPotentialSecrets(sandbox: SandboxClient): Promise<string[]> {
@@ -349,6 +542,152 @@ async function createDeploymentBundle(
     bytes,
     sha256: sha,
     objectKeySuffix: 'source.tar.gz',
+  };
+}
+
+async function createOutputBundle(
+  sandbox: SandboxClient,
+  outputDir: string
+): Promise<{ bytes: Uint8Array; sha256: string; objectKeySuffix: string }> {
+  const normalizedOutputDir = normalizeProjectRoot(outputDir);
+  const base64 = await runSandboxCommand(
+    sandbox,
+    `cd ${shellQuote(
+      WORKSPACE_ROOT
+    )} && if [ ! -d ${shellQuote(
+      normalizedOutputDir
+    )} ]; then echo '__NIMBUS_OUTPUT_DIR_MISSING__'; else tmp_stem=$(mktemp /tmp/nimbus-workspace-output.XXXXXX) && tmp_bundle="\${tmp_stem}.tar.gz" && tar -czf "$tmp_bundle" -C ${shellQuote(
+      normalizedOutputDir
+    )} . && base64 "$tmp_bundle" && rm -f "$tmp_bundle" "$tmp_stem"; fi`,
+    { timeout: 8 * 60 * 1000 }
+  );
+
+  if (base64.trim() === '__NIMBUS_OUTPUT_DIR_MISSING__') {
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir directory does not exist: ${normalizedOutputDir}`);
+  }
+
+  const bytes = fromBase64(base64);
+  const sha = await sha256Hex(bytes);
+  return {
+    bytes,
+    sha256: sha,
+    objectKeySuffix: 'output.tar.gz',
+  };
+}
+
+async function createOutputFiles(
+  sandbox: SandboxClient,
+  outputDir: string
+): Promise<Array<{ path: string; bytes: Uint8Array; sha256: string }>> {
+  const normalizedOutputDir = normalizeProjectRoot(outputDir);
+  const output = await runSandboxCommand(
+    sandbox,
+    `cd ${shellQuote(
+      WORKSPACE_ROOT
+    )} && python3 - <<'PY'\n# nimbus_collect_output_files\nimport hashlib\nimport json\nimport os\n\nroot = ${JSON.stringify(normalizedOutputDir)}\nif not os.path.isdir(root):\n    print('__NIMBUS_OUTPUT_DIR_MISSING__')\n    raise SystemExit(0)\nroot_real = os.path.realpath(root)\nfiles = []\nfor dirpath, dirnames, filenames in os.walk(root):\n    dirnames.sort()\n    for dirname in list(dirnames):\n        directory_absolute = os.path.join(dirpath, dirname)\n        directory_rel = os.path.relpath(directory_absolute, root).replace('\\\\', '/')\n        if os.path.islink(directory_absolute):\n            print('__NIMBUS_OUTPUT_DIR_SYMLINK__:' + directory_rel + '/')\n            raise SystemExit(0)\n    filenames.sort()\n    for filename in filenames:\n        absolute = os.path.join(dirpath, filename)\n        rel = os.path.relpath(absolute, root).replace('\\\\', '/')\n        if os.path.islink(absolute):\n            print('__NIMBUS_OUTPUT_DIR_SYMLINK__:' + rel)\n            raise SystemExit(0)\n        resolved = os.path.realpath(absolute)\n        if not (resolved == root_real or resolved.startswith(root_real + os.sep)):\n            print('__NIMBUS_OUTPUT_DIR_ESCAPE__:' + rel)\n            raise SystemExit(0)\n        hasher = hashlib.sha256()\n        size = 0\n        with open(absolute, 'rb') as f:\n            while True:\n                chunk = f.read(1024 * 1024)\n                if not chunk:\n                    break\n                size += len(chunk)\n                hasher.update(chunk)\n        files.append({\n            'path': rel,\n            'size': size,\n            'sha256': hasher.hexdigest(),\n        })\nfiles.sort(key=lambda item: item['path'])\nprint(json.dumps({'files': files}))\nPY`,
+    { timeout: 8 * 60 * 1000 }
+  );
+
+  if (output.trim() === '__NIMBUS_OUTPUT_DIR_MISSING__') {
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir directory does not exist: ${normalizedOutputDir}`);
+  }
+  if (output.trim().startsWith('__NIMBUS_OUTPUT_DIR_SYMLINK__:')) {
+    const path = output.trim().slice('__NIMBUS_OUTPUT_DIR_SYMLINK__:'.length).trim() || 'unknown';
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir contains a symlinked entry: ${path}`);
+  }
+  if (output.trim().startsWith('__NIMBUS_OUTPUT_DIR_ESCAPE__:')) {
+    const path = output.trim().slice('__NIMBUS_OUTPUT_DIR_ESCAPE__:'.length).trim() || 'unknown';
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir contains a file resolving outside output root: ${path}`);
+  }
+
+  const parsed = JSON.parse(output) as { files?: Array<{ path?: string; base64?: string; sha256?: string; size?: number }> };
+  const files = Array.isArray(parsed.files) ? parsed.files : [];
+  if (files.length === 0) {
+    throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir directory does not contain any files: ${normalizedOutputDir}`);
+  }
+
+  const metadata = files.map((file) => {
+    const path = typeof file.path === 'string' ? file.path : '';
+    const sha256 = typeof file.sha256 === 'string' ? file.sha256 : '';
+    const inlineBase64 = typeof file.base64 === 'string' ? file.base64 : '';
+    if (!path || !sha256) {
+      throw new PolicyError('provider_deploy_failed', 'Output file collection returned invalid metadata');
+    }
+    return { path, sha256, inlineBase64 };
+  });
+
+  const payloadByPath = new Map<string, string>();
+  for (const entry of metadata) {
+    if (entry.inlineBase64) {
+      payloadByPath.set(entry.path, entry.inlineBase64);
+    }
+  }
+
+  const pendingPaths = metadata.filter((entry) => !payloadByPath.has(entry.path)).map((entry) => entry.path);
+  const batchSize = 64;
+  for (let offset = 0; offset < pendingPaths.length; offset += batchSize) {
+    const batch = pendingPaths.slice(offset, offset + batchSize);
+    const payload = await runSandboxCommand(
+      sandbox,
+      `cd ${shellQuote(
+        WORKSPACE_ROOT
+      )} && python3 - <<'PY'\n# nimbus_collect_output_file_batch\nimport base64\nimport json\nimport os\n\nroot = ${JSON.stringify(normalizedOutputDir)}\npaths = ${JSON.stringify(batch)}\nroot_real = os.path.realpath(root)\nfiles = []\nfor rel in paths:\n    absolute = os.path.join(root, rel)\n    if not os.path.isfile(absolute):\n        print('__NIMBUS_OUTPUT_FILE_MISSING__:' + rel)\n        raise SystemExit(0)\n    if os.path.islink(absolute):\n        print('__NIMBUS_OUTPUT_DIR_SYMLINK__:' + rel)\n        raise SystemExit(0)\n    resolved = os.path.realpath(absolute)\n    if not (resolved == root_real or resolved.startswith(root_real + os.sep)):\n        print('__NIMBUS_OUTPUT_DIR_ESCAPE__:' + rel)\n        raise SystemExit(0)\n    with open(absolute, 'rb') as f:\n        file_payload = f.read()\n    files.append({\n        'path': rel,\n        'base64': base64.b64encode(file_payload).decode('ascii'),\n    })\nprint(json.dumps({'files': files}))\nPY`,
+      { timeout: 8 * 60 * 1000 }
+    );
+    const trimmed = payload.trim();
+    if (trimmed.startsWith('__NIMBUS_OUTPUT_FILE_MISSING__:')) {
+      const path = trimmed.slice('__NIMBUS_OUTPUT_FILE_MISSING__:'.length).trim() || 'unknown';
+      throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir file disappeared during publish: ${path}`);
+    }
+    if (trimmed.startsWith('__NIMBUS_OUTPUT_DIR_SYMLINK__:')) {
+      const path = trimmed.slice('__NIMBUS_OUTPUT_DIR_SYMLINK__:'.length).trim() || 'unknown';
+      throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir contains a symlinked entry: ${path}`);
+    }
+    if (trimmed.startsWith('__NIMBUS_OUTPUT_DIR_ESCAPE__:')) {
+      const path = trimmed.slice('__NIMBUS_OUTPUT_DIR_ESCAPE__:'.length).trim() || 'unknown';
+      throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir contains a file resolving outside output root: ${path}`);
+    }
+    const parsedBatch = JSON.parse(trimmed) as { files?: Array<{ path?: string; base64?: string }> };
+    const batchFiles = Array.isArray(parsedBatch.files) ? parsedBatch.files : [];
+    for (const batchFile of batchFiles) {
+      const path = typeof batchFile.path === 'string' ? batchFile.path : '';
+      const base64 = typeof batchFile.base64 === 'string' ? batchFile.base64 : '';
+      if (path && base64) {
+        payloadByPath.set(path, base64);
+      }
+    }
+  }
+
+  const resolvedFiles: Array<{ path: string; bytes: Uint8Array; sha256: string }> = [];
+  for (const entry of metadata) {
+    const fileBase64 = payloadByPath.get(entry.path);
+    if (!fileBase64) {
+      throw new PolicyError('provider_invalid_output_dir', `deploy.outputDir file bytes unavailable during publish: ${entry.path}`);
+    }
+    resolvedFiles.push({
+      path: entry.path,
+      bytes: fromBase64(fileBase64),
+      sha256: entry.sha256,
+    });
+  }
+
+  return resolvedFiles.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+async function createSyntheticOutputBundleFromFiles(
+  files: Array<{ path: string; sha256: string }>
+): Promise<{ bytes: Uint8Array; sha256: string; objectKeySuffix: string }> {
+  const manifest = files
+    .slice()
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .map((file) => `${file.path}\0${file.sha256}`)
+    .join('\n');
+  const bytes = new Uint8Array();
+  const manifestSha = await sha256Hex(new TextEncoder().encode(manifest));
+  return {
+    bytes,
+    sha256: manifestSha,
+    objectKeySuffix: 'output.synthetic',
   };
 }
 
@@ -553,12 +892,28 @@ async function markDeploymentCancelled(
   deploymentId: string,
   reason: string
 ): Promise<void> {
-  await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'cancelled', {
-    workspaceId,
-    result: { reason },
-    errorCode: null,
-    errorMessage: null,
-  });
+  const now = new Date().toISOString();
+  const cancelledUpdate = await env.DB
+    .prepare(
+      `UPDATE workspace_deployments
+       SET status = 'cancelled',
+           result_json = ?,
+           error_code = NULL,
+           error_message = NULL,
+           finished_at = COALESCE(finished_at, ?),
+           duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+           updated_at = ?
+       WHERE id = ?
+         AND workspace_id = ?
+         AND status IN ('queued', 'running')`
+    )
+    .bind(JSON.stringify({ reason }), now, now, now, deploymentId, workspaceId)
+    .run();
+
+  if ((cancelledUpdate.meta?.changes ?? 0) === 0) {
+    return;
+  }
+
   await appendWorkspaceDeploymentEvent(env.DB, {
     workspaceId,
     deploymentId,
@@ -624,6 +979,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     payload.toolchain && typeof payload.toolchain === 'object' && !Array.isArray(payload.toolchain)
       ? (payload.toolchain as Record<string, unknown>)
       : null;
+  const deploy =
+    payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)
+      ? (payload.deploy as Record<string, unknown>)
+      : {};
   const validationOptions: DeploymentValidationOptions = {
     runBuildIfPresent: parseBoolean(validation.runBuildIfPresent, true),
     runTestsIfPresent: parseBoolean(validation.runTestsIfPresent, true),
@@ -635,6 +994,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
   const cacheOptions: DeploymentCacheOptions = {
     dependencyCache: parseBoolean(cache.dependencyCache, true),
   };
+  const publishOptions: DeploymentPublishOptions = {
+    provider: getWorkspaceDeployProviderName(payload.provider, env),
+    outputDir: parseString(deploy.outputDir),
+  };
   const { runBuildIfPresent, runTestsIfPresent } = validationOptions;
   const rollbackOnFailure = parseBoolean(payload.rollbackOnFailure, true);
   const remediations: WorkspaceDeploymentRemediation[] = [];
@@ -645,6 +1008,13 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     workspaceProjectRoot = normalizeProjectRoot(workspaceProjectRootRaw);
   } catch (error) {
     throw new PolicyError('invalid_project_root', error instanceof Error ? error.message : String(error));
+  }
+
+  if (publishOptions.provider === 'cloudflare_workers_assets' && !publishOptions.outputDir) {
+    throw new PolicyError(
+      'provider_invalid_output_dir',
+      'deploy.outputDir is required for cloudflare_workers_assets provider'
+    );
   }
 
   const sandbox = await sandboxResolver(env, workspace.sandboxId);
@@ -720,6 +1090,36 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
   });
 
   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+
+  let provider;
+  let providerChecks;
+  try {
+    provider = createWorkspaceDeployProvider(publishOptions.provider, env);
+    if (!deployment.providerDeploymentId) {
+      providerChecks = await provider.precheck();
+      const failedCheck = providerChecks.find((check) => !check.ok);
+      if (failedCheck) {
+        throw new PolicyError(failedCheck.code, failedCheck.details ?? 'Provider precheck failed');
+      }
+    }
+  } catch (error) {
+    const providerError = normalizeProviderError(error);
+    if (isRetryableProviderError(providerError.code, providerError.message)) {
+      throw new QueueRetryError('Provider create deployment request is temporarily unavailable; retry requested');
+    }
+    throw new PolicyError(providerError.code, providerError.message);
+  }
+
+  await appendWorkspaceDeploymentEvent(env.DB, {
+    workspaceId,
+    deploymentId,
+    eventType: 'deployment_provider_precheck',
+    payload: {
+      provider: publishOptions.provider,
+      checks: providerChecks ?? [],
+      skippedForResume: Boolean(deployment.providerDeploymentId),
+    },
+  });
 
   let toolchain: WorkspaceToolchainProfile;
   try {
@@ -866,6 +1266,60 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     }
   }
 
+  const shouldRunValidation = (runTestsIfPresent && scripts.hasTest) || (runBuildIfPresent && scripts.hasBuild);
+  let installedValidationDependencies = false;
+  let installFromWorkspaceRoot = false;
+  let installProjectRoot = normalizeProjectRoot(toolchain.projectRoot);
+  const allowProjectToolMissing = env.WORKSPACE_DEPLOY_ALLOW_PROJECT_TOOL_MISSING !== 'false';
+  if (shouldRunValidation) {
+    const safeInstallIgnoreScripts = env.SAFE_INSTALL_IGNORE_SCRIPTS !== 'false';
+    const autoInstallScriptsFallback = env.AUTO_INSTALL_SCRIPTS_FALLBACK !== 'false';
+    installFromWorkspaceRoot = await shouldInstallFromWorkspaceRoot(sandbox, toolchain, workspaceProjectRoot);
+    if (installFromWorkspaceRoot) {
+      installProjectRoot = '.';
+    }
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_dependencies_install_started',
+      payload: {
+        manager: toolchain.manager,
+        projectRoot: workspaceProjectRoot,
+        installProjectRoot,
+        installRoot: installFromWorkspaceRoot ? 'workspace' : 'project',
+        ignoreScripts: safeInstallIgnoreScripts,
+        npmFallbackAllowed: autoInstallScriptsFallback,
+      },
+    });
+    try {
+      await installDependenciesForValidation(sandbox, toolchain, workspaceProjectRoot, {
+        ignoreScripts: safeInstallIgnoreScripts,
+        allowNpmFallback: autoInstallScriptsFallback,
+        installFromWorkspaceRoot,
+        installProjectRoot,
+      });
+      installedValidationDependencies = true;
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_dependencies_install_succeeded',
+        payload: { manager: toolchain.manager },
+      });
+    } catch (error) {
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_dependencies_install_failed',
+        payload: {
+          manager: toolchain.manager,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
+      throw error;
+    }
+    await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+  }
+
   if (runTestsIfPresent && scripts.hasTest) {
     await appendWorkspaceDeploymentEvent(env.DB, {
       workspaceId,
@@ -876,9 +1330,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     try {
       await runValidationStep(
         sandbox,
-        `cd ${shellQuote(workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`)} && ${managerRunScriptCommand(toolchain, 'test')}`,
+        validationScriptCommand(toolchain, 'test', workspaceProjectRoot, installFromWorkspaceRoot),
         10 * 60 * 1000,
-        'validation_tool_missing'
+        'validation_tool_missing',
+        { allowProjectToolMissing }
       );
     } catch (error) {
       if (error instanceof PolicyError && error.code === 'validation_tool_missing') {
@@ -888,8 +1343,16 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
           eventType: 'deployment_validation_tool_missing',
           payload: { step: 'test', message: error.message },
         });
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'validation_skipped',
+          payload: { step: 'test', reason: 'tool_missing' },
+        });
+        await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+      } else {
+        throw error;
       }
-      throw error;
     }
     await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
   }
@@ -903,9 +1366,10 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     try {
       await runValidationStep(
         sandbox,
-        `cd ${shellQuote(workspaceProjectRoot === '.' ? WORKSPACE_ROOT : `${WORKSPACE_ROOT}/${workspaceProjectRoot}`)} && ${managerRunScriptCommand(toolchain, 'build')}`,
+        validationScriptCommand(toolchain, 'build', workspaceProjectRoot, installFromWorkspaceRoot),
         10 * 60 * 1000,
-        'validation_tool_missing'
+        'validation_tool_missing',
+        { allowProjectToolMissing }
       );
     } catch (error) {
       if (error instanceof PolicyError && error.code === 'validation_tool_missing') {
@@ -915,81 +1379,130 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
           eventType: 'deployment_validation_tool_missing',
           payload: { step: 'build', message: error.message },
         });
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'validation_skipped',
+          payload: { step: 'build', reason: 'tool_missing' },
+        });
+        await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+      } else {
+        throw error;
       }
-      throw error;
     }
     await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
   }
 
   if (cacheOptions.dependencyCache && dependencyCacheKey) {
-    const archive = await createDependencyCacheArchive(sandbox, toolchain);
-    if (archive) {
-      const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;
-      if (bucket) {
-        const artifactKey = `workspaces/${workspaceId}/dependency-caches/${dependencyCacheKey}.tar.gz`;
-        await bucket.put(artifactKey, archive.bytes, {
-          httpMetadata: { contentType: 'application/gzip' },
-          customMetadata: {
-            workspace_id: workspaceId,
-            cache_key: dependencyCacheKey,
+    try {
+      const archive = await createDependencyCacheArchive(sandbox, toolchain);
+      if (archive) {
+        const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;
+        if (bucket) {
+          const artifactKey = `workspaces/${workspaceId}/dependency-caches/${dependencyCacheKey}.tar.gz`;
+          await bucket.put(artifactKey, archive.bytes, {
+            httpMetadata: { contentType: 'application/gzip' },
+            customMetadata: {
+              workspace_id: workspaceId,
+              cache_key: dependencyCacheKey,
+              manager: toolchain.manager,
+            },
+          });
+          await upsertWorkspaceDependencyCache(env.DB, {
+            id: `wdc_${dependencyCacheKey.slice(0, 24)}`,
+            workspaceId,
+            cacheKey: dependencyCacheKey,
             manager: toolchain.manager,
-          },
-        });
-        await upsertWorkspaceDependencyCache(env.DB, {
-          id: `wdc_${dependencyCacheKey.slice(0, 24)}`,
-          workspaceId,
-          cacheKey: dependencyCacheKey,
-          manager: toolchain.manager,
-          managerVersion: toolchain.version,
-          projectRoot: toolchain.projectRoot,
-          lockfileName: toolchain.lockfile?.name ?? null,
-          lockfileSha256: toolchain.lockfile?.sha256 ?? null,
-          artifactKey,
-          artifactSha256: archive.sha256,
-          artifactBytes: archive.bytes.byteLength,
-        });
-        await appendWorkspaceDeploymentEvent(env.DB, {
-          workspaceId,
-          deploymentId,
-          eventType: 'deployment_dependency_cache_saved',
-          payload: {
-            dependencyCacheKey,
+            managerVersion: toolchain.version,
+            projectRoot: toolchain.projectRoot,
+            lockfileName: toolchain.lockfile?.name ?? null,
+            lockfileSha256: toolchain.lockfile?.sha256 ?? null,
             artifactKey,
+            artifactSha256: archive.sha256,
             artifactBytes: archive.bytes.byteLength,
-          },
-        });
+          });
+          await appendWorkspaceDeploymentEvent(env.DB, {
+            workspaceId,
+            deploymentId,
+            eventType: 'deployment_dependency_cache_saved',
+            payload: {
+              dependencyCacheKey,
+              artifactKey,
+              artifactBytes: archive.bytes.byteLength,
+            },
+          });
+        }
       }
+    } catch (error) {
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_dependency_cache_skipped',
+        payload: {
+          reason: 'cache_save_failed',
+          installedValidationDependencies,
+          message: error instanceof Error ? error.message : String(error),
+        },
+      });
     }
   }
 
-  const { bytes, sha256, objectKeySuffix } = await createDeploymentBundle(sandbox);
+  if (shouldRunValidation) {
+    await cleanupValidationInstallArtifacts(sandbox, workspaceProjectRoot, installFromWorkspaceRoot, installProjectRoot);
+  }
+
+  const sourceBundle = await createDeploymentBundle(sandbox);
   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
   const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;
   if (!bucket) {
     throw new Error('No artifact bucket is configured for workspace deployment');
   }
 
-  const sourceBundleKey = `workspaces/${workspaceId}/deployments/${deploymentId}/${objectKeySuffix}`;
-  await bucket.put(sourceBundleKey, bytes, {
+  const sourceBundleKey = `workspaces/${workspaceId}/deployments/${deploymentId}/${sourceBundle.objectKeySuffix}`;
+  await bucket.put(sourceBundleKey, sourceBundle.bytes, {
     httpMetadata: {
       contentType: 'application/gzip',
     },
     customMetadata: {
       workspace_id: workspaceId,
       deployment_id: deploymentId,
-      source_snapshot_sha256: sha256,
+      source_snapshot_sha256: sourceBundle.sha256,
     },
   });
   await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
+  await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {
+    workspaceId,
+    sourceSnapshotSha256: sourceBundle.sha256,
+    sourceBundleKey,
+  });
 
-  const deployBase = (env.WORKSPACE_DEPLOY_BASE_URL ?? 'https://deployments.nimbus.local').replace(/\/+$/, '');
-  const deployedUrl = `${deployBase}/${workspaceId}/${deploymentId}`;
-  const finishedAt = new Date().toISOString();
-  const successResult = {
-    url: deployedUrl,
+  let outputBundle = sourceBundle;
+  let outputFiles: Array<{ path: string; bytes: Uint8Array; sha256: string }> = [];
+  let publishOutputDir = workspaceProjectRoot;
+  let providerOutputDir = publishOutputDir;
+  if (publishOptions.provider === 'cloudflare_workers_assets') {
+    const relativeOutputDir = publishOptions.outputDir;
+    if (!relativeOutputDir) {
+      throw new PolicyError('provider_invalid_output_dir', 'deploy.outputDir is required for cloudflare_workers_assets provider');
+    }
+    providerOutputDir = relativeOutputDir;
+    publishOutputDir =
+      workspaceProjectRoot === '.'
+        ? normalizeProjectRoot(relativeOutputDir)
+        : normalizeProjectRoot(`${workspaceProjectRoot}/${relativeOutputDir}`);
+    outputFiles = await createOutputFiles(sandbox, publishOutputDir);
+    outputBundle = await createSyntheticOutputBundleFromFiles(
+      outputFiles.map((file) => ({ path: file.path, sha256: file.sha256 }))
+    );
+  }
+
+  const successResultTemplate = {
+    url: null,
     artifact: {
       sourceBundleKey,
-      sourceSnapshotSha256: sha256,
+      sourceSnapshotSha256: sourceBundle.sha256,
+      outputBundleSha256: outputBundle.sha256,
+      outputDir: providerOutputDir,
     },
     provenance: {
       workspaceId,
@@ -999,41 +1512,271 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     },
     rollbackOnFailure,
   };
+  await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {
+    workspaceId,
+    sourceSnapshotSha256: sourceBundle.sha256,
+    sourceBundleKey,
+    result: successResultTemplate,
+  });
 
-  const markedSucceeded = await markWorkspaceDeploymentSucceededIfNotCancelled(env.DB, {
+  let createResult: {
+    providerDeploymentId: string;
+    status: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    deployedUrl: string | null;
+  };
+  if (deployment.providerDeploymentId) {
+    createResult = {
+      providerDeploymentId: deployment.providerDeploymentId,
+      status: 'running',
+      deployedUrl: deployment.deployedUrl,
+    };
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_provider_resumed',
+      payload: {
+        provider: publishOptions.provider,
+        providerDeploymentId: createResult.providerDeploymentId,
+      },
+    });
+  } else {
+    try {
+      createResult = await provider.createDeployment({
+        workspaceId,
+        deploymentId,
+        outputDir: providerOutputDir,
+        outputFiles,
+        outputBundle: {
+          bytes: outputBundle.bytes,
+          sha256: outputBundle.sha256,
+        },
+      });
+    } catch (error) {
+      const providerError = normalizeProviderError(error);
+      if (isRetryableProviderError(providerError.code, providerError.message)) {
+        throw new QueueRetryError('Provider create deployment request is temporarily unavailable; retry requested');
+      }
+      throw new PolicyError(providerError.code, providerError.message);
+    }
+    await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'running', {
+      workspaceId,
+      providerDeploymentId: createResult.providerDeploymentId,
+    });
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_provider_created',
+      payload: {
+        provider: publishOptions.provider,
+        providerDeploymentId: createResult.providerDeploymentId,
+        status: createResult.status,
+        deployedUrl: createResult.deployedUrl,
+        outputDir: providerOutputDir,
+      },
+    });
+  }
+
+  let providerStatus: WorkspaceDeployStatusResult = {
+    status: createResult.status,
+    deployedUrl: createResult.deployedUrl,
+  };
+  let cancelAttempted = false;
+  let cancelAccepted = false;
+  const maxPollAttempts = parseIntegerString(env.WORKSPACE_DEPLOY_PROVIDER_MAX_POLLS, 120, 1, 600);
+  const pollIntervalMs = parseIntegerString(env.WORKSPACE_DEPLOY_PROVIDER_POLL_INTERVAL_MS, 1500, 50, 10000);
+  for (let attempt = 0; attempt < maxPollAttempts; attempt += 1) {
+    await throwIfDeploymentCancelled(env, workspaceId, deploymentId).catch(async (error) => {
+        if (error instanceof CancelRequestedError) {
+          if (!cancelAttempted) {
+            cancelAttempted = true;
+            let cancel;
+            try {
+              cancel = await provider.cancelDeployment(createResult.providerDeploymentId);
+            } catch (providerCancelError) {
+              const providerError = normalizeProviderError(providerCancelError);
+              if (isRetryableProviderError(providerError.code, providerError.message)) {
+                throw new QueueRetryError('Provider cancel status is temporarily unavailable; retry requested');
+              }
+              throw new PolicyError(providerError.code, providerError.message);
+            }
+            cancelAccepted = cancel.accepted;
+            await appendWorkspaceDeploymentEvent(env.DB, {
+              workspaceId,
+            deploymentId,
+            eventType: 'deployment_provider_cancel_requested',
+            payload: {
+              providerDeploymentId: createResult.providerDeploymentId,
+              accepted: cancel.accepted,
+              },
+            });
+            if (!cancel.accepted) {
+              await appendWorkspaceDeploymentEvent(env.DB, {
+                workspaceId,
+                deploymentId,
+                eventType: 'deployment_cancel_rejected',
+                payload: {
+                  providerDeploymentId: createResult.providerDeploymentId,
+                  duringPolling: true,
+                },
+              });
+            }
+          }
+          if (cancelAccepted) {
+            return;
+          }
+        return;
+      }
+      throw error;
+    });
+
+    if (providerStatus.status === 'succeeded' || providerStatus.status === 'failed' || providerStatus.status === 'cancelled') {
+      break;
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    try {
+      providerStatus = await provider.getDeploymentStatus(createResult.providerDeploymentId);
+    } catch (error) {
+      const providerError = normalizeProviderError(error);
+      if (isRetryableProviderError(providerError.code, providerError.message)) {
+        throw new QueueRetryError('Provider status endpoint is temporarily unavailable; retry requested');
+      }
+      throw new PolicyError(providerError.code, providerError.message);
+    }
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_provider_status',
+      payload: {
+        providerDeploymentId: createResult.providerDeploymentId,
+        status: providerStatus.status,
+        deployedUrl: providerStatus.deployedUrl,
+      },
+    });
+  }
+
+  if (providerStatus.status === 'queued' || providerStatus.status === 'running') {
+    if (cancelAccepted) {
+      throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
+    }
+    if (providerStatus.errorCode === 'provider_probe_unknown' || providerStatus.errorCode === 'provider_probe_missing') {
+      throw new QueueRetryError('Provider preview probe is temporarily unavailable; retry requested');
+    }
+    throw new PolicyError(
+      'provider_deploy_failed',
+      `Provider deployment did not reach terminal state within polling window (${maxPollAttempts} attempts)`
+    );
+  }
+
+  if (providerStatus.status === 'failed') {
+    throw new PolicyError(providerStatus.errorCode ?? 'provider_deploy_failed', providerStatus.errorMessage ?? 'Provider deployment failed');
+  }
+
+  if (providerStatus.status === 'cancelled') {
+    await markDeploymentCancelled(env, workspaceId, deploymentId, 'provider_cancelled');
+    return;
+  }
+
+  const resolvedDeployedUrl = providerStatus.deployedUrl ?? createResult.deployedUrl;
+  const allowLegacyNullDeployedUrl = isLegacyCloudflareProviderDeploymentId(createResult.providerDeploymentId);
+  if (!resolvedDeployedUrl && !allowLegacyNullDeployedUrl) {
+    throw new PolicyError('provider_deploy_failed', 'Provider deployment did not return a deployed URL');
+  }
+
+  const finishedAt = new Date().toISOString();
+  const successResult = {
+    ...successResultTemplate,
+    url: resolvedDeployedUrl,
+  };
+
+  let markedSucceeded = await markWorkspaceDeploymentSucceededIfNotCancelled(env.DB, {
     workspaceId,
     deploymentId,
-    sourceSnapshotSha256: sha256,
+    sourceSnapshotSha256: sourceBundle.sha256,
     sourceBundleKey,
-    deployedUrl,
-    providerDeploymentId: deploymentId,
+    deployedUrl: resolvedDeployedUrl,
+    providerDeploymentId: createResult.providerDeploymentId,
     result: successResult,
     finishedAt,
   });
 
   if (!markedSucceeded) {
     const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
-    if (latest?.cancelRequestedAt) {
+    if (latest?.status === 'running' && latest.cancelRequestedAt && providerStatus.status === 'succeeded') {
+      const succeededUpdate = await env.DB
+        .prepare(
+          `UPDATE workspace_deployments
+           SET status = 'succeeded',
+               source_snapshot_sha256 = ?,
+               source_bundle_key = ?,
+               deployed_url = ?,
+               provider_deployment_id = ?,
+               cancel_requested_at = NULL,
+                   result_json = ?,
+                   error_code = NULL,
+                   error_message = NULL,
+                   finished_at = ?,
+                   duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+                   updated_at = ?
+           WHERE id = ?
+             AND workspace_id = ?
+             AND status = 'running'
+             AND cancel_requested_at IS NOT NULL`
+        )
+        .bind(
+          sourceBundle.sha256,
+          sourceBundleKey,
+          resolvedDeployedUrl,
+          createResult.providerDeploymentId,
+          JSON.stringify(successResult),
+          finishedAt,
+          finishedAt,
+          finishedAt,
+          deploymentId,
+          workspaceId
+        )
+        .run();
+
+      if ((succeededUpdate.meta?.changes ?? 0) === 0) {
+        const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
+        if (concurrent && concurrent.status !== 'running') {
+          return;
+        }
+        throw new QueueRetryError('Workspace deployment cancel-race success reconciliation lost state race; retry requested');
+      }
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_cancel_rejected',
+        payload: {
+          providerDeploymentId: createResult.providerDeploymentId,
+          providerStatus: providerStatus.status,
+        },
+      });
+      markedSucceeded = true;
+    } else if (latest?.cancelRequestedAt) {
       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');
+      return;
+    } else {
+      return;
     }
-    return;
   }
 
   await appendWorkspaceDeploymentEvent(env.DB, {
     workspaceId,
     deploymentId,
     eventType: 'deployment_succeeded',
-    payload: {
-      deployedUrl,
-      sourceBundleKey,
-      sourceSnapshotSha256: sha256,
-    },
-  });
+      payload: {
+        deployedUrl: resolvedDeployedUrl,
+        sourceBundleKey,
+        sourceSnapshotSha256: sourceBundle.sha256,
+      },
+    });
 
   await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
     deploymentId,
     status: 'succeeded',
-    deployedUrl,
+    deployedUrl: resolvedDeployedUrl,
     deployedAt: finishedAt,
     errorCode: null,
     errorMessage: null,
@@ -1043,7 +1786,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
 export async function runWorkspaceDeploymentPreflight(
   env: Env,
   workspaceId: string,
-  options?: Partial<DeploymentValidationOptions & DeploymentAutoFixOptions>
+  options?: Partial<DeploymentValidationOptions & DeploymentAutoFixOptions & DeploymentPublishOptions>
 ): Promise<{
   ok: boolean;
   toolchain: WorkspaceToolchainProfile | null;
@@ -1077,6 +1820,23 @@ export async function runWorkspaceDeploymentPreflight(
   const autoFixBootstrapToolchain = parseBoolean(options?.bootstrapToolchain, false);
   const runBuildIfPresent = parseBoolean(options?.runBuildIfPresent, true);
   const runTestsIfPresent = parseBoolean(options?.runTestsIfPresent, true);
+  const provider = options?.provider ?? getWorkspaceDeployProviderName(undefined, env);
+  const outputDir = parseString(options?.outputDir);
+
+  if (provider === 'cloudflare_workers_assets') {
+    if (!outputDir) {
+      checks.push({
+        code: 'provider_invalid_output_dir',
+        ok: false,
+        details: 'deploy.outputDir is required for cloudflare_workers_assets provider',
+      });
+      return { ok: false, toolchain: null, checks, remediations };
+    }
+
+    const effectiveOutputDir =
+      workspaceProjectRoot === '.' ? outputDir : normalizeProjectRoot(`${workspaceProjectRoot}/${outputDir}`);
+    checks.push({ code: 'provider_output_dir', ok: true, details: effectiveOutputDir });
+  }
 
   try {
     await ensureWorkspaceGitBaseline(sandbox);
@@ -1185,33 +1945,284 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
     }
 
     if (existing?.status === 'running') {
-      if (existing.cancelRequestedAt) {
-        await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');
-        return;
-      }
-
       if (isRunningDeploymentStale(existing.startedAt)) {
-        await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {
-          workspaceId,
-          errorCode: 'deployment_stale_timeout',
-          errorMessage: 'Deployment execution exceeded stale running timeout and was failed for recovery',
-        });
+        const staleFailedAt = new Date().toISOString();
+        const staleErrorCode = existing.cancelRequestedAt
+          ? 'deployment_stale_timeout_cancel_pending'
+          : 'deployment_stale_timeout';
+        const staleErrorMessage = existing.cancelRequestedAt
+          ? 'Deployment execution exceeded stale timeout while cancellation was pending'
+          : 'Deployment execution exceeded stale running timeout and was failed for recovery';
+        const staleFailedUpdate = await env.DB
+          .prepare(
+            `UPDATE workspace_deployments
+             SET status = 'failed',
+                 error_code = ?,
+                 error_message = ?,
+                 finished_at = COALESCE(finished_at, ?),
+                 duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+                 updated_at = ?
+             WHERE id = ?
+               AND workspace_id = ?
+               AND status = 'running'`
+          )
+          .bind(staleErrorCode, staleErrorMessage, staleFailedAt, staleFailedAt, staleFailedAt, deploymentId, workspaceId)
+          .run();
+
+        if ((staleFailedUpdate.meta?.changes ?? 0) === 0) {
+          throw new QueueRetryError('Workspace deployment stale-timeout reconciliation lost state race; retry requested');
+        }
         await appendWorkspaceDeploymentEvent(env.DB, {
           workspaceId,
           deploymentId,
           eventType: 'deployment_failed',
           payload: {
-            code: 'deployment_stale_timeout',
-            message: 'Deployment execution exceeded stale running timeout and was failed for recovery',
+            code: staleErrorCode,
+            message: staleErrorMessage,
           },
         });
         await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
           deploymentId,
           status: 'failed',
-          errorCode: 'deployment_stale_timeout',
-          errorMessage: 'Deployment execution exceeded stale running timeout and was failed for recovery',
+          errorCode: staleErrorCode,
+          errorMessage: staleErrorMessage,
         });
         return;
+      }
+
+      if (existing.cancelRequestedAt) {
+        if (!existing.providerDeploymentId) {
+          const hasProviderCreatedEvent = await hasWorkspaceDeploymentEvent(
+            env.DB,
+            workspaceId,
+            deploymentId,
+            'deployment_provider_created'
+          );
+          if (!hasProviderCreatedEvent) {
+            await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested_provider_unknown');
+            return;
+          }
+        }
+
+        if (existing.providerDeploymentId) {
+          try {
+            const requestPayload = await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId);
+            const providerName = getWorkspaceDeployProviderName(requestPayload?.provider, env);
+            const provider = createWorkspaceDeployProvider(providerName, env);
+            const providerStatus = await provider.getDeploymentStatus(existing.providerDeploymentId);
+
+            if (providerStatus.status === 'cancelled') {
+              await markDeploymentCancelled(env, workspaceId, deploymentId, 'provider_cancelled');
+              return;
+            }
+
+            if (providerStatus.status === 'succeeded') {
+              if (!existing.sourceSnapshotSha256 || !existing.sourceBundleKey) {
+                throw new QueueRetryError('Workspace deployment success metadata not yet available; retry requested');
+              }
+              const deployedUrl = providerStatus.deployedUrl ?? existing.deployedUrl ?? null;
+              const allowLegacyNullDeployedUrl = isLegacyCloudflareProviderDeploymentId(existing.providerDeploymentId);
+              if (!deployedUrl && !allowLegacyNullDeployedUrl) {
+                throw new QueueRetryError('Provider deployment succeeded but no deployed URL is available yet; retry requested');
+              }
+              const finishedAt = new Date().toISOString();
+              const existingResult =
+                existing.result && typeof existing.result === 'object' && !Array.isArray(existing.result)
+                  ? (existing.result as Record<string, unknown>)
+                  : {};
+              const requestPayload = await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId);
+              const requestProvenance =
+                requestPayload?.provenance && typeof requestPayload.provenance === 'object' && !Array.isArray(requestPayload.provenance)
+                  ? (requestPayload.provenance as Record<string, unknown>)
+                  : {};
+              const existingArtifact =
+                existingResult.artifact && typeof existingResult.artifact === 'object' && !Array.isArray(existingResult.artifact)
+                  ? (existingResult.artifact as Record<string, unknown>)
+                  : {};
+              const existingProvenance =
+                existingResult.provenance && typeof existingResult.provenance === 'object' && !Array.isArray(existingResult.provenance)
+                  ? (existingResult.provenance as Record<string, unknown>)
+                  : {};
+              const successResult = {
+                ...existingResult,
+                url: deployedUrl,
+                artifact: {
+                  sourceBundleKey: existing.sourceBundleKey,
+                  sourceSnapshotSha256: existing.sourceSnapshotSha256,
+                  outputBundleSha256:
+                    typeof existingArtifact.outputBundleSha256 === 'string' ? existingArtifact.outputBundleSha256 : null,
+                  outputDir: typeof existingArtifact.outputDir === 'string' ? existingArtifact.outputDir : null,
+                },
+                provenance: {
+                  ...existingProvenance,
+                  workspaceId,
+                  taskId:
+                    typeof requestProvenance.taskId === 'string'
+                      ? requestProvenance.taskId
+                      : (existingProvenance.taskId ?? null),
+                  operationId:
+                    typeof requestProvenance.operationId === 'string'
+                      ? requestProvenance.operationId
+                      : (existingProvenance.operationId ?? null),
+                  trigger:
+                    typeof requestProvenance.trigger === 'string'
+                      ? requestProvenance.trigger
+                      : typeof existingProvenance.trigger === 'string'
+                        ? existingProvenance.trigger
+                        : 'manual',
+                },
+                rollbackOnFailure: parseBoolean(requestPayload?.rollbackOnFailure, true),
+                reconciled: true,
+                fromCancelRequested: true,
+              };
+              const succeededUpdate = await env.DB
+                .prepare(
+                  `UPDATE workspace_deployments
+                   SET status = 'succeeded',
+                       deployed_url = ?,
+                       provider_deployment_id = ?,
+                       source_snapshot_sha256 = ?,
+                       source_bundle_key = ?,
+                       cancel_requested_at = NULL,
+                        result_json = ?,
+                        error_code = NULL,
+                        error_message = NULL,
+                        finished_at = ?,
+                        duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+                        updated_at = ?
+                   WHERE id = ?
+                     AND workspace_id = ?
+                     AND status = 'running'
+                     AND cancel_requested_at IS NOT NULL`
+                )
+                .bind(
+                  deployedUrl,
+                  existing.providerDeploymentId,
+                  existing.sourceSnapshotSha256,
+                  existing.sourceBundleKey,
+                  JSON.stringify(successResult),
+                  finishedAt,
+                  finishedAt,
+                  finishedAt,
+                  deploymentId,
+                  workspaceId
+                )
+                .run();
+
+              if ((succeededUpdate.meta?.changes ?? 0) === 0) {
+                throw new QueueRetryError('Workspace deployment reconciliation lost state race; retry requested');
+              }
+              await appendWorkspaceDeploymentEvent(env.DB, {
+                workspaceId,
+                deploymentId,
+                eventType: 'deployment_succeeded',
+                payload: {
+                  deployedUrl,
+                  reconciled: true,
+                  fromCancelRequested: true,
+                },
+              });
+              await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+                deploymentId,
+                status: 'succeeded',
+                deployedUrl,
+                deployedAt: finishedAt,
+                errorCode: null,
+                errorMessage: null,
+              });
+              return;
+            }
+
+            if (providerStatus.status === 'failed') {
+              const errorCode = providerStatus.errorCode ?? 'provider_deploy_failed';
+              const errorMessage = providerStatus.errorMessage ?? 'Provider deployment failed';
+              const failedAt = new Date().toISOString();
+              const failedUpdate = await env.DB
+                .prepare(
+                  `UPDATE workspace_deployments
+                   SET status = 'failed',
+                       error_code = ?,
+                       error_message = ?,
+                       finished_at = COALESCE(finished_at, ?),
+                       duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+                       updated_at = ?
+                   WHERE id = ?
+                     AND workspace_id = ?
+                     AND status = 'running'
+                     AND cancel_requested_at IS NOT NULL`
+                )
+                .bind(errorCode, errorMessage, failedAt, failedAt, failedAt, deploymentId, workspaceId)
+                .run();
+
+              if ((failedUpdate.meta?.changes ?? 0) === 0) {
+                throw new QueueRetryError('Workspace deployment failed reconciliation lost state race; retry requested');
+              }
+              await appendWorkspaceDeploymentEvent(env.DB, {
+                workspaceId,
+                deploymentId,
+                eventType: 'deployment_failed',
+                payload: { code: errorCode, message: errorMessage },
+              });
+              await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+                deploymentId,
+                status: 'failed',
+                errorCode,
+                errorMessage,
+              });
+              return;
+            }
+          } catch (reconcileError) {
+            if (reconcileError instanceof QueueRetryError) {
+              throw reconcileError;
+            }
+            const providerError = normalizeProviderError(reconcileError);
+            if (isRetryableProviderError(providerError.code, providerError.message)) {
+              throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
+            }
+
+            const failedAt = new Date().toISOString();
+            const failedUpdate = await env.DB
+              .prepare(
+                `UPDATE workspace_deployments
+                 SET status = 'failed',
+                     error_code = ?,
+                     error_message = ?,
+                     finished_at = COALESCE(finished_at, ?),
+                     duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+                     updated_at = ?
+                 WHERE id = ?
+                   AND workspace_id = ?
+                   AND status = 'running'
+                   AND cancel_requested_at IS NOT NULL`
+              )
+              .bind(providerError.code, providerError.message, failedAt, failedAt, failedAt, deploymentId, workspaceId)
+              .run();
+
+            if ((failedUpdate.meta?.changes ?? 0) === 0) {
+              throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
+            }
+
+            await appendWorkspaceDeploymentEvent(env.DB, {
+              workspaceId,
+              deploymentId,
+              eventType: 'deployment_failed',
+              payload: {
+                code: providerError.code,
+                message: providerError.message,
+                fromCancelRequested: true,
+              },
+            });
+            await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+              deploymentId,
+              status: 'failed',
+              errorCode: providerError.code,
+              errorMessage: providerError.message,
+            });
+            return;
+          }
+        }
+
+        throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
       }
 
       throw new QueueRetryError('Workspace deployment is already running; defer redelivery');
@@ -1222,11 +2233,26 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
   try {
     const flags = await loadRuntimeFlags(env);
     if (!flags.workspaceDeployEnabled) {
-      await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {
-        workspaceId,
-        errorCode: 'workspace_deploy_disabled',
-        errorMessage: 'Workspace deploy is disabled',
-      });
+      const disabledAt = new Date().toISOString();
+      const disabledUpdate = await env.DB
+        .prepare(
+          `UPDATE workspace_deployments
+           SET status = 'failed',
+               error_code = 'workspace_deploy_disabled',
+               error_message = 'Workspace deploy is disabled',
+               finished_at = COALESCE(finished_at, ?),
+               duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+               updated_at = ?
+           WHERE id = ?
+             AND workspace_id = ?
+             AND status IN ('queued', 'running')`
+        )
+        .bind(disabledAt, disabledAt, disabledAt, deploymentId, workspaceId)
+        .run();
+
+      if ((disabledUpdate.meta?.changes ?? 0) === 0) {
+        return;
+      }
       await appendWorkspaceDeploymentEvent(env.DB, {
         workspaceId,
         deploymentId,
@@ -1256,7 +2282,7 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
       return;
     }
 
-    if (error instanceof CancelRequestedError || deployment?.cancelRequestedAt) {
+    if (error instanceof CancelRequestedError) {
       await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');
       return;
     }
@@ -1268,12 +2294,36 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
       );
       const rollback = await resolveRollbackContextSafely(workspaceId, deploymentId, rollbackOnFailure, env);
 
-      await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {
-        workspaceId,
-        errorCode: error.code,
-        errorMessage: error.message,
-        result: { rollback },
-      });
+      const failedAt = new Date().toISOString();
+      const failedUpdate = await env.DB
+        .prepare(
+          `UPDATE workspace_deployments
+           SET status = 'failed',
+               error_code = ?,
+               error_message = ?,
+               result_json = ?,
+               finished_at = COALESCE(finished_at, ?),
+               duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+               updated_at = ?
+           WHERE id = ?
+             AND workspace_id = ?
+             AND status IN ('queued', 'running')`
+        )
+        .bind(
+          error.code,
+          error.message,
+          JSON.stringify({ rollback }),
+          failedAt,
+          failedAt,
+          failedAt,
+          deploymentId,
+          workspaceId
+        )
+        .run();
+
+      if ((failedUpdate.meta?.changes ?? 0) === 0) {
+        return;
+      }
       await appendWorkspaceDeploymentEvent(env.DB, {
         workspaceId,
         deploymentId,
@@ -1289,22 +2339,123 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
       return;
     }
 
+    if (error instanceof QueueRetryError && /cancel requested while running/i.test(error.message)) {
+      throw error;
+    }
+
+    if (error instanceof QueueRetryError) {
+      const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
+      if (latest?.cancelRequestedAt) {
+        throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
+      }
+    }
+
     const attemptCount = deployment?.attemptCount ?? 0;
     const maxRetries = deployment?.maxRetries ?? 0;
     if ((error instanceof QueueRetryError || isTransientFailure(error)) && attemptCount <= maxRetries) {
       const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
       if (latest?.cancelRequestedAt) {
-        await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');
+        let shouldCancelLocally = true;
+        let cancelAcceptedByProvider = false;
+        const requestPayload = await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId);
+        const providerName = getWorkspaceDeployProviderName(requestPayload?.provider, env);
+
+        if (latest.providerDeploymentId) {
+          try {
+            const provider = createWorkspaceDeployProvider(providerName, env);
+            const cancel = await provider.cancelDeployment(latest.providerDeploymentId);
+            await appendWorkspaceDeploymentEvent(env.DB, {
+              workspaceId,
+              deploymentId,
+              eventType: 'deployment_provider_cancel_requested',
+              payload: {
+                providerDeploymentId: latest.providerDeploymentId,
+                accepted: cancel.accepted,
+                retryPath: true,
+              },
+            });
+            if (cancel.accepted) {
+              cancelAcceptedByProvider = true;
+              shouldCancelLocally = false;
+            } else {
+              await appendWorkspaceDeploymentEvent(env.DB, {
+                workspaceId,
+                deploymentId,
+                eventType: 'deployment_cancel_rejected',
+                payload: {
+                  providerDeploymentId: latest.providerDeploymentId,
+                  retryPath: true,
+                },
+              });
+              shouldCancelLocally = false;
+            }
+          } catch (providerCancelError) {
+            if (providerCancelError instanceof QueueRetryError) {
+              throw providerCancelError;
+            }
+            const providerError = normalizeProviderError(providerCancelError);
+            if (isRetryableProviderError(providerError.code, providerError.message)) {
+              throw new QueueRetryError('Provider cancel status is temporarily unavailable; retry requested');
+            }
+            throw new PolicyError(providerError.code, providerError.message);
+          }
+        }
+
+        if (cancelAcceptedByProvider) {
+          throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
+        }
+
+        if (!latest.providerDeploymentId) {
+          const hasProviderCreatedEvent = await hasWorkspaceDeploymentEvent(
+            env.DB,
+            workspaceId,
+            deploymentId,
+            'deployment_provider_created'
+          );
+          if (!hasProviderCreatedEvent) {
+            await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested_provider_unknown');
+            return;
+          }
+          throw new QueueRetryError('Workspace deployment cancel requested with unknown provider state; retry reconciliation');
+        }
+
+        if (shouldCancelLocally) {
+          await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');
+          return;
+        }
+
+        throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
+      }
+
+      const retryMessage = error instanceof Error ? error.message : String(error);
+      const retryUpdate = await env.DB
+        .prepare(
+          `UPDATE workspace_deployments
+           SET status = 'queued',
+               started_at = NULL,
+               finished_at = NULL,
+               error_code = 'retry_scheduled',
+               error_message = ?,
+               updated_at = ?
+           WHERE id = ?
+             AND workspace_id = ?
+             AND status = 'running'
+             AND cancel_requested_at IS NULL`
+        )
+        .bind(retryMessage, new Date().toISOString(), deploymentId, workspaceId)
+        .run();
+
+      if ((retryUpdate.meta?.changes ?? 0) === 0) {
+        const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
+        if (concurrent?.status === 'running' && concurrent.cancelRequestedAt) {
+          throw new QueueRetryError('Workspace deployment cancel requested while running; wait for active attempt to reconcile');
+        }
+        if (concurrent?.status === 'queued' && concurrent.error?.code === 'retry_scheduled') {
+          throw new QueueRetryError('Workspace deployment transient failure; retry requested');
+        }
         return;
       }
 
-      await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'queued', {
-        workspaceId,
-        startedAt: null,
-        finishedAt: null,
-        errorCode: 'retry_scheduled',
-        errorMessage: error instanceof Error ? error.message : String(error),
-      });
       await appendWorkspaceDeploymentEvent(env.DB, {
         workspaceId,
         deploymentId,
@@ -1321,12 +2472,27 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
     );
     const rollback = await resolveRollbackContextSafely(workspaceId, deploymentId, rollbackOnFailure, env);
 
-    await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'failed', {
-      workspaceId,
-      errorCode: 'deployment_failed',
-      errorMessage: message,
-      result: { rollback },
-    });
+    const failedAt = new Date().toISOString();
+    const failedUpdate = await env.DB
+      .prepare(
+        `UPDATE workspace_deployments
+         SET status = 'failed',
+             error_code = 'deployment_failed',
+             error_message = ?,
+             result_json = ?,
+             finished_at = COALESCE(finished_at, ?),
+             duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+             updated_at = ?
+         WHERE id = ?
+           AND workspace_id = ?
+           AND status IN ('queued', 'running')`
+      )
+      .bind(message, JSON.stringify({ rollback }), failedAt, failedAt, failedAt, deploymentId, workspaceId)
+      .run();
+
+    if ((failedUpdate.meta?.changes ?? 0) === 0) {
+      return;
+    }
     await appendWorkspaceDeploymentEvent(env.DB, {
       workspaceId,
       deploymentId,
@@ -1352,6 +2518,242 @@ export async function runWorkspaceDeploymentInlineWithRetries(
   deploymentId: string,
   maxCycles = 8
 ): Promise<void> {
+  async function reconcileInlineCancelRequestedRunningDeployment(): Promise<boolean> {
+    const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
+    if (!latest || latest.status !== 'running' || !latest.cancelRequestedAt) {
+      return false;
+    }
+
+    if (!latest.providerDeploymentId) {
+      const hasProviderCreatedEvent = await hasWorkspaceDeploymentEvent(
+        env.DB,
+        workspaceId,
+        deploymentId,
+        'deployment_provider_created'
+      );
+      if (!hasProviderCreatedEvent) {
+        await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested_provider_unknown_inline');
+        return true;
+      }
+      await appendWorkspaceDeploymentEvent(env.DB, {
+        workspaceId,
+        deploymentId,
+        eventType: 'deployment_cancel_reconcile_deferred',
+        payload: {
+          inline: true,
+          reason: 'provider_deployment_unknown',
+        },
+      });
+      return false;
+    }
+
+    try {
+      const requestPayload = await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId);
+      const providerName = getWorkspaceDeployProviderName(requestPayload?.provider, env);
+      const provider = createWorkspaceDeployProvider(providerName, env);
+      const providerStatus = await provider.getDeploymentStatus(latest.providerDeploymentId);
+
+      if (providerStatus.status === 'cancelled') {
+        await markDeploymentCancelled(env, workspaceId, deploymentId, 'provider_cancelled');
+        return true;
+      }
+
+      if (providerStatus.status === 'succeeded') {
+        if (!latest.sourceSnapshotSha256 || !latest.sourceBundleKey) {
+          return false;
+        }
+        const deployedUrl = providerStatus.deployedUrl ?? latest.deployedUrl ?? null;
+        const allowLegacyNullDeployedUrl = isLegacyCloudflareProviderDeploymentId(latest.providerDeploymentId);
+        if (!deployedUrl && !allowLegacyNullDeployedUrl) {
+          return false;
+        }
+        const finishedAt = new Date().toISOString();
+        const latestResult =
+          latest.result && typeof latest.result === 'object' && !Array.isArray(latest.result)
+            ? (latest.result as Record<string, unknown>)
+            : {};
+        const requestPayload = await getWorkspaceDeploymentRequestPayload(env.DB, deploymentId);
+        const requestProvenance =
+          requestPayload?.provenance && typeof requestPayload.provenance === 'object' && !Array.isArray(requestPayload.provenance)
+            ? (requestPayload.provenance as Record<string, unknown>)
+            : {};
+        const latestArtifact =
+          latestResult.artifact && typeof latestResult.artifact === 'object' && !Array.isArray(latestResult.artifact)
+            ? (latestResult.artifact as Record<string, unknown>)
+            : {};
+        const latestProvenance =
+          latestResult.provenance && typeof latestResult.provenance === 'object' && !Array.isArray(latestResult.provenance)
+            ? (latestResult.provenance as Record<string, unknown>)
+            : {};
+        const successResult = {
+          ...latestResult,
+          url: deployedUrl,
+          artifact: {
+            sourceBundleKey: latest.sourceBundleKey,
+            sourceSnapshotSha256: latest.sourceSnapshotSha256,
+            outputBundleSha256: typeof latestArtifact.outputBundleSha256 === 'string' ? latestArtifact.outputBundleSha256 : null,
+            outputDir: typeof latestArtifact.outputDir === 'string' ? latestArtifact.outputDir : null,
+          },
+          provenance: {
+            ...latestProvenance,
+            workspaceId,
+            taskId:
+              typeof requestProvenance.taskId === 'string' ? requestProvenance.taskId : (latestProvenance.taskId ?? null),
+            operationId:
+              typeof requestProvenance.operationId === 'string'
+                ? requestProvenance.operationId
+                : (latestProvenance.operationId ?? null),
+            trigger:
+              typeof requestProvenance.trigger === 'string'
+                ? requestProvenance.trigger
+                : typeof latestProvenance.trigger === 'string'
+                  ? latestProvenance.trigger
+                  : 'manual',
+          },
+          rollbackOnFailure: parseBoolean(requestPayload?.rollbackOnFailure, true),
+          reconciled: true,
+          fromInlineCancelRequested: true,
+        };
+        const succeededUpdate = await env.DB
+          .prepare(
+            `UPDATE workspace_deployments
+             SET status = 'succeeded',
+                 deployed_url = ?,
+                 provider_deployment_id = ?,
+                 source_snapshot_sha256 = ?,
+                 source_bundle_key = ?,
+                 cancel_requested_at = NULL,
+                 result_json = ?,
+                 error_code = NULL,
+                 error_message = NULL,
+                 finished_at = ?,
+                 duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+                 updated_at = ?
+             WHERE id = ?
+               AND workspace_id = ?
+               AND status = 'running'
+               AND cancel_requested_at IS NOT NULL`
+          )
+          .bind(
+            deployedUrl,
+            latest.providerDeploymentId,
+            latest.sourceSnapshotSha256,
+            latest.sourceBundleKey,
+            JSON.stringify(successResult),
+            finishedAt,
+            finishedAt,
+            finishedAt,
+            deploymentId,
+            workspaceId
+          )
+          .run();
+
+        if ((succeededUpdate.meta?.changes ?? 0) === 0) {
+          return false;
+        }
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'deployment_succeeded',
+          payload: {
+            deployedUrl,
+            reconciled: true,
+            fromInlineCancelRequested: true,
+          },
+        });
+        await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+          deploymentId,
+          status: 'succeeded',
+          deployedUrl,
+          deployedAt: finishedAt,
+          errorCode: null,
+          errorMessage: null,
+        });
+        return true;
+      }
+
+      if (providerStatus.status === 'failed') {
+        const errorCode = providerStatus.errorCode ?? 'provider_deploy_failed';
+        const errorMessage = providerStatus.errorMessage ?? 'Provider deployment failed';
+        const failedAt = new Date().toISOString();
+        const failedUpdate = await env.DB
+          .prepare(
+            `UPDATE workspace_deployments
+             SET status = 'failed',
+                 error_code = ?,
+                 error_message = ?,
+                 finished_at = COALESCE(finished_at, ?),
+                 duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+                 updated_at = ?
+             WHERE id = ?
+               AND workspace_id = ?
+               AND status = 'running'
+               AND cancel_requested_at IS NOT NULL`
+          )
+          .bind(errorCode, errorMessage, failedAt, failedAt, failedAt, deploymentId, workspaceId)
+          .run();
+
+        if ((failedUpdate.meta?.changes ?? 0) === 0) {
+          return false;
+        }
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'deployment_failed',
+          payload: { code: errorCode, message: errorMessage },
+        });
+        await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+          deploymentId,
+          status: 'failed',
+          errorCode,
+          errorMessage,
+        });
+        return true;
+      }
+    } catch (reconcileError) {
+      const providerError = normalizeProviderError(reconcileError);
+      if (isRetryableProviderError(providerError.code, providerError.message)) {
+        return false;
+      }
+
+      const failedAt = new Date().toISOString();
+      const failedUpdate = await env.DB
+        .prepare(
+          `UPDATE workspace_deployments
+           SET status = 'failed',
+               error_code = ?,
+               error_message = ?,
+               finished_at = COALESCE(finished_at, ?),
+               duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+               updated_at = ?
+           WHERE id = ?
+             AND workspace_id = ?
+             AND status = 'running'
+             AND cancel_requested_at IS NOT NULL`
+        )
+        .bind(providerError.code, providerError.message, failedAt, failedAt, failedAt, deploymentId, workspaceId)
+        .run();
+
+      if ((failedUpdate.meta?.changes ?? 0) > 0) {
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId,
+          eventType: 'deployment_failed',
+          payload: { code: providerError.code, message: providerError.message, fromInlineCancelRequested: true },
+        });
+        await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+          deploymentId,
+          status: 'failed',
+          errorCode: providerError.code,
+          errorMessage: providerError.message,
+        });
+      }
+      return true;
+    }
+
+    return false;
+  }
+
   async function recoverInlineRunningDeployment(): Promise<boolean> {
     const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
     if (!latest || latest.status !== 'running') {
@@ -1359,21 +2761,39 @@ export async function runWorkspaceDeploymentInlineWithRetries(
     }
 
     if (latest.cancelRequestedAt) {
-      await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');
-      return true;
+      return false;
     }
 
     if (latest.attemptCount > latest.maxRetries) {
       return false;
     }
 
-    await updateWorkspaceDeploymentStatus(env.DB, deploymentId, 'queued', {
-      workspaceId,
-      startedAt: null,
-      finishedAt: null,
-      errorCode: 'retry_scheduled',
-      errorMessage: 'Recovered inline deployment retry after transient failure',
-    });
+    const retryUpdate = await env.DB
+      .prepare(
+        `UPDATE workspace_deployments
+         SET status = 'queued',
+             started_at = NULL,
+             finished_at = NULL,
+             error_code = 'retry_scheduled',
+             error_message = ?,
+             updated_at = ?
+         WHERE id = ?
+           AND workspace_id = ?
+           AND status = 'running'
+           AND cancel_requested_at IS NULL`
+      )
+      .bind(
+        'Recovered inline deployment retry after transient failure',
+        new Date().toISOString(),
+        deploymentId,
+        workspaceId
+      )
+      .run();
+
+    if ((retryUpdate.meta?.changes ?? 0) === 0) {
+      return false;
+    }
+
     await appendWorkspaceDeploymentEvent(env.DB, {
       workspaceId,
       deploymentId,
@@ -1388,16 +2808,64 @@ export async function runWorkspaceDeploymentInlineWithRetries(
     try {
       await processWorkspaceDeployment(env, workspaceId, deploymentId);
     } catch (error) {
-      if (error instanceof QueueRetryError && /already running; defer redelivery/i.test(error.message)) {
-        try {
-          const latest = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
-          if (latest?.status === 'running' && latest.cancelRequestedAt) {
-            await markDeploymentCancelled(env, workspaceId, deploymentId, 'cancel_requested');
-            continue;
-          }
-        } catch {
-          // Best-effort inline recovery only.
+      if (error instanceof QueueRetryError && /cancel requested while running/i.test(error.message)) {
+        if (cycle < maxCycles - 1) {
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
         }
+
+        const reconciled = await reconcileInlineCancelRequestedRunningDeployment();
+        if (!reconciled) {
+          const timeoutAt = new Date().toISOString();
+          const timeoutUpdate = await env.DB
+            .prepare(
+              `UPDATE workspace_deployments
+               SET status = 'failed',
+                   error_code = 'cancel_reconcile_timeout',
+                   error_message = 'Inline cancel reconciliation did not reach a terminal provider state in time',
+                   finished_at = COALESCE(finished_at, ?),
+                   duration_ms = CASE WHEN started_at IS NULL THEN NULL ELSE CAST((julianday(?) - julianday(started_at)) * 86400000 AS INTEGER) END,
+                   updated_at = ?
+               WHERE id = ?
+                 AND workspace_id = ?
+                 AND status = 'running'
+                 AND cancel_requested_at IS NOT NULL`
+            )
+            .bind(timeoutAt, timeoutAt, timeoutAt, deploymentId, workspaceId)
+            .run();
+
+          if ((timeoutUpdate.meta?.changes ?? 0) > 0) {
+            await appendWorkspaceDeploymentEvent(env.DB, {
+              workspaceId,
+              deploymentId,
+              eventType: 'deployment_failed',
+              payload: {
+                code: 'cancel_reconcile_timeout',
+                message: 'Inline cancel reconciliation did not reach a terminal provider state in time',
+                fromInlineCancelRequested: true,
+              },
+            });
+            await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+              deploymentId,
+              status: 'failed',
+              errorCode: 'cancel_reconcile_timeout',
+              errorMessage: 'Inline cancel reconciliation did not reach a terminal provider state in time',
+            });
+          } else {
+            await appendWorkspaceDeploymentEvent(env.DB, {
+              workspaceId,
+              deploymentId,
+              eventType: 'deployment_cancel_reconcile_deferred',
+              payload: {
+                inlineCancelReconcileDeferred: true,
+              },
+            });
+          }
+        }
+        return;
+      }
+
+      if (error instanceof QueueRetryError && /already running; defer redelivery/i.test(error.message)) {
         return;
       }
 

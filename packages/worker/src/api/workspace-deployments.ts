@@ -8,6 +8,7 @@ import {
   getWorkspaceDeployment,
   hasWorkspaceDeploymentEvent,
   listWorkspaceDeploymentEvents,
+  updateWorkspaceDeploymentSummary,
   WorkspaceDeploymentIdempotencyConflictError,
 } from '../lib/db.js';
 import { createWorkspaceDeploymentQueueMessage } from '../lib/workspace-deployment-queue.js';
@@ -16,6 +17,12 @@ import {
   runWorkspaceDeploymentInlineWithRetries,
   runWorkspaceDeploymentPreflight,
 } from '../lib/workspace-deployment-runner.js';
+import {
+  createWorkspaceDeployProvider,
+  getWorkspaceDeployProviderConfigError,
+  getWorkspaceDeployProviderName,
+  normalizeProviderError,
+} from '../lib/workspace-deploy-provider.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -23,11 +30,17 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
 };
 
+const PROVIDER_PRECHECK_LEASE_MS = 30_000;
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
+}
+
+function deploymentCreateResponseStatus(reused: boolean): number {
+  return reused ? 200 : 202;
 }
 
 function parseInteger(input: unknown, fallback: number, min: number, max: number): number {
@@ -51,6 +64,38 @@ function parseBoolean(input: unknown, fallback: boolean): boolean {
   return input;
 }
 
+function parseEnvBoolean(input: string | undefined, fallback: boolean): boolean {
+  if (typeof input !== 'string') {
+    return fallback;
+  }
+  const normalized = input.trim().toLowerCase();
+  if (normalized === 'true' || normalized === '1' || normalized === 'yes' || normalized === 'on') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0' || normalized === 'no' || normalized === 'off') {
+    return false;
+  }
+  return fallback;
+}
+
+function isSafeRelativeOutputDir(input: string): boolean {
+  if (!input || input === '.') {
+    return false;
+  }
+  if (input.startsWith('/') || input.includes('\\')) {
+    return false;
+  }
+  return input.split('/').every((segment) => Boolean(segment) && segment !== '.' && segment !== '..');
+}
+
+function parseDeployOutputDir(input: unknown): string | null {
+  if (typeof input !== 'string') {
+    return null;
+  }
+  const trimmed = input.trim().replace(/\\/g, '/').replace(/^\.\//, '').replace(/\/+$/, '');
+  return trimmed || null;
+}
+
 function buildDeploymentIdempotencyPayload(requestPayload: {
   provider: string;
   retry: { maxRetries: number };
@@ -58,6 +103,7 @@ function buildDeploymentIdempotencyPayload(requestPayload: {
   autoFix: { rehydrateBaseline: boolean; bootstrapToolchain: boolean };
   toolchain: { manager: string | null; version: string | null };
   cache: { dependencyCache: boolean };
+  deploy: { outputDir: string | null };
   rollbackOnFailure: boolean;
   provenance: { trigger: string; taskId: string | null; operationId: string | null; note: string | null };
 }): Record<string, unknown> {
@@ -81,6 +127,10 @@ function buildDeploymentIdempotencyPayload(requestPayload: {
     payload.cache = requestPayload.cache;
   }
 
+  if (requestPayload.deploy.outputDir) {
+    payload.deploy = requestPayload.deploy;
+  }
+
   return payload;
 }
 
@@ -96,6 +146,8 @@ function nextActionForDeploymentError(code: string | undefined): string | null {
       return 'Disable build/test validation for this deploy or install required tooling in the sandbox image.';
     case 'validation_command_failed':
       return 'Review test/build output, fix project errors, and retry deploy.';
+    case 'dependency_install_failed':
+      return 'Dependency installation failed in sandbox; verify lockfile and package manager configuration, then retry deploy.';
     case 'invalid_project_root':
       return 'Set workspace source project root to a safe relative path and retry deploy.';
     case 'baseline_missing':
@@ -103,6 +155,18 @@ function nextActionForDeploymentError(code: string | undefined): string | null {
       return 'Reset the workspace and retry deploy to rebuild git baseline.';
     case 'potential_secrets_detected':
       return 'Remove sensitive files from workspace before deploying (template files like .env.example are allowed).';
+    case 'provider_auth_failed':
+      return 'Verify CF_ACCOUNT_ID and CF_API_TOKEN, then rerun preflight.';
+    case 'provider_scope_missing':
+      return 'Grant Workers Scripts/Routes edit scope to CF_API_TOKEN and rerun preflight.';
+    case 'provider_project_not_found':
+      return 'Set WORKSPACE_DEPLOY_PROJECT_NAME to an existing Workers project and retry.';
+    case 'provider_rate_limited':
+      return 'Retry deploy after Cloudflare rate limits reset.';
+    case 'provider_invalid_output_dir':
+      return 'Set deploy.outputDir to a valid static build directory (for example dist or out) and retry.';
+    case 'provider_deploy_failed':
+      return 'Check provider deployment logs and retry after fixing configuration or build output.';
     default:
       return null;
   }
@@ -166,6 +230,10 @@ export async function handleCreateWorkspaceDeployment(
   ctx?: ExecutionContext
 ): Promise<Response> {
   try {
+    const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
+    const deployQueue = env.WORKSPACE_DEPLOYS_QUEUE;
+    const useDeployQueue = Boolean(deployQueue) && !forceInlineDeploys;
+
     const enabled = await ensureWorkspaceDeployEnabled(env);
     if (enabled) {
       return enabled;
@@ -176,7 +244,7 @@ export async function handleCreateWorkspaceDeployment(
       return workspaceCheck;
     }
 
-    if (!env.WORKSPACE_DEPLOYS_QUEUE && !ctx) {
+    if (!useDeployQueue && !ctx) {
       return jsonResponse(
         {
           error: 'Workspace deployment runner is unavailable',
@@ -201,17 +269,28 @@ export async function handleCreateWorkspaceDeployment(
       payload = parsed as Record<string, unknown>;
     }
 
-    const provider = typeof payload.provider === 'string' && payload.provider.trim() ? payload.provider.trim() : 'simulated';
-    if (provider !== 'simulated') {
+    const providerInput = typeof payload.provider === 'string' ? payload.provider.trim() : '';
+    const providerConfigError = getWorkspaceDeployProviderConfigError(env);
+    if (!providerInput && providerConfigError) {
       return jsonResponse(
         {
-          error: 'Unsupported deployment provider',
-          code: 'unsupported_deploy_provider',
-          allowedProviders: ['simulated'],
+          error: providerConfigError,
+          code: 'provider_config_invalid',
         },
         400
       );
     }
+    if (providerInput && providerInput !== 'simulated' && providerInput !== 'cloudflare_workers_assets') {
+      return jsonResponse(
+        {
+          error: 'Unsupported deployment provider',
+          code: 'unsupported_deploy_provider',
+          allowedProviders: ['simulated', 'cloudflare_workers_assets'],
+        },
+        400
+      );
+    }
+    const provider = getWorkspaceDeployProviderName(providerInput || undefined, env);
     const retry =
       payload.retry && typeof payload.retry === 'object' && !Array.isArray(payload.retry)
         ? (payload.retry as Record<string, unknown>)
@@ -236,7 +315,22 @@ export async function handleCreateWorkspaceDeployment(
       payload.cache && typeof payload.cache === 'object' && !Array.isArray(payload.cache)
         ? (payload.cache as Record<string, unknown>)
         : {};
+    const deploy =
+      payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)
+        ? (payload.deploy as Record<string, unknown>)
+        : {};
     const maxRetries = parseInteger(retry.maxRetries, 2, 0, 5);
+    const outputDir = parseDeployOutputDir(deploy.outputDir);
+
+    if (provider === 'cloudflare_workers_assets' && (!outputDir || !isSafeRelativeOutputDir(outputDir))) {
+      return jsonResponse(
+        {
+          error: 'deploy.outputDir is required for cloudflare_workers_assets provider and must be a safe relative directory',
+          code: 'provider_invalid_output_dir',
+        },
+        400
+      );
+    }
 
     const requestPayload = {
       provider,
@@ -258,6 +352,9 @@ export async function handleCreateWorkspaceDeployment(
       cache: {
         dependencyCache: parseBoolean(cache.dependencyCache, true),
       },
+      deploy: {
+        outputDir,
+      },
       rollbackOnFailure: parseBoolean(payload.rollbackOnFailure, true),
       provenance: {
         trigger: typeof provenance.trigger === 'string' && provenance.trigger.trim() ? provenance.trigger.trim() : 'manual',
@@ -271,6 +368,7 @@ export async function handleCreateWorkspaceDeployment(
     const requestPayloadSha256 = await sha256Hex(
       JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload))
     );
+
     const created = await createWorkspaceDeployment(env.DB, {
       id: generateWorkspaceDeploymentId(),
       workspaceId,
@@ -295,35 +393,227 @@ export async function handleCreateWorkspaceDeployment(
       });
     }
 
-    if (created.deployment.status === 'queued') {
-      const hasEnqueuedEvent = await hasWorkspaceDeploymentEvent(
+    if (provider === 'cloudflare_workers_assets' && created.deployment.status === 'queued') {
+      const hasPrecheckPassed = await hasWorkspaceDeploymentEvent(
+        env.DB,
+        workspaceId,
+        created.deployment.id,
+        'deployment_provider_precheck_passed'
+      );
+      const hasPrecheckFailed = await hasWorkspaceDeploymentEvent(
+        env.DB,
+        workspaceId,
+        created.deployment.id,
+        'deployment_provider_precheck_failed'
+      );
+      const alreadyEnqueued = await hasWorkspaceDeploymentEvent(
         env.DB,
         workspaceId,
         created.deployment.id,
         'deployment_enqueued'
       );
-      const shouldRecoverQueued = created.reused && created.deployment.error?.code === 'retry_scheduled';
-      const hasRecoveredReenqueue = shouldRecoverQueued
-        ? await hasWorkspaceDeploymentEvent(env.DB, workspaceId, created.deployment.id, 'deployment_reenqueue_recovered')
-        : false;
 
-      if (!hasEnqueuedEvent || (shouldRecoverQueued && !hasRecoveredReenqueue)) {
-        if (env.WORKSPACE_DEPLOYS_QUEUE) {
-          await env.WORKSPACE_DEPLOYS_QUEUE.send(
-            createWorkspaceDeploymentQueueMessage(workspaceId, created.deployment.id)
-          );
-        } else if (ctx) {
-          ctx.waitUntil(
-            runWorkspaceDeploymentInlineWithRetries(env, workspaceId, created.deployment.id, created.deployment.maxRetries + 1)
-          );
+      if (hasPrecheckFailed) {
+        return jsonResponse(
+          {
+            error: created.deployment.error?.message ?? 'Provider precheck previously failed',
+            code: created.deployment.error?.code ?? 'provider_deploy_failed',
+          },
+          400
+        );
+      }
+
+      if (!hasPrecheckPassed && !alreadyEnqueued) {
+        const claimTime = new Date().toISOString();
+        const precheckLeaseCutoff = new Date(Date.now() - PROVIDER_PRECHECK_LEASE_MS).toISOString();
+        const claimed = await env.DB
+          .prepare(
+            `UPDATE workspace_deployments
+             SET error_code = 'provider_precheck_running',
+                 error_message = 'Provider precheck in progress',
+                 updated_at = ?
+             WHERE id = ?
+               AND workspace_id = ?
+               AND status = 'queued'
+               AND (
+                 error_code IS NULL
+                 OR error_code = 'retry_scheduled'
+                 OR (error_code = 'provider_precheck_running' AND updated_at <= ?)
+               )`
+          )
+          .bind(claimTime, created.deployment.id, workspaceId, precheckLeaseCutoff)
+          .run();
+
+        if ((claimed.meta?.changes ?? 0) === 0) {
+          const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
+          if (concurrent) {
+            return jsonResponse({ deployment: concurrent }, deploymentCreateResponseStatus(true));
+          }
+        }
+
+        let precheckChecks: Array<{ code: string; ok: boolean; details?: string }>;
+        try {
+          precheckChecks = await createWorkspaceDeployProvider(provider, env).precheck();
+        } catch (error) {
+          const providerError = normalizeProviderError(error);
+          const now = new Date().toISOString();
+          const failedUpdate = await env.DB
+            .prepare(
+              `UPDATE workspace_deployments
+               SET status = 'failed',
+                   error_code = ?,
+                   error_message = ?,
+                   finished_at = COALESCE(finished_at, ?),
+                   updated_at = ?
+               WHERE id = ?
+                 AND workspace_id = ?
+                 AND status = 'queued'
+                 AND error_code = 'provider_precheck_running'
+                 AND updated_at = ?`
+            )
+            .bind(providerError.code, providerError.message, now, now, created.deployment.id, workspaceId, claimTime)
+            .run();
+
+          if ((failedUpdate.meta?.changes ?? 0) > 0) {
+            await appendWorkspaceDeploymentEvent(env.DB, {
+              workspaceId,
+              deploymentId: created.deployment.id,
+              eventType: 'deployment_provider_precheck_failed',
+              payload: {
+                code: providerError.code,
+                message: providerError.message,
+              },
+            });
+            await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+              deploymentId: created.deployment.id,
+              status: 'failed',
+              errorCode: providerError.code,
+              errorMessage: providerError.message,
+            });
+            return jsonResponse({ error: providerError.message, code: providerError.code }, 400);
+          }
+
+          const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
+          if (concurrent) {
+            return jsonResponse({ deployment: concurrent }, deploymentCreateResponseStatus(true));
+          }
+
+          throw error;
+        }
+
+        const failed = precheckChecks.find((check) => !check.ok);
+        if (failed) {
+          const failureMessage = failed.details ?? 'Provider precheck failed';
+          const now = new Date().toISOString();
+          const failedUpdate = await env.DB
+            .prepare(
+              `UPDATE workspace_deployments
+               SET status = 'failed',
+                   error_code = ?,
+                   error_message = ?,
+                   finished_at = COALESCE(finished_at, ?),
+                   updated_at = ?
+               WHERE id = ?
+                 AND workspace_id = ?
+                 AND status = 'queued'
+                 AND error_code = 'provider_precheck_running'
+                 AND updated_at = ?`
+            )
+            .bind(failed.code, failureMessage, now, now, created.deployment.id, workspaceId, claimTime)
+            .run();
+
+          if ((failedUpdate.meta?.changes ?? 0) > 0) {
+            await appendWorkspaceDeploymentEvent(env.DB, {
+              workspaceId,
+              deploymentId: created.deployment.id,
+              eventType: 'deployment_provider_precheck_failed',
+              payload: {
+                code: failed.code,
+                message: failureMessage,
+              },
+            });
+            await updateWorkspaceDeploymentSummary(env.DB, workspaceId, {
+              deploymentId: created.deployment.id,
+              status: 'failed',
+              errorCode: failed.code,
+              errorMessage: failureMessage,
+            });
+            return jsonResponse({ error: failureMessage, code: failed.code }, 400);
+          }
+
+          const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
+          if (concurrent) {
+            return jsonResponse({ deployment: concurrent }, deploymentCreateResponseStatus(true));
+          }
+
+          throw new Error('Provider precheck failed but deployment record was not available for response');
+        }
+
+        const clearClaim = await env.DB
+          .prepare(
+            `UPDATE workspace_deployments
+             SET error_code = NULL,
+                 error_message = NULL,
+                 updated_at = ?
+             WHERE id = ?
+               AND workspace_id = ?
+               AND status = 'queued'
+               AND error_code = 'provider_precheck_running'
+               AND updated_at = ?`
+          )
+          .bind(new Date().toISOString(), created.deployment.id, workspaceId, claimTime)
+          .run();
+
+        if ((clearClaim.meta?.changes ?? 0) === 0) {
+          const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
+          if (concurrent) {
+            return jsonResponse({ deployment: concurrent }, deploymentCreateResponseStatus(true));
+          }
         }
 
         await appendWorkspaceDeploymentEvent(env.DB, {
           workspaceId,
           deploymentId: created.deployment.id,
+          eventType: 'deployment_provider_precheck_passed',
+          payload: {
+            checks: precheckChecks,
+          },
+        });
+      }
+    }
+
+    const latestDeployment = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
+    const deploymentForQueue = latestDeployment ?? created.deployment;
+
+    if (deploymentForQueue.status === 'queued') {
+      const hasEnqueuedEvent = await hasWorkspaceDeploymentEvent(
+        env.DB,
+        workspaceId,
+        deploymentForQueue.id,
+        'deployment_enqueued'
+      );
+      const shouldRecoverQueued = created.reused && deploymentForQueue.error?.code === 'retry_scheduled';
+      const hasRecoveredReenqueue = shouldRecoverQueued
+        ? await hasWorkspaceDeploymentEvent(env.DB, workspaceId, deploymentForQueue.id, 'deployment_reenqueue_recovered')
+        : false;
+
+      if (!hasEnqueuedEvent || (shouldRecoverQueued && !hasRecoveredReenqueue)) {
+        if (useDeployQueue) {
+          await deployQueue!.send(
+            createWorkspaceDeploymentQueueMessage(workspaceId, deploymentForQueue.id)
+          );
+        } else if (ctx) {
+          ctx.waitUntil(
+            runWorkspaceDeploymentInlineWithRetries(env, workspaceId, deploymentForQueue.id, deploymentForQueue.maxRetries + 1)
+          );
+        }
+
+        await appendWorkspaceDeploymentEvent(env.DB, {
+          workspaceId,
+          deploymentId: deploymentForQueue.id,
           eventType: 'deployment_enqueued',
           payload: {
-            mode: env.WORKSPACE_DEPLOYS_QUEUE ? 'queue' : 'inline',
+            mode: useDeployQueue ? 'queue' : 'inline',
             reused: created.reused,
           },
         });
@@ -331,7 +621,7 @@ export async function handleCreateWorkspaceDeployment(
         if (shouldRecoverQueued && !hasRecoveredReenqueue) {
           await appendWorkspaceDeploymentEvent(env.DB, {
             workspaceId,
-            deploymentId: created.deployment.id,
+            deploymentId: deploymentForQueue.id,
             eventType: 'deployment_reenqueue_recovered',
             payload: {
               reason: 'retry_scheduled_replay',
@@ -341,7 +631,8 @@ export async function handleCreateWorkspaceDeployment(
       }
     }
 
-    return jsonResponse({ deployment: created.deployment }, created.reused ? 200 : 202);
+    const responseStatus = deploymentCreateResponseStatus(created.reused);
+    return jsonResponse({ deployment: deploymentForQueue }, responseStatus);
   } catch (error) {
     if (error instanceof WorkspaceDeploymentIdempotencyConflictError) {
       return jsonResponse(
@@ -399,6 +690,63 @@ export async function handleWorkspaceDeploymentPreflight(
     payload.autoFix && typeof payload.autoFix === 'object' && !Array.isArray(payload.autoFix)
       ? (payload.autoFix as Record<string, unknown>)
       : {};
+  const deploy =
+    payload.deploy && typeof payload.deploy === 'object' && !Array.isArray(payload.deploy)
+      ? (payload.deploy as Record<string, unknown>)
+      : {};
+  const providerInput = typeof payload.provider === 'string' ? payload.provider.trim() : '';
+  const providerConfigError = getWorkspaceDeployProviderConfigError(env);
+  if (!providerInput && providerConfigError) {
+    return jsonResponse(
+      {
+        preflight: {
+          ok: false,
+          toolchain: null,
+          checks: [{ code: 'provider_config_invalid', ok: false, details: providerConfigError }],
+          remediations: [],
+        },
+        nextAction: 'Set WORKSPACE_DEPLOY_PROVIDER to simulated or cloudflare_workers_assets and retry preflight.',
+      },
+      200
+    );
+  }
+  if (providerInput && providerInput !== 'simulated' && providerInput !== 'cloudflare_workers_assets') {
+    return jsonResponse(
+      {
+        preflight: {
+          ok: false,
+          toolchain: null,
+          checks: [{ code: 'unsupported_deploy_provider', ok: false, details: `Unsupported provider: ${providerInput}` }],
+          remediations: [],
+        },
+        nextAction: 'Use provider=cloudflare_workers_assets or provider=simulated.',
+      },
+      200
+    );
+  }
+  const provider = getWorkspaceDeployProviderName(providerInput || undefined, env);
+  const outputDir = parseDeployOutputDir(deploy.outputDir);
+
+  if (provider === 'cloudflare_workers_assets' && (!outputDir || !isSafeRelativeOutputDir(outputDir))) {
+    return jsonResponse(
+      {
+        preflight: {
+          ok: false,
+          toolchain: null,
+          checks: [
+            {
+              code: 'provider_invalid_output_dir',
+              ok: false,
+              details: 'deploy.outputDir is required and must be a safe relative directory',
+            },
+          ],
+          remediations: [],
+        },
+        nextAction: 'Set deploy.outputDir to your static build output directory and retry preflight.',
+      },
+      200
+    );
+  }
   const runBuildIfPresent = parseBoolean(validation.runBuildIfPresent, true);
   const runTestsIfPresent = parseBoolean(validation.runTestsIfPresent, true);
   const rehydrateBaseline = parseBoolean(autoFix.rehydrateBaseline, false);
@@ -410,7 +758,21 @@ export async function handleWorkspaceDeploymentPreflight(
       runTestsIfPresent,
       rehydrateBaseline,
       bootstrapToolchain,
+      provider,
+      outputDir,
     });
+
+    if (provider === 'cloudflare_workers_assets') {
+      try {
+        const providerChecks = await createWorkspaceDeployProvider(provider, env).precheck();
+        preflight.checks.push(...providerChecks);
+      } catch (error) {
+        const providerError = normalizeProviderError(error);
+        preflight.checks.push({ code: providerError.code, ok: false, details: providerError.message });
+      }
+      preflight.ok = preflight.checks.every((check) => check.ok);
+    }
+
     const failedCheck = preflight.checks.find((check) => !check.ok);
     const nextAction = failedCheck
       ? failedCheck.code === 'validation_tooling'
@@ -425,6 +787,16 @@ export async function handleWorkspaceDeploymentPreflight(
                 ? 'Enable auto-fix bootstrap or use a sandbox image with corepack support.'
                 : failedCheck.code === 'project_root'
                   ? 'Set workspace source project root to a safe relative path and retry preflight.'
+                  : failedCheck.code === 'provider_invalid_output_dir'
+                    ? 'Set deploy.outputDir to a valid static build output directory and retry preflight.'
+                    : failedCheck.code === 'provider_auth_failed'
+                      ? 'Verify Cloudflare account credentials in worker env and retry preflight.'
+                      : failedCheck.code === 'provider_scope_missing'
+                        ? 'Grant required Cloudflare token scopes and retry preflight.'
+                        : failedCheck.code === 'provider_project_not_found'
+                          ? 'Set WORKSPACE_DEPLOY_PROJECT_NAME to a valid Workers project and retry preflight.'
+                          : failedCheck.code === 'provider_rate_limited'
+                            ? 'Wait for provider rate limits to reset and retry preflight.'
             : null
       : null;
     return jsonResponse({ preflight, nextAction });
@@ -497,6 +869,9 @@ export async function handleCancelWorkspaceDeployment(
   env: Env,
   ctx?: ExecutionContext
 ): Promise<Response> {
+  const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
+  const useDeployQueue = Boolean(env.WORKSPACE_DEPLOYS_QUEUE) && !forceInlineDeploys;
+
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
   if (workspaceMissing) {
     return workspaceMissing;
@@ -509,7 +884,7 @@ export async function handleCancelWorkspaceDeployment(
 
   if (cancelResult.updated) {
     if (
-      !env.WORKSPACE_DEPLOYS_QUEUE &&
+      !useDeployQueue &&
       ctx &&
       cancelResult.deployment?.status === 'running' &&
       cancelResult.deployment.cancelRequestedAt

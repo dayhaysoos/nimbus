@@ -26,6 +26,8 @@ export async function workspaceDeployCommand(
     preflightOnly?: boolean;
     autoFix?: boolean;
     pollIntervalMs?: number;
+    provider?: 'simulated' | 'cloudflare_workers_assets';
+    outputDir?: string;
   }
 ): Promise<void> {
   const workerUrl = getWorkerUrl();
@@ -39,6 +41,8 @@ export async function workspaceDeployCommand(
   };
   const pollIntervalMs = Math.max(250, options?.pollIntervalMs ?? 1500);
   const autoFixEnabled = Boolean(options?.autoFix);
+  const provider = options?.provider;
+  const outputDir = options?.outputDir?.trim() || null;
 
   let preflight;
   try {
@@ -47,6 +51,10 @@ export async function workspaceDeployCommand(
       autoFix: {
         rehydrateBaseline: autoFixEnabled,
         bootstrapToolchain: autoFixEnabled,
+      },
+      provider,
+      deploy: {
+        outputDir,
       },
     });
   } catch (error) {
@@ -108,7 +116,7 @@ export async function workspaceDeployCommand(
   p.log.success('Preflight passed');
   const idempotencyKey = options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId);
   const created = await createWorkspaceDeployment(workerUrl, workspaceId, idempotencyKey, {
-    provider: 'simulated',
+    provider,
     validation,
     autoFix: {
       rehydrateBaseline: autoFixEnabled,
@@ -116,6 +124,9 @@ export async function workspaceDeployCommand(
     },
     cache: {
       dependencyCache: true,
+    },
+    deploy: {
+      outputDir,
     },
     retry: { maxRetries: 2 },
     rollbackOnFailure: true,
@@ -141,7 +152,7 @@ export async function workspaceDeployCommand(
     }
 
     if (status === 'succeeded') {
-      p.log.success(`Deployed URL: ${current.deployment.deployedUrl ?? '(none)'}`);
+      p.log.success(`${current.deployment.provider === 'simulated' ? 'Deployed URL' : 'Live URL'}: ${current.deployment.deployedUrl ?? '(none)'}`);
       if (current.deployment.provider === 'simulated') {
         p.log.message('Note: simulated provider returns a synthetic URL; no live site is published yet.');
       }

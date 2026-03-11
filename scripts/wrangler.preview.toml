@@ -1,0 +1,4 @@
+name = "nimbus-workspace-preview"
+main = "./preview-worker.mjs"
+compatibility_date = "2025-01-21"
+workers_dev = true

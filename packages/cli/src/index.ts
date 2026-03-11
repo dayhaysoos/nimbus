@@ -119,7 +119,9 @@ Options:
   --idempotency-key <key>
                      Stable idempotency key for workspace deploy retries
   --poll-interval-ms <n>
-                     Poll interval for workspace deploy status checks
+                      Poll interval for workspace deploy status checks
+  --provider <name>   Deploy provider (simulated|cloudflare_workers_assets)
+  --output-dir <path> Static build output directory (required for real provider)
   --preflight-only   Run deploy preflight only (do not queue deploy)
   --auto-fix         Allow safe preflight/deploy remediations
   --no-dry-run       Upload source bundle and create checkpoint job
@@ -133,6 +135,7 @@ Examples:
   nimbus workspace files ws_abc12345 src
   nimbus workspace diff ws_abc12345 --include-patch --max-bytes 262144
   nimbus workspace deploy ws_abc12345
+  nimbus workspace deploy ws_abc12345 --provider cloudflare_workers_assets --output-dir dist
   nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123 --auto-fix
   nimbus workspace deploy ws_abc12345 --preflight-only --no-tests --no-build
   nimbus doctor
@@ -291,6 +294,17 @@ async function main(): Promise<void> {
           const runBuildIfPresent = !flags['no-build'];
           const preflightOnly = Boolean(flags['preflight-only']);
           const autoFix = Boolean(flags['auto-fix']);
+          const providerFlag = flags.provider;
+          let provider: 'simulated' | 'cloudflare_workers_assets' | undefined;
+          if (typeof providerFlag === 'string') {
+            if (providerFlag === 'simulated' || providerFlag === 'cloudflare_workers_assets') {
+              provider = providerFlag;
+            } else {
+              throw new Error('Invalid --provider value. Use simulated or cloudflare_workers_assets.');
+            }
+          }
+          const outputDirFlag = flags['output-dir'];
+          const outputDir = typeof outputDirFlag === 'string' ? outputDirFlag : undefined;
 
           await workspaceDeployCommand(workspaceId, {
             idempotencyKey,
@@ -299,6 +313,8 @@ async function main(): Promise<void> {
             preflightOnly,
             autoFix,
             pollIntervalMs,
+            provider,
+            outputDir,
           });
           break;
         }
