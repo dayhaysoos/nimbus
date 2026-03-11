@@ -274,9 +274,39 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
   }
 
   private static readonly assetsMainModule = 'nimbus-assets-entry.mjs';
+  private static readonly scriptUpdateDeploymentPrefix = 'script-update:';
 
   private static assetsWorkerSource(): string {
     return 'export default { async fetch(request, env) { return env.ASSETS.fetch(request); } };';
+  }
+
+  private static scriptUpdateProviderDeploymentId(deploymentId: string): string {
+    return `${CloudflareWorkersAssetsProvider.scriptUpdateDeploymentPrefix}${deploymentId}`;
+  }
+
+  private static deploymentIdFromScriptUpdateProviderId(providerDeploymentId: string): string | null {
+    if (!providerDeploymentId.startsWith(CloudflareWorkersAssetsProvider.scriptUpdateDeploymentPrefix)) {
+      return null;
+    }
+    const value = providerDeploymentId.slice(CloudflareWorkersAssetsProvider.scriptUpdateDeploymentPrefix.length).trim();
+    return value ? value : null;
+  }
+
+  private async isPreviewUrlReachable(url: string): Promise<boolean> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort('preview_url_probe_timeout'), 2_000);
+    try {
+      const response = await providerFetch(url, {
+        method: 'GET',
+        redirect: 'manual',
+        signal: controller.signal,
+      });
+      return response.status >= 200 && response.status < 400;
+    } catch {
+      return false;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   private static toManifestHash(sha256: string): string {
@@ -403,6 +433,7 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
 
     let parsed: Record<string, unknown>;
     let createStatus: WorkspaceDeploymentStatus = 'running';
+    let fallbackScriptUpdate = false;
     try {
       const response = await this.request(`/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments`, {
         method: 'POST',
@@ -430,24 +461,52 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
         providerError.message.toLowerCase().includes('invalid for field "versions"')
       ) {
         parsed = await this.deployScriptWithAssetsJwt(completionJwt);
-        createStatus = 'succeeded';
+        fallbackScriptUpdate = true;
       } else {
         throw error;
       }
     }
     const result =
       typeof parsed.result === 'object' && parsed.result !== null ? (parsed.result as Record<string, unknown>) : {};
-    const providerDeploymentId =
-      typeof result.id === 'string' && result.id.trim() ? result.id.trim() : `cfdep_${input.deploymentId}`;
+    const providerDeploymentId = fallbackScriptUpdate
+      ? CloudflareWorkersAssetsProvider.scriptUpdateProviderDeploymentId(input.deploymentId)
+      : typeof result.id === 'string' && result.id.trim()
+        ? result.id.trim()
+        : `cfdep_${input.deploymentId}`;
 
     return {
       providerDeploymentId,
       status: createStatus,
-      deployedUrl: this.previewUrlForDeployment(input.deploymentId),
+      deployedUrl: fallbackScriptUpdate ? null : this.previewUrlForDeployment(input.deploymentId),
     };
   }
 
   async getDeploymentStatus(providerDeploymentId: string): Promise<WorkspaceDeployStatusResult> {
+    const scriptUpdateDeploymentId = CloudflareWorkersAssetsProvider.deploymentIdFromScriptUpdateProviderId(providerDeploymentId);
+    if (scriptUpdateDeploymentId) {
+      const url = this.previewUrlForDeployment(scriptUpdateDeploymentId);
+      const reachable = await this.isPreviewUrlReachable(url);
+      if (!reachable) {
+        return {
+          status: 'failed',
+          deployedUrl: null,
+          errorCode: 'provider_deploy_failed',
+          errorMessage: 'Fallback script update succeeded but preview URL alias is not reachable',
+        };
+      }
+      return {
+        status: 'succeeded',
+        deployedUrl: url,
+      };
+    }
+    if (providerDeploymentId.startsWith('script_update_')) {
+      const reachable = await this.isPreviewUrlReachable(this.previewUrlForDeployment(providerDeploymentId));
+      return {
+        status: reachable ? 'succeeded' : 'running',
+        deployedUrl: null,
+      };
+    }
+
     const response = await this.request(
       `/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments/${providerDeploymentId}`
     );
@@ -479,6 +538,13 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
   }
 
   async cancelDeployment(providerDeploymentId: string): Promise<{ accepted: boolean }> {
+    if (CloudflareWorkersAssetsProvider.deploymentIdFromScriptUpdateProviderId(providerDeploymentId)) {
+      return { accepted: false };
+    }
+    if (providerDeploymentId.startsWith('script_update_')) {
+      return { accepted: false };
+    }
+
     const response = await this.request(
       `/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments/${providerDeploymentId}/cancel`,
       { method: 'POST', body: '{}' }

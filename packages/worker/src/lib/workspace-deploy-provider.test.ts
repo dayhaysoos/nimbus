@@ -209,9 +209,51 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
       outputDir: 'dist',
       outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
     });
-    assert.equal(created.providerDeploymentId, 'script_update_123');
-    assert.equal(created.status, 'succeeded');
+    assert.equal(created.providerDeploymentId, 'script-update:dep_abcd1234');
+    assert.equal(created.status, 'running');
+    assert.equal(created.deployedUrl, null);
     assert.equal(calls.some((call) => call.url.endsWith('/workers/scripts/project') && call.method === 'PUT'), true);
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url === 'https://dep-dep-abcd1234.preview.example.com') {
+        return new Response('ok', { status: 200 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('script-update:dep_abcd1234');
+    assert.equal(status.status, 'succeeded');
+    assert.equal(status.deployedUrl, 'https://dep-dep-abcd1234.preview.example.com');
+  }
+
+  {
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
+      const url = String(input);
+      if (url === 'https://dep-dep-missing.preview.example.com') {
+        return new Response('not found', { status: 404 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const status = await provider.getDeploymentStatus('script-update:dep_missing');
+    assert.equal(status.status, 'failed');
+    assert.equal(status.errorCode, 'provider_deploy_failed');
+    assert.equal(status.deployedUrl, null);
   }
 
   {
