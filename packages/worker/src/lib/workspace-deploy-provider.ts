@@ -273,6 +273,12 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     return `https://dep-${dnsSafeLabel(deploymentId)}.${this.previewDomain}`;
   }
 
+  private static readonly assetsMainModule = 'nimbus-assets-entry.mjs';
+
+  private static assetsWorkerSource(): string {
+    return 'export default { async fetch(request, env) { return env.ASSETS.fetch(request); } };';
+  }
+
   private static toManifestHash(sha256: string): string {
     const normalized = sha256.trim().toLowerCase();
     const hex = normalized.replace(/[^a-f0-9]/g, '');
@@ -293,77 +299,35 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     return null;
   }
 
-  private static parseDeploymentVersions(input: unknown): Array<{ version_id: string; percentage: number }> {
-    if (!Array.isArray(input)) {
-      return [];
-    }
-    const versions: Array<{ version_id: string; percentage: number }> = [];
-    for (const entry of input) {
-      if (!entry || typeof entry !== 'object') {
-        continue;
-      }
-      const record = entry as Record<string, unknown>;
-      const versionId = typeof record.version_id === 'string' && record.version_id.trim() ? record.version_id.trim() : null;
-      const percentageRaw = typeof record.percentage === 'number' ? record.percentage : Number.NaN;
-      const percentage = Number.isFinite(percentageRaw) ? percentageRaw : 0;
-      if (!versionId || percentage <= 0) {
-        continue;
-      }
-      versions.push({ version_id: versionId, percentage });
-    }
-    return versions;
-  }
-
-  private static extractDeployments(result: unknown): Array<Record<string, unknown>> {
-    if (Array.isArray(result)) {
-      return result.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
-    }
-    if (!result || typeof result !== 'object') {
-      return [];
-    }
-    const record = result as Record<string, unknown>;
-    const candidates = [record.deployments, record.items, record.results, record.data];
-    for (const candidate of candidates) {
-      if (Array.isArray(candidate)) {
-        return candidate.filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object');
-      }
-    }
-    return [];
-  }
-
-  private static resolveActiveVersions(result: unknown): Array<{ version_id: string; percentage: number }> {
-    const deployments = CloudflareWorkersAssetsProvider.extractDeployments(result);
-    for (const deployment of deployments) {
-      const versions = CloudflareWorkersAssetsProvider.parseDeploymentVersions(deployment.versions);
-      if (versions.length > 0) {
-        return versions;
-      }
-    }
-    return [];
-  }
-
-  private async fallbackDeployFromCurrentVersions(): Promise<Record<string, unknown>> {
-    const listResponse = await this.request(`/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments`, {
-      method: 'GET',
-    });
-    const listParsed = await this.parseCloudflareResult(listResponse);
-    const versions = CloudflareWorkersAssetsProvider.resolveActiveVersions(listParsed.result);
-    if (versions.length === 0) {
-      const shape = typeof listParsed.result === 'object' && listParsed.result !== null ? JSON.stringify(listParsed.result) : String(listParsed.result);
-      throw new ProviderError(
-        'provider_deploy_failed',
-        `Cloudflare deployment fallback could not determine active versions (result=${shape.slice(0, 280)})`
-      );
-    }
-
-    const createResponse = await this.request(`/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments`, {
-      method: 'POST',
-      body: JSON.stringify({
-        strategy: 'percentage',
-        versions,
+  private async deployScriptWithAssetsJwt(completionJwt: string): Promise<Record<string, unknown>> {
+    const metadata = {
+      main_module: CloudflareWorkersAssetsProvider.assetsMainModule,
+      compatibility_date: new Date().toISOString().slice(0, 10),
+      assets: {
+        jwt: completionJwt,
+      },
+      bindings: [
+        {
+          name: 'ASSETS',
+          type: 'assets',
+        },
+      ],
+    };
+    const form = new FormData();
+    form.append('metadata', JSON.stringify(metadata));
+    form.append(
+      CloudflareWorkersAssetsProvider.assetsMainModule,
+      new Blob([CloudflareWorkersAssetsProvider.assetsWorkerSource()], {
+        type: 'application/javascript+module',
       }),
+      CloudflareWorkersAssetsProvider.assetsMainModule
+    );
+
+    const response = await this.request(`/accounts/${this.accountId}/workers/scripts/${this.projectName}`, {
+      method: 'PUT',
+      body: form,
     });
-    return this.parseCloudflareResult(createResponse);
+    return this.parseCloudflareResult(response);
   }
 
   async precheck(): Promise<WorkspaceDeployProviderPrecheck[]> {
@@ -438,6 +402,7 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     }
 
     let parsed: Record<string, unknown>;
+    let createStatus: WorkspaceDeploymentStatus = 'running';
     try {
       const response = await this.request(`/accounts/${this.accountId}/workers/scripts/${this.projectName}/deployments`, {
         method: 'POST',
@@ -459,12 +424,13 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
       });
       parsed = await this.parseCloudflareResult(response);
     } catch (error) {
-      const normalized = normalizeProviderError(error);
+      const providerError = normalizeProviderError(error);
       if (
-        normalized.code === 'provider_deploy_failed' &&
-        normalized.message.toLowerCase().includes('invalid for field "versions"')
+        providerError.code === 'provider_deploy_failed' &&
+        providerError.message.toLowerCase().includes('invalid for field "versions"')
       ) {
-        parsed = await this.fallbackDeployFromCurrentVersions();
+        parsed = await this.deployScriptWithAssetsJwt(completionJwt);
+        createStatus = 'succeeded';
       } else {
         throw error;
       }
@@ -476,7 +442,7 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
 
     return {
       providerDeploymentId,
-      status: 'succeeded',
+      status: createStatus,
       deployedUrl: this.previewUrlForDeployment(input.deploymentId),
     };
   }
@@ -496,7 +462,14 @@ class CloudflareWorkersAssetsProvider implements WorkspaceDeployProvider {
     const parsed = await this.parseCloudflareResult(response);
     const result =
       typeof parsed.result === 'object' && parsed.result !== null ? (parsed.result as Record<string, unknown>) : {};
-    const state = typeof result.status === 'string' ? mapProviderState(result.status) : 'running';
+    const hasVersions = Array.isArray(result.versions) && result.versions.length > 0;
+    let state: WorkspaceDeploymentStatus;
+    if (typeof result.status === 'string') {
+      const mapped = mapProviderState(result.status);
+      state = mapped === 'running' && hasVersions ? 'succeeded' : mapped;
+    } else {
+      state = hasVersions ? 'succeeded' : 'running';
+    }
     return {
       status: state,
       deployedUrl: typeof result.preview_url === 'string' && result.preview_url.trim() ? result.preview_url : null,

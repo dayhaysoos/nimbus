@@ -1358,7 +1358,17 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
     });
 
     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
-    assert.equal(state.status, 'succeeded');
+    assert.equal(state.status, 'failed');
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_failed' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { code?: string }).code === 'provider_deploy_failed'
+      ),
+      true
+    );
     setWorkspaceDeployProviderFetchForTests(null);
   }
 
@@ -1512,6 +1522,16 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
 
     await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
     assert.equal(state.status, 'succeeded');
+    assert.equal(
+      state.events.some(
+        (event) =>
+          event.eventType === 'deployment_provider_cancel_requested' &&
+          typeof event.payload === 'object' &&
+          event.payload !== null &&
+          (event.payload as { accepted?: boolean }).accepted === false
+      ),
+      true
+    );
     setWorkspaceDeployProviderFetchForTests(null);
   }
 

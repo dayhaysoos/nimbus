@@ -172,6 +172,49 @@ export async function runWorkspaceDeployProviderTests(): Promise<void> {
   }
 
   {
+    const calls: Array<{ url: string; method: string }> = [];
+    setWorkspaceDeployProviderFetchForTests(async (input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      calls.push({ url, method: String(init?.method ?? 'GET') });
+      if (url.endsWith('/workers/scripts/project/assets-upload-session')) {
+        return new Response(
+          JSON.stringify({ success: true, result: { jwt: 'upload_jwt_123', buckets: [['abc00000000000000000000000000000']] } }),
+          { status: 200 }
+        );
+      }
+      if (url.endsWith('/workers/assets/upload?base64=true')) {
+        return new Response(JSON.stringify({ success: true, jwt: 'completion_jwt_123' }), { status: 201 });
+      }
+      if (url.endsWith('/workers/scripts/project/deployments')) {
+        return new Response(
+          JSON.stringify({ success: false, errors: [{ message: 'Invalid deployment: The value "[]" is invalid for field "versions"' }] }),
+          { status: 400 }
+        );
+      }
+      if (url.endsWith('/workers/scripts/project')) {
+        return new Response(JSON.stringify({ success: true, result: { id: 'script_update_123' } }), { status: 200 });
+      }
+      throw new Error(`Unexpected provider URL: ${url}`);
+    });
+    const provider = createWorkspaceDeployProvider('cloudflare_workers_assets', {
+      CF_ACCOUNT_ID: 'acc',
+      CF_API_TOKEN: 'token',
+      WORKSPACE_DEPLOY_PREVIEW_DOMAIN: 'preview.example.com',
+      WORKSPACE_DEPLOY_PROJECT_NAME: 'project',
+      WORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED: 'true',
+    } as never);
+    const created = await provider.createDeployment({
+      workspaceId: 'ws_abc12345',
+      deploymentId: 'dep_abcd1234',
+      outputDir: 'dist',
+      outputBundle: { bytes: new Uint8Array([1, 2, 3]), sha256: 'abc' },
+    });
+    assert.equal(created.providerDeploymentId, 'script_update_123');
+    assert.equal(created.status, 'succeeded');
+    assert.equal(calls.some((call) => call.url.endsWith('/workers/scripts/project') && call.method === 'PUT'), true);
+  }
+
+  {
     setWorkspaceDeployProviderFetchForTests(async (input: unknown) => {
       const url = String(input);
       if (url.endsWith('/workers/scripts/project/deployments/cfdep_123')) {
