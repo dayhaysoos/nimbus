@@ -1,0 +1,50 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "33dc14a6a595",
+  "strategy": "manual-commit",
+  "branch": "phase-08a",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/events.ts",
+    "packages/cli/src/commands/review/export.ts",
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/cli/src/commands/review/show.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.test.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/run-tests.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/migrations/0009_review_runs.sql",
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/db.review.test.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/review-queue.test.ts",
+    "packages/worker/src/lib/review-queue.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "scripts/setup-worker.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/33/dc14a6a595/0/metadata.json",
+      "transcript": "/33/dc14a6a595/0/full.jsonl",
+      "context": "/33/dc14a6a595/0/context.md",
+      "content_hash": "/33/dc14a6a595/0/content_hash.txt",
+      "prompt": "/33/dc14a6a595/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 127721,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 944000,
+    "output_tokens": 7633,
+    "api_call_count": 19
+  }
+}
