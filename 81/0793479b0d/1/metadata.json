@@ -1,9 +1,11 @@
 {
   "cli_version": "0.4.9",
   "checkpoint_id": "810793479b0d",
+  "session_id": "ses_31ceada9bffefvCWeGF953YmXs",
   "strategy": "manual-commit",
+  "created_at": "2026-03-12T19:41:17.554814Z",
   "branch": "phase-08a",
-  "checkpoints_count": 2,
+  "checkpoints_count": 1,
   "files_touched": [
     "packages/cli/src/commands/review/create.ts",
     "packages/cli/src/commands/review/review.test.ts",
@@ -26,27 +28,22 @@
     "packages/worker/wrangler.toml",
     "specs/phases/05-deploy-from-workspace.md"
   ],
-  "sessions": [
-    {
-      "metadata": "/81/0793479b0d/0/metadata.json",
-      "transcript": "/81/0793479b0d/0/full.jsonl",
-      "context": "/81/0793479b0d/0/context.md",
-      "content_hash": "/81/0793479b0d/0/content_hash.txt",
-      "prompt": "/81/0793479b0d/0/prompt.txt"
-    },
-    {
-      "metadata": "/81/0793479b0d/1/metadata.json",
-      "transcript": "/81/0793479b0d/1/full.jsonl",
-      "context": "/81/0793479b0d/1/context.md",
-      "content_hash": "/81/0793479b0d/1/content_hash.txt",
-      "prompt": "/81/0793479b0d/1/prompt.txt"
-    }
-  ],
+  "agent": "OpenCode",
+  "turn_id": "063751d0e725",
   "token_usage": {
-    "input_tokens": 439877,
+    "input_tokens": 262142,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 2495488,
-    "output_tokens": 21526,
-    "api_call_count": 36
+    "cache_read_tokens": 843520,
+    "output_tokens": 8821,
+    "api_call_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-12T19:41:17.133706Z",
+    "agent_lines": 3185,
+    "human_added": 33,
+    "human_modified": 5,
+    "human_removed": 0,
+    "total_committed": 3223,
+    "agent_percentage": 98.8209742475954
   }
 }
