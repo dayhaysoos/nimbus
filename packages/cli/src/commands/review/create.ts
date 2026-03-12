@@ -10,7 +10,13 @@ function buildIdempotencyKey(workspaceId: string, deploymentId: string): string 
 export async function createReviewCommand(
   workspaceId: string,
   deploymentId: string,
-  options?: { idempotencyKey?: string }
+  options?: {
+    idempotencyKey?: string;
+    severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
+    maxFindings?: number;
+    includeProvenance?: boolean;
+    includeValidationEvidence?: boolean;
+  }
 ): Promise<void> {
   const workerUrl = getWorkerUrl();
   if (!workerUrl) {
@@ -24,6 +30,12 @@ export async function createReviewCommand(
       deploymentId,
     },
     mode: 'report_only',
+    policy: {
+      severityThreshold: options?.severityThreshold ?? 'low',
+      maxFindings: options?.maxFindings,
+      includeProvenance: options?.includeProvenance ?? true,
+      includeValidationEvidence: options?.includeValidationEvidence ?? true,
+    },
   });
 
   p.log.success(`Review queued: ${response.reviewId}`);

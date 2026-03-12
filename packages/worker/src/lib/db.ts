@@ -157,6 +157,7 @@ export interface CreateReviewRunInput {
   idempotencyKey: string;
   requestPayload: unknown;
   requestPayloadSha256: string;
+  requestPayloadSha256Aliases?: string[];
   provenance?: Record<string, unknown>;
 }
 
@@ -2497,6 +2498,7 @@ export async function createReviewRun(
   input: CreateReviewRunInput
 ): Promise<{ review: ReviewRunResponse; reused: boolean }> {
   const now = new Date().toISOString();
+  const acceptedHashes = new Set([input.requestPayloadSha256, ...(input.requestPayloadSha256Aliases ?? [])]);
   const existingIdempotency = await db
     .prepare(
       `SELECT review_id, request_payload_sha256, expires_at
@@ -2508,7 +2510,7 @@ export async function createReviewRun(
     .first<{ review_id: string; request_payload_sha256: string; expires_at: string }>();
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
-    if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {
+    if (!acceptedHashes.has(existingIdempotency.request_payload_sha256)) {
       throw new ReviewIdempotencyConflictError(input.idempotencyKey);
     }
 
@@ -2542,7 +2544,7 @@ export async function createReviewRun(
     .first<ReviewRunRecord>();
 
   if (existingReviewByKey) {
-    if (existingReviewByKey.request_payload_sha256 !== input.requestPayloadSha256) {
+    if (!acceptedHashes.has(existingReviewByKey.request_payload_sha256)) {
       throw new ReviewIdempotencyConflictError(input.idempotencyKey);
     }
 
@@ -2660,7 +2662,7 @@ export async function createReviewRun(
       throw new Error('Review idempotency race detected but winner record is unavailable');
     }
 
-    if (concurrent.request_payload_sha256 !== input.requestPayloadSha256) {
+    if (!acceptedHashes.has(concurrent.request_payload_sha256)) {
       await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
       throw new ReviewIdempotencyConflictError(input.idempotencyKey);
     }
@@ -2691,9 +2693,11 @@ export async function getReviewRunByIdempotency(
   db: D1Database,
   workspaceId: string,
   idempotencyKey: string,
-  requestPayloadSha256: string
+  requestPayloadSha256: string,
+  requestPayloadSha256Aliases: string[] = []
 ): Promise<ReviewRunResponse | null> {
   const now = new Date().toISOString();
+  const acceptedHashes = new Set([requestPayloadSha256, ...requestPayloadSha256Aliases]);
   const existingIdempotency = await db
     .prepare(
       `SELECT review_id, request_payload_sha256, expires_at
@@ -2705,7 +2709,7 @@ export async function getReviewRunByIdempotency(
     .first<{ review_id: string; request_payload_sha256: string; expires_at: string }>();
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
-    if (existingIdempotency.request_payload_sha256 !== requestPayloadSha256) {
+    if (!acceptedHashes.has(existingIdempotency.request_payload_sha256)) {
       throw new ReviewIdempotencyConflictError(idempotencyKey);
     }
 
@@ -2735,7 +2739,7 @@ export async function getReviewRunByIdempotency(
     return null;
   }
 
-  if (existingReview.request_payload_sha256 !== requestPayloadSha256) {
+  if (!acceptedHashes.has(existingReview.request_payload_sha256)) {
     throw new ReviewIdempotencyConflictError(idempotencyKey);
   }
 

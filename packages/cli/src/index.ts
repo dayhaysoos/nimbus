@@ -34,6 +34,7 @@ import { reviewEventsCommand } from './commands/review/events.js';
 import { showReviewCommand } from './commands/review/show.js';
 import { exportReviewCommand } from './commands/review/export.js';
 import { parseArgs } from './lib/args.js';
+import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
 
 const VERSION = '0.1.0';
 
@@ -136,6 +137,12 @@ Options:
   --output-dir <path> Static build output directory (required for real provider)
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
+  --severity-threshold <level>
+                      Review finding floor (low|medium|high|critical)
+  --max-findings <n>  Maximum findings to include in report
+  --no-provenance     Suppress provenance summary in report output
+  --no-validation-evidence
+                      Suppress validation/deploy evidence in report output
   --format <type>     Review export format (markdown|json)
   --out <path>        Review export output file path
   --preflight-only   Run deploy preflight only (do not queue deploy)
@@ -155,6 +162,7 @@ Examples:
   nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123 --auto-fix
   nimbus workspace deploy ws_abc12345 --preflight-only --no-tests --no-build
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
+  nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
   nimbus review show rev_abcd1234
   nimbus review events rev_abcd1234
   nimbus review export rev_abcd1234 --format markdown --out review.md
@@ -358,7 +366,15 @@ async function main(): Promise<void> {
 
           const idempotencyKeyFlag = flags['idempotency-key'];
           const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
-          await createReviewCommand(workspaceId, deploymentId, { idempotencyKey });
+          const severityThreshold = parseReviewSeverityThreshold(flags['severity-threshold']);
+          const maxFindings = parseReviewMaxFindings(flags['max-findings']);
+          await createReviewCommand(workspaceId, deploymentId, {
+            idempotencyKey,
+            severityThreshold,
+            maxFindings,
+            includeProvenance: !Boolean(flags['no-provenance']),
+            includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
+          });
           break;
         }
 

@@ -56,6 +56,8 @@ export interface Env {
   AGENT_MODEL?: string;
   AGENT_SDK_URL?: string;
   AGENT_SDK_AUTH_TOKEN?: string;
+  REVIEW_AGENT_MAX_STEPS?: string;
+  REVIEW_AGENT_MAX_FILE_BYTES?: string;
 }
 
 // Job status type

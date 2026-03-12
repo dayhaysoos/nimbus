@@ -18,6 +18,7 @@ function createReviewApiEnv(options?: {
   existingEventTypes?: string[];
   reviewErrorCode?: string | null;
   reviewAttemptCount?: number;
+  existingRequestPayloadSha256?: string;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -132,7 +133,8 @@ function createReviewApiEnv(options?: {
                   }
                   return {
                     review_id: 'rev_existing',
-                    request_payload_sha256: 'f004b542a0ca344c9a93ab94447edbb0ec52d21236f442491bac726f7430c745',
+                    request_payload_sha256:
+                      options?.existingRequestPayloadSha256 ?? '2babb228edb21a131fef0051902a367e6ad34a301a0f6b293e11b36a9a39423d',
                     expires_at: '2999-01-01T00:00:00.000Z',
                   } as T;
                 },
@@ -346,6 +348,35 @@ export async function runReviewApiTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        policy: { severityThreshold: ' medium ' },
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-trimmed-threshold' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        policy: { severityThreshold: 'medum' },
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-invalid-threshold' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+  }
+
+  {
     const { env } = createReviewApiEnv();
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
@@ -385,6 +416,22 @@ export async function runReviewApiTests(): Promise<void> {
       method: 'POST',
       body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-4' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reused: true,
+      reviewExists: true,
+      existingRequestPayloadSha256: 'f004b542a0ca344c9a93ab94447edbb0ec52d21236f442491bac726f7430c745',
+    });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-legacy' },
     });
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 200);

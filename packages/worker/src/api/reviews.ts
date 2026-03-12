@@ -61,6 +61,143 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
+function isSeverityThreshold(value: unknown): value is 'low' | 'medium' | 'high' | 'critical' {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
+}
+
+function withSortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => withSortedKeys(item));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  return Object.keys(record)
+    .sort()
+    .reduce<Record<string, unknown>>((result, key) => {
+      result[key] = withSortedKeys(record[key]);
+      return result;
+    }, {});
+}
+
+function buildReviewRequestPayload(input: {
+  workspaceId: string;
+  deploymentId: string;
+  policy: Record<string, unknown>;
+  format: Record<string, unknown>;
+}) {
+  const normalized = {
+    target: {
+      type: 'workspace_deployment' as const,
+      workspaceId: input.workspaceId,
+      deploymentId: input.deploymentId,
+    },
+    mode: 'report_only' as const,
+    policy: {
+      severityThreshold:
+        typeof input.policy.severityThreshold === 'string' && input.policy.severityThreshold.trim()
+          ? input.policy.severityThreshold.trim()
+          : 'low',
+      maxFindings: typeof input.policy.maxFindings === 'number' && Number.isFinite(input.policy.maxFindings)
+        ? Math.max(1, Math.min(500, Math.floor(input.policy.maxFindings)))
+        : 100,
+      includeProvenance: input.policy.includeProvenance !== false,
+      includeValidationEvidence: input.policy.includeValidationEvidence !== false,
+    },
+    format: {
+      primary: typeof input.format.primary === 'string' && input.format.primary.trim() ? input.format.primary.trim() : 'json',
+      includeMarkdownSummary: input.format.includeMarkdownSummary !== false,
+    },
+    provenance: {
+      trigger: 'api',
+    },
+  };
+
+  const idempotencyPayload: Record<string, unknown> = {
+    target: normalized.target,
+    mode: normalized.mode,
+    provenance: normalized.provenance,
+  };
+
+  if (normalized.policy.severityThreshold !== 'low') {
+    idempotencyPayload.policy = {
+      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
+      severityThreshold: normalized.policy.severityThreshold,
+    };
+  }
+  if (normalized.policy.maxFindings !== 100) {
+    idempotencyPayload.policy = {
+      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
+      maxFindings: normalized.policy.maxFindings,
+    };
+  }
+  if (normalized.policy.includeProvenance !== true) {
+    idempotencyPayload.policy = {
+      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
+      includeProvenance: normalized.policy.includeProvenance,
+    };
+  }
+  if (normalized.policy.includeValidationEvidence !== true) {
+    idempotencyPayload.policy = {
+      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
+      includeValidationEvidence: normalized.policy.includeValidationEvidence,
+    };
+  }
+  if (normalized.format.primary !== 'json') {
+    idempotencyPayload.format = {
+      ...(idempotencyPayload.format as Record<string, unknown> | undefined),
+      primary: normalized.format.primary,
+    };
+  }
+  if (normalized.format.includeMarkdownSummary !== true) {
+    idempotencyPayload.format = {
+      ...(idempotencyPayload.format as Record<string, unknown> | undefined),
+      includeMarkdownSummary: normalized.format.includeMarkdownSummary,
+    };
+  }
+
+  return {
+    requestPayload: normalized,
+    idempotencyPayload: withSortedKeys(idempotencyPayload),
+  };
+}
+
+function buildLegacyReviewRequestPayload(input: {
+  workspaceId: string;
+  deploymentId: string;
+  policy: Record<string, unknown>;
+  format: Record<string, unknown>;
+}) {
+  return {
+    target: {
+      type: 'workspace_deployment',
+      workspaceId: input.workspaceId,
+      deploymentId: input.deploymentId,
+    },
+    mode: 'report_only',
+    policy: {
+      severityThreshold:
+        typeof input.policy.severityThreshold === 'string' && input.policy.severityThreshold.trim()
+          ? input.policy.severityThreshold.trim()
+          : 'low',
+      maxFindings: typeof input.policy.maxFindings === 'number' && Number.isFinite(input.policy.maxFindings)
+        ? Math.max(1, Math.min(500, Math.floor(input.policy.maxFindings)))
+        : 100,
+      includeProvenance: input.policy.includeProvenance !== false,
+      includeValidationEvidence: input.policy.includeValidationEvidence !== false,
+    },
+    format: {
+      primary: typeof input.format.primary === 'string' && input.format.primary.trim() ? input.format.primary.trim() : 'json',
+      includeMarkdownSummary: input.format.includeMarkdownSummary !== false,
+    },
+    provenance: {
+      trigger: 'api',
+    },
+  };
+}
+
 async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest))
@@ -128,35 +265,37 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
 
     const policy = isRecord(payload.policy) ? payload.policy : {};
     const format = isRecord(payload.format) ? payload.format : {};
-    const requestPayload = {
-      target: {
-        type: 'workspace_deployment',
-        workspaceId,
-        deploymentId,
-      },
-      mode: 'report_only',
-      policy: {
-        severityThreshold:
-          typeof policy.severityThreshold === 'string' && policy.severityThreshold.trim()
-            ? policy.severityThreshold.trim()
-            : 'low',
-        maxFindings: typeof policy.maxFindings === 'number' && Number.isFinite(policy.maxFindings)
-          ? Math.max(1, Math.min(500, Math.floor(policy.maxFindings)))
-          : 100,
-        includeProvenance: policy.includeProvenance !== false,
-        includeValidationEvidence: policy.includeValidationEvidence !== false,
-      },
-      format: {
-        primary: typeof format.primary === 'string' && format.primary.trim() ? format.primary.trim() : 'json',
-        includeMarkdownSummary: format.includeMarkdownSummary !== false,
-      },
-      provenance: {
-        trigger: 'api',
-      },
-    };
+    const severityThresholdValue =
+      typeof policy.severityThreshold === 'string' ? policy.severityThreshold.trim() : policy.severityThreshold;
+    if (severityThresholdValue !== undefined && !isSeverityThreshold(severityThresholdValue)) {
+      return jsonResponse(
+        {
+          error: 'Invalid policy.severityThreshold',
+          code: 'invalid_review_policy',
+          allowedSeverityThresholds: ['low', 'medium', 'high', 'critical'],
+        },
+        400
+      );
+    }
+    const { requestPayload, idempotencyPayload } = buildReviewRequestPayload({
+      workspaceId,
+      deploymentId,
+      policy,
+      format,
+    });
 
-    const requestPayloadSha256 = await sha256Hex(JSON.stringify(requestPayload));
-    const existingReview = await getReviewRunByIdempotency(env.DB, workspaceId, idempotencyKey, requestPayloadSha256);
+    const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));
+    const legacyRequestPayloadSha256 = await sha256Hex(
+      JSON.stringify(buildLegacyReviewRequestPayload({ workspaceId, deploymentId, policy, format }))
+    );
+    const requestPayloadSha256Aliases = legacyRequestPayloadSha256 === requestPayloadSha256 ? [] : [legacyRequestPayloadSha256];
+    const existingReview = await getReviewRunByIdempotency(
+      env.DB,
+      workspaceId,
+      idempotencyKey,
+      requestPayloadSha256,
+      requestPayloadSha256Aliases
+    );
     if (existingReview) {
       const created = { review: existingReview, reused: true };
 
@@ -222,6 +361,7 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       idempotencyKey,
       requestPayload,
       requestPayloadSha256,
+      requestPayloadSha256Aliases,
       provenance: {
         promptSummary: `Review deployment ${deploymentId} for workspace ${workspaceId}`,
       },

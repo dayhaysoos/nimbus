@@ -18,6 +18,8 @@ const LONG_VALUE_FLAGS = new Set([
   'deployment',
   'format',
   'out',
+  'severity-threshold',
+  'max-findings',
 ]);
 const SHORT_VALUE_FLAGS = new Set<string>();
 

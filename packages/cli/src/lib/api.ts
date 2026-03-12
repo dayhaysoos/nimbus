@@ -321,6 +321,12 @@ export async function createReview(
       deploymentId: string;
     };
     mode: 'report_only';
+    policy?: {
+      severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
+      maxFindings?: number;
+      includeProvenance?: boolean;
+      includeValidationEvidence?: boolean;
+    };
   }
 ): Promise<ReviewCreateResponse> {
   const response = await fetch(`${workerUrl}/api/reviews`, {

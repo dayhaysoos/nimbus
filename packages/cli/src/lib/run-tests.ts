@@ -8,6 +8,7 @@ import { runCheckpointApiTests } from './api.checkpoint.test.js';
 import { runWorkspaceApiTests } from './api.workspace.test.js';
 import { runCheckpointCommandTests } from '../commands/deploy/checkpoint.test.js';
 import { runArgsParsingTests } from './args.test.js';
+import { runReviewPolicyTests } from './review-policy.test.js';
 import { runWorkspaceDeployCommandTests } from '../commands/workspace/deploy.test.js';
 import { runReviewCommandTests } from '../commands/review/review.test.js';
 
@@ -26,6 +27,7 @@ const TEST_CASES: TestCase[] = [
   { name: 'workspace-api', run: runWorkspaceApiTests },
   { name: 'checkpoint-command', run: runCheckpointCommandTests },
   { name: 'args-parsing', run: runArgsParsingTests },
+  { name: 'review-policy', run: runReviewPolicyTests },
   { name: 'workspace-deploy-command', run: runWorkspaceDeployCommandTests },
   { name: 'review-command', run: runReviewCommandTests },
   { name: 'checkpoint-options', run: runCheckpointOptionsTests },

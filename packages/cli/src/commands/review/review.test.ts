@@ -77,10 +77,28 @@ export async function runReviewCommandTests(): Promise<void> {
         );
       }) as typeof fetch;
 
-      await createReviewCommand('ws_abc12345', 'dep_abcd1234', { idempotencyKey: 'idem-review-1' });
+      await createReviewCommand('ws_abc12345', 'dep_abcd1234', {
+        idempotencyKey: 'idem-review-1',
+        severityThreshold: 'medium',
+        maxFindings: 12,
+        includeProvenance: false,
+        includeValidationEvidence: false,
+      });
       assert.equal(requests.length, 1);
       assert.equal(requests[0].url.endsWith('/api/reviews'), true);
       assert.equal((requests[0].init?.headers as Record<string, string>)['Idempotency-Key'], 'idem-review-1');
+      const requestBody = JSON.parse(String(requests[0].init?.body ?? '{}')) as {
+        policy?: {
+          severityThreshold?: string;
+          maxFindings?: number;
+          includeProvenance?: boolean;
+          includeValidationEvidence?: boolean;
+        };
+      };
+      assert.equal(requestBody.policy?.severityThreshold, 'medium');
+      assert.equal(requestBody.policy?.maxFindings, 12);
+      assert.equal(requestBody.policy?.includeProvenance, false);
+      assert.equal(requestBody.policy?.includeValidationEvidence, false);
     }
 
     {

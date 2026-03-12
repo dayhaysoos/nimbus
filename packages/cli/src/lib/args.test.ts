@@ -44,6 +44,12 @@ export function runArgsParsingTests(): void {
       'ws_abc12345',
       '--deployment',
       'dep_abcd1234',
+      '--severity-threshold',
+      'medium',
+      '--max-findings',
+      '12',
+      '--no-provenance',
+      '--no-validation-evidence',
       '--format',
       'markdown',
       '--out',
@@ -53,6 +59,10 @@ export function runArgsParsingTests(): void {
     ]);
     assert.equal(parsed.flags.workspace, 'ws_abc12345');
     assert.equal(parsed.flags.deployment, 'dep_abcd1234');
+    assert.equal(parsed.flags['severity-threshold'], 'medium');
+    assert.equal(parsed.flags['max-findings'], '12');
+    assert.equal(parsed.flags['no-provenance'], true);
+    assert.equal(parsed.flags['no-validation-evidence'], true);
     assert.equal(parsed.flags.format, 'markdown');
     assert.equal(parsed.flags.out, 'review.md');
   }
