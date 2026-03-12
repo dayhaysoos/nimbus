@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "810793479b0d",
+  "session_id": "ses_3209ae199ffeHXONPjnnLsq25b",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-12T19:41:28.046311Z",
+  "branch": "phase-08a",
+  "checkpoints_count": 13,
+  "files_touched": [
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.test.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "specs/phases/05-deploy-from-workspace.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "4bb1f1e4ae62",
+  "checkpoint_transcript_start": 201,
+  "transcript_lines_at_start": 201,
+  "token_usage": {
+    "input_tokens": 4359136,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 32279680,
+    "output_tokens": 84846,
+    "api_call_count": 180
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-12T19:41:22.185797Z",
+    "agent_lines": 2912,
+    "human_added": 306,
+    "human_modified": 5,
+    "human_removed": 0,
+    "total_committed": 3223,
+    "agent_percentage": 90.35060502637295
+  }
+}
