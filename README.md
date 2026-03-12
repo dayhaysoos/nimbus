@@ -8,21 +8,29 @@ Entire docs: [docs.entire.io/introduction](https://docs.entire.io/introduction)
 
 ## Current Focus
 
-The current priority is launching Entire checkpoints in a sandbox execution pipeline:
+Nimbus currently supports a cloud review/deploy workflow built around immutable source snapshots:
 
 - Resolve an Entire checkpoint (or commit) to source
-- Upload a source bundle to the worker
-- Queue a background checkpoint job
-- Run install/build/test/lint inside Cloudflare Sandbox
-- Persist job status and replayable events
+- Create a workspace from that snapshot
+- Run deploy validation and deployment inside Cloudflare Sandbox
+- Persist replayable deploy/review lifecycle state in D1
+- Generate non-mutating deployment-backed review reports
 
 ## What Works Today
 
-- `deploy checkpoint` dry-run resolution and preflight
-- Live checkpoint job creation with `--no-dry-run`
-- Queue-backed worker processing (`CHECKPOINT_JOBS_QUEUE`)
-- Deterministic installs with lockfile enforcement
-- `watch` polling for queued/running/completed/failed jobs
+- Checkpoint/commit-backed workspace creation
+- Queue-backed workspace task and workspace deploy processing
+- Deploy preflight with toolchain / git baseline / secret scan checks
+- Deployment lifecycle tracking with replayable events
+- Non-mutating review lifecycle with persisted reports and live SSE events
+- CLI flows for:
+  - `workspace create`
+  - `workspace show`
+  - `workspace deploy`
+  - `review create`
+  - `review events`
+  - `review show`
+  - `review export`
 
 Entire checkpoint notes:
 
@@ -31,9 +39,10 @@ Entire checkpoint notes:
 
 ## Known Limits (Expected Right Now)
 
-- No persistent preview/deployed URL for checkpoint jobs yet
-- Checkpoint live SSE stream output in CLI is not complete yet
-- Checkpoint install support is currently for npm/bun lockfiles (pnpm/yarn are rejected)
+- Review quality still depends heavily on the external agent/provider output
+- `workspace_deployment` is the only review target in this slice
+- Simulated deploy provider returns a synthetic deployed URL unless real provider mode is enabled
+- `workspace create HEAD` uses committed `HEAD`, not uncommitted local changes
 
 ## Quick Start (Dev)
 
@@ -48,8 +57,7 @@ pnpm install
 Set up infra (safe to re-run):
 
 ```bash
-pnpm wrangler queues create nimbus-checkpoint-jobs
-pnpm wrangler d1 migrations apply nimbus-db --remote
+pnpm run setup:worker
 ```
 
 Deploy worker:
@@ -63,6 +71,26 @@ Point CLI to your worker URL:
 ```bash
 export NIMBUS_WORKER_URL="https://<your-worker>.workers.dev"
 ```
+
+## Quick Start (Cloud Flow)
+
+Run this from repo root to exercise the deployed worker + cloud sandbox flow:
+
+```bash
+pnpm --filter @dayhaysoos/nimbus dev workspace create HEAD
+pnpm --filter @dayhaysoos/nimbus dev workspace show <workspace-id>
+pnpm --filter @dayhaysoos/nimbus dev workspace deploy <workspace-id> --no-tests --no-build
+pnpm --filter @dayhaysoos/nimbus dev review create --workspace <workspace-id> --deployment <deployment-id>
+pnpm --filter @dayhaysoos/nimbus dev review events <review-id>
+pnpm --filter @dayhaysoos/nimbus dev review show <review-id>
+pnpm --filter @dayhaysoos/nimbus dev review export <review-id> --format markdown --out /tmp/review.md
+```
+
+Notes:
+
+- The CLI runs locally; workspace/deploy/review execution happens in the cloud worker + sandbox.
+- If deploy preflight fails because validation tooling is missing in the sandbox, use `--no-tests --no-build` for the manual flow.
+- If deploy preflight reports a missing git baseline, retry with `--auto-fix` or reset/recreate the workspace.
 
 Create and watch a live checkpoint job:
 
@@ -88,6 +116,12 @@ pnpm --filter @dayhaysoos/nimbus test
 
 # Run worker locally
 pnpm dev
+
+# Deploy latest worker
+pnpm run deploy
+
+# Set up worker infra
+pnpm run setup:worker
 ```
 
 ## CLI Surface (Current)
@@ -96,6 +130,13 @@ pnpm dev
 nimbus list
 nimbus watch <job-id>
 nimbus deploy checkpoint <checkpoint-id-or-commit-ish>
+nimbus workspace create <checkpoint-id-or-commit-ish>
+nimbus workspace show <workspace-id>
+nimbus workspace deploy <workspace-id>
+nimbus review create --workspace <workspace-id> --deployment <deployment-id>
+nimbus review events <review-id>
+nimbus review show <review-id>
+nimbus review export <review-id> --format markdown --out <path>
 ```
 
 Important checkpoint flags:
@@ -105,11 +146,21 @@ Important checkpoint flags:
 - `--no-tests`, `--no-lint`: skip validation steps in metadata
 - `--env-file`, `--env KEY=VALUE`: pass environment inputs for preflight
 
+Important workspace/review flags:
+
+- `workspace deploy --auto-fix`: allow safe git baseline rehydrate remediation
+- `workspace deploy --no-tests --no-build`: skip validation steps during manual cloud smoke flows
+- `review create --severity-threshold <level>`: limit persisted findings by severity
+- `review create --max-findings <n>`: cap persisted findings
+- `review create --no-provenance`: suppress provenance in final report output
+- `review create --no-validation-evidence`: suppress deploy/validation evidence in final report output
+
 ## Notes
 
 - Node 20+ is required.
 - Nimbus currently targets self-hosted worker usage.
 - If you hit `404` on `/api/checkpoint/jobs`, deploy the latest worker code.
+- If you hit review/deploy API shape mismatches, redeploy the latest worker and re-run migrations.
 
 ## License
 
