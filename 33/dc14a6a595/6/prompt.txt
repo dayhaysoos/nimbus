@@ -1,0 +1,106 @@
+You are taking over Phase 8A in Nimbus on branch phase-08a.
+
+Read first:
+- specs/phases/08a-review-first-code-review-reports.md (@specs/phases/08a-review-first-code-review-reports.md 
+- llm-docs/review-tool-v1-contract.md
+- llm-docs/review-tool-best-practices.md
+- llm-docs/ask-bonk-harness-notes.md (including review-first sequencing update)
+
+
+
+
+Current context:
+- Phase 7 stabilization is complete and pushed.
+- Real deploy path is now truthful and reachability-gated.
+- We now need review-first report generation (non-mutating) ASAP.
+
+
+
+
+Your mission:
+Implement the minimum working Phase 8A vertical slice:
+1) Review run persistence + lifecycle model (queued/running/succeeded/failed/cancelled) in D1.
+2) API endpoints:
+   - POST /api/reviews
+   - GET /api/reviews/:id
+   - GET /api/reviews/:id/events (SSE)
+3) Target adapter v1:
+   - workspace_deployment target only
+4) Report output:
+   - JSON report contract + markdown summary
+   - include intent/provenance summary and deployment evidence if available
+5) CLI commands:
+   - nimbus review create --workspace <id> --deployment <id>
+   - nimbus review show <review-id>
+   - nimbus review export <review-id> --format markdown --out <path>
+
+
+
+
+Constraints:
+- Non-mutating only (no edit/apply/commit/push from review runs).
+- Idempotency required for create.
+- Reuse existing event/lifecycle patterns from task/deploy flows.
+- Keep changes surgical and style-consistent.
+- Add tests for API + lifecycle + CLI export.
+
+
+
+
+Execution style:
+- Build in vertical slices.
+- After each slice: run tests, fix failures, then proceed.
+- Don’t move to next slice until current one is green.
+
+
+
+
+When done, report:
+- files changed
+- commands run
+- test results
+- example review run ID + sample markdown summary output
+- known follow-ups for next slice
+
+
+
+
+Put a plan together on how you’d go about all of this for my review.
+
+---
+
+build.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Oh before I run another review, I want you to implement this:
+
+If you want, I can do one more pass to add nimbus review events <review-id> so the CLI fully matches the spec surface.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+okay I really want to test this out manually. are we able to actually test the review process right now or no? just answer the question
