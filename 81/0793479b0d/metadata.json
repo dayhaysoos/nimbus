@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "810793479b0d",
+  "strategy": "manual-commit",
+  "branch": "phase-08a",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.test.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/review-policy.test.ts",
+    "packages/cli/src/lib/review-policy.ts",
+    "packages/cli/src/lib/run-tests.ts",
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "specs/phases/05-deploy-from-workspace.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/81/0793479b0d/0/metadata.json",
+      "transcript": "/81/0793479b0d/0/full.jsonl",
+      "context": "/81/0793479b0d/0/context.md",
+      "content_hash": "/81/0793479b0d/0/content_hash.txt",
+      "prompt": "/81/0793479b0d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 177735,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1651968,
+    "output_tokens": 12705,
+    "api_call_count": 25
+  }
+}

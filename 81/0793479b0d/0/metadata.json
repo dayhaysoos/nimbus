@@ -1,0 +1,49 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "810793479b0d",
+  "session_id": "ses_31ce13b40ffeiYcy67xOon3bar",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-12T19:41:17.090369Z",
+  "branch": "phase-08a",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.test.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/review-policy.test.ts",
+    "packages/cli/src/lib/review-policy.ts",
+    "packages/cli/src/lib/run-tests.ts",
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.test.ts",
+    "packages/worker/src/lib/workspace-deployment-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "specs/phases/05-deploy-from-workspace.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "7ae69c35357d",
+  "token_usage": {
+    "input_tokens": 177735,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1651968,
+    "output_tokens": 12705,
+    "api_call_count": 25
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-12T19:41:16.730887Z",
+    "agent_lines": 3185,
+    "human_added": 33,
+    "human_modified": 5,
+    "human_removed": 0,
+    "total_committed": 3223,
+    "agent_percentage": 98.8209742475954
+  }
+}
