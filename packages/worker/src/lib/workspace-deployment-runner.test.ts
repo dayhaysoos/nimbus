@@ -23,6 +23,7 @@ function createDeploymentRunnerEnv(options?: {
   requestOutputDir?: string | null;
   allowProjectToolMissing?: boolean;
   sourceProjectRoot?: string;
+  envOverrides?: Record<string, unknown>;
   initialStatus?: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   initialStartedAt?: string | null;
   initialCancelRequestedAt?: string | null;
@@ -40,6 +41,10 @@ function createDeploymentRunnerEnv(options?: {
     startedAt: string | null;
     workspaceSummaryUpdateCalls: number;
     workspaceSummaryLastStatus: string | null;
+    artifactObjectKeys: string[];
+    createdArtifactObjectKeys: string[];
+    patchArtifactContents: string[];
+    resultJson: string | null;
   };
 } {
   const state = {
@@ -52,6 +57,10 @@ function createDeploymentRunnerEnv(options?: {
     startedAt: options?.initialStartedAt ?? null,
     workspaceSummaryUpdateCalls: 0,
     workspaceSummaryLastStatus: null as string | null,
+    artifactObjectKeys: [] as string[],
+    createdArtifactObjectKeys: [] as string[],
+    patchArtifactContents: [] as string[],
+    resultJson: null as string | null,
   };
 
   const deploymentPayload = {
@@ -149,7 +158,7 @@ function createDeploymentRunnerEnv(options?: {
                     started_at: state.startedAt,
                     finished_at: null,
                     duration_ms: null,
-                    result_json: null,
+                     result_json: state.resultJson,
                     error_code: null,
                     error_message: null,
                     created_at: '2026-03-08T00:00:00.000Z',
@@ -407,6 +416,11 @@ function createDeploymentRunnerEnv(options?: {
                     state.cancelRequestedAt = null;
                   }
                   for (const value of values) {
+                    if (typeof value === 'string' && value.trim().startsWith('{') && value.includes('reviewDiffArtifactId')) {
+                      state.resultJson = value;
+                    }
+                  }
+                  for (const value of values) {
                     if (typeof value === 'string' && value.startsWith('https://')) {
                       state.deployedUrl = value;
                     }
@@ -437,6 +451,36 @@ function createDeploymentRunnerEnv(options?: {
                     throw new Error('database is locked');
                   }
                   return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_artifacts/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  state.createdArtifactObjectKeys.push(String(values[4] ?? ''));
+                  return {
+                    id: values[0],
+                    workspace_id: values[1],
+                    operation_id: values[2],
+                    type: values[3],
+                    object_key: values[4],
+                    bytes: values[5],
+                    content_type: values[6],
+                    sha256: values[7],
+                    source_baseline_sha: values[8],
+                    creator_id: values[9],
+                    retention_expires_at: values[10],
+                    expired_at: null,
+                    warnings_json: values[11],
+                    metadata_json: values[12],
+                    created_at: '2026-03-08T00:00:00.000Z',
+                    updated_at: '2026-03-08T00:00:00.000Z',
+                  } as T;
                 },
               };
             },
@@ -474,7 +518,11 @@ function createDeploymentRunnerEnv(options?: {
       },
     },
     WORKSPACE_ARTIFACTS: {
-      async put() {
+      async put(key: string, value?: unknown) {
+        state.artifactObjectKeys.push(key);
+        if (key.endsWith('.patch') && value instanceof Uint8Array) {
+          state.patchArtifactContents.push(new TextDecoder().decode(value));
+        }
         return;
       },
       async get(key: string) {
@@ -493,6 +541,7 @@ function createDeploymentRunnerEnv(options?: {
         return {};
       },
     },
+    ...(options?.envOverrides ?? {}),
   };
 
   return { env, state };
@@ -551,6 +600,183 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
     assert.equal(state.status, 'succeeded');
     assert.equal(Boolean(state.deployedUrl), true);
     assert.equal(state.events.some((event) => event.eventType === 'deployment_succeeded'), true);
+    assert.equal(state.artifactObjectKeys.some((key) => key.endsWith('.patch')), true);
+    assert.equal(state.createdArtifactObjectKeys.some((key) => key.endsWith('.patch')), true);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({
+      envOverrides: {
+        SOURCE_BUNDLES: {
+          async get(key: string) {
+            if (key !== 'key') {
+              return null;
+            }
+            return {
+              async arrayBuffer() {
+                return new TextEncoder().encode('baseline bundle bytes').buffer;
+              },
+            };
+          },
+        },
+      },
+    });
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(state.events.some((event) => event.eventType === 'deployment_review_diff_skipped'), true);
+    assert.equal(state.artifactObjectKeys.some((key) => key.endsWith('.patch')), false);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv({
+      requestAutoFixRehydrateBaseline: true,
+      requestRunTestsIfPresent: false,
+      requestRunBuildIfPresent: false,
+      envOverrides: {
+        SOURCE_BUNDLES: {
+          async get(key: string) {
+            if (key !== 'key') {
+              return null;
+            }
+            return {
+              async arrayBuffer() {
+                return new TextEncoder().encode('baseline bundle bytes').buffer;
+              },
+            };
+          },
+        },
+      },
+    });
+    let baselineChecked = false;
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          if (!baselineChecked) {
+            baselineChecked = true;
+            return { stdout: '', stderr: '', exitCode: 1 };
+          }
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes("git init -q && git config user.email")) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 -d') && command.includes('diff -ruN')) {
+          return {
+            stdout:
+              'diff -ruN /tmp/nimbus-deploy-baseline.abcd/src/app.ts /workspace/src/app.ts\n--- /tmp/nimbus-deploy-baseline.abcd/src/app.ts\n+++ /workspace/src/app.ts\n+const deployed = true;\n',
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('GIT_INDEX_FILE="$tmp_index" git diff --cached -M HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+    }));
+
+    await runWorkspaceDeploymentInlineWithRetries(env as never, 'ws_abc12345', 'dep_abcd1234', 2);
+    assert.equal(state.status, 'succeeded');
+    assert.equal(state.patchArtifactContents.some((content) => content.includes('const deployed = true')), true);
+    assert.equal(state.patchArtifactContents.some((content) => content.includes('/tmp/nimbus-deploy-baseline.')), false);
+    assert.equal(state.patchArtifactContents.some((content) => content.includes('/workspace/')), false);
+    assert.equal(state.patchArtifactContents.some((content) => content.includes('--- a/src/app.ts')), true);
+    assert.equal(state.patchArtifactContents.some((content) => content.includes('+++ b/src/app.ts')), true);
+  }
+
+  {
+    const { env, state } = createDeploymentRunnerEnv();
+    setWorkspaceDeploymentSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_scripts')) {
+          return { stdout: JSON.stringify({ hasBuild: false, hasTest: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('nimbus_detect_toolchain')) {
+          return {
+            stdout: JSON.stringify({
+              packageManager: 'npm@10.8.2',
+              scripts: {},
+              lockfiles: { pnpm: null, yarn: null, npm: null },
+              projectRoot: '.',
+            }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (command.includes('nimbus_detect_secrets')) {
+          return { stdout: '[]', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 "$tmp_bundle"')) {
+          return { stdout: 'AQID', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('GIT_INDEX_FILE="$tmp_index" git diff --cached -M HEAD')) {
+          state.cancelRequestedAt = '2026-03-08T00:00:03.000Z';
+          return { stdout: 'diff --git a/src/app.ts b/src/app.ts\n+const deployed = true;\n', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+    }));
+
+    await processWorkspaceDeployment(env as never, 'ws_abc12345', 'dep_abcd1234');
+    assert.equal(state.status, 'cancelled');
+    assert.equal(state.events.some((event) => event.eventType === 'deployment_provider_created'), false);
   }
 
   {
@@ -1273,6 +1499,7 @@ export async function runWorkspaceDeploymentRunnerTests(): Promise<void> {
     assert.equal(state.status, 'succeeded');
     assert.equal(state.cancelRequestedAt, null);
     assert.equal(state.events.some((event) => event.eventType === 'deployment_cancel_rejected'), true);
+    assert.equal((state.resultJson ?? '').includes('reviewDiffArtifactId'), true);
   }
 
   {

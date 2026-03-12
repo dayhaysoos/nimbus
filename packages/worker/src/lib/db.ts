@@ -4,6 +4,15 @@ import type {
   JobListItem,
   JobStatus,
   JobPhase,
+  ReviewConfidence,
+  ReviewFinding,
+  ReviewReport,
+  ReviewRunRecord,
+  ReviewRunResponse,
+  ReviewRunStatus,
+  ReviewSeverity,
+  ReviewTargetType,
+  ReviewMode,
   WorkspaceRecord,
   WorkspaceResponse,
   WorkspaceStatus,
@@ -139,6 +148,19 @@ export interface CreateWorkspaceDeploymentInput {
   provenance?: Record<string, unknown>;
 }
 
+export interface CreateReviewRunInput {
+  id: string;
+  workspaceId: string;
+  deploymentId: string;
+  targetType: ReviewTargetType;
+  mode: ReviewMode;
+  idempotencyKey: string;
+  requestPayload: unknown;
+  requestPayloadSha256: string;
+  requestPayloadSha256Aliases?: string[];
+  provenance?: Record<string, unknown>;
+}
+
 export interface WorkspaceTaskEventRecord {
   seq: number;
   event_type: string;
@@ -161,6 +183,20 @@ export interface WorkspaceDeploymentEventRecord {
 }
 
 export interface WorkspaceDeploymentEventItem {
+  seq: number;
+  eventType: string;
+  payload: unknown;
+  createdAt: string;
+}
+
+export interface ReviewEventRecord {
+  seq: number;
+  event_type: string;
+  payload_json: string;
+  created_at: string;
+}
+
+export interface ReviewEventItem {
   seq: number;
   eventType: string;
   payload: unknown;
@@ -244,6 +280,13 @@ export class WorkspaceDeploymentIdempotencyConflictError extends Error {
   }
 }
 
+export class ReviewIdempotencyConflictError extends Error {
+  constructor(public readonly key: string) {
+    super(`Review idempotency key conflict: ${key}`);
+    this.name = 'ReviewIdempotencyConflictError';
+  }
+}
+
 function isUniqueConstraintError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -307,6 +350,10 @@ export function generateWorkspaceTaskId(): string {
 
 export function generateWorkspaceDeploymentId(): string {
   return generatePrefixedId('dep');
+}
+
+export function generateReviewRunId(): string {
+  return generatePrefixedId('rev');
 }
 
 /**
@@ -532,6 +579,67 @@ function toWorkspaceDeploymentResponse(record: WorkspaceDeploymentRecord): Works
     response.result = result;
   }
 
+  if (record.error_code && record.error_message) {
+    response.error = {
+      code: record.error_code,
+      message: record.error_message,
+    };
+  }
+
+  return response;
+}
+
+function toReviewFindingRecord(value: unknown): ReviewFinding[] {
+  return Array.isArray(value) ? (value as ReviewFinding[]) : [];
+}
+
+function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
+  const provenance = parseJsonOrFallback(record.provenance_json, {});
+  const report = parseJsonOrFallback(record.report_json, null) as ReviewReport | null;
+  const reportHasProvenance = Boolean(report?.provenance);
+
+  const response: ReviewRunResponse = {
+    id: record.id,
+    workspaceId: record.workspace_id,
+    deploymentId: record.deployment_id,
+    target: {
+      type: record.target_type,
+      workspaceId: record.workspace_id,
+      deploymentId: record.deployment_id,
+    },
+    mode: record.mode,
+    status: record.status,
+    idempotencyKey: record.idempotency_key,
+    attemptCount: record.attempt_count,
+    startedAt: record.started_at,
+    finishedAt: record.finished_at,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+    findings: toReviewFindingRecord(report?.findings),
+    evidence: Array.isArray(report?.evidence) ? report.evidence : [],
+    provenance: {
+      sessionIds:
+        report?.provenance && Array.isArray(report.provenance.sessionIds) ? report.provenance.sessionIds : [],
+      promptSummary:
+        report?.provenance && typeof report.provenance.promptSummary === 'string'
+          ? report.provenance.promptSummary
+          : !reportHasProvenance && typeof (provenance as Record<string, unknown>).promptSummary === 'string'
+            ? ((provenance as Record<string, unknown>).promptSummary as string)
+            : null,
+      transcriptUrl:
+        report?.provenance && typeof report.provenance.transcriptUrl === 'string'
+          ? report.provenance.transcriptUrl
+          : null,
+    },
+    markdownSummary: record.markdown_summary,
+  };
+
+  if (report?.summary) {
+    response.summary = report.summary;
+  }
+  if (report?.intent) {
+    response.intent = report.intent;
+  }
   if (record.error_code && record.error_message) {
     response.error = {
       code: record.error_code,
@@ -2383,6 +2491,468 @@ export async function hasWorkspaceDeploymentEvent(
     .first<{ '1': number }>();
 
   return Boolean(record);
+}
+
+export async function createReviewRun(
+  db: D1Database,
+  input: CreateReviewRunInput
+): Promise<{ review: ReviewRunResponse; reused: boolean }> {
+  const now = new Date().toISOString();
+  const acceptedHashes = new Set([input.requestPayloadSha256, ...(input.requestPayloadSha256Aliases ?? [])]);
+  const existingIdempotency = await db
+    .prepare(
+      `SELECT review_id, request_payload_sha256, expires_at
+       FROM review_run_idempotency
+       WHERE workspace_id = ? AND idempotency_key = ?
+       LIMIT 1`
+    )
+    .bind(input.workspaceId, input.idempotencyKey)
+    .first<{ review_id: string; request_payload_sha256: string; expires_at: string }>();
+
+  if (existingIdempotency && existingIdempotency.expires_at > now) {
+    if (!acceptedHashes.has(existingIdempotency.request_payload_sha256)) {
+      throw new ReviewIdempotencyConflictError(input.idempotencyKey);
+    }
+
+    const existingReview = await getReviewRun(db, existingIdempotency.review_id);
+    if (!existingReview) {
+      throw new Error(`Idempotency record references missing review ${existingIdempotency.review_id}`);
+    }
+
+    return { review: existingReview, reused: true };
+  }
+
+  if (existingIdempotency && existingIdempotency.expires_at <= now) {
+    await db
+      .prepare('DELETE FROM review_run_idempotency WHERE workspace_id = ? AND idempotency_key = ?')
+      .bind(input.workspaceId, input.idempotencyKey)
+      .run();
+  }
+
+  const idempotencyWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const existingReviewByKey = await db
+    .prepare(
+      `SELECT *
+       FROM review_runs
+       WHERE workspace_id = ?
+         AND idempotency_key = ?
+         AND julianday(created_at) >= julianday(?)
+       ORDER BY created_at DESC
+       LIMIT 1`
+    )
+    .bind(input.workspaceId, input.idempotencyKey, idempotencyWindowStart)
+    .first<ReviewRunRecord>();
+
+  if (existingReviewByKey) {
+    if (!acceptedHashes.has(existingReviewByKey.request_payload_sha256)) {
+      throw new ReviewIdempotencyConflictError(input.idempotencyKey);
+    }
+
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    try {
+      await db
+        .prepare(
+          `INSERT INTO review_run_idempotency (
+             id,
+             workspace_id,
+             idempotency_key,
+             review_id,
+             request_payload_sha256,
+             expires_at
+           )
+           VALUES (?, ?, ?, ?, ?, ?)`
+        )
+        .bind(
+          generatePrefixedId('rvid'),
+          input.workspaceId,
+          input.idempotencyKey,
+          existingReviewByKey.id,
+          input.requestPayloadSha256,
+          expiresAt
+        )
+        .run();
+    } catch (error) {
+      if (!isUniqueConstraintError(error)) {
+        throw error;
+      }
+    }
+
+    return { review: toReviewRunResponse(existingReviewByKey), reused: true };
+  }
+
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const reviewRecord = await db
+    .prepare(
+      `INSERT INTO review_runs (
+         id,
+         workspace_id,
+         deployment_id,
+         target_type,
+         mode,
+         status,
+         idempotency_key,
+         request_payload_json,
+         request_payload_sha256,
+         provenance_json,
+         created_at,
+         updated_at
+       )
+       VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)
+       RETURNING *`
+    )
+    .bind(
+      input.id,
+      input.workspaceId,
+      input.deploymentId,
+      input.targetType,
+      input.mode,
+      input.idempotencyKey,
+      JSON.stringify(input.requestPayload ?? {}),
+      input.requestPayloadSha256,
+      JSON.stringify(input.provenance ?? {}),
+      now,
+      now
+    )
+    .first<ReviewRunRecord>();
+
+  if (!reviewRecord) {
+    throw new Error('Failed to create review run');
+  }
+
+  try {
+    await db
+      .prepare(
+        `INSERT INTO review_run_idempotency (
+           id,
+           workspace_id,
+           idempotency_key,
+           review_id,
+           request_payload_sha256,
+           expires_at
+         )
+         VALUES (?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        generatePrefixedId('rvid'),
+        input.workspaceId,
+        input.idempotencyKey,
+        input.id,
+        input.requestPayloadSha256,
+        expiresAt
+      )
+      .run();
+  } catch (error) {
+    if (!isUniqueConstraintError(error)) {
+      await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
+      throw error;
+    }
+
+    const concurrent = await db
+      .prepare(
+        `SELECT review_id, request_payload_sha256, expires_at
+         FROM review_run_idempotency
+         WHERE workspace_id = ? AND idempotency_key = ?
+         LIMIT 1`
+      )
+      .bind(input.workspaceId, input.idempotencyKey)
+      .first<{ review_id: string; request_payload_sha256: string; expires_at: string }>();
+
+    if (!concurrent || concurrent.expires_at <= now) {
+      await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
+      throw new Error('Review idempotency race detected but winner record is unavailable');
+    }
+
+    if (!acceptedHashes.has(concurrent.request_payload_sha256)) {
+      await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
+      throw new ReviewIdempotencyConflictError(input.idempotencyKey);
+    }
+
+    const existingReview = await getReviewRun(db, concurrent.review_id);
+    if (!existingReview) {
+      await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
+      throw new Error(`Idempotency record references missing review ${concurrent.review_id}`);
+    }
+
+    await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
+    return { review: existingReview, reused: true };
+  }
+
+  return { review: toReviewRunResponse(reviewRecord), reused: false };
+}
+
+export async function getReviewRun(db: D1Database, reviewId: string): Promise<ReviewRunResponse | null> {
+  const record = await db.prepare('SELECT * FROM review_runs WHERE id = ?').bind(reviewId).first<ReviewRunRecord>();
+  if (!record) {
+    return null;
+  }
+
+  return toReviewRunResponse(record);
+}
+
+export async function getReviewRunByIdempotency(
+  db: D1Database,
+  workspaceId: string,
+  idempotencyKey: string,
+  requestPayloadSha256: string,
+  requestPayloadSha256Aliases: string[] = []
+): Promise<ReviewRunResponse | null> {
+  const now = new Date().toISOString();
+  const acceptedHashes = new Set([requestPayloadSha256, ...requestPayloadSha256Aliases]);
+  const existingIdempotency = await db
+    .prepare(
+      `SELECT review_id, request_payload_sha256, expires_at
+       FROM review_run_idempotency
+       WHERE workspace_id = ? AND idempotency_key = ?
+       LIMIT 1`
+    )
+    .bind(workspaceId, idempotencyKey)
+    .first<{ review_id: string; request_payload_sha256: string; expires_at: string }>();
+
+  if (existingIdempotency && existingIdempotency.expires_at > now) {
+    if (!acceptedHashes.has(existingIdempotency.request_payload_sha256)) {
+      throw new ReviewIdempotencyConflictError(idempotencyKey);
+    }
+
+    const review = await getReviewRun(db, existingIdempotency.review_id);
+    if (!review) {
+      throw new Error(`Idempotency record references missing review ${existingIdempotency.review_id}`);
+    }
+
+    return review;
+  }
+
+  const idempotencyWindowStart = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const existingReview = await db
+    .prepare(
+      `SELECT *
+       FROM review_runs
+       WHERE workspace_id = ?
+         AND idempotency_key = ?
+         AND julianday(created_at) >= julianday(?)
+       ORDER BY created_at DESC
+       LIMIT 1`
+    )
+    .bind(workspaceId, idempotencyKey, idempotencyWindowStart)
+    .first<ReviewRunRecord>();
+
+  if (!existingReview) {
+    return null;
+  }
+
+  if (!acceptedHashes.has(existingReview.request_payload_sha256)) {
+    throw new ReviewIdempotencyConflictError(idempotencyKey);
+  }
+
+  return toReviewRunResponse(existingReview);
+}
+
+export async function getReviewRunRequestPayload(
+  db: D1Database,
+  reviewId: string
+): Promise<Record<string, unknown> | null> {
+  const record = await db
+    .prepare('SELECT request_payload_json FROM review_runs WHERE id = ?')
+    .bind(reviewId)
+    .first<{ request_payload_json: string }>();
+
+  if (!record) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(record.request_payload_json) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return {};
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return {};
+  }
+}
+
+export async function claimReviewRunForExecution(db: D1Database, reviewId: string): Promise<boolean> {
+  const now = new Date().toISOString();
+  const result = await db
+    .prepare(
+      `UPDATE review_runs
+       SET status = 'running',
+           started_at = COALESCE(started_at, ?),
+           attempt_count = attempt_count + 1,
+           error_code = NULL,
+           error_message = NULL,
+           updated_at = ?
+       WHERE id = ? AND status = 'queued'`
+    )
+    .bind(now, now, reviewId)
+    .run();
+
+  return (result.meta?.changes ?? 0) > 0;
+}
+
+export async function updateReviewRunStatus(
+  db: D1Database,
+  reviewId: string,
+  status: ReviewRunStatus,
+  options?: {
+    report?: ReviewReport | null;
+    markdownSummary?: string | null;
+    errorCode?: string | null;
+    errorMessage?: string | null;
+    startedAt?: string | null;
+    finishedAt?: string | null;
+  }
+): Promise<void> {
+  const updates: string[] = ['status = ?', 'updated_at = ?'];
+  const values: Array<string | null> = [status, new Date().toISOString()];
+
+  if (options?.startedAt !== undefined) {
+    updates.push('started_at = ?');
+    values.push(options.startedAt);
+  }
+  if (options?.finishedAt !== undefined) {
+    updates.push('finished_at = ?');
+    values.push(options.finishedAt);
+  }
+  if (options?.report !== undefined) {
+    updates.push('report_json = ?');
+    values.push(options.report ? JSON.stringify(options.report) : null);
+  }
+  if (options?.markdownSummary !== undefined) {
+    updates.push('markdown_summary = ?');
+    values.push(options.markdownSummary);
+  }
+  if (options?.errorCode !== undefined) {
+    updates.push('error_code = ?');
+    values.push(options.errorCode);
+  }
+  if (options?.errorMessage !== undefined) {
+    updates.push('error_message = ?');
+    values.push(options.errorMessage);
+  }
+  if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {
+    updates.push('finished_at = COALESCE(finished_at, ?)');
+    values.push(new Date().toISOString());
+  }
+
+  values.push(reviewId);
+  await db.prepare(`UPDATE review_runs SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
+}
+
+export async function appendReviewEvent(
+  db: D1Database,
+  input: {
+    reviewId: string;
+    eventType: string;
+    payload: unknown;
+  }
+): Promise<number> {
+  const seqResult = await db
+    .prepare('UPDATE review_runs SET last_event_seq = last_event_seq + 1 WHERE id = ? RETURNING last_event_seq')
+    .bind(input.reviewId)
+    .first<{ last_event_seq: number }>();
+
+  if (!seqResult) {
+    throw new Error(`Failed to allocate event sequence for review run ${input.reviewId}`);
+  }
+
+  const seq = Number(seqResult.last_event_seq);
+  await db
+    .prepare(
+      `INSERT INTO review_events (review_id, seq, event_type, payload_json)
+       VALUES (?, ?, ?, ?)`
+    )
+    .bind(input.reviewId, seq, input.eventType, JSON.stringify(input.payload))
+    .run();
+
+  return seq;
+}
+
+export async function listReviewEvents(
+  db: D1Database,
+  reviewId: string,
+  fromExclusive = 0,
+  limit = 500
+): Promise<ReviewEventItem[]> {
+  const result = await db
+    .prepare(
+      `SELECT seq, event_type, payload_json, created_at
+       FROM review_events
+       WHERE review_id = ? AND seq > ?
+       ORDER BY seq ASC
+       LIMIT ?`
+    )
+    .bind(reviewId, fromExclusive, limit)
+    .all<ReviewEventRecord>();
+
+  return result.results.map((row) => {
+    let payload: unknown;
+    try {
+      payload = JSON.parse(row.payload_json);
+    } catch {
+      payload = { raw: row.payload_json };
+    }
+
+    return {
+      seq: row.seq,
+      eventType: row.event_type,
+      payload,
+      createdAt: row.created_at,
+    };
+  });
+}
+
+export async function hasReviewEvent(db: D1Database, reviewId: string, eventType: string): Promise<boolean> {
+  const record = await db
+    .prepare(
+      `SELECT 1
+       FROM review_events
+       WHERE review_id = ? AND event_type = ?
+       LIMIT 1`
+    )
+    .bind(reviewId, eventType)
+    .first<{ '1': number }>();
+
+  return Boolean(record);
+}
+
+export async function replaceReviewFindings(
+  db: D1Database,
+  reviewId: string,
+  findings: ReviewFinding[]
+): Promise<void> {
+  await db.prepare('DELETE FROM review_findings WHERE review_id = ?').bind(reviewId).run();
+
+  for (const finding of findings) {
+    await db
+      .prepare(
+        `INSERT INTO review_findings (
+           id,
+           review_id,
+           severity,
+           confidence,
+           title,
+           description,
+           conditions,
+           locations_json,
+           suggested_fix_json,
+           evidence_refs_json
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .bind(
+        finding.id,
+        reviewId,
+        finding.severity,
+        finding.confidence,
+        finding.title,
+        finding.description,
+        finding.conditions,
+        JSON.stringify(finding.locations),
+        finding.suggestedFix ? JSON.stringify(finding.suggestedFix) : null,
+        JSON.stringify(finding.evidenceRefs)
+      )
+      .run();
+  }
 }
 
 export async function getLatestSuccessfulWorkspaceDeployment(

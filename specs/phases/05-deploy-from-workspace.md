@@ -220,6 +220,8 @@ Errors:
 - Feature flag gate: `workspace_deploy_enabled` (`WORKSPACE_DEPLOY_ENABLED` env default + runtime override).
 - Workspace must exist and be `ready`.
 - Workspace git baseline must exist (`HEAD` required).
+- Current implementation note: workspace `baselineReady` is only a cached readiness hint. The actual git baseline lives inside sandbox `.git` state and can drift or disappear if the sandbox filesystem is replaced or rehydrated from source artifacts that exclude `.git`.
+- Hardening follow-up: make git-dependent operations rehydrate/verify baseline automatically, or persist a canonical baseline artifact/metadata that can deterministically recreate the repo so baseline availability is effectively guaranteed.
 - Optional validation commands:
   - `npm run -s test` when `package.json` has `scripts.test` and `runTestsIfPresent=true`
   - `npm run -s build` when `package.json` has `scripts.build` and `runBuildIfPresent=true`

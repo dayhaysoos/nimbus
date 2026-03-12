@@ -3,6 +3,8 @@ import type { Env } from '../types.js';
 import {
   appendWorkspaceDeploymentEvent,
   claimWorkspaceDeploymentForExecution,
+  createWorkspaceArtifact,
+  generateWorkspaceArtifactId,
   getLatestSuccessfulWorkspaceDeployment,
   getWorkspace,
   getWorkspaceDependencyCache,
@@ -34,6 +36,10 @@ import {
 
 const WORKSPACE_ROOT = '/workspace';
 const STALE_RUNNING_TIMEOUT_MS = 30 * 60 * 1000;
+const BASELINE_BUNDLE_BASE64_PATH = '/tmp/nimbus-deploy-baseline.tar.gz.base64';
+const BASELINE_BUNDLE_PATH = '/tmp/nimbus-deploy-baseline.tar.gz';
+const BASELINE_BUNDLE_PART_PREFIX = '/tmp/nimbus-deploy-baseline.tar.gz.part';
+const BASELINE_BUNDLE_CHUNK_BYTES = 510 * 1024;
 
 interface SandboxClient {
   exec(
@@ -46,6 +52,7 @@ interface SandboxClient {
     stderr: string;
     exitCode: number;
   }>;
+  writeFile?(path: string, contents: string): Promise<unknown>;
 }
 
 class QueueRetryError extends Error {
@@ -288,6 +295,28 @@ function toBase64(input: Uint8Array): string {
     return globalThis.btoa(binary);
   }
   throw new Error('No base64 encoder is available in this runtime');
+}
+
+async function writeBaselineBundleBase64InChunks(sandbox: SandboxClient, bundleBytes: ArrayBuffer): Promise<void> {
+  if (typeof sandbox.writeFile !== 'function') {
+    throw new Error('Sandbox writeFile support is required to materialize deployment baseline bundle');
+  }
+
+  const bytes = new Uint8Array(bundleBytes);
+  await runSandboxCommand(
+    sandbox,
+    `rm -f ${shellQuote(BASELINE_BUNDLE_BASE64_PATH)} ${shellQuote(BASELINE_BUNDLE_PATH)} ${shellQuote(BASELINE_BUNDLE_PART_PREFIX)}*`
+  );
+
+  let partIndex = 0;
+  for (let offset = 0; offset < bytes.byteLength; offset += BASELINE_BUNDLE_CHUNK_BYTES) {
+    const chunk = bytes.subarray(offset, Math.min(offset + BASELINE_BUNDLE_CHUNK_BYTES, bytes.byteLength));
+    const partPath = `${BASELINE_BUNDLE_PART_PREFIX}.${String(partIndex).padStart(4, '0')}`;
+    await sandbox.writeFile(partPath, toBase64(chunk));
+    partIndex += 1;
+  }
+
+  await runSandboxCommand(sandbox, `cat ${shellQuote(BASELINE_BUNDLE_PART_PREFIX)}.* > ${shellQuote(BASELINE_BUNDLE_BASE64_PATH)}`);
 }
 
 async function getWorkspaceSandbox(env: Env, sandboxId: string): Promise<SandboxClient> {
@@ -543,6 +572,107 @@ async function createDeploymentBundle(
     sha256: sha,
     objectKeySuffix: 'source.tar.gz',
   };
+}
+
+async function createDeploymentDiffPatch(sandbox: SandboxClient, baselineBundleBytes?: ArrayBuffer | null): Promise<string> {
+  if (baselineBundleBytes) {
+    await writeBaselineBundleBase64InChunks(sandbox, baselineBundleBytes);
+    const result = await sandbox.exec(
+      `tmp_base=$(mktemp -d /tmp/nimbus-deploy-baseline.XXXXXX) && tmp_patch=$(mktemp /tmp/nimbus-deploy-patch.XXXXXX) && cleanup(){ rm -rf "$tmp_base" "$tmp_patch" ${shellQuote(
+        BASELINE_BUNDLE_BASE64_PATH
+      )} ${shellQuote(BASELINE_BUNDLE_PATH)} ${shellQuote(BASELINE_BUNDLE_PART_PREFIX)}*; } && trap cleanup EXIT && mkdir -p "$tmp_base" && base64 -d ${shellQuote(
+        BASELINE_BUNDLE_BASE64_PATH
+      )} > ${shellQuote(BASELINE_BUNDLE_PATH)} && tar -xzf ${shellQuote(
+        BASELINE_BUNDLE_PATH
+      )} -C "$tmp_base" && diff -ruN --exclude=.git "$tmp_base" ${shellQuote(WORKSPACE_ROOT)} > "$tmp_patch"; status=$?; if [ "$status" -gt 1 ]; then exit "$status"; fi; cat "$tmp_patch"`,
+      { timeout: 2 * 60 * 1000 }
+    );
+    if (result.exitCode > 1) {
+      const output = [result.stdout, result.stderr].filter(Boolean).join('\n');
+      throw new Error(`Failed to create deployment diff patch: ${output || 'No output'}`);
+    }
+    return normalizeDeploymentDiffPatch(result.stdout, WORKSPACE_ROOT);
+  }
+
+  return runSandboxCommand(
+    sandbox,
+    `cd ${shellQuote(WORKSPACE_ROOT)} && tmp_index=$(mktemp /tmp/nimbus-deploy-index.XXXXXX) && tmp_patch=$(mktemp /tmp/nimbus-deploy-patch.XXXXXX) && cleanup(){ rm -f "$tmp_index" "$tmp_patch"; } && trap cleanup EXIT && GIT_INDEX_FILE="$tmp_index" git read-tree HEAD && GIT_INDEX_FILE="$tmp_index" git add -A && GIT_INDEX_FILE="$tmp_index" git diff --cached -M HEAD > "$tmp_patch" && cat "$tmp_patch"`,
+    { timeout: 2 * 60 * 1000 }
+  );
+}
+
+function normalizeDeploymentDiffPatch(patchText: string, workspaceRoot: string): string {
+  const normalizedWorkspaceRoot = workspaceRoot.replace(/\/+$|\\+$/g, '');
+  const baselinePrefixPattern = /\/tmp\/nimbus-deploy-baseline\.[^/\s]+/g;
+  return patchText
+    .split(/\r?\n/)
+    .map((line) => {
+      if (line.startsWith('diff -ruN ')) {
+        return line
+          .replace(baselinePrefixPattern, 'a')
+          .replace(normalizedWorkspaceRoot, 'b');
+      }
+      if (line.startsWith('--- /tmp/nimbus-deploy-baseline.')) {
+        return line.replace(baselinePrefixPattern, 'a');
+      }
+      if (line.startsWith(`+++ ${normalizedWorkspaceRoot}/`) || line === `+++ ${normalizedWorkspaceRoot}`) {
+        return line.replace(normalizedWorkspaceRoot, 'b');
+      }
+      return line;
+    })
+    .join('\n');
+}
+
+async function createDeploymentDiffArtifact(
+  env: Env,
+  input: {
+    workspaceId: string;
+    deploymentId: string;
+    sourceBaselineSha: string;
+    patchText: string;
+  }
+): Promise<string> {
+  const bucket = env.WORKSPACE_ARTIFACTS ?? env.SOURCE_BUNDLES;
+  if (!bucket) {
+    throw new Error('No artifact bucket is configured for deployment diff export');
+  }
+
+  const artifactId = generateWorkspaceArtifactId();
+  const bytes = new TextEncoder().encode(input.patchText);
+  const sha256 = await sha256Hex(bytes);
+  const objectKey = `workspaces/${input.workspaceId}/deployments/${input.deploymentId}/${artifactId}.patch`;
+  await bucket.put(objectKey, bytes, {
+    httpMetadata: {
+      contentType: 'text/x-diff',
+    },
+    customMetadata: {
+      workspace_id: input.workspaceId,
+      deployment_id: input.deploymentId,
+      artifact_type: 'patch',
+      generated_by: 'workspace_deployment',
+    },
+  });
+
+  const retentionMs = 7 * 24 * 60 * 60 * 1000;
+  const expiresAt = new Date(Date.now() + retentionMs).toISOString();
+  await createWorkspaceArtifact(env.DB, {
+    id: artifactId,
+    workspaceId: input.workspaceId,
+    operationId: null,
+    type: 'patch',
+    objectKey,
+    bytes: bytes.byteLength,
+    contentType: 'text/x-diff',
+    sha256,
+    sourceBaselineSha: input.sourceBaselineSha,
+    retentionExpiresAt: expiresAt,
+    metadata: {
+      deploymentId: input.deploymentId,
+      generatedBy: 'workspace_deployment',
+    },
+  });
+
+  return artifactId;
 }
 
 async function createOutputBundle(
@@ -1475,6 +1605,31 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
     sourceSnapshotSha256: sourceBundle.sha256,
     sourceBundleKey,
   });
+  let reviewDiffArtifactId: string | null = null;
+  try {
+    const baselineSourceBundle = env.SOURCE_BUNDLES ? await env.SOURCE_BUNDLES.get(workspace.sourceBundleKey) : null;
+    const deploymentDiffPatch = await createDeploymentDiffPatch(
+      sandbox,
+      baselineSourceBundle ? await baselineSourceBundle.arrayBuffer() : null
+    );
+    reviewDiffArtifactId = await createDeploymentDiffArtifact(env, {
+      workspaceId,
+      deploymentId,
+      sourceBaselineSha: workspace.commitSha,
+      patchText: deploymentDiffPatch,
+    });
+  } catch (error) {
+    await appendWorkspaceDeploymentEvent(env.DB, {
+      workspaceId,
+      deploymentId,
+      eventType: 'deployment_review_diff_skipped',
+      payload: {
+        reason: 'diff_artifact_unavailable',
+        message: error instanceof Error ? error.message : String(error),
+      },
+    });
+  }
+  await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
 
   let outputBundle = sourceBundle;
   let outputFiles: Array<{ path: string; bytes: Uint8Array; sha256: string }> = [];
@@ -1495,6 +1650,7 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
       outputFiles.map((file) => ({ path: file.path, sha256: file.sha256 }))
     );
   }
+  await throwIfDeploymentCancelled(env, workspaceId, deploymentId);
 
   const successResultTemplate = {
     url: null,
@@ -1503,11 +1659,13 @@ async function executeWorkspaceDeployment(env: Env, workspaceId: string, deploym
       sourceSnapshotSha256: sourceBundle.sha256,
       outputBundleSha256: outputBundle.sha256,
       outputDir: providerOutputDir,
+      reviewDiffArtifactId,
     },
     provenance: {
       workspaceId,
       taskId,
       operationId,
+      reviewDiffArtifactId,
       trigger: typeof provenance.trigger === 'string' ? provenance.trigger : 'manual',
     },
     rollbackOnFailure,
@@ -2052,6 +2210,8 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
                   outputBundleSha256:
                     typeof existingArtifact.outputBundleSha256 === 'string' ? existingArtifact.outputBundleSha256 : null,
                   outputDir: typeof existingArtifact.outputDir === 'string' ? existingArtifact.outputDir : null,
+                  reviewDiffArtifactId:
+                    typeof existingArtifact.reviewDiffArtifactId === 'string' ? existingArtifact.reviewDiffArtifactId : null,
                 },
                 provenance: {
                   ...existingProvenance,
@@ -2070,6 +2230,12 @@ export async function processWorkspaceDeployment(env: Env, workspaceId: string, 
                       : typeof existingProvenance.trigger === 'string'
                         ? existingProvenance.trigger
                         : 'manual',
+                  reviewDiffArtifactId:
+                    typeof existingProvenance.reviewDiffArtifactId === 'string'
+                      ? existingProvenance.reviewDiffArtifactId
+                      : typeof existingArtifact.reviewDiffArtifactId === 'string'
+                        ? existingArtifact.reviewDiffArtifactId
+                        : null,
                 },
                 rollbackOnFailure: parseBoolean(requestPayload?.rollbackOnFailure, true),
                 reconciled: true,
@@ -2593,6 +2759,8 @@ export async function runWorkspaceDeploymentInlineWithRetries(
             sourceSnapshotSha256: latest.sourceSnapshotSha256,
             outputBundleSha256: typeof latestArtifact.outputBundleSha256 === 'string' ? latestArtifact.outputBundleSha256 : null,
             outputDir: typeof latestArtifact.outputDir === 'string' ? latestArtifact.outputDir : null,
+            reviewDiffArtifactId:
+              typeof latestArtifact.reviewDiffArtifactId === 'string' ? latestArtifact.reviewDiffArtifactId : null,
           },
           provenance: {
             ...latestProvenance,
@@ -2609,6 +2777,12 @@ export async function runWorkspaceDeploymentInlineWithRetries(
                 : typeof latestProvenance.trigger === 'string'
                   ? latestProvenance.trigger
                   : 'manual',
+            reviewDiffArtifactId:
+              typeof latestProvenance.reviewDiffArtifactId === 'string'
+                ? latestProvenance.reviewDiffArtifactId
+                : typeof latestArtifact.reviewDiffArtifactId === 'string'
+                  ? latestArtifact.reviewDiffArtifactId
+                  : null,
           },
           rollbackOnFailure: parseBoolean(requestPayload?.rollbackOnFailure, true),
           reconciled: true,
