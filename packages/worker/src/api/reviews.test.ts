@@ -1,0 +1,475 @@
+import { strict as assert } from 'assert';
+import { handleCreateReview, handleGetReview, handleGetReviewEvents } from './reviews.js';
+
+function createReviewApiEnv(options?: {
+  deploymentStatus?: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  reused?: boolean;
+  reviewExists?: boolean;
+  workspaceStatus?: 'ready' | 'deleted';
+  reviewStatusSequence?: Array<'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'>;
+  reviewEventBatches?: Array<
+    Array<{
+      seq: number;
+      event_type: string;
+      payload_json: string;
+      created_at: string;
+    }>
+  >;
+  existingEventTypes?: string[];
+  reviewErrorCode?: string | null;
+  reviewAttemptCount?: number;
+}): {
+  env: Record<string, unknown>;
+  state: {
+    reviewExists: boolean;
+    queueSendCount: number;
+    eventTypes: Set<string>;
+    reviewStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+  };
+} {
+  const state = {
+    reviewExists: options?.reviewExists ?? false,
+    queueSendCount: 0,
+    eventTypes: new Set<string>(options?.existingEventTypes ?? []),
+    reviewStatus: 'queued' as const,
+    reviewStatusReads: 0,
+    reviewEventReads: 0,
+  };
+
+  const env = {
+    REVIEWS_QUEUE: {
+      async send() {
+        state.queueSendCount += 1;
+      },
+    },
+    DB: {
+      prepare(sql: string) {
+        if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'ws_abc12345',
+                    status: options?.workspaceStatus ?? 'ready',
+                    source_type: 'checkpoint',
+                    checkpoint_id: null,
+                    commit_sha: 'a'.repeat(40),
+                    source_ref: 'main',
+                    source_project_root: '.',
+                    source_bundle_key: 'key',
+                    source_bundle_sha256: 'f'.repeat(64),
+                    source_bundle_bytes: 1,
+                    sandbox_id: 'workspace-ws_abc12345',
+                    baseline_ready: 1,
+                    error_code: null,
+                    error_message: null,
+                    last_deployment_id: 'dep_abcd1234',
+                    last_deployment_status: options?.deploymentStatus ?? 'succeeded',
+                    last_deployed_url: 'https://example.com',
+                    last_deployed_at: '2026-03-11T00:00:00.000Z',
+                    last_deployment_error_code: null,
+                    last_deployment_error_message: null,
+                    last_event_seq: 0,
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                    deleted_at: options?.workspaceStatus === 'deleted' ? '2026-03-11T00:00:00.000Z' : null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM workspace_deployments WHERE id = \? AND workspace_id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'dep_abcd1234',
+                    workspace_id: 'ws_abc12345',
+                    status: options?.deploymentStatus ?? 'succeeded',
+                    provider: 'simulated',
+                    idempotency_key: 'idem-deploy',
+                    request_payload_json: '{}',
+                    request_payload_sha256: 'hash',
+                    max_retries: 2,
+                    attempt_count: 1,
+                    source_snapshot_sha256: 'sha',
+                    source_bundle_key: 'bundle',
+                    provenance_json: '{}',
+                    provider_deployment_id: 'provider_dep',
+                    deployed_url: 'https://example.com',
+                    last_event_seq: 0,
+                    cancel_requested_at: null,
+                    started_at: '2026-03-11T00:00:00.000Z',
+                    finished_at: '2026-03-11T00:01:00.000Z',
+                    duration_ms: 60000,
+                    result_json: '{}',
+                    toolchain_json: null,
+                    dependency_cache_key: null,
+                    dependency_cache_hit: 0,
+                    remediations_json: '[]',
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:01:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT review_id, request_payload_sha256, expires_at/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  if (!options?.reused) {
+                    return null as T;
+                  }
+                  return {
+                    review_id: 'rev_existing',
+                    request_payload_sha256: 'f004b542a0ca344c9a93ab94447edbb0ec52d21236f442491bac726f7430c745',
+                    expires_at: '2999-01-01T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE workspace_id = \?\s+AND idempotency_key = \?\s+AND julianday\(created_at\) >= julianday\(\?\)/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return null as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO review_runs/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  state.reviewExists = true;
+                  return {
+                    id: values[0],
+                    workspace_id: values[1],
+                    deployment_id: values[2],
+                    target_type: values[3],
+                    mode: values[4],
+                    status: 'queued',
+                    idempotency_key: values[5],
+                    request_payload_json: values[6],
+                    request_payload_sha256: values[7],
+                    provenance_json: values[8],
+                    last_event_seq: 0,
+                    attempt_count: 0,
+                    started_at: null,
+                    finished_at: null,
+                    report_json: null,
+                    markdown_summary: null,
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO review_run_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT 1\s+FROM review_events/i.test(sql)) {
+          return {
+            bind(_reviewId: string, eventType: string) {
+              return {
+                async first<T>() {
+                  return state.eventTypes.has(eventType) ? ({ '1': 1 } as T) : (null as T);
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE review_runs SET last_event_seq = last_event_seq \+ 1/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return { last_event_seq: state.eventTypes.size + 1 } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO review_events/i.test(sql)) {
+          return {
+            bind(_reviewId: string, _seq: number, eventType: string) {
+              return {
+                async run() {
+                  state.eventTypes.add(eventType);
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM review_runs WHERE id = \?/i.test(sql)) {
+          return {
+            bind(reviewId: string) {
+              return {
+                async first<T>() {
+                  if (!state.reviewExists && !(options?.reused && reviewId === 'rev_existing')) {
+                    return null as T;
+                  }
+                  const sequence = options?.reviewStatusSequence;
+                  const statusFromSequence =
+                    sequence && sequence.length > 0
+                      ? sequence[Math.min(state.reviewStatusReads, sequence.length - 1)]
+                      : state.reviewStatus;
+                  state.reviewStatusReads += 1;
+                  return {
+                    id: reviewId,
+                    workspace_id: 'ws_abc12345',
+                    deployment_id: 'dep_abcd1234',
+                    target_type: 'workspace_deployment',
+                    mode: 'report_only',
+                    status: statusFromSequence,
+                    idempotency_key: 'idem-review',
+                    request_payload_json: '{}',
+                    request_payload_sha256: 'hash',
+                    provenance_json: '{}',
+                    last_event_seq: 1,
+                    attempt_count: options?.reviewAttemptCount ?? 0,
+                    started_at: null,
+                    finished_at: null,
+                    report_json: null,
+                    markdown_summary: null,
+                    error_code: options?.reviewErrorCode ?? null,
+                    error_message: null,
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT seq, event_type, payload_json, created_at\s+FROM review_events/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async all<T>() {
+                  const batches = options?.reviewEventBatches;
+                  const batch =
+                    batches && batches.length > 0
+                      ? batches[Math.min(state.reviewEventReads, batches.length - 1)]
+                      : [
+                          {
+                            seq: 1,
+                            event_type: 'review_created',
+                            payload_json: '{"ok":true}',
+                            created_at: '2026-03-11T00:00:00.000Z',
+                          },
+                        ];
+                  state.reviewEventReads += 1;
+                  return {
+                    results: batch,
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    },
+  };
+
+  return { env, state };
+}
+
+export async function runReviewApiTests(): Promise<void> {
+  const ctx = {
+    waitUntil() {
+      // no-op
+    },
+  } as unknown as ExecutionContext;
+
+  {
+    const { env } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'git_diff', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-1' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+  }
+
+  {
+    const { env } = createReviewApiEnv({ deploymentStatus: 'failed' });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-2' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 409);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-3' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ reused: true, reviewExists: true });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-4' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ reused: true, reviewExists: true, workspaceStatus: 'deleted' });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-4c' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reused: true,
+      reviewExists: true,
+      existingEventTypes: ['review_enqueued'],
+      reviewErrorCode: 'retry_scheduled',
+      reviewAttemptCount: 1,
+    });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-4b' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ reviewExists: true });
+    state.reviewStatus = 'succeeded';
+    const response = await handleGetReview('rev_abcd1234', env as never);
+    assert.equal(response.status, 200);
+  }
+
+  {
+    const { env } = createReviewApiEnv({
+      reviewExists: true,
+      reviewStatusSequence: ['running', 'succeeded', 'succeeded', 'succeeded'],
+      reviewEventBatches: [
+        [
+          {
+            seq: 1,
+            event_type: 'review_created',
+            payload_json: '{"ok":true}',
+            created_at: '2026-03-11T00:00:00.000Z',
+          },
+        ],
+        [],
+        [
+          {
+            seq: 2,
+            event_type: 'review_succeeded',
+            payload_json: '{"recommendation":"approve"}',
+            created_at: '2026-03-11T00:00:01.000Z',
+          },
+        ],
+        [],
+      ],
+    });
+    const response = await handleGetReviewEvents(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/events?from=0'),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get('Content-Type'), 'text/event-stream');
+    const text = await response.text();
+    assert.match(text, /"type":"review_created"/);
+    assert.match(text, /"type":"snapshot"/);
+    assert.match(text, /"type":"review_succeeded"/);
+    assert.match(text, /"type":"terminal"/);
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const response = await handleGetReview('rev_missing', env as never);
+    assert.equal(response.status, 404);
+  }
+}

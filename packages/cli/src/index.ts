@@ -29,6 +29,10 @@ import { catWorkspaceFileCommand } from './commands/workspace/cat.js';
 import { workspaceDiffCommand } from './commands/workspace/diff.js';
 import { workspaceDeployCommand } from './commands/workspace/deploy.js';
 import { doctorCommand } from './commands/doctor.js';
+import { createReviewCommand } from './commands/review/create.js';
+import { reviewEventsCommand } from './commands/review/events.js';
+import { showReviewCommand } from './commands/review/show.js';
+import { exportReviewCommand } from './commands/review/export.js';
 import { parseArgs } from './lib/args.js';
 
 const VERSION = '0.1.0';
@@ -100,7 +104,15 @@ Commands:
   workspace diff <workspace-id>
                        Show workspace diff summary (use --include-patch for patch)
   workspace deploy <workspace-id>
-                      Run deploy preflight, queue deploy, and poll status
+                       Run deploy preflight, queue deploy, and poll status
+  review create --workspace <id> --deployment <id>
+                      Create a report-only review run for a deployment
+  review show <review-id>
+                      Show review status and summary
+  review events <review-id>
+                      Stream review lifecycle events
+  review export <review-id>
+                      Export a review as markdown or json
   list               List all past jobs
   watch <job-id>     Watch a job's progress
 
@@ -122,6 +134,10 @@ Options:
                       Poll interval for workspace deploy status checks
   --provider <name>   Deploy provider (simulated|cloudflare_workers_assets)
   --output-dir <path> Static build output directory (required for real provider)
+  --workspace <id>    Workspace ID for review create
+  --deployment <id>   Deployment ID for review create
+  --format <type>     Review export format (markdown|json)
+  --out <path>        Review export output file path
   --preflight-only   Run deploy preflight only (do not queue deploy)
   --auto-fix         Allow safe preflight/deploy remediations
   --no-dry-run       Upload source bundle and create checkpoint job
@@ -138,6 +154,10 @@ Examples:
   nimbus workspace deploy ws_abc12345 --provider cloudflare_workers_assets --output-dir dist
   nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123 --auto-fix
   nimbus workspace deploy ws_abc12345 --preflight-only --no-tests --no-build
+  nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
+  nimbus review show rev_abcd1234
+  nimbus review events rev_abcd1234
+  nimbus review export rev_abcd1234 --format markdown --out review.md
   nimbus doctor
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
   nimbus list
@@ -320,6 +340,70 @@ async function main(): Promise<void> {
         }
 
         p.log.error('Unknown workspace command. Use: create, show, destroy, files, cat, diff, deploy');
+        process.exit(1);
+      }
+
+      case 'review': {
+        const reviewAction = positional[0];
+
+        if (reviewAction === 'create') {
+          const workspaceFlag = flags.workspace;
+          const deploymentFlag = flags.deployment;
+          const workspaceId = typeof workspaceFlag === 'string' ? workspaceFlag : undefined;
+          const deploymentId = typeof deploymentFlag === 'string' ? deploymentFlag : undefined;
+          if (!workspaceId || !deploymentId) {
+            p.log.error('Usage: nimbus review create --workspace <workspace-id> --deployment <deployment-id>');
+            process.exit(1);
+          }
+
+          const idempotencyKeyFlag = flags['idempotency-key'];
+          const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
+          await createReviewCommand(workspaceId, deploymentId, { idempotencyKey });
+          break;
+        }
+
+        if (reviewAction === 'show') {
+          const reviewId = positional[1];
+          if (!reviewId) {
+            p.log.error('Usage: nimbus review show <review-id>');
+            process.exit(1);
+          }
+
+          await showReviewCommand(reviewId);
+          break;
+        }
+
+        if (reviewAction === 'events') {
+          const reviewId = positional[1];
+          if (!reviewId) {
+            p.log.error('Usage: nimbus review events <review-id>');
+            process.exit(1);
+          }
+
+          await reviewEventsCommand(reviewId);
+          break;
+        }
+
+        if (reviewAction === 'export') {
+          const reviewId = positional[1];
+          const formatFlag = flags.format;
+          const outFlag = flags.out;
+          const format = typeof formatFlag === 'string' ? formatFlag : 'markdown';
+          const outputPath = typeof outFlag === 'string' ? outFlag : undefined;
+          if (!reviewId || !outputPath) {
+            p.log.error('Usage: nimbus review export <review-id> --format <markdown|json> --out <path>');
+            process.exit(1);
+          }
+          if (format !== 'markdown' && format !== 'json') {
+            p.log.error('Invalid --format value. Use markdown or json.');
+            process.exit(1);
+          }
+
+          await exportReviewCommand(reviewId, format, outputPath);
+          break;
+        }
+
+        p.log.error('Unknown review command. Use: create, show, events, export');
         process.exit(1);
       }
 

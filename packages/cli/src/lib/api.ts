@@ -2,6 +2,9 @@ import type {
   JobResponse,
   JobsListResponse,
   CheckpointJobCreateResponse,
+  ReviewCreateResponse,
+  ReviewEventEnvelope,
+  ReviewGetResponse,
   WorkspaceCreateResponse,
   WorkspaceDiffResponse,
   WorkspaceFileListResponse,
@@ -306,4 +309,138 @@ export async function getDeployReadiness(workerUrl: string): Promise<DeployReadi
     throw new Error(`Worker error (${response.status}): ${errorText}`);
   }
   return response.json() as Promise<DeployReadinessResponse>;
+}
+
+export async function createReview(
+  workerUrl: string,
+  idempotencyKey: string,
+  payload: {
+    target: {
+      type: 'workspace_deployment';
+      workspaceId: string;
+      deploymentId: string;
+    };
+    mode: 'report_only';
+  }
+): Promise<ReviewCreateResponse> {
+  const response = await fetch(`${workerUrl}/api/reviews`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': idempotencyKey,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<ReviewCreateResponse>;
+}
+
+export async function getReview(workerUrl: string, reviewId: string): Promise<ReviewGetResponse> {
+  const response = await fetch(`${workerUrl}/api/reviews/${reviewId}`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<ReviewGetResponse>;
+}
+
+function parseSseChunk(chunk: string): ReviewEventEnvelope[] {
+  const messages = chunk.split('\n\n');
+  const events: ReviewEventEnvelope[] = [];
+
+  for (const message of messages) {
+    const trimmed = message.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    let id: string | null = null;
+    const dataLines: string[] = [];
+    for (const line of trimmed.split('\n')) {
+      if (line.startsWith('id:')) {
+        id = line.slice(3).trim();
+        continue;
+      }
+      if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).trim());
+      }
+    }
+
+    if (dataLines.length === 0) {
+      continue;
+    }
+
+    const payload = dataLines.join('\n');
+    try {
+      events.push({
+        id,
+        data: JSON.parse(payload) as Record<string, unknown>,
+      });
+    } catch {
+      for (const dataLine of dataLines) {
+        events.push({
+          id,
+          data: JSON.parse(dataLine) as Record<string, unknown>,
+        });
+      }
+    }
+  }
+
+  return events;
+}
+
+export async function streamReviewEvents(
+  workerUrl: string,
+  reviewId: string,
+  onEvent: (event: ReviewEventEnvelope) => void | Promise<void>
+): Promise<void> {
+  const response = await fetch(`${workerUrl}/api/reviews/${reviewId}/events`, {
+    headers: {
+      Accept: 'text/event-stream',
+    },
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  if (!response.body) {
+    const bodyText = await response.text();
+    for (const event of parseSseChunk(bodyText)) {
+      await onEvent(event);
+    }
+    return;
+  }
+
+  const decoder = new TextDecoder();
+  const reader = response.body.getReader();
+  let buffer = '';
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+
+    buffer += decoder.decode(value, { stream: true });
+    const parts = buffer.split('\n\n');
+    buffer = parts.pop() ?? '';
+    for (const part of parts) {
+      for (const event of parseSseChunk(part)) {
+        await onEvent(event);
+      }
+    }
+  }
+
+  buffer += decoder.decode();
+  for (const event of parseSseChunk(buffer)) {
+    await onEvent(event);
+  }
 }

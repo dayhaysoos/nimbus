@@ -59,6 +59,10 @@ queue = "nimbus-workspace-tasks"
 binding = "WORKSPACE_DEPLOYS_QUEUE"
 queue = "nimbus-workspace-deploys"
 
+[[queues.producers]]
+binding = "REVIEWS_QUEUE"
+queue = "nimbus-reviews"
+
 [[queues.consumers]]
 queue = "nimbus-checkpoint-jobs"
 max_batch_size = 5
@@ -71,6 +75,11 @@ max_batch_timeout = 3
 
 [[queues.consumers]]
 queue = "nimbus-workspace-deploys"
+max_batch_size = 5
+max_batch_timeout = 3
+
+[[queues.consumers]]
+queue = "nimbus-reviews"
 max_batch_size = 5
 max_batch_timeout = 3
 

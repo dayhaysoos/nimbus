@@ -37,6 +37,26 @@ export function runArgsParsingTests(): void {
     assert.equal(parsed.flags['poll-interval-ms'], '2000');
   }
 
+  {
+    const parsed = parseArgs([
+      'review',
+      '--workspace',
+      'ws_abc12345',
+      '--deployment',
+      'dep_abcd1234',
+      '--format',
+      'markdown',
+      '--out',
+      'review.md',
+      'export',
+      'rev_abcd1234',
+    ]);
+    assert.equal(parsed.flags.workspace, 'ws_abc12345');
+    assert.equal(parsed.flags.deployment, 'dep_abcd1234');
+    assert.equal(parsed.flags.format, 'markdown');
+    assert.equal(parsed.flags.out, 'review.md');
+  }
+
   assert.throws(
     () => parseArgs(['deploy', 'checkpoint', 'HEAD', '--ref']),
     /Missing value for --ref/

@@ -223,3 +223,95 @@ export interface DeployReadinessResponse {
   ok: boolean;
   checks: DeployReadinessCheck[];
 }
+
+export type ReviewRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type ReviewConfidence = 'high' | 'medium' | 'low';
+export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
+
+export interface ReviewSummary {
+  riskLevel: ReviewSeverity;
+  findingCounts: Record<ReviewSeverity, number>;
+  recommendation: ReviewRecommendation;
+}
+
+export interface ReviewFindingLocation {
+  path: string;
+  line: number;
+}
+
+export interface ReviewFinding {
+  id: string;
+  severity: ReviewSeverity;
+  confidence: ReviewConfidence;
+  title: string;
+  description: string;
+  conditions: string | null;
+  locations: ReviewFindingLocation[];
+  suggestedFix: {
+    kind: 'text';
+    value: string;
+  } | null;
+  evidenceRefs: string[];
+}
+
+export interface ReviewEvidenceItem {
+  id: string;
+  type: string;
+  label: string;
+  status: 'passed' | 'failed' | 'warning' | 'info';
+  metadata?: Record<string, unknown>;
+}
+
+export interface ReviewRunResponse {
+  id: string;
+  workspaceId: string;
+  deploymentId: string;
+  target: {
+    type: 'workspace_deployment';
+    workspaceId: string;
+    deploymentId: string;
+  };
+  mode: 'report_only';
+  status: ReviewRunStatus;
+  idempotencyKey: string;
+  attemptCount: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  summary?: ReviewSummary;
+  findings: ReviewFinding[];
+  intent?: {
+    goal: string | null;
+    constraints: string[];
+    decisions: string[];
+  };
+  evidence: ReviewEvidenceItem[];
+  provenance: {
+    sessionIds: string[];
+    promptSummary: string | null;
+    transcriptUrl?: string | null;
+  };
+  markdownSummary: string | null;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export interface ReviewCreateResponse {
+  reviewId: string;
+  status: ReviewRunStatus;
+  eventsUrl: string;
+  resultUrl: string;
+}
+
+export interface ReviewGetResponse {
+  review: ReviewRunResponse;
+}
+
+export interface ReviewEventEnvelope {
+  id: string | null;
+  data: Record<string, unknown>;
+}

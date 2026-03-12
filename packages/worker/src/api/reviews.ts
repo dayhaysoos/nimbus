@@ -1,0 +1,435 @@
+import type { Env } from '../types.js';
+import {
+  ReviewIdempotencyConflictError,
+  appendReviewEvent,
+  createReviewRun,
+  generateReviewRunId,
+  getReviewRun,
+  getReviewRunByIdempotency,
+  getWorkspace,
+  getWorkspaceDeployment,
+  hasReviewEvent,
+  listReviewEvents,
+} from '../lib/db.js';
+import { createReviewQueueMessage } from '../lib/review-queue.js';
+import { runReviewInlineWithRetries } from '../lib/review-runner.js';
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
+};
+
+const REVIEW_STREAM_POLL_INTERVAL_MS = 50;
+const REVIEW_STREAM_HEARTBEAT_INTERVAL_MS = 1000;
+const REVIEW_TERMINAL_EVENT_GRACE_MS = 1000;
+
+function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+  });
+}
+
+function formatSseData(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+function formatSseDataWithId(seq: number, payload: unknown): string {
+  return `id: ${seq}\ndata: ${JSON.stringify(payload)}\n\n`;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function resolveFromSequence(request: Request): number {
+  const url = new URL(request.url);
+  const fromParam = Number.parseInt(url.searchParams.get('from') ?? '', 10);
+  const lastEventId = Number.parseInt(request.headers.get('Last-Event-ID') ?? '', 10);
+
+  if (Number.isFinite(lastEventId) && lastEventId >= 0) {
+    return lastEventId;
+  }
+  if (Number.isFinite(fromParam) && fromParam >= 0) {
+    return fromParam;
+  }
+  return 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+export async function handleCreateReview(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+  try {
+    if (!env.REVIEWS_QUEUE && !ctx) {
+      return jsonResponse(
+        {
+          error: 'Review runner is unavailable',
+          code: 'review_runner_unavailable',
+        },
+        503
+      );
+    }
+
+    const idempotencyKey = (request.headers.get('Idempotency-Key') ?? '').trim();
+    if (!idempotencyKey) {
+      return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);
+    }
+
+    const payloadRaw = await request.text();
+    const payload = payloadRaw.trim() ? (JSON.parse(payloadRaw) as unknown) : {};
+    if (!isRecord(payload)) {
+      return jsonResponse({ error: 'Request body must be a JSON object' }, 400);
+    }
+
+    const target = isRecord(payload.target) ? payload.target : null;
+    if (!target) {
+      return jsonResponse({ error: 'target is required' }, 400);
+    }
+
+    const targetType = typeof target.type === 'string' ? target.type.trim() : '';
+    if (targetType !== 'workspace_deployment') {
+      return jsonResponse(
+        {
+          error: 'Unsupported review target',
+          code: 'unsupported_review_target',
+          allowedTargets: ['workspace_deployment'],
+        },
+        400
+      );
+    }
+
+    const workspaceId = typeof target.workspaceId === 'string' ? target.workspaceId.trim() : '';
+    const deploymentId = typeof target.deploymentId === 'string' ? target.deploymentId.trim() : '';
+    if (!workspaceId || !deploymentId) {
+      return jsonResponse({ error: 'target.workspaceId and target.deploymentId are required' }, 400);
+    }
+
+    const mode = typeof payload.mode === 'string' && payload.mode.trim() ? payload.mode.trim() : 'report_only';
+    if (mode !== 'report_only') {
+      return jsonResponse(
+        {
+          error: 'Unsupported review mode',
+          code: 'unsupported_review_mode',
+          allowedModes: ['report_only'],
+        },
+        400
+      );
+    }
+
+    const policy = isRecord(payload.policy) ? payload.policy : {};
+    const format = isRecord(payload.format) ? payload.format : {};
+    const requestPayload = {
+      target: {
+        type: 'workspace_deployment',
+        workspaceId,
+        deploymentId,
+      },
+      mode: 'report_only',
+      policy: {
+        severityThreshold:
+          typeof policy.severityThreshold === 'string' && policy.severityThreshold.trim()
+            ? policy.severityThreshold.trim()
+            : 'low',
+        maxFindings: typeof policy.maxFindings === 'number' && Number.isFinite(policy.maxFindings)
+          ? Math.max(1, Math.min(500, Math.floor(policy.maxFindings)))
+          : 100,
+        includeProvenance: policy.includeProvenance !== false,
+        includeValidationEvidence: policy.includeValidationEvidence !== false,
+      },
+      format: {
+        primary: typeof format.primary === 'string' && format.primary.trim() ? format.primary.trim() : 'json',
+        includeMarkdownSummary: format.includeMarkdownSummary !== false,
+      },
+      provenance: {
+        trigger: 'api',
+      },
+    };
+
+    const requestPayloadSha256 = await sha256Hex(JSON.stringify(requestPayload));
+    const existingReview = await getReviewRunByIdempotency(env.DB, workspaceId, idempotencyKey, requestPayloadSha256);
+    if (existingReview) {
+      const created = { review: existingReview, reused: true };
+
+      if (created.review.status === 'queued') {
+        const alreadyEnqueued = await hasReviewEvent(env.DB, created.review.id, 'review_enqueued');
+        const shouldReenqueueRecoveredReview =
+          created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
+        if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
+          if (env.REVIEWS_QUEUE) {
+            await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
+          } else if (ctx) {
+            ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
+          }
+
+          await appendReviewEvent(env.DB, {
+            reviewId: created.review.id,
+            eventType: 'review_enqueued',
+            payload: {
+              mode: env.REVIEWS_QUEUE ? 'queue' : 'inline',
+              reused: created.reused,
+              recovered: shouldReenqueueRecoveredReview,
+            },
+          });
+        }
+      }
+
+      return jsonResponse(
+        {
+          reviewId: created.review.id,
+          status: created.review.status,
+          eventsUrl: `/api/reviews/${created.review.id}/events`,
+          resultUrl: `/api/reviews/${created.review.id}`,
+        },
+        200
+      );
+    }
+
+    const workspace = await getWorkspace(env.DB, workspaceId);
+    if (!workspace || workspace.status === 'deleted') {
+      return jsonResponse({ error: 'Workspace not found' }, 404);
+    }
+
+    const deployment = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
+    if (!deployment) {
+      return jsonResponse({ error: 'Deployment not found' }, 404);
+    }
+    if (deployment.status !== 'succeeded') {
+      return jsonResponse(
+        {
+          error: 'Review target deployment must be succeeded',
+          code: 'deployment_not_reviewable',
+        },
+        409
+      );
+    }
+
+    const created = await createReviewRun(env.DB, {
+      id: generateReviewRunId(),
+      workspaceId,
+      deploymentId,
+      targetType: 'workspace_deployment',
+      mode: 'report_only',
+      idempotencyKey,
+      requestPayload,
+      requestPayloadSha256,
+      provenance: {
+        promptSummary: `Review deployment ${deploymentId} for workspace ${workspaceId}`,
+      },
+    });
+
+    if (!created.reused) {
+      await appendReviewEvent(env.DB, {
+        reviewId: created.review.id,
+        eventType: 'review_created',
+        payload: {
+          workspaceId,
+          deploymentId,
+          mode: 'report_only',
+        },
+      });
+    }
+
+    if (created.review.status === 'queued') {
+      const alreadyEnqueued = await hasReviewEvent(env.DB, created.review.id, 'review_enqueued');
+      const shouldReenqueueRecoveredReview =
+        created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
+      if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
+        if (env.REVIEWS_QUEUE) {
+          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
+        } else if (ctx) {
+          ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
+        }
+
+        await appendReviewEvent(env.DB, {
+          reviewId: created.review.id,
+          eventType: 'review_enqueued',
+          payload: {
+            mode: env.REVIEWS_QUEUE ? 'queue' : 'inline',
+            reused: created.reused,
+            recovered: shouldReenqueueRecoveredReview,
+          },
+        });
+      }
+    }
+
+    return jsonResponse(
+      {
+        reviewId: created.review.id,
+        status: created.review.status,
+        eventsUrl: `/api/reviews/${created.review.id}/events`,
+        resultUrl: `/api/reviews/${created.review.id}`,
+      },
+      created.reused ? 200 : 202
+    );
+  } catch (error) {
+    if (error instanceof ReviewIdempotencyConflictError) {
+      return jsonResponse(
+        {
+          error: 'Idempotency key has already been used with different payload',
+          code: 'idempotency_key_conflict',
+        },
+        409
+      );
+    }
+
+    if (error instanceof SyntaxError) {
+      return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
+
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ error: `Failed to create review: ${message}` }, 500);
+  }
+}
+
+export async function handleGetReview(reviewId: string, env: Env): Promise<Response> {
+  const review = await getReviewRun(env.DB, reviewId);
+  if (!review) {
+    return jsonResponse({ error: 'Review not found' }, 404);
+  }
+
+  return jsonResponse({ review });
+}
+
+export async function handleGetReviewEvents(reviewId: string, request: Request, env: Env): Promise<Response> {
+  try {
+    const review = await getReviewRun(env.DB, reviewId);
+    if (!review) {
+      return jsonResponse({ error: 'Review not found' }, 404);
+    }
+
+    const fromSeq = resolveFromSequence(request);
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        const encoder = new TextEncoder();
+        try {
+          let cursor = fromSeq;
+          let currentStatus = review.status;
+          let lastHeartbeatAt = Date.now();
+          let sawTerminalEvent = false;
+          let terminalGraceDeadline: number | null = null;
+
+          const isTerminalEventType = (eventType: string): boolean => {
+            return eventType === 'review_succeeded' || eventType === 'review_failed' || eventType === 'review_cancelled';
+          };
+
+          const write = (chunk: string): void => {
+            controller.enqueue(encoder.encode(chunk));
+          };
+
+          const writePersistedEvents = async (): Promise<void> => {
+            const persistedEvents = await listReviewEvents(env.DB, reviewId, cursor);
+            for (const item of persistedEvents) {
+              cursor = item.seq;
+              if (isTerminalEventType(item.eventType)) {
+                sawTerminalEvent = true;
+              }
+              write(
+                formatSseDataWithId(item.seq, {
+                  type: item.eventType,
+                  reviewId,
+                  seq: item.seq,
+                  createdAt: item.createdAt,
+                  ...(isRecord(item.payload) ? item.payload : { value: item.payload }),
+                })
+              );
+            }
+          };
+
+          await writePersistedEvents();
+          write(
+            formatSseData({
+              type: 'snapshot',
+              reviewId,
+              status: currentStatus,
+            })
+          );
+
+          while (currentStatus === 'queued' || currentStatus === 'running') {
+            await sleep(REVIEW_STREAM_POLL_INTERVAL_MS);
+            await writePersistedEvents();
+
+            const latest = await getReviewRun(env.DB, reviewId);
+            if (!latest) {
+              write(
+                formatSseData({
+                  type: 'error',
+                  reviewId,
+                  message: 'Review not found during event stream',
+                })
+              );
+              break;
+            }
+
+            currentStatus = latest.status;
+            if (currentStatus !== 'queued' && currentStatus !== 'running' && terminalGraceDeadline === null) {
+              terminalGraceDeadline = Date.now() + REVIEW_TERMINAL_EVENT_GRACE_MS;
+            }
+            if (currentStatus !== 'queued' && currentStatus !== 'running' && sawTerminalEvent) {
+              break;
+            }
+            if (terminalGraceDeadline !== null && Date.now() >= terminalGraceDeadline) {
+              break;
+            }
+            if (Date.now() - lastHeartbeatAt >= REVIEW_STREAM_HEARTBEAT_INTERVAL_MS) {
+              write(
+                formatSseData({
+                  type: 'heartbeat',
+                  reviewId,
+                  status: currentStatus,
+                })
+              );
+              lastHeartbeatAt = Date.now();
+            }
+          }
+
+          const terminal = await getReviewRun(env.DB, reviewId);
+          if (terminal) {
+            await writePersistedEvents();
+            write(
+              formatSseData({
+                type: 'terminal',
+                reviewId,
+                status: terminal.status,
+              })
+            );
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          controller.enqueue(
+            encoder.encode(
+              formatSseData({
+                type: 'error',
+                reviewId,
+                message,
+              })
+            )
+          );
+        }
+        controller.close();
+      },
+    });
+
+    return new Response(stream, {
+      status: 200,
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        ...corsHeaders,
+      },
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ error: message }, 500);
+  }
+}

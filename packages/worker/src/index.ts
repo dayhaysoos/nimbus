@@ -15,6 +15,7 @@ import {
   handleGetWorkspaceDeploymentEvents,
   handleWorkspaceDeploymentPreflight,
 } from './api/workspace-deployments.js';
+import { handleCreateReview, handleGetReview, handleGetReviewEvents } from './api/reviews.js';
 import {
   handleCreateWorkspace,
   handleCreateWorkspaceGithubFork,
@@ -40,6 +41,8 @@ import {
   processWorkspaceDeployment,
   shouldRetryWorkspaceDeploymentError,
 } from './lib/workspace-deployment-runner.js';
+import { parseReviewQueueMessage } from './lib/review-queue.js';
+import { processReviewRun, shouldRetryReviewError } from './lib/review-runner.js';
 import { handleGetDeployReadiness } from './api/system.js';
 import type { Env } from './types.js';
 
@@ -70,6 +73,23 @@ export default {
     // Route: POST /api/workspaces - Create workspace from checkpoint source bundle
     if (url.pathname === '/api/workspaces' && request.method === 'POST') {
       return handleCreateWorkspace(request, env);
+    }
+
+    // Route: POST /api/reviews - Create review run
+    if (url.pathname === '/api/reviews' && request.method === 'POST') {
+      return handleCreateReview(request, env, ctx);
+    }
+
+    // Route: GET /api/reviews/:id/events - Review event stream
+    const reviewEventsMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)\/events$/);
+    if (reviewEventsMatch && request.method === 'GET') {
+      return handleGetReviewEvents(reviewEventsMatch[1], request, env);
+    }
+
+    // Route: GET /api/reviews/:id - Get review run
+    const reviewMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)$/);
+    if (reviewMatch && request.method === 'GET') {
+      return handleGetReview(reviewMatch[1], env);
     }
 
     // Route: GET /api/workspaces/:id/events - List workspace events
@@ -303,6 +323,28 @@ export default {
           const details = error instanceof Error ? error.message : String(error);
           console.error(`[workspace-deploy-queue] message handling failed: ${details}`);
           if (shouldRetryWorkspaceDeploymentError(error)) {
+            message.retry();
+          }
+        }
+        continue;
+      }
+
+      if (type === 'review_requested') {
+        let payload;
+        try {
+          payload = parseReviewQueueMessage(message.body);
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          console.error(`[review-queue] invalid message dropped: ${details}`);
+          continue;
+        }
+
+        try {
+          await processReviewRun(env, payload.reviewId);
+        } catch (error) {
+          const details = error instanceof Error ? error.message : String(error);
+          console.error(`[review-queue] message handling failed: ${details}`);
+          if (shouldRetryReviewError(error)) {
             message.retry();
           }
         }

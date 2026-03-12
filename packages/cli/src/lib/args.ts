@@ -14,6 +14,10 @@ const LONG_VALUE_FLAGS = new Set([
   'poll-interval-ms',
   'provider',
   'output-dir',
+  'workspace',
+  'deployment',
+  'format',
+  'out',
 ]);
 const SHORT_VALUE_FLAGS = new Set<string>();
 

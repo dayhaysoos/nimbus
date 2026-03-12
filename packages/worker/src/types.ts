@@ -50,6 +50,7 @@ export interface Env {
 
   WORKSPACE_TASKS_QUEUE?: Queue;
   WORKSPACE_DEPLOYS_QUEUE?: Queue;
+  REVIEWS_QUEUE?: Queue;
 
   AGENT_PROVIDER?: string;
   AGENT_MODEL?: string;
@@ -455,6 +456,122 @@ export interface WorkspaceDeploymentResponse {
   dependencyCacheHit: boolean;
   remediations: WorkspaceDeploymentRemediation[];
   result?: unknown;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export type ReviewRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type ReviewTargetType = 'workspace_deployment';
+export type ReviewMode = 'report_only';
+export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
+export type ReviewConfidence = 'high' | 'medium' | 'low';
+export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
+
+export interface ReviewReportSummary {
+  riskLevel: ReviewSeverity;
+  findingCounts: Record<ReviewSeverity, number>;
+  recommendation: ReviewRecommendation;
+}
+
+export interface ReviewFindingLocation {
+  path: string;
+  line: number;
+}
+
+export interface ReviewSuggestedFix {
+  kind: 'text';
+  value: string;
+}
+
+export interface ReviewFinding {
+  id: string;
+  severity: ReviewSeverity;
+  confidence: ReviewConfidence;
+  title: string;
+  description: string;
+  conditions: string | null;
+  locations: ReviewFindingLocation[];
+  suggestedFix: ReviewSuggestedFix | null;
+  evidenceRefs: string[];
+}
+
+export interface ReviewEvidenceItem {
+  id: string;
+  type: string;
+  label: string;
+  status: 'passed' | 'failed' | 'warning' | 'info';
+  metadata?: Record<string, unknown>;
+}
+
+export interface ReviewIntentSummary {
+  goal: string | null;
+  constraints: string[];
+  decisions: string[];
+}
+
+export interface ReviewProvenanceSummary {
+  sessionIds: string[];
+  promptSummary: string | null;
+  transcriptUrl?: string | null;
+}
+
+export interface ReviewReport {
+  summary: ReviewReportSummary;
+  findings: ReviewFinding[];
+  intent: ReviewIntentSummary;
+  evidence: ReviewEvidenceItem[];
+  provenance: ReviewProvenanceSummary;
+  markdownSummary: string | null;
+}
+
+export interface ReviewRunRecord {
+  id: string;
+  workspace_id: string;
+  deployment_id: string;
+  target_type: ReviewTargetType;
+  mode: ReviewMode;
+  status: ReviewRunStatus;
+  idempotency_key: string;
+  request_payload_json: string;
+  request_payload_sha256: string;
+  provenance_json: string;
+  last_event_seq: number;
+  attempt_count: number;
+  started_at: string | null;
+  finished_at: string | null;
+  report_json: string | null;
+  markdown_summary: string | null;
+  error_code: string | null;
+  error_message: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReviewRunResponse {
+  id: string;
+  workspaceId: string;
+  deploymentId: string;
+  target: {
+    type: ReviewTargetType;
+    workspaceId: string;
+    deploymentId: string;
+  };
+  mode: ReviewMode;
+  status: ReviewRunStatus;
+  idempotencyKey: string;
+  attemptCount: number;
+  startedAt: string | null;
+  finishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  summary?: ReviewReportSummary;
+  findings: ReviewFinding[];
+  intent?: ReviewIntentSummary;
+  evidence: ReviewEvidenceItem[];
+  provenance: ReviewProvenanceSummary;
+  markdownSummary: string | null;
   error?: {
     code: string;
     message: string;
