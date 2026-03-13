@@ -297,6 +297,9 @@ function createReviewRunnerEnv(options?: {
                       provenance: {
                         trigger: 'manual_cli',
                         note: 'Review successful deployment readiness',
+                        sessionIds: ['ses_review_1'],
+                        intentSessionContext: ['Harden deployment validation before release.'],
+                        repo: 'dayhaysoos/nimbus',
                         taskId: options?.workspaceTaskRecord ? 'tsk_123' : null,
                         operationId: options?.workspaceOperationRecord ? 'op_patch' : null,
                         ...(options?.deploymentRequestProvenance ?? {}),
@@ -352,6 +355,18 @@ function createReviewRunnerEnv(options?: {
           };
         }
 
+        if (/INSERT INTO review_context_blobs/i.test(sql)) {
+          return {
+            bind(id: string, _reviewId: string, _workspaceId: string, _deploymentId: string, r2Key: string) {
+              return {
+                async first<T>() {
+                  return { id, r2_key: r2Key } as T;
+                },
+              };
+            },
+          };
+        }
+
         if (/DELETE FROM review_findings WHERE review_id = \?/i.test(sql)) {
           return {
             bind() {
@@ -386,7 +401,17 @@ function createReviewRunnerEnv(options?: {
               return {
                 async run() {
                   state.status = status;
-                  state.errorCode = values.find((value) => typeof value === 'string' && (value === 'retry_scheduled' || value === 'review_execution_failed')) as string | null;
+                  state.errorCode = values.find(
+                    (value) =>
+                      typeof value === 'string' &&
+                      (value === 'retry_scheduled' ||
+                        value === 'review_execution_failed' ||
+                        value === 'unsupported_without_entire_checkpoint_context' ||
+                        value === 'review_context_deployment_not_found' ||
+                        value === 'review_context_storage_unavailable' ||
+                        value === 'review_context_budget_exceeded' ||
+                        value === 'review_context_source_bundle_missing')
+                  ) as string | null;
                   const reportValue = values.find((value) => typeof value === 'string' && String(value).includes('findingCounts'));
                   if (typeof reportValue === 'string') {
                     state.reportJson = reportValue;
@@ -431,7 +456,13 @@ function createReviewRunnerEnv(options?: {
           async arrayBuffer() {
             return new TextEncoder().encode('fake bundle bytes').buffer;
           },
+          async text() {
+            return '';
+          },
         };
+      },
+      async put() {
+        return;
       },
     },
     WORKSPACE_ARTIFACTS: options?.workspaceArtifactLookup
@@ -574,13 +605,20 @@ export async function runReviewRunnerTests(): Promise<void> {
       const report = JSON.parse(state.reportJson ?? '{}') as {
         findings: unknown[];
         evidence: Array<{ type: string }>;
-        provenance: { promptSummary: string | null; sessionIds: string[] };
+        provenance: {
+          promptSummary: string | null;
+          sessionIds: string[];
+          reviewContextRef?: unknown;
+          reviewContextStats?: unknown;
+        };
         markdownSummary: string | null;
       };
       assert.equal(report.findings.length, 1);
       assert.equal(report.evidence.every((item) => item.type === 'analysis_agent'), true);
       assert.equal(report.provenance.promptSummary, null);
       assert.deepEqual(report.provenance.sessionIds, []);
+      assert.equal(report.provenance.reviewContextRef, undefined);
+      assert.equal(report.provenance.reviewContextStats, undefined);
       assert.equal(report.markdownSummary, null);
       assert.equal(fetchBodies.length > 0, true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_started'), true);
@@ -955,6 +993,9 @@ export async function runReviewRunnerTests(): Promise<void> {
               }
               return null;
             },
+            async put() {
+              return;
+            },
           },
         },
       });
@@ -1018,6 +1059,9 @@ export async function runReviewRunnerTests(): Promise<void> {
               }
               return null;
             },
+            async put() {
+              return;
+            },
           },
         },
       });
@@ -1046,7 +1090,8 @@ export async function runReviewRunnerTests(): Promise<void> {
         },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status, 'succeeded');
+      assert.equal(state.status, 'failed');
+      assert.equal(state.errorCode, 'review_context_source_bundle_missing');
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_started'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1214,7 +1259,9 @@ export async function runReviewRunnerTests(): Promise<void> {
       workspaceRecord: null,
     });
     await processReviewRun(env as never, 'rev_abcd1234');
-    assert.equal(state.status, 'succeeded');
+    assert.equal(state.status, 'failed');
+    assert.equal(state.errorCode, 'unsupported_without_entire_checkpoint_context');
+    assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_failed'), true);
   }
 
   {
@@ -1472,6 +1519,9 @@ export async function runReviewRunnerTests(): Promise<void> {
               }
               return null;
             },
+            async put() {
+              return;
+            },
           },
         },
         deploymentResultArtifact: {
@@ -1681,6 +1731,9 @@ export async function runReviewRunnerTests(): Promise<void> {
                 };
               }
               return null;
+            },
+            async put() {
+              return;
             },
           },
         },

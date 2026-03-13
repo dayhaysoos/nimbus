@@ -269,6 +269,7 @@ export async function createWorkspaceDeployment(
       taskId: string | null;
       operationId: string | null;
       note: string | null;
+      repo: string;
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];

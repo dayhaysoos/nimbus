@@ -116,7 +116,7 @@ function createWorkspaceDeploymentApiEnv(options?: {
                       deployment_id: 'dep_existing',
                       request_payload_sha256:
                         options?.reuseRequestPayloadSha256 ??
-                        'bc5770f66f82be23817aea1c4cd23537cec28a833dc39e77ce75f6bf2dcb26cf',
+                        '5c0025e03c59e65566863c1c186a0640fe3c01889fdf396ccd8e65bff4d0feb3',
                       expires_at: '2999-01-01T00:00:00.000Z',
                     } as T;
                 },
@@ -252,7 +252,9 @@ function createWorkspaceDeploymentApiEnv(options?: {
                     provider: 'simulated',
                     idempotency_key: 'idem-1',
                     request_payload_json: '{}',
-                    request_payload_sha256: 'hash',
+                    request_payload_sha256:
+                      options?.reuseRequestPayloadSha256 ??
+                      '5c0025e03c59e65566863c1c186a0640fe3c01889fdf396ccd8e65bff4d0feb3',
                     max_retries: 2,
                     attempt_count: options?.reuseRetryScheduled || options?.reuseFailed ? 1 : 0,
                     source_snapshot_sha256: null,
@@ -541,7 +543,7 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
     try {
       const { env, state } = createWorkspaceDeploymentApiEnv({
         reuseRetryScheduled: true,
-        reuseRequestPayloadSha256: 'ce281e4c5ccf595ff5ed74316d66c519a863c09e75128ba9b16de629e9132e31',
+        reuseRequestPayloadSha256: 'c01e536525923f382c0594dc7711b1bb1d0a7f05becd9f639ba80e74ddb5d6a7',
       });
       const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
         method: 'POST',

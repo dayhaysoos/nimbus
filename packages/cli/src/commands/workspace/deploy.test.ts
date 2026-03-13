@@ -1,12 +1,23 @@
 import { strict as assert } from 'assert';
-import { setWorkspaceDeployIntentContextResolverForTests, workspaceDeployCommand } from './deploy.js';
+import {
+  parseRepositorySlugFromRemoteUrl,
+  setWorkspaceDeployIntentContextResolverForTests,
+  setWorkspaceDeployRepositorySlugResolverForTests,
+  workspaceDeployCommand,
+} from './deploy.js';
 
 export async function runWorkspaceDeployCommandTests(): Promise<void> {
+  assert.equal(parseRepositorySlugFromRemoteUrl('https://github.com/dayhaysoos/nimbus.git'), 'dayhaysoos/nimbus');
+  assert.equal(parseRepositorySlugFromRemoteUrl('git@github.com:dayhaysoos/nimbus.git'), 'dayhaysoos/nimbus');
+  assert.equal(parseRepositorySlugFromRemoteUrl('ssh://git@github.com/dayhaysoos/nimbus.git'), 'dayhaysoos/nimbus');
+  assert.equal(parseRepositorySlugFromRemoteUrl('https://gitlab.com/dayhaysoos/nimbus.git'), null);
+
   const originalFetch = globalThis.fetch;
   const originalWorkerUrl = process.env.NIMBUS_WORKER_URL;
   process.env.NIMBUS_WORKER_URL = 'https://worker.example.com';
 
   try {
+    setWorkspaceDeployRepositorySlugResolverForTests(() => 'dayhaysoos/nimbus');
     setWorkspaceDeployIntentContextResolverForTests(async () => ({
       note: 'Review with Entire session intent context (ses_test).',
       sessionIds: ['ses_test'],
@@ -238,6 +249,7 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
         sessionIds: [],
         transcriptUrl: null,
         intentSessionContext: [],
+        repo: 'dayhaysoos/nimbus',
       });
     }
 
@@ -321,6 +333,7 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
     }
   } finally {
     setWorkspaceDeployIntentContextResolverForTests(null);
+    setWorkspaceDeployRepositorySlugResolverForTests(null);
     globalThis.fetch = originalFetch;
     process.env.NIMBUS_WORKER_URL = originalWorkerUrl;
   }
