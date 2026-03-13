@@ -6,6 +6,7 @@ export interface Env {
   DB: D1Database;
   SOURCE_BUNDLES?: R2Bucket;
   WORKSPACE_ARTIFACTS?: R2Bucket;
+  REVIEW_CONTEXTS?: R2Bucket;
   CHECKPOINT_JOBS_QUEUE?: Queue;
 
   // Runtime flag defaults (can be overridden by D1 runtime_flags)
@@ -58,6 +59,8 @@ export interface Env {
   AGENT_SDK_AUTH_TOKEN?: string;
   REVIEW_AGENT_MAX_STEPS?: string;
   REVIEW_AGENT_MAX_FILE_BYTES?: string;
+  REVIEW_CONTEXT_REPO?: string;
+  REVIEW_CONTEXT_GITHUB_TOKEN?: string;
 }
 
 // Job status type
@@ -507,6 +510,68 @@ export interface ReviewEvidenceItem {
   metadata?: Record<string, unknown>;
 }
 
+export interface ReviewContextDiffHunk {
+  path: string;
+  patch: string;
+}
+
+export interface ReviewContextFile {
+  path: string;
+  content: string;
+  byteSize: number;
+  source: 'changed' | 'related' | 'convention';
+}
+
+export interface ReviewContextRelatedFile extends ReviewContextFile {
+  source: 'related';
+  score: number;
+  coChangeFrequency: number;
+  supportingSessionIds: string[];
+}
+
+export interface ReviewContext {
+  id: string;
+  reviewId: string;
+  workspaceId: string;
+  deploymentId: string;
+  commitSha: string;
+  assembledAt: string;
+  checkpoint: {
+    checkpointId: string;
+    branch: 'entire/checkpoints/v1';
+    attributionTrailer: string | null;
+    session: {
+      sessionId: string;
+      agentType: string | null;
+      sessionIntent: string | null;
+    };
+  };
+  retrieval: {
+    changedFiles: ReviewContextFile[];
+    diffHunks: ReviewContextDiffHunk[];
+    relatedFiles: ReviewContextRelatedFile[];
+    conventionFiles: ReviewContextFile[];
+    coChange: {
+      source: 'entire/checkpoints/v1';
+      lookbackSessions: number;
+      sessionsScanned: number;
+      filesConsidered: number;
+      topN: number;
+    };
+  };
+  stats: {
+    totalFilesIncluded: number;
+    totalBytesIncluded: number;
+    estimatedTokens: number;
+    tokenBudget: number | null;
+  };
+}
+
+export interface ReviewContextRef {
+  id: string;
+  r2Key: string;
+}
+
 export interface ReviewIntentSummary {
   goal: string | null;
   constraints: string[];
@@ -517,6 +582,13 @@ export interface ReviewProvenanceSummary {
   sessionIds: string[];
   promptSummary: string | null;
   transcriptUrl?: string | null;
+  reviewContextRef?: ReviewContextRef | null;
+  reviewContextStats?: {
+    totalFilesIncluded: number;
+    totalBytesIncluded: number;
+    estimatedTokens: number;
+    tokenBudget: number | null;
+  };
 }
 
 export interface ReviewReport {

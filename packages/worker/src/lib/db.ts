@@ -10,6 +10,8 @@ import type {
   ReviewRunRecord,
   ReviewRunResponse,
   ReviewRunStatus,
+  ReviewContext,
+  ReviewContextRef,
   ReviewSeverity,
   ReviewTargetType,
   ReviewMode,
@@ -144,6 +146,7 @@ export interface CreateWorkspaceDeploymentInput {
   idempotencyKey: string;
   requestPayload: unknown;
   requestPayloadSha256: string;
+  requestPayloadSha256Aliases?: string[];
   maxRetries: number;
   provenance?: Record<string, unknown>;
 }
@@ -201,6 +204,26 @@ export interface ReviewEventItem {
   eventType: string;
   payload: unknown;
   createdAt: string;
+}
+
+export interface ReviewContextBlobRecord {
+  id: string;
+  review_id: string;
+  workspace_id: string;
+  deployment_id: string;
+  r2_key: string;
+  byte_size: number;
+  estimated_tokens: number;
+  created_at: string;
+}
+
+export interface ReviewCochangeCacheRecord {
+  file_path: string;
+  repo: string;
+  branch: string;
+  cochange_json: string;
+  lookback_sessions: number;
+  last_updated: string;
 }
 
 export interface WorkspaceDependencyCacheRecord {
@@ -630,6 +653,14 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
         report?.provenance && typeof report.provenance.transcriptUrl === 'string'
           ? report.provenance.transcriptUrl
           : null,
+      reviewContextRef:
+        report?.provenance && report.provenance.reviewContextRef && typeof report.provenance.reviewContextRef === 'object'
+          ? (report.provenance.reviewContextRef as ReviewContextRef)
+          : null,
+      reviewContextStats:
+        report?.provenance && report.provenance.reviewContextStats && typeof report.provenance.reviewContextStats === 'object'
+          ? report.provenance.reviewContextStats
+          : undefined,
     },
     markdownSummary: record.markdown_summary,
   };
@@ -1967,6 +1998,7 @@ export async function createWorkspaceDeployment(
   input: CreateWorkspaceDeploymentInput
 ): Promise<{ deployment: WorkspaceDeploymentResponse; reused: boolean }> {
   const now = new Date().toISOString();
+  const acceptedHashes = new Set([input.requestPayloadSha256, ...(input.requestPayloadSha256Aliases ?? [])]);
   const existingIdempotency = await db
     .prepare(
       `SELECT deployment_id, request_payload_sha256, expires_at
@@ -1978,7 +2010,7 @@ export async function createWorkspaceDeployment(
     .first<{ deployment_id: string; request_payload_sha256: string; expires_at: string }>();
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
-    if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {
+    if (!acceptedHashes.has(existingIdempotency.request_payload_sha256)) {
       throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
     }
 
@@ -2012,7 +2044,7 @@ export async function createWorkspaceDeployment(
     .first<WorkspaceDeploymentRecord>();
 
   if (existingDeploymentByKey) {
-    if (existingDeploymentByKey.request_payload_sha256 !== input.requestPayloadSha256) {
+    if (!acceptedHashes.has(existingDeploymentByKey.request_payload_sha256)) {
       throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
     }
 
@@ -2128,7 +2160,7 @@ export async function createWorkspaceDeployment(
       throw new Error('Deployment idempotency race detected but winner record is unavailable');
     }
 
-    if (concurrent.request_payload_sha256 !== input.requestPayloadSha256) {
+    if (!acceptedHashes.has(concurrent.request_payload_sha256)) {
       await db.prepare('DELETE FROM workspace_deployments WHERE id = ?').bind(input.id).run();
       throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
     }
@@ -2953,6 +2985,155 @@ export async function replaceReviewFindings(
       )
       .run();
   }
+}
+
+export function generateReviewContextId(): string {
+  return generatePrefixedId('rctx', 10);
+}
+
+export async function createReviewContextBlobReference(
+  db: D1Database,
+  input: {
+    id: string;
+    reviewId: string;
+    workspaceId: string;
+    deploymentId: string;
+    r2Key: string;
+    byteSize: number;
+    estimatedTokens: number;
+  }
+): Promise<ReviewContextRef> {
+  const record = await db
+    .prepare(
+      `INSERT INTO review_context_blobs (
+         id,
+         review_id,
+         workspace_id,
+         deployment_id,
+         r2_key,
+         byte_size,
+         estimated_tokens,
+         created_at
+       )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       RETURNING id, r2_key`
+    )
+    .bind(
+      input.id,
+      input.reviewId,
+      input.workspaceId,
+      input.deploymentId,
+      input.r2Key,
+      input.byteSize,
+      input.estimatedTokens,
+      new Date().toISOString()
+    )
+    .first<{ id: string; r2_key: string }>();
+
+  if (!record) {
+    throw new Error('Failed to create review context blob reference');
+  }
+
+  return {
+    id: record.id,
+    r2Key: record.r2_key,
+  };
+}
+
+export async function getReviewContextBlobReference(db: D1Database, reviewId: string): Promise<ReviewContextRef | null> {
+  const record = await db
+    .prepare(
+      `SELECT id, r2_key
+       FROM review_context_blobs
+       WHERE review_id = ?
+       ORDER BY created_at DESC
+       LIMIT 1`
+    )
+    .bind(reviewId)
+    .first<{ id: string; r2_key: string }>();
+
+  if (!record) {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    r2Key: record.r2_key,
+  };
+}
+
+export async function getReviewCochangeCache(
+  db: D1Database,
+  input: {
+    filePath: string;
+    repo: string;
+  }
+): Promise<{ cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>; lastUpdated: string; lookbackSessions: number } | null> {
+  const record = await db
+    .prepare(
+      `SELECT cochange_json, last_updated, lookback_sessions
+       FROM review_cochange_cache
+       WHERE file_path = ? AND repo = ?
+       LIMIT 1`
+    )
+    .bind(input.filePath, input.repo)
+    .first<{ cochange_json: string; last_updated: string; lookback_sessions: number }>();
+
+  if (!record) {
+    return null;
+  }
+
+  let cochange: Array<{ path: string; frequency: number; sessionIds: string[] }> = [];
+  try {
+    const parsed = JSON.parse(record.cochange_json) as unknown;
+    if (Array.isArray(parsed)) {
+      cochange = parsed.filter((item): item is { path: string; frequency: number; sessionIds: string[] } => {
+        const entry = item as Record<string, unknown>;
+        return typeof entry.path === 'string' && typeof entry.frequency === 'number' && Array.isArray(entry.sessionIds);
+      });
+    }
+  } catch {
+    cochange = [];
+  }
+
+  return {
+    cochange,
+    lastUpdated: record.last_updated,
+    lookbackSessions: Number(record.lookback_sessions),
+  };
+}
+
+export async function upsertReviewCochangeCache(
+  db: D1Database,
+  input: {
+    filePath: string;
+    repo: string;
+    branch: string;
+    cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>;
+    lookbackSessions: number;
+    lastUpdated?: string;
+  }
+): Promise<void> {
+  const lastUpdated = input.lastUpdated ?? new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO review_cochange_cache (file_path, repo, branch, cochange_json, lookback_sessions, last_updated)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(file_path, repo) DO UPDATE SET
+         branch = excluded.branch,
+         cochange_json = excluded.cochange_json,
+         lookback_sessions = excluded.lookback_sessions,
+         last_updated = excluded.last_updated`
+    )
+    .bind(
+      input.filePath,
+      input.repo,
+      input.branch,
+      JSON.stringify(input.cochange),
+      input.lookbackSessions,
+      lastUpdated
+    )
+    .run();
 }
 
 export async function getLatestSuccessfulWorkspaceDeployment(

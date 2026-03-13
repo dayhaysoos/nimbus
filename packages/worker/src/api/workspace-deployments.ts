@@ -33,6 +33,7 @@ const corsHeaders = {
 const PROVIDER_PRECHECK_LEASE_MS = 30_000;
 const MAX_PROVENANCE_SESSION_ID_LENGTH = 160;
 const MAX_PROVENANCE_INTENT_CONTEXT_LENGTH = 800;
+const MAX_PROVENANCE_REPO_LENGTH = 256;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -112,17 +113,27 @@ function buildDeploymentIdempotencyPayload(requestPayload: {
     taskId: string | null;
     operationId: string | null;
     note: string | null;
+    repo: string | null;
     sessionIds: string[];
     transcriptUrl: string | null;
     intentSessionContext: string[];
   };
-}): Record<string, unknown> {
-  const provenancePayload: Record<string, unknown> = {
-    trigger: requestPayload.provenance.trigger,
-    taskId: requestPayload.provenance.taskId,
-    operationId: requestPayload.provenance.operationId,
-    note: null,
-  };
+}, options?: { includeRepo?: boolean }): Record<string, unknown> {
+  const includeRepo = options?.includeRepo ?? true;
+  const provenancePayload: Record<string, unknown> = includeRepo
+    ? {
+        trigger: requestPayload.provenance.trigger,
+        taskId: requestPayload.provenance.taskId,
+        operationId: requestPayload.provenance.operationId,
+        repo: requestPayload.provenance.repo,
+        note: null,
+      }
+    : {
+        trigger: requestPayload.provenance.trigger,
+        taskId: requestPayload.provenance.taskId,
+        operationId: requestPayload.provenance.operationId,
+        note: null,
+      };
 
   const payload: Record<string, unknown> = {
     provider: requestPayload.provider,
@@ -379,6 +390,10 @@ export async function handleCreateWorkspaceDeployment(
         operationId:
           typeof provenance.operationId === 'string' && provenance.operationId.trim() ? provenance.operationId.trim() : null,
         note: typeof provenance.note === 'string' && provenance.note.trim() ? provenance.note.trim() : null,
+        repo:
+          typeof provenance.repo === 'string' && provenance.repo.trim()
+            ? provenance.repo.trim().slice(0, MAX_PROVENANCE_REPO_LENGTH)
+            : null,
         sessionIds: Array.isArray(provenance.sessionIds)
           ? provenance.sessionIds
             .filter((item): item is string => typeof item === 'string')
@@ -400,8 +415,9 @@ export async function handleCreateWorkspaceDeployment(
       },
     };
 
-    const requestPayloadSha256 = await sha256Hex(
-      JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload))
+    const requestPayloadSha256 = await sha256Hex(JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload)));
+    const legacyRequestPayloadSha256 = await sha256Hex(
+      JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload, { includeRepo: false }))
     );
 
     const created = await createWorkspaceDeployment(env.DB, {
@@ -411,6 +427,7 @@ export async function handleCreateWorkspaceDeployment(
       idempotencyKey,
       requestPayload,
       requestPayloadSha256,
+      requestPayloadSha256Aliases: legacyRequestPayloadSha256 === requestPayloadSha256 ? [] : [legacyRequestPayloadSha256],
       maxRetries,
       provenance: requestPayload.provenance,
     });

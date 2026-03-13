@@ -369,7 +369,18 @@ export async function runReviewDbTests(): Promise<void> {
                       findings: [],
                       intent: { goal: null, constraints: [], decisions: [] },
                       evidence: [],
-                      provenance: { sessionIds: [], promptSummary: null, transcriptUrl: null },
+                      provenance: {
+                        sessionIds: [],
+                        promptSummary: null,
+                        transcriptUrl: null,
+                        reviewContextRef: { id: 'ctx_abc123', r2Key: 'review-context/rev_hiddenprov/ctx_abc123.json' },
+                        reviewContextStats: {
+                          totalFilesIncluded: 7,
+                          totalBytesIncluded: 12800,
+                          estimatedTokens: 3200,
+                          tokenBudget: 10000,
+                        },
+                      },
                       markdownSummary: null,
                     }),
                     markdown_summary: null,
@@ -402,6 +413,8 @@ export async function runReviewDbTests(): Promise<void> {
     const review = await getReviewRun(db, 'rev_hiddenprov');
     assert.ok(review);
     assert.equal(review?.provenance.promptSummary, null);
+    assert.equal(review?.provenance.reviewContextRef?.id, 'ctx_abc123');
+    assert.equal(review?.provenance.reviewContextStats?.estimatedTokens, 3200);
   }
 
   {

@@ -8,6 +8,7 @@ import {
   preflightWorkspaceDeployment,
 } from '../../lib/api.js';
 import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
+import { GitRepo } from '../../lib/checkpoint/git.js';
 
 function buildIdempotencyKey(workspaceId: string): string {
   const seed = `${workspaceId}:${Date.now()}:${Math.random()}`;
@@ -19,6 +20,60 @@ function sleep(ms: number): Promise<void> {
 }
 
 let resolveEntireIntentContextForCommitFn = resolveEntireIntentContextForCommit;
+export function parseRepositorySlugFromRemoteUrl(remoteUrl: string): string | null {
+  const normalized = remoteUrl.replace(/^git\+/, '').replace(/\.git$/i, '').trim();
+  if (!normalized) {
+    return null;
+  }
+
+  const scpLikeSshMatch = normalized.match(/^git@([^:]+):([^/]+\/[^/]+)$/i);
+  if (scpLikeSshMatch) {
+    const host = (scpLikeSshMatch[1] ?? '').toLowerCase();
+    if (host !== 'github.com') {
+      return null;
+    }
+    return scpLikeSshMatch[2] ?? null;
+  }
+
+  if (/^https?:\/\//i.test(normalized) || /^ssh:\/\//i.test(normalized)) {
+    try {
+      const parsed = new URL(normalized);
+      if (parsed.hostname.toLowerCase() !== 'github.com') {
+        return null;
+      }
+      const segments = parsed.pathname.replace(/^\/+/, '').split('/').filter(Boolean);
+      if (segments.length < 2) {
+        return null;
+      }
+      return `${segments[0]}/${segments[1]}`;
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+function resolveRepositorySlugForProvenance(): string | null {
+  const explicit = process.env.NIMBUS_REPO_SLUG?.trim();
+  if (explicit) {
+    return explicit;
+  }
+
+  try {
+    const git = new GitRepo(process.cwd());
+    const remoteUrl = git.run(['remote', 'get-url', 'origin']).trim();
+    if (!remoteUrl) {
+      return null;
+    }
+
+    return parseRepositorySlugFromRemoteUrl(remoteUrl);
+  } catch {
+    return null;
+  }
+}
+
+let resolveRepositorySlugForProvenanceFn = resolveRepositorySlugForProvenance;
 
 export function setWorkspaceDeployIntentContextResolverForTests(
   resolver:
@@ -26,6 +81,12 @@ export function setWorkspaceDeployIntentContextResolverForTests(
     | null
 ): void {
   resolveEntireIntentContextForCommitFn = resolver ?? resolveEntireIntentContextForCommit;
+}
+
+export function setWorkspaceDeployRepositorySlugResolverForTests(
+  resolver: (() => string | null) | null
+): void {
+  resolveRepositorySlugForProvenanceFn = resolver ?? resolveRepositorySlugForProvenance;
 }
 
 export async function workspaceDeployCommand(
@@ -154,6 +215,12 @@ export async function workspaceDeployCommand(
   }
 
   p.log.success('Preflight passed');
+  const repositorySlug = resolveRepositorySlugForProvenanceFn();
+  if (!repositorySlug) {
+    throw new Error(
+      'Unable to resolve GitHub repository slug for deployment provenance. Set NIMBUS_REPO_SLUG=<owner>/<repo> or configure origin remote to github.com.'
+    );
+  }
   const idempotencyKey = options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId);
   const created = await createWorkspaceDeployment(workerUrl, workspaceId, idempotencyKey, {
     provider,
@@ -178,6 +245,7 @@ export async function workspaceDeployCommand(
       sessionIds: entireIntentContext?.sessionIds ?? [],
       transcriptUrl: entireIntentContext?.transcriptUrl ?? null,
       intentSessionContext: entireIntentContext?.intentSessionContext ?? [],
+      repo: repositorySlug,
     },
   });
 
