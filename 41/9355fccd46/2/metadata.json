@@ -1,9 +1,11 @@
 {
   "cli_version": "0.4.9",
   "checkpoint_id": "419355fccd46",
+  "session_id": "ses_31a373d41ffe4HopnI3m4DnAj3",
   "strategy": "manual-commit",
+  "created_at": "2026-03-13T16:00:51.509172Z",
   "branch": "feat/minimal-report-ui-v1",
-  "checkpoints_count": 3,
+  "checkpoints_count": 1,
   "files_touched": [
     "package.json",
     "packages/report-ui/.gitignore",
@@ -26,34 +28,22 @@
     "packages/report-ui/vitest.config.ts",
     "pnpm-lock.yaml"
   ],
-  "sessions": [
-    {
-      "metadata": "/41/9355fccd46/0/metadata.json",
-      "transcript": "/41/9355fccd46/0/full.jsonl",
-      "context": "/41/9355fccd46/0/context.md",
-      "content_hash": "/41/9355fccd46/0/content_hash.txt",
-      "prompt": "/41/9355fccd46/0/prompt.txt"
-    },
-    {
-      "metadata": "/41/9355fccd46/1/metadata.json",
-      "transcript": "/41/9355fccd46/1/full.jsonl",
-      "context": "/41/9355fccd46/1/context.md",
-      "content_hash": "/41/9355fccd46/1/content_hash.txt",
-      "prompt": "/41/9355fccd46/1/prompt.txt"
-    },
-    {
-      "metadata": "/41/9355fccd46/2/metadata.json",
-      "transcript": "/41/9355fccd46/2/full.jsonl",
-      "context": "/41/9355fccd46/2/context.md",
-      "content_hash": "/41/9355fccd46/2/content_hash.txt",
-      "prompt": "/41/9355fccd46/2/prompt.txt"
-    }
-  ],
+  "agent": "OpenCode",
+  "turn_id": "b83560d631b6",
   "token_usage": {
-    "input_tokens": 259958,
+    "input_tokens": 65294,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 2285312,
-    "output_tokens": 14106,
-    "api_call_count": 53
+    "cache_read_tokens": 785792,
+    "output_tokens": 4903,
+    "api_call_count": 18
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-13T16:00:51.410741Z",
+    "agent_lines": 3042,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 3042,
+    "agent_percentage": 100
   }
 }
