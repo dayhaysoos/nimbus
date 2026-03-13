@@ -20,6 +20,8 @@ export function runArgsParsingTests(): void {
   {
     const parsed = parseArgs([
       'workspace',
+      '--tests',
+      '--build',
       '--idempotency-key',
       'deploy-1',
       '--provider',
@@ -36,6 +38,8 @@ export function runArgsParsingTests(): void {
       'ws_abc12345',
     ]);
     assert.equal(parsed.flags['idempotency-key'], 'deploy-1');
+    assert.equal(parsed.flags.tests, true);
+    assert.equal(parsed.flags.build, true);
     assert.equal(parsed.flags.provider, 'cloudflare_workers_assets');
     assert.equal(parsed.flags['output-dir'], 'dist');
     assert.equal(parsed.flags['summarize-session'], 'always');

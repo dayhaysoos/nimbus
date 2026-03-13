@@ -123,8 +123,10 @@ Options:
                      Deploy project root override for monorepos
   --env-file <path>  Extra env file(s), comma-separated
   --env KEY=VALUE    Explicit env override (repeatable)
-  --no-tests         Skip tests in checkpoint deploy metadata
-  --no-build         Skip build in workspace deploy metadata
+  --tests            Run tests during workspace deploy validation (default: off)
+  --build            Run build during workspace deploy validation (default: off)
+  --no-tests         Legacy alias to disable tests explicitly
+  --no-build         Legacy alias to disable build explicitly
   --no-lint          Skip lint in checkpoint deploy metadata
   --no-watch         Disable follow-up watch guidance
   --include-patch    Include unified patch output for workspace diff
@@ -164,7 +166,8 @@ Examples:
   nimbus workspace deploy ws_abc12345
   nimbus workspace deploy ws_abc12345 --provider cloudflare_workers_assets --output-dir dist
   nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123 --auto-fix
-  nimbus workspace deploy ws_abc12345 --preflight-only --no-tests --no-build
+  nimbus workspace deploy ws_abc12345 --preflight-only
+  nimbus workspace deploy ws_abc12345 --tests --build
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
   nimbus review show rev_abcd1234
@@ -322,8 +325,8 @@ async function main(): Promise<void> {
           const idempotencyKeyFlag = flags['idempotency-key'];
           const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
           const pollIntervalMs = parsePositiveIntegerFlag(flags['poll-interval-ms']);
-          const runTestsIfPresent = !flags['no-tests'];
-          const runBuildIfPresent = !flags['no-build'];
+          const runTestsIfPresent = Boolean(flags.tests) && !Boolean(flags['no-tests']);
+          const runBuildIfPresent = Boolean(flags.build) && !Boolean(flags['no-build']);
           const preflightOnly = Boolean(flags['preflight-only']);
           const autoFix = Boolean(flags['auto-fix']);
           const providerFlag = flags.provider;

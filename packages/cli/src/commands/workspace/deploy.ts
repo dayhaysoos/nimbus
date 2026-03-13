@@ -49,8 +49,8 @@ export async function workspaceDeployCommand(
   }
 
   const validation = {
-    runBuildIfPresent: options?.runBuildIfPresent ?? true,
-    runTestsIfPresent: options?.runTestsIfPresent ?? true,
+    runBuildIfPresent: options?.runBuildIfPresent ?? false,
+    runTestsIfPresent: options?.runTestsIfPresent ?? false,
   };
   const pollIntervalMs = Math.max(250, options?.pollIntervalMs ?? 1500);
   const autoFixEnabled = Boolean(options?.autoFix);
@@ -128,16 +128,29 @@ export async function workspaceDeployCommand(
 
   const workspace = await getWorkspace(workerUrl, workspaceId);
   let entireIntentContext;
-  try {
-    entireIntentContext = await resolveEntireIntentContextForCommitFn(workspace.commitSha, process.cwd(), {
-      summarizeSession: options?.summarizeSession ?? 'auto',
-      tokenBudget: options?.intentTokenBudget,
-    });
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(
-      `Unable to resolve required Entire intent context for commit ${workspace.commitSha.slice(0, 12)}. ${message}`
+  if (!workspace.checkpointId) {
+    p.log.warning(
+      `Workspace ${workspaceId} has no checkpoint ID; proceeding without Entire checkpoint intent context.`
     );
+    entireIntentContext = {
+      note: null,
+      sessionIds: [],
+      transcriptUrl: null,
+      intentSessionContext: [],
+    };
+  } else {
+    try {
+      entireIntentContext = await resolveEntireIntentContextForCommitFn(workspace.commitSha, process.cwd(), {
+        summarizeSession: options?.summarizeSession ?? 'auto',
+        tokenBudget: options?.intentTokenBudget,
+        checkpointId: workspace.checkpointId,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Unable to resolve required Entire intent context for checkpoint ${workspace.checkpointId} at commit ${workspace.commitSha.slice(0, 12)}. ${message}`
+      );
+    }
   }
 
   p.log.success('Preflight passed');
