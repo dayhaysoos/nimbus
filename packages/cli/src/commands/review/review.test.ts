@@ -94,11 +94,17 @@ export async function runReviewCommandTests(): Promise<void> {
           includeProvenance?: boolean;
           includeValidationEvidence?: boolean;
         };
+        provenance?: {
+          note?: string | null;
+          sessionIds?: string[];
+          intentSessionContext?: string[];
+        };
       };
       assert.equal(requestBody.policy?.severityThreshold, 'medium');
       assert.equal(requestBody.policy?.maxFindings, 12);
       assert.equal(requestBody.policy?.includeProvenance, false);
       assert.equal(requestBody.policy?.includeValidationEvidence, false);
+      assert.equal(requestBody.provenance, undefined);
     }
 
     {

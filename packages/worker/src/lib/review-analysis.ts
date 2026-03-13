@@ -90,6 +90,7 @@ interface ReviewAgentPromptInput {
   goal: string;
   constraints: string[];
   decisions: string[];
+  intentSessionContext: string[];
   evidenceCatalog: Array<{ id: string; type: string; label: string; status: string }>;
   deploymentSummary: {
     provider: string;
@@ -266,6 +267,10 @@ function parseFinalReport(reviewId: string, summary: string): {
   }
 }
 
+function isGenericProviderCompletionSummary(summary: string): boolean {
+  return /completed by .*agent endpoint/i.test(summary.trim());
+}
+
 function sanitizeErrorMessage(input: string): string {
   return redactReviewText(input) ?? '';
 }
@@ -327,6 +332,9 @@ function sanitizePromptInput(input: ReviewAgentPromptInput): ReviewAgentPromptIn
     goal: redactReviewText(input.goal) ?? input.goal,
     constraints: input.constraints.map((item) => redactReviewText(item) ?? '').filter(Boolean),
     decisions: input.decisions.map((item) => redactReviewText(item) ?? '').filter(Boolean),
+    intentSessionContext: input.intentSessionContext
+      .map((item) => redactReviewText(item) ?? '')
+      .filter(Boolean),
   };
 }
 
@@ -364,6 +372,9 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     `Goal: ${input.goal}`,
     `Constraints: ${JSON.stringify(input.constraints)}`,
     `Decisions: ${JSON.stringify(input.decisions)}`,
+    input.intentSessionContext.length > 0
+      ? `Intent session context excerpts: ${JSON.stringify(input.intentSessionContext)}`
+      : 'Intent session context excerpts: []',
     `Deployment summary: ${JSON.stringify(input.deploymentSummary)}`,
     `Evidence catalog: ${JSON.stringify(input.evidenceCatalog)}`,
     promptDiffSnapshot !== undefined
@@ -784,6 +795,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
 
     const history: ReviewAgentHistoryEntry[] = [];
     const usedTools: string[] = [];
+    let malformedFinalOutputError: ReviewAgentOutputError | null = null;
     for (let step = 1; step <= maxSteps; step += 1) {
       const action = await provider.next({
         prompt,
@@ -794,14 +806,53 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       });
 
       if (action.type === 'final') {
-        const parsed = parseFinalReport(input.reviewId, action.summary);
-        return {
-          ...parsed,
-          provider: 'cloudflare_agents_sdk',
-          model,
-          stepsExecuted: step,
-          usedTools,
-        };
+        try {
+          const parsed = parseFinalReport(input.reviewId, action.summary);
+          return {
+            ...parsed,
+            provider: 'cloudflare_agents_sdk',
+            model,
+            stepsExecuted: step,
+            usedTools,
+          };
+        } catch (error) {
+          if (error instanceof ReviewAgentOutputError && isGenericProviderCompletionSummary(action.summary)) {
+            throw new ReviewAgentOutputError(
+              'Review agent returned provider completion text instead of structured JSON; verify AGENT_SDK_URL points to the Nimbus-compatible action endpoint'
+            );
+          }
+
+          if (error instanceof ReviewAgentOutputError && step < maxSteps) {
+            malformedFinalOutputError = error;
+            history.push({
+              role: 'assistant',
+              content: 'final_output_validator: returned final summary did not match required JSON schema; retrying final output',
+            });
+            history.push({
+              role: 'tool',
+              tool: 'final_output_validator',
+              output: {
+                ok: false,
+                error: 'Final summary must be a raw JSON object with summary, intent, and findings fields.',
+                requiredShape: {
+                  summary: {
+                    riskLevel: 'low|medium|high|critical',
+                    recommendation: 'approve|comment|request_changes',
+                  },
+                  intent: {
+                    goal: 'string|null',
+                    constraints: 'string[]',
+                    decisions: 'string[]',
+                  },
+                  findings: 'array',
+                },
+              },
+            });
+            continue;
+          }
+
+          throw error;
+        }
       }
 
       const output = await executeReviewTool(
@@ -816,6 +867,9 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       history.push({ role: 'tool', tool: action.tool, output: sanitizeToolContext(output) });
     }
 
+    if (malformedFinalOutputError) {
+      throw malformedFinalOutputError;
+    }
     throw new Error('Review analysis exceeded maximum step count');
   } finally {
     if (typeof sandbox.destroy === 'function') {

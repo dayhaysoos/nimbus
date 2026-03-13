@@ -488,6 +488,7 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -591,6 +592,7 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -768,6 +770,9 @@ export async function runReviewRunnerTests(): Promise<void> {
           provenance: {
             trigger: 'manual_cli',
             taskId: 'tsk_123',
+            note: 'Review against Entire intent history for auth hardening.',
+            sessionIds: ['ses_review_1'],
+            intentSessionContext: ['User asked to harden auth flow and avoid token leakage in logs.'],
           },
         },
         workspaceTaskRecord: {
@@ -792,12 +797,19 @@ export async function runReviewRunnerTests(): Promise<void> {
         },
         deploymentRequestProvenance: {
           note: null,
+          sessionIds: ['ses_deploy_1'],
+          intentSessionContext: ['Deployment run validated baseline and generated source bundle.'],
         },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'succeeded');
       assert.equal(fetchCalls.length, 2);
       assert.equal(capturedSandboxId, 'review-snapshot-rev_abcd1234');
+      assert.equal(String(fetchCalls[0].body.prompt ?? '').includes('Intent session context excerpts'), true);
+      assert.equal(
+        String(fetchCalls[0].body.prompt ?? '').includes('Deployment run validated baseline and generated source bundle.'),
+        true
+      );
       assert.equal(JSON.stringify(fetchCalls[0].body).includes('secret123'), false);
       assert.equal(JSON.stringify(fetchCalls[0].body).includes('secret456'), false);
       assert.equal(JSON.stringify(fetchCalls[1].body).includes('secret789'), false);
@@ -813,13 +825,14 @@ export async function runReviewRunnerTests(): Promise<void> {
       const report = JSON.parse(state.reportJson ?? '{}') as {
         findings: Array<{ title: string; evidenceRefs: string[] }>;
         evidence: Array<{ id: string; type: string }>;
-        provenance: { promptSummary: string | null };
+        provenance: { promptSummary: string | null; sessionIds: string[] };
       };
       assert.equal(report.findings.some((finding) => finding.title.includes('Package metadata')), true);
       assert.equal(report.findings.some((finding) => finding.evidenceRefs.includes('ev_artifact')), true);
       assert.equal(report.findings.some((finding) => finding.evidenceRefs.includes('ev_missing')), false);
       assert.equal(report.evidence.some((item) => item.id === 'ev_review_agent' && item.type === 'analysis_agent'), true);
       assert.equal(report.provenance.promptSummary, 'Review generated in report_only mode for deployment dep_abcd1234.');
+      assert.deepEqual(report.provenance.sessionIds, ['ses_deploy_1']);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1043,6 +1056,7 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -1078,6 +1092,116 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'succeeded');
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_fallback'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    let fetchCalls = 0;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (): Promise<Response> => {
+      fetchCalls += 1;
+      if (fetchCalls === 1) {
+        return new Response(
+          JSON.stringify({
+            action: {
+              type: 'final',
+              summary: 'plain text completion that is not review json',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(fetchCalls, 2);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_fallback'), false);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    let genericCompletionFetchCalls = 0;
+    globalThis.fetch = (async (): Promise<Response> => {
+      genericCompletionFetchCalls += 1;
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: 'Completed by Cloudflare agent endpoint',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: {
+          AGENT_SDK_URL: 'https://agent.example.com',
+          REVIEW_AGENT_MAX_STEPS: '6',
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(genericCompletionFetchCalls, 1);
+      const fallbackEvent = state.events.find((event) => event.eventType === 'review_analysis_fallback');
+      const fallbackPayload = JSON.stringify(fallbackEvent?.payload ?? {});
+      assert.equal(fallbackPayload.includes('Nimbus-compatible action endpoint'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;

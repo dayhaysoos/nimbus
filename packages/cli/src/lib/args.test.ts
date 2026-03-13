@@ -20,20 +20,30 @@ export function runArgsParsingTests(): void {
   {
     const parsed = parseArgs([
       'workspace',
+      '--tests',
+      '--build',
       '--idempotency-key',
       'deploy-1',
       '--provider',
       'cloudflare_workers_assets',
       '--output-dir',
       'dist',
+      '--summarize-session',
+      'always',
+      '--intent-token-budget',
+      '1800',
       '--poll-interval-ms',
       '2000',
       'deploy',
       'ws_abc12345',
     ]);
     assert.equal(parsed.flags['idempotency-key'], 'deploy-1');
+    assert.equal(parsed.flags.tests, true);
+    assert.equal(parsed.flags.build, true);
     assert.equal(parsed.flags.provider, 'cloudflare_workers_assets');
     assert.equal(parsed.flags['output-dir'], 'dist');
+    assert.equal(parsed.flags['summarize-session'], 'always');
+    assert.equal(parsed.flags['intent-token-budget'], '1800');
     assert.equal(parsed.flags['poll-interval-ms'], '2000');
   }
 
