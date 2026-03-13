@@ -8,10 +8,13 @@
   "scripts": {
     "preinstall": "node ./enforce-node-version.mjs",
     "dev": "pnpm --filter @dayhaysoos/nimbus-worker dev",
+    "dev:report-ui": "pnpm --filter @dayhaysoos/nimbus-report-ui dev",
     "build": "pnpm -r build",
+    "build:report-ui": "pnpm --filter @dayhaysoos/nimbus-report-ui build",
     "deploy": "pnpm --filter @dayhaysoos/nimbus-worker deploy",
     "setup:worker": "node ./scripts/setup-worker.mjs",
     "test:cloudflare-contract": "node ./scripts/test-cloudflare-contract.mjs",
+    "test:report-ui": "pnpm --filter @dayhaysoos/nimbus-report-ui test",
     "cli": "pnpm --filter @dayhaysoos/nimbus dev",
     "wrangler": "pnpm --filter @dayhaysoos/nimbus-worker exec wrangler"
   },
