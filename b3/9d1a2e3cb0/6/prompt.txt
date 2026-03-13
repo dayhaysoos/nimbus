@@ -1,0 +1,527 @@
+You are taking over Nimbus “Minimal Report UI V1” implementation.
+
+Context:
+- Product direction: keep GitHub/CI-native workflow, but add a lightweight visual report viewer.
+- We do NOT want a full dashboard yet.
+- We want an easy shareable/readable report page with strong copy-to-agent UX.
+- Spec reference: llm-docs/minimal-report-ui-v1.md
+
+
+Your mission:
+Build a minimal report viewer experience end-to-end on a throwaway branch with sensible defaults.
+
+
+Non-negotiable goals:
+1) Render a review by reviewId from existing worker API.
+2) Make it easy to copy report content into coding agents.
+3) Keep setup simple and avoid overbuilding.
+
+
+Implementation defaults (already decided):
+- URL route: /reports/:reviewId
+- Data source: existing API GET /api/reviews/:id
+- V1 has no auth/SSO complexity (public-by-reviewId is acceptable for now)
+- Show:
+  - summary header (recommendation, risk, findings count, status, timestamps)
+  - findings cards
+  - evidence list
+  - rendered markdown summary
+  - raw JSON (collapsible)
+- Copy actions:
+  - copy full markdown
+  - copy full JSON
+  - copy per-finding text
+  - copy per-finding “fix prompt”
+- Use this fix prompt template per finding:
+
+
+  You are helping fix a Nimbus code review finding.
+
+
+  Finding title: <title>
+  Severity: <severity>
+  Confidence: <confidence>
+  Description:
+  <description>
+
+
+  Conditions:
+  <conditions or "none provided”>
+
+
+  Locations:
+  <path:line list>
+
+
+  Suggested fix:
+  <suggestedFix or "not provided”>
+
+
+  Evidence refs:
+  <evidence refs list>
+
+
+  Please:
+  1) Propose a minimal safe code change.
+  2) Explain why it resolves the issue.
+  3) List any tests to run.
+  4) Return a patch-style diff when possible.
+
+
+- UX defaults:
+  - neutral clean style, readability-first
+  - toast feedback on copy (“Copied”)
+  - robust loading/empty/error states
+- Technical defaults:
+  - use existing web stack if present in repo; if absent, choose lightweight React+Vite
+  - sanitize markdown rendering
+  - static-host-friendly architecture
+
+
+Questions you might ask (already answered):
+- Should we include auth? → No, not in V1.
+- Should we build list/history pages? → No, single-report page only.
+- Should we support downloads? → Yes, markdown/json download buttons.
+- Should we include feedback buttons? → No, not in V1.
+- Should we optimize for branding? → No, optimize for clarity and utility.
+- Should we support queued/failed reviews? → Yes, first-class UI states.
+
+
+Execution style:
+- Work in vertical slices and run tests after each meaningful slice.
+- Reuse existing project patterns and keep changes surgical.
+- If you find no existing frontend target, create a small self-contained one with clear run instructions.
+- Add/update tests where practical (component/unit at minimum).
+- Include local run instructions and a quick smoke checklist.
+
+
+Deliverables:
+1) Implemented report UI route/page.
+2) Copy buttons (full + finding + fix prompt) working.
+3) Download markdown/json working.
+4) Tests green.
+5) Final report with:
+   - files changed
+   - commands run
+   - test results
+   - any follow-ups for post-V1.
+
+Do not forget to make a new branch for this.
+
+---
+
+Can you give me a report id real quick I can test with?
+
+---
+
+Go through the entire process to make me a workspace with a deployment id and create a review and give me the review id
+
+---
+
+Unable to load reviewUnexpected token '<', "<!doctype "... is not valid JSON
+
+---
+
+why do we need VITE_NIMNUS_API_BASE_URL to be able to see?
+
+---
+
+Evidencedeployment provider created
+deployment_provider_created · passed
+
+
+{
+  "provider": “simulated”,
+  "providerDeploymentId": “dep_b8lilwo4”,
+  "status": “succeeded”,
+  "deployedUrl": "https://deployments.nimbus.local/ws_r25wk6dk/dep_b8lilwo4”,
+  "outputDir": “.”
+}
+deployment succeeded
+deployment_succeeded · passed
+
+
+{
+  "deployedUrl": "https://deployments.nimbus.local/ws_r25wk6dk/dep_b8lilwo4”,
+  "sourceBundleKey": "workspaces/ws_r25wk6dk/deployments/dep_b8lilwo4/source.tar.gz”,
+  "sourceSnapshotSha256": “d4b134c18e92ca737cd38443455b0b7e4f9fc3848b8b7c1ecc2e871ce0f9cb66”
+}
+Deployed URL present
+deploy_probe · passed
+
+
+{
+  "url": "https://deployments.nimbus.local/ws_r25wk6dk/dep_b8lilwo4”
+}
+Deployment artifact recorded
+artifact · info
+
+
+{
+  "sourceBundleKey": "workspaces/ws_r25wk6dk/deployments/dep_b8lilwo4/source.tar.gz”,
+  "sourceSnapshotSha256": “d4b134c18e92ca737cd38443455b0b7e4f9fc3848b8b7c1ecc2e871ce0f9cb66”,
+  "outputBundleSha256": “d4b134c18e92ca737cd38443455b0b7e4f9fc3848b8b7c1ecc2e871ce0f9cb66”,
+  "outputDir": “.”,
+  "reviewDiffArtifactId": “art_jo87ftr6”
+}
+AI review analysis via cloudflare_agents_sdk
+analysis_agent · info
+
+
+{
+  "model": "claude-3-7-sonnet”,
+  "stepsExecuted": 3,
+  "usedTools": [
+    “diff_summary”,
+    “list_files”
+  ]
+
+Just hide it from the UI for now, maybe we can use this later
+
+---
+
+I know we are making an intent-based code review tool, but we don’t have to name that section as “Intent”. It’s to be treated as “Policies” so maybe we can refer to it as “Policy”, That section.
+
+---
+
+You can also hide the evidence section fromt he markdown section
+
+---
+
+yeah do that
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+I will keep running the review tool. As I do them, let me know at the end if the reviews/fixes are reaching “diminishing returns” territory. Meaning, they work that’s been done is in a good enough please where we may be able to open a PR and merge with confidence. Respond with “confirm” if you understand.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Based on where we are and where we’re going, what would you say should be next steps? I still think we can do a lot to improve the quality of the reviews
+
+---
+
+The quality evaluation harness is a bit too much. I think it’s something we should do but you are overengineering too early
+
+---
+
+Okay, commit the current code, push to the branch and open a PR. Review the last PR’s summary template and apply it to this body of work
+
+---
+
+okay I want us to really think about our review approach. There are 4 really important things to consider:
+
+1. Context retrievial.
+Right now we should be able to review code based on diffs right? That’s about it. We should be able to see/review the full file, not just the changes themselves. We should also be examining related files. Tracking down things the changed code calls or is called by. Then there’s repo-level conventions, we might want to take into consideration agent.md files or something. Maybe we look for a specific file for us? code-review.md? Linkting configs, is another one, then also past PR concerns (maybe circle back to this one later).
+
+Are we able to make some sort of graph of the repo (based on Entire Checkpoints) for better retrieval?
+
+2. The review prompt and output structure
+ We probably want to do separate passes and focus on really specific things related to the code changes. Stuff like securtity, logic correctness, style/conventions, breaking change detection. Perhaps we can deploy sub agents to do these reviews and have them give a final output in the end?
+
+3. We don’t have a feedback learning loop right now, however, while I think this is really important, this feels like a pretty big feature. We should keep this in mind but circle back to it later.
+
+4. The integration surface
+Right now most review bots are showing up as comments in PRs, IDE plugins or from CLIs. As of right now we don’t have any of these integrations. If I wanted a user to test this out right now they’d go through hell setting up all the Cloudflare infra on their own accounts. I do like how we have an interface where we can just provide a URL to show the review results that make it easy to copy/paste into local LLms.
+
+I think we should work on 1,2, and 4. I’d feel way more confident sharing when these are in a good place. Is there anything you think I’m missing from my thoughts regarding quality? Would all of that help you put together a decent plan for what we do as far as next steps? Do you have any questions?
+
+---
+
+- How much more complex would this be if it was polyglot?
+- As far as latency goes, I want it to be REALLY high up, but as review returns items to look into, the review page is getting updated with the necessary items. Perhaps we can do <10 for now but the user can increase if wanted. Also I like how when I run the review tool with you, you update me on if further reviews might be overdoing it due to edge cases and what not, we’re hitting a point of “dimishing returns”, we should keep that in frame as well.
+- Why would high-sev findings fail CI? It should just be showing that it’s a high sev issue.
+
+Don’tmake the execution plan yet, consider my responses and ask more questions if needed.
+
+---
+
+1. I like the label as “further passes likely low yield”. If the user wants to run another review they can.
+2. I love the idea of unconfirmed findings and then promote/demote.
+3. I honestly have no idea. Let’s just see how it goes.
+4. I think it should be as-is from the model. Nimbus is more or less infra/facilitator. Not trying to be too the one calling shots itself.
+
+---
+
+Can we talk a bit more about what an unconfirmed finding might be? Is it a bug that MIGHT be an issue, but “unconfirmed” just means you lack confidence that it’s a real bug?
+
+---
+
+Let’s make them visually separated from the UI, and I do like the idea of the findings history to be visible if it was unconfirmed or not.
+
+---
+
+Wait, we’re talking about the overall plan here, regarding the 3 phases we just spoke about for improving the quality of this project. Can we document the discussion we’ve had so far on the new phases (context retrieval, prompt + output structure + integration surface). We should capture all of this in the llm-docs directory to refer to. From here, I’d like to then move on with fleshing out the impementation details on phase 1.
+
+Also make a note so we don’t forget the feedback learning loop that could be part of this project, but implemented at a later time.
+
+---
+
+Before we do that, I’ve used up 24% of your context window for everything we’ve done so far. Should I do this with another agent with fresh context or nah?
+
+---
+
+I think we made enough changes to update the readme, what do you think? What should be edited/added to the Readme right now?
+
+---
+
+do it now.
+
+---
+
+Yeah we’re on main, commit and push.
+
+---
+
+Let’s go ahead start specing out how we want to build out the context retrieval part of @llm-docs/review-quality-phases-context-prompt-integration.md .
+
+We're specing out Phase 1 of Nimbus review quality improvements: Context Retrieval.
+
+The goal is that review quality should not depend on diff hunks alone. We're introducing a `ReviewContext` type that gets assembled at `review create` time and passed to the review agent.
+
+
+**Hard constraint**: Nimbus only supports Entire checkpoints. There is no fallback to static analysis or generic repo scanning. The co-change signal from Entire session history is the core retrieval mechanism, not an enhancement.
+
+
+**What ReviewContext should contain:**
+
+
+- Diff hunks (baseline, always present)
+- Full text of changed files
+- Related files derived from co-change frequency in prior Entire checkpoint sessions — given the set of changed files in this review, scan recent checkpoint sessions on the `entire/checkpoints/v1` branch, find sessions that touched any of those files, collect all other files touched in those sessions, rank by co-change frequency, include top N
+- Convention/guidance files discovered by walking from each changed file's directory up to repo root, matching a known pattern list (AGENTS.md, CODE_REVIEW.md, .eslintrc*, biome.json, pyproject.toml, etc.)
+- Checkpoint context from the Entire session linked to this commit: sessionIntent (from prompt.txt or context.md), agentType, and attribution trailer
+
+
+**Token budget**: No budget by default. Include everything and let the model's context window be the natural hard ceiling. If a user optionally sets a budget via config and the assembled ReviewContext exceeds it, hard fail with a clear message telling them to increase the budget. Do not silently degrade or drop context. Token usage is tracked in the provenance manifest as a feedback signal — large token usage indicates a large commit, not a tool configuration problem.
+
+
+**Cloudflare platform specifics:**
+
+
+- **ReviewContext assembly belongs in a Workflow step**, not inline in a Worker request handler. Assembly involves multiple async operations (GitHub API calls to fetch checkpoint branch data, file fetches, convention file walks) that can exceed Worker CPU limits. The existing Workflow/queue architecture for workspace and deploy processing should be extended to include a `review_context_assembly` step before the review agent pass.
+- **Co-change lookup cache goes in D1**. D1 is already used as the durable audit log. Add a table to cache co-change frequency data keyed by file path so repeated lookups against the `entire/checkpoints/v1` branch don't re-fetch GitHub on every review. Cache entries should include a `last_updated` timestamp so staleness can be detected.
+- **Large ReviewContext payloads (full file contents) should not be passed inline through the queue**. Store the assembled ReviewContext in Durable Object storage or R2, pass only a reference ID through the Workflow. The review agent step then fetches it by ID. This avoids queue message size limits and keeps the Workflow message lightweight.
+- **The `entire/checkpoints/v1` branch queries are outbound GitHub API calls** from the Worker. Handle rate limiting explicitly — cache aggressively in D1, and surface GitHub API errors clearly in the provenance manifest rather than silently producing incomplete context.
+- **Provenance manifest events should stream via the existing SSE infrastructure** already used for `review events`. As ReviewContext assembly progresses (diff fetched, co-change lookup complete, convention files found), emit incremental provenance events so the report UI can show assembly status live before the agent pass begins.
+
+
+**Implementation approach for co-change lookup**: This is a lookup, not a graph. No graph library needed. For a given review, query the `entire/checkpoints/v1` branch session data, find sessions that touched any of the current changed files, collect co-touched files, rank by frequency, take top N. Cache results in D1.
+
+
+**Spec should cover:**
+1. The `ReviewContext` type contract (TypeScript)
+2. The Workflow step design for assembly — where it fits in the existing workspace → deploy → review lifecycle
+3. The co-change lookup implementation against `entire/checkpoints/v1` and D1 cache schema
+4. Convention file discovery strategy
+5. R2 or DO storage contract for ReviewContext payload — reference ID passing through Workflow
+6. Optional token budget config, enforcement, and hard fail behavior
+7. The provenance manifest shape, including SSE event emissions during assembly
+
+
+Keep retrieval read-only and transparent. ReviewContext is an internal type, not user-facing, but its provenance section surfaces in the report.
+
+
+Is there anything in here that you would push back on? Do you have any questions about anything that might help you with implementation details? 
+Called the Read tool with the following input: {"filePath":"/Users/nickdejesus/Code/nimbus/llm-docs/review-quality-phases-context-prompt-integration.md"}
+<path>/Users/nickdejesus/Code/nimbus/llm-docs/review-quality-phases-context-prompt-integration.md</path>
+<type>file</type>
+<content>1: # Nimbus Review Quality Phases (Context, Prompt, Integration)
+2: 
+3: Date: 2026-03-13
+4: 
+5: ## Why This Doc Exists
+6: 
+7: This captures the latest product discussion on improving Nimbus review quality, with emphasis on:
+8: 
+9: 1. Context retrieval
+10: 2. Prompt/output structure
+11: 3. Integration surface
+12: 
+13: The feedback learning loop is explicitly tracked as an important later phase, not immediate implementation.
+14: 
+15: ## Product Direction Agreed
+16: 
+17: - Prioritize phases **1, 2, and 4** (context, prompt/output, integration).
+18: - Keep Nimbus as facilitation/infra; avoid over-assertive policy enforcement behavior.
+19: - Optimize for practical adoption and usability, not theoretical completeness.
+20: 
+21: ## Phase 1 - Context Retrieval (Primary Near-Term Focus)
+22: 
+23: Goal: review quality should not depend on diff hunks alone.
+24: 
+25: Desired retrieval scope:
+26: 
+27: - Diff-based changes (baseline)
+28: - Full changed files
+29: - Related files (what changed code calls / what calls changed code)
+30: - Repo-level conventions and guidance files (for example `AGENTS.md`, `CODE_REVIEW.md`, lint configs)
+31: - Relevant config/policy files that shape runtime or coding patterns
+32: - Potential future input: prior PR concerns (deferred for now)
+33: 
+34: Directional idea to pursue:
+35: 
+36: - Build a repository graph/index from Entire checkpoints to improve related-file retrieval.
+37: 
+38: Notes:
+39: 
+40: - Start with pragmatic retrieval depth before advanced whole-repo analysis.
+41: - Keep retrieval read-only and transparent in report provenance.
+42: 
+43: ## Phase 2 - Prompt and Output Structure
+44: 
+45: Goal: improve precision and actionability through structured review passes.
+46: 
+47: Planned direction:
+48: 
+49: - Move from a single broad pass to focused passes (for example: security, logic correctness, style/conventions, breaking-change detection).
+50: - Consider sub-agent pass architecture where each pass specializes and a final pass synthesizes output.
+51: - Require clearer structure per finding so users can act quickly.
+52: 
+53: New finding lifecycle concept agreed:
+54: 
+55: - Introduce **Unconfirmed findings** (candidate issues still under investigation).
+56: - Promote/demote over time as more context arrives.
+57: - Separate UI sections for:
+58:   - Actionable (confirmed)
+59:   - Unconfirmed (investigating)
+60: - Show per-finding history (for example unconfirmed -> confirmed, confidence changes, demotion).
+61: 
+62: Clarification of "unconfirmed":
+63: 
+64: - Not a guaranteed bug.
+65: - A plausible issue with incomplete evidence/validation.
+66: - Useful early signal while deeper passes continue.
+67: 
+68: ## Phase 4 - Integration Surface
+69: 
+70: Goal: reduce adoption friction and make Nimbus easy to trial.
+71: 
+72: Current pain point:
+73: 
+74: - Self-hosted infra setup is heavy for new evaluators.
+75: 
+76: Direction:
+77: 
+78: - Improve practical entry points (CLI/GitHub/UI sharing workflows) in a staged way.
+79: - Preserve the strong report URL + copy-to-agent workflow.
+80: 
+81: ## Cross-Cutting Decisions
+82: 
+83: ### Latency + Progressive Delivery
+84: 
+85: - Target around `<10 min` initially (with potential user-configured increase).
+86: - Stream updates to report as findings are discovered, instead of waiting for a fully complete run.
+87: 
+88: ### Diminishing Returns Signal
+89: 
+90: - Do not auto-stop reviews.
+91: - Add advisory label: **"further passes likely low yield"**.
+92: - User can still run another pass manually.
+93: 
+94: ### Severity Handling
+95: 
+96: - Show severity as returned by the model.
+97: - Do not fail CI by default based on high severity.
+98: - High severity should be surfaced clearly as advisory signal.
+99: 
+100: ## Deferred But Important (Do Not Forget)
+101: 
+102: ### Feedback Learning Loop (Deferred)
+103: 
+104: Keep this in backlog as a later major feature:
+105: 
+106: - Feedback capture on findings
+107: - Quality signal aggregation over time
+108: - Prompt/retrieval tuning based on observed acceptance quality
+109: 
+110: Reason for deferral:
+111: 
+112: - Valuable but large in scope; immediate gains are higher in context retrieval, prompt structure, and integrations.
+113: 
+114: ## Immediate Next Step
+115: 
+116: Proceed to flesh out implementation details for **Phase 1 (Context Retrieval)**, including:
+117: 
+118: - minimal Context Pack contract
+119: - related-file retrieval strategy
+120: - checkpoint-derived repo graph/index approach (incremental)
+
+(End of file - total 120 lines)
+</content>
+
+---
+
+- Yes, hard-fail when no valid entire checkpoint/session context is resolvable.
+- Can you break down for me what you mean here and what the possible trade offs could be?
+- how about workspace deploy provenance for now. I assume this can later evolve into a config file where people can set these sort of things.
+- I’ll go with your recommended approach for the storage choice.
+- for co-change cache granularity, I’ll go with your recommendation here.
+- Maybe look back on the last PR by default. User might want to configure more. We have a hard stop after 5 or something?
+
+---
+
+Sure
+
+---
+
+Uuhh you actually never made the review-context-phase1-spec.md doc at all.
+
+---
+
+Update the Phase 1 spec with these three changes:
+
+1. **D1 cache composite key** — change `review_cochange_cache` to use a composite primary key of `(file_path, repo)` instead of `file_path` alone. Add `repo TEXT NOT NULL` column (value is the owner/name slug, e.g. "dayhaysoos/nimbus"). Update the CREATE TABLE statement and any references to cache lookup/write logic accordingly.
+
+
+2. **Session eligibility definition** — in Section 3, clarify that "eligible checkpoint sessions" means the N most recent sessions ordered by `assembledAt` timestamp descending. No commit ancestry traversal in Phase 1.
+
+
+3. **Convention file cap** — change `conventionFileMaxCount` default from 50 to 10 in Section 8 and anywhere else it's referenced.
+
+
+No other changes.
+
+---
+
+You can start building now. Make sure you build in a sensible, feature based way. I like to think in terms of vertical slices. When you’re done with a vertical slice, review the code and run tests to make sure they pass. Fix what’s needed. Do not move on to the next slice until everything is green.
+
+---
+
+One issue to address as a follow-up slice: the co-change soft-skip behavior (skipping co-change when repo slug is missing rather than hard-failing) is a deviation from the Phase 1 spec. The spec explicitly states that co-change from Entire checkpoint history is the primary retrieval mechanism, not optional infrastructure. Silently skipping it when repo slug is unresolvable is the same tiered degradation pattern we deliberately rejected during spec design.
+
+Fix: make repo slug required for review context assembly. If it cannot be resolved from deployment provenance or env, hard-fail with a clear error code (consistent with the existing `unsupported_without_entire_checkpoint_context` pattern). Wire repo slug end-to-end from deploy provenance so it is always present by the time review context assembly runs.
+
+
+No silent partial context. If co-change can't run, the review shouldn't proceed.
+
+---
+
+Continue if you have next steps, or stop and ask for clarification if you are unsure how to proceed.
+
+---
+
+I’m going to run the review tool a bunch of times. If we get to a point where the review tool feedback is starting to feel underwhelming and we’re reaching a point of diminishing returns, then let me know. Dimishing returns would be really nuanced things or edge cases. I’ll prob do a few more review loops after and then we should do an actual run through to make sure this all works as intented. If you agree with this approach, respond with “confirm”. If you want to push back let me know.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+You did the right thing by pushing back on that. Hopefully it doesn’t come back in later reviews
+
+---
+
+Summarize the task tool output above and continue with your task.

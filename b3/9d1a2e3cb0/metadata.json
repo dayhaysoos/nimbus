@@ -3,7 +3,7 @@
   "checkpoint_id": "b39d1a2e3cb0",
   "strategy": "manual-commit",
   "branch": "enhance-context-retrieval",
-  "checkpoints_count": 6,
+  "checkpoints_count": 19,
   "files_touched": [
     "packages/cli/src/commands/workspace/deploy.test.ts",
     "packages/cli/src/commands/workspace/deploy.ts",
@@ -60,13 +60,20 @@
       "context": "/b3/9d1a2e3cb0/5/context.md",
       "content_hash": "/b3/9d1a2e3cb0/5/content_hash.txt",
       "prompt": "/b3/9d1a2e3cb0/5/prompt.txt"
+    },
+    {
+      "metadata": "/b3/9d1a2e3cb0/6/metadata.json",
+      "transcript": "/b3/9d1a2e3cb0/6/full.jsonl",
+      "context": "/b3/9d1a2e3cb0/6/context.md",
+      "content_hash": "/b3/9d1a2e3cb0/6/content_hash.txt",
+      "prompt": "/b3/9d1a2e3cb0/6/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 1221008,
+    "input_tokens": 3661596,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 2813952,
-    "output_tokens": 35827,
-    "api_call_count": 55
+    "cache_read_tokens": 38256768,
+    "output_tokens": 133198,
+    "api_call_count": 364
   }
 }
