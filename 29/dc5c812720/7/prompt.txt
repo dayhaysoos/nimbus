@@ -1,0 +1,223 @@
+You are taking over Nimbus agent-review troubleshooting on a fresh branch created after Phase 8A merged to `main`.
+
+Context:
+- The end-to-end cloud review flow is now working:
+  - workspace create
+  - workspace deploy
+  - review create
+  - review events
+  - review show
+  - review export
+- The remaining problem is review quality, not platform plumbing.
+- In successful cloud runs, the review lifecycle reaches:
+  - `review_analysis_agent_started`
+  - then `review_analysis_fallback`
+  - then `review_succeeded`
+- So the external agent path is being invoked, but it is not returning a usable structured review result.
+
+
+What I want investigated:
+Find out exactly why the agent-backed review path is falling back, and fix it if possible.
+
+
+Likely areas:
+- `packages/worker/src/lib/review-analysis.ts`
+- `packages/worker/src/lib/review-runner.ts`
+- `packages/worker/src/api/reviews.ts`
+- worker env/config around:
+  - `AGENT_SDK_URL`
+  - `AGENT_PROVIDER`
+  - `AGENT_MODEL`
+- any review-agent prompt/contract mismatch with the external endpoint
+
+
+Important known context:
+- Review analysis is now:
+  - non-mutating
+  - deployment-backed
+  - diff-based by default
+  - sandboxed against the deployed source snapshot
+- Tool surface currently includes:
+  - `list_files`
+  - `read_file`
+  - `diff_summary`
+- `run_command` is effectively disabled in review mode
+- We intentionally hardened:
+  - idempotency
+  - retry behavior
+  - redaction
+  - SSE behavior
+  - diff artifact generation
+  - source bundle / artifact fallback behavior
+- The infrastructure flow should not be reworked unless clearly necessary.
+- The focus is: why does the provider return output that causes `review_analysis_fallback`, and how do we make it produce a useful structured result?
+
+
+Your mission:
+1. Reproduce the fallback cause locally/in code as much as possible.
+2. Inspect the review agent prompt, tool history, tool outputs, and parsing expectations.
+3. Determine whether the problem is:
+   - bad prompt contract
+   - provider response shape mismatch
+   - malformed final output parsing expectations
+   - disabled tool surface being too restrictive
+   - missing context given to the agent
+   - endpoint/provider config mismatch
+4. Implement the smallest robust fix that improves actual agent review success without weakening the non-mutating safety model.
+5. Add tests.
+6. Run tests after each meaningful slice and do not move on until green.
+7. If feasible, redeploy and do one real cloud smoke check to confirm the agent path produces something better than fallback.
+
+
+Execution style:
+- Work in vertical slices.
+- After each slice: run tests, fix failures, then continue.
+- Reuse existing project patterns.
+- Keep changes surgical and style-consistent.
+
+
+When done, report:
+- root cause found
+- files changed
+- commands run
+- test results
+- whether a real cloud run still falls back or now returns structured agent output
+- any remaining follow-ups
+
+
+Useful current reality from the prior session:
+- `main` cloud flow was verified successfully with:
+  - workspace `ws_osurxkll`
+  - deployment `dep_2cxtidl7`
+  - review `rev_zk9mdcg1`
+- That run still showed:
+  - `review_analysis_agent_started`
+  - `review_analysis_fallback`
+- The worker URL in use was:
+  - `https://nimbus-worker.ndejesus1227.workers.dev`
+
+
+Start by reading:
+- `llm-docs/review-tool-v1-contract.md`
+- `llm-docs/review-tool-best-practices.md`
+- `llm-docs/ask-bonk-harness-notes.md`
+- `packages/worker/src/lib/review-analysis.ts`
+- `packages/worker/src/lib/review-runner.ts`
+
+
+Then investigate the fallback path end-to-end.
+
+---
+
+Go ahead and implement
+
+---
+
+this is the agent sdk url. Set it for me:
+
+AGENT_SDK_URL=https://nimbus-agent-endpoint.ndejesus1227.workers.dev
+
+---
+
+Does the cloudflare agents sdk not support structured output? Look it up
+
+---
+
+what do we need to do to enforce it? Why haven’t you done it yet?
+
+---
+
+what did it actually respond with? how can I see that stuff?
+
+---
+
+I’d like to zero in on how we can significantly improve the review experience. First, I want you to start with some recommendations. I’ll review and provide feedback from there. I want to be compettive with things like Cursor’s bug bot, Qodo, Copilot review. Look those up and learn about them to help form your opinions
+
+---
+
+I think you’re forgetting a huge part of this. Entire allows us to capture the prompts that were used in the session that’s related to the commit. We should be injecting the prompt historycontext into the code reviews for intent-based code review sessions. This should be the highest priority
+
+---
+
+Honestly I wasn’t asking you to actually do it, I wanted to bring it into your awareness o you can consider it with the features you presented to me. I wish you asked me questions about how it should be implemented. Since you have it going now, what areas of the recent features do you feel like have gaps that you could use clarification on?
+
+---
+
+For thesource of truth for intent..what exaclty would we override?
+
+- Precendence rules: What is review provenence and deployment provenance? Why are we making review provenances if we are using the deploy to review?
+privacy boundary:
+I think summary should be an option. A flag to be passed as default. Something like —summarize-session or something.
+Context size policy:
+Perhaps we should do totalToken budget, something reasonable. If the token budget is way too high, then we force summary (this should teach users to keep commits frequent and small)
+
+When to include context:
+- Always, we should ONLY be doing intent-based review mode for now. It’s too early to consider anything else.
+
+Transcript url would be nice as a report  but maybe it should be updated after everything is done? Idk what to think here.
+
+Failure behavior:
+
+Hard-fail. 
+
+In the actual report, we probably shouldn’t show the intent context. 
+
+Benchmark target definition:
+
+This one is hard. we’re providing extra insight/context for the review. We can see the entire prompt history around it. What metric do you think that’ll improve? For me it feels like we can catch better nuanced stuff.. maybe precision idk. Help me here, let’s talk about it
+
+---
+
+No override by default, we can think this through later.
+
+Review create cannot override intent context.  I like the idea of overrides but let’s get a strong foundation going first.
+
+As far as the summarization goes for session prompts if needed, we should workshop what should be in the system prompt for all that. We should tell the agent to focus on capturing intention, making note of things to keep in mind during review. Like if in the prompt the users said not to do a particular thing with the code, that should be noted. If the user asked for implementations to be done a certain way, they should be recoreded and considered during review. Help me figure out a good system prompt that really helps capturing intent/goals
+
+---
+
+My only feedback is to remove the “You are Numbus Intent extractor” that doesn’t mean anything and serves no purpose to the LLM. Just tell it that it’s assisting in gathering intent for a prompt session.
+
+Go ahead and implement those changes now
+
+---
+
+go ahead and do that
+
+---
+
+I’m going to run reviews repeatedly until this feels like a very cleaned up branch. Give me a heads up when the reviews start feeling like they’re not worth it/going into diminishing returns. Just respond with confirm if you understand.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Let’s make a real review with this entire checkpoint ID:
+
+810793479b0d
+
+---
+
+wait how come not everything has Entire-Attribution? is it because we just introduced that?
