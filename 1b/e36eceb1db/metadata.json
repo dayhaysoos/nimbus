@@ -1,0 +1,29 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "1be36eceb1db",
+  "strategy": "manual-commit",
+  "branch": "troubleshoot-agent-review",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/workspace/deploy.test.ts",
+    "packages/cli/src/commands/workspace/deploy.ts",
+    "packages/cli/src/lib/entire/context.test.ts",
+    "packages/cli/src/lib/entire/context.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/1b/e36eceb1db/0/metadata.json",
+      "transcript": "/1b/e36eceb1db/0/full.jsonl",
+      "context": "/1b/e36eceb1db/0/context.md",
+      "content_hash": "/1b/e36eceb1db/0/content_hash.txt",
+      "prompt": "/1b/e36eceb1db/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 69755,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 744192,
+    "output_tokens": 5046,
+    "api_call_count": 20
+  }
+}
