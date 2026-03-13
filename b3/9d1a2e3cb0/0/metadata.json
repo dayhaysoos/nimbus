@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "b39d1a2e3cb0",
+  "session_id": "ses_316e28cb4ffeBSqXzAlFv6QKyK",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-13T21:43:32.635291Z",
+  "branch": "enhance-context-retrieval",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/workspace/deploy.test.ts",
+    "packages/cli/src/commands/workspace/deploy.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/worker/migrations/0010_review_context_retrieval.sql",
+    "packages/worker/src/api/workspace-deployments.test.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/lib/db.review.test.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/types.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "1e28e4fad984",
+  "token_usage": {
+    "input_tokens": 279975,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 499840,
+    "output_tokens": 7386,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-13T21:43:32.190223Z",
+    "agent_lines": 1248,
+    "human_added": 30,
+    "human_modified": 27,
+    "human_removed": 0,
+    "total_committed": 1305,
+    "agent_percentage": 95.63218390804597
+  }
+}
