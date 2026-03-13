@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "419355fccd46",
+  "strategy": "manual-commit",
+  "branch": "feat/minimal-report-ui-v1",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "package.json",
+    "packages/report-ui/.gitignore",
+    "packages/report-ui/README.md",
+    "packages/report-ui/index.html",
+    "packages/report-ui/package.json",
+    "packages/report-ui/src/App.tsx",
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/lib/clipboard.ts",
+    "packages/report-ui/src/lib/download.ts",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/main.tsx",
+    "packages/report-ui/src/styles.css",
+    "packages/report-ui/src/test/setup.ts",
+    "packages/report-ui/src/types.ts",
+    "packages/report-ui/tsconfig.json",
+    "packages/report-ui/vite.config.ts",
+    "packages/report-ui/vitest.config.ts",
+    "pnpm-lock.yaml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/41/9355fccd46/0/metadata.json",
+      "transcript": "/41/9355fccd46/0/full.jsonl",
+      "context": "/41/9355fccd46/0/context.md",
+      "content_hash": "/41/9355fccd46/0/content_hash.txt",
+      "prompt": "/41/9355fccd46/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 58512,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 515712,
+    "output_tokens": 3687,
+    "api_call_count": 13
+  }
+}
