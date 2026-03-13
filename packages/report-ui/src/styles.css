@@ -1,0 +1,260 @@
+:root {
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+  color: #1f2937;
+  background: radial-gradient(circle at top left, #f3f8ff 0%, #f5f7fb 45%, #eef2f7 100%);
+  line-height: 1.5;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+}
+
+h1,
+h2,
+h3,
+p,
+dl,
+dt,
+dd {
+  margin: 0;
+}
+
+.page {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 1.5rem 1rem 3rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.card {
+  background: #ffffff;
+  border: 1px solid #dbe4ee;
+  border-radius: 14px;
+  padding: 1rem;
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+}
+
+.summary-card {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+}
+
+.summary-header h1 {
+  font-size: 1.35rem;
+}
+
+.summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.85rem;
+}
+
+.summary-grid dt {
+  color: #607284;
+  font-size: 0.86rem;
+}
+
+.summary-grid dd {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.secondary-button {
+  border: 1px solid #bdccd9;
+  border-radius: 9px;
+  padding: 0.45rem 0.7rem;
+  background: #f7fafc;
+  color: #1f2937;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary-button:hover {
+  background: #edf3f9;
+}
+
+.secondary-button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.section-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.section-block h2 {
+  font-size: 1.1rem;
+}
+
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.finding-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.finding-meta {
+  color: #607284;
+  font-size: 0.9rem;
+  display: flex;
+  gap: 0.8rem;
+  margin-top: 0.25rem;
+}
+
+.finding-details {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.finding-details dt {
+  color: #607284;
+  font-size: 0.85rem;
+}
+
+.finding-details dd {
+  white-space: pre-wrap;
+}
+
+.status-pill {
+  border-radius: 999px;
+  padding: 0.25rem 0.65rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  text-transform: capitalize;
+}
+
+.status-succeeded {
+  background: #dcfce7;
+  color: #14532d;
+}
+
+.status-running,
+.status-queued {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.status-failed,
+.status-cancelled {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.status-card h1,
+.status-card h2 {
+  margin-bottom: 0.4rem;
+}
+
+.evidence-list {
+  list-style: none;
+  padding: 1rem;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+
+.evidence-list li {
+  border-bottom: 1px solid #e2e8f0;
+  padding-bottom: 0.8rem;
+}
+
+.evidence-list li:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.evidence-list p {
+  color: #607284;
+}
+
+.evidence-list pre,
+.raw-json pre {
+  margin-top: 0.5rem;
+  border-radius: 10px;
+  background: #0f172a;
+  color: #e2e8f0;
+  padding: 0.65rem;
+  overflow-x: auto;
+  font-size: 0.8rem;
+}
+
+.markdown-card {
+  line-height: 1.7;
+}
+
+.markdown-card h1,
+.markdown-card h2,
+.markdown-card h3 {
+  margin: 0.9rem 0 0.5rem;
+}
+
+.markdown-card p,
+.markdown-card ul,
+.markdown-card ol {
+  margin: 0.5rem 0;
+}
+
+.raw-json summary {
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.toast {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  background: #1f2937;
+  color: #f9fafb;
+  padding: 0.5rem 0.85rem;
+  border-radius: 8px;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.35);
+  z-index: 50;
+}
+
+@media (max-width: 720px) {
+  .summary-header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .page {
+    padding: 1rem 0.75rem 2rem;
+  }
+
+  .button-row {
+    width: 100%;
+  }
+
+  .secondary-button {
+    flex: 1 1 220px;
+  }
+}
