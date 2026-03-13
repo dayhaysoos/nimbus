@@ -23,6 +23,7 @@ Nimbus currently supports a cloud review/deploy workflow built around immutable 
 - Deploy preflight with toolchain / git baseline / secret scan checks
 - Deployment lifecycle tracking with replayable events
 - Non-mutating review lifecycle with persisted reports and live SSE events
+- Minimal report viewer UI (`/reports/:reviewId`) with copy/download workflows
 - CLI flows for:
   - `workspace create`
   - `workspace show`
@@ -43,6 +44,8 @@ Entire checkpoint notes:
 - `workspace_deployment` is the only review target in this slice
 - Simulated deploy provider returns a synthetic deployed URL unless real provider mode is enabled
 - `workspace create HEAD` uses committed `HEAD`, not uncommitted local changes
+- Report UI is single-report only (no report index/history view yet)
+- Report UI V1 has no auth/SSO (reviewId-access)
 
 ## Quick Start (Dev)
 
@@ -92,6 +95,41 @@ Notes:
 - If deploy preflight fails because validation tooling is missing in the sandbox, use `--no-tests --no-build` for the manual flow.
 - If deploy preflight reports a missing git baseline, retry with `--auto-fix` or reset/recreate the workspace.
 
+## Quick Start (Report UI V1)
+
+Start worker + UI locally from repo root:
+
+```bash
+pnpm dev
+pnpm dev:report-ui
+```
+
+Then open:
+
+```text
+http://localhost:5173/reports/<review-id>
+```
+
+Local API routing defaults:
+
+- Vite proxies `/api/*` to `http://127.0.0.1:8787` by default.
+- Override proxy target with `NIMBUS_API_PROXY_TARGET`.
+- Or set `VITE_NIMBUS_API_BASE_URL` to call a hosted worker directly.
+
+Hosted worker example:
+
+```bash
+VITE_NIMBUS_API_BASE_URL="https://<your-worker>.workers.dev" pnpm dev:report-ui
+```
+
+Report UI V1 includes:
+
+- Summary header (recommendation, risk, findings count, status, timestamps)
+- Findings cards with per-finding copy and fix-prompt copy
+- Rendered markdown summary (sanitized)
+- Raw JSON section (collapsible)
+- Copy/download actions for full markdown and full JSON
+
 Create and watch a live checkpoint job:
 
 ```bash
@@ -116,6 +154,15 @@ pnpm --filter @dayhaysoos/nimbus test
 
 # Run worker locally
 pnpm dev
+
+# Run report UI locally
+pnpm dev:report-ui
+
+# Run report UI tests
+pnpm test:report-ui
+
+# Build report UI
+pnpm build:report-ui
 
 # Deploy latest worker
 pnpm run deploy
