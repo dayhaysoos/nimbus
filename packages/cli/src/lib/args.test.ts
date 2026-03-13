@@ -26,6 +26,10 @@ export function runArgsParsingTests(): void {
       'cloudflare_workers_assets',
       '--output-dir',
       'dist',
+      '--summarize-session',
+      'always',
+      '--intent-token-budget',
+      '1800',
       '--poll-interval-ms',
       '2000',
       'deploy',
@@ -34,6 +38,8 @@ export function runArgsParsingTests(): void {
     assert.equal(parsed.flags['idempotency-key'], 'deploy-1');
     assert.equal(parsed.flags.provider, 'cloudflare_workers_assets');
     assert.equal(parsed.flags['output-dir'], 'dist');
+    assert.equal(parsed.flags['summarize-session'], 'always');
+    assert.equal(parsed.flags['intent-token-budget'], '1800');
     assert.equal(parsed.flags['poll-interval-ms'], '2000');
   }
 

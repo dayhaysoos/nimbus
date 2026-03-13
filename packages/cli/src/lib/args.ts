@@ -20,6 +20,8 @@ const LONG_VALUE_FLAGS = new Set([
   'out',
   'severity-threshold',
   'max-findings',
+  'summarize-session',
+  'intent-token-budget',
 ]);
 const SHORT_VALUE_FLAGS = new Set<string>();
 

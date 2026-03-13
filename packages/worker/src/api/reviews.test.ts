@@ -26,6 +26,7 @@ function createReviewApiEnv(options?: {
     queueSendCount: number;
     eventTypes: Set<string>;
     reviewStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    createdRequestPayload: Record<string, unknown> | null;
   };
 } {
   const state = {
@@ -35,6 +36,7 @@ function createReviewApiEnv(options?: {
     reviewStatus: 'queued' as const,
     reviewStatusReads: 0,
     reviewEventReads: 0,
+    createdRequestPayload: null as Record<string, unknown> | null,
   };
 
   const env = {
@@ -131,12 +133,12 @@ function createReviewApiEnv(options?: {
                   if (!options?.reused) {
                     return null as T;
                   }
-                  return {
-                    review_id: 'rev_existing',
-                    request_payload_sha256:
+                    return {
+                      review_id: 'rev_existing',
+                      request_payload_sha256:
                       options?.existingRequestPayloadSha256 ?? '2babb228edb21a131fef0051902a367e6ad34a301a0f6b293e11b36a9a39423d',
-                    expires_at: '2999-01-01T00:00:00.000Z',
-                  } as T;
+                      expires_at: '2999-01-01T00:00:00.000Z',
+                    } as T;
                 },
               };
             },
@@ -161,6 +163,11 @@ function createReviewApiEnv(options?: {
               return {
                 async first<T>() {
                   state.reviewExists = true;
+                  try {
+                    state.createdRequestPayload = JSON.parse(String(values[6])) as Record<string, unknown>;
+                  } catch {
+                    state.createdRequestPayload = null;
+                  }
                   return {
                     id: values[0],
                     workspace_id: values[1],
@@ -360,6 +367,27 @@ export async function runReviewApiTests(): Promise<void> {
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 202);
     assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        provenance: {
+          note: 'Use commit intent context from Entire history',
+          sessionIds: ['ses_123', 'ses_123', '', 'ses_456'],
+          transcriptUrl: 'https://example.com/transcript',
+          intentSessionContext: ['Focus on auth regression risk.', 'Focus on auth regression risk.', ''],
+        },
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-provenance' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    const createdProvenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
+    assert.deepEqual(createdProvenance, { trigger: 'api' });
   }
 
   {

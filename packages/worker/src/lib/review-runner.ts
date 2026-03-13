@@ -45,6 +45,10 @@ function parseStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values.map((value) => value.trim()).filter(Boolean)));
+}
+
 function parseBoolean(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
@@ -404,6 +408,7 @@ async function buildWorkspaceDeploymentReport(
   const resultArtifact = asRecord(result.artifact);
   const requestValidation = asRecord(deploymentRequest.validation);
   const requestProvenance = asRecord(deploymentRequest.provenance);
+  const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
     : typeof requestProvenance.taskId === 'string'
@@ -443,6 +448,10 @@ async function buildWorkspaceDeploymentReport(
       : typeof requestProvenance.trigger === 'string'
         ? `Deployment trigger: ${requestProvenance.trigger}.`
         : 'Deployment trigger was not recorded.',
+    parseStringArray(requestProvenance.sessionIds).length > 0
+      ? `Related Entire sessions: ${parseStringArray(requestProvenance.sessionIds).join(', ')}.`
+      : '',
+    intentSessionContext.length > 0 ? `Prompt-history context excerpts provided: ${intentSessionContext.length}.` : '',
   ];
 
   const heuristicFindings = buildHeuristicFindings(review, deploymentEvents);
@@ -500,6 +509,7 @@ async function buildWorkspaceDeploymentReport(
         goal: promptGoal,
         constraints: baseConstraints,
         decisions: baseDecisions.filter(Boolean),
+        intentSessionContext,
         evidenceCatalog: analysisEvidence.map((item) => ({
           id: item.id,
           type: item.type,

@@ -269,6 +269,9 @@ export async function createWorkspaceDeployment(
       taskId: string | null;
       operationId: string | null;
       note: string | null;
+      sessionIds?: string[];
+      transcriptUrl?: string | null;
+      intentSessionContext?: string[];
     };
   }
 ): Promise<WorkspaceDeploymentCreateResponse> {
@@ -326,6 +329,12 @@ export async function createReview(
       maxFindings?: number;
       includeProvenance?: boolean;
       includeValidationEvidence?: boolean;
+    };
+    provenance?: {
+      note?: string | null;
+      sessionIds?: string[];
+      transcriptUrl?: string | null;
+      intentSessionContext?: string[];
     };
   }
 ): Promise<ReviewCreateResponse> {

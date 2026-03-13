@@ -7,6 +7,7 @@ import {
   getWorkspaceDeployment,
   preflightWorkspaceDeployment,
 } from '../../lib/api.js';
+import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 
 function buildIdempotencyKey(workspaceId: string): string {
   const seed = `${workspaceId}:${Date.now()}:${Math.random()}`;
@@ -15,6 +16,16 @@ function buildIdempotencyKey(workspaceId: string): string {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+let resolveEntireIntentContextForCommitFn = resolveEntireIntentContextForCommit;
+
+export function setWorkspaceDeployIntentContextResolverForTests(
+  resolver:
+    | (typeof resolveEntireIntentContextForCommit)
+    | null
+): void {
+  resolveEntireIntentContextForCommitFn = resolver ?? resolveEntireIntentContextForCommit;
 }
 
 export async function workspaceDeployCommand(
@@ -28,6 +39,8 @@ export async function workspaceDeployCommand(
     pollIntervalMs?: number;
     provider?: 'simulated' | 'cloudflare_workers_assets';
     outputDir?: string;
+    summarizeSession?: 'auto' | 'always' | 'never';
+    intentTokenBudget?: number;
   }
 ): Promise<void> {
   const workerUrl = getWorkerUrl();
@@ -113,6 +126,20 @@ export async function workspaceDeployCommand(
     return;
   }
 
+  const workspace = await getWorkspace(workerUrl, workspaceId);
+  let entireIntentContext;
+  try {
+    entireIntentContext = await resolveEntireIntentContextForCommitFn(workspace.commitSha, process.cwd(), {
+      summarizeSession: options?.summarizeSession ?? 'auto',
+      tokenBudget: options?.intentTokenBudget,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Unable to resolve required Entire intent context for commit ${workspace.commitSha.slice(0, 12)}. ${message}`
+    );
+  }
+
   p.log.success('Preflight passed');
   const idempotencyKey = options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId);
   const created = await createWorkspaceDeployment(workerUrl, workspaceId, idempotencyKey, {
@@ -134,7 +161,10 @@ export async function workspaceDeployCommand(
       trigger: 'manual_cli',
       taskId: null,
       operationId: null,
-      note: null,
+      note: entireIntentContext?.note ?? null,
+      sessionIds: entireIntentContext?.sessionIds ?? [],
+      transcriptUrl: entireIntentContext?.transcriptUrl ?? null,
+      intentSessionContext: entireIntentContext?.intentSessionContext ?? [],
     },
   });
 

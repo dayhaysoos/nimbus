@@ -31,6 +31,8 @@ const corsHeaders = {
 };
 
 const PROVIDER_PRECHECK_LEASE_MS = 30_000;
+const MAX_PROVENANCE_SESSION_ID_LENGTH = 160;
+const MAX_PROVENANCE_INTENT_CONTEXT_LENGTH = 800;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -105,14 +107,29 @@ function buildDeploymentIdempotencyPayload(requestPayload: {
   cache: { dependencyCache: boolean };
   deploy: { outputDir: string | null };
   rollbackOnFailure: boolean;
-  provenance: { trigger: string; taskId: string | null; operationId: string | null; note: string | null };
+  provenance: {
+    trigger: string;
+    taskId: string | null;
+    operationId: string | null;
+    note: string | null;
+    sessionIds: string[];
+    transcriptUrl: string | null;
+    intentSessionContext: string[];
+  };
 }): Record<string, unknown> {
+  const provenancePayload: Record<string, unknown> = {
+    trigger: requestPayload.provenance.trigger,
+    taskId: requestPayload.provenance.taskId,
+    operationId: requestPayload.provenance.operationId,
+    note: null,
+  };
+
   const payload: Record<string, unknown> = {
     provider: requestPayload.provider,
     retry: requestPayload.retry,
     validation: requestPayload.validation,
     rollbackOnFailure: requestPayload.rollbackOnFailure,
-    provenance: requestPayload.provenance,
+    provenance: provenancePayload,
   };
 
   if (requestPayload.autoFix.rehydrateBaseline || requestPayload.autoFix.bootstrapToolchain) {
@@ -362,6 +379,24 @@ export async function handleCreateWorkspaceDeployment(
         operationId:
           typeof provenance.operationId === 'string' && provenance.operationId.trim() ? provenance.operationId.trim() : null,
         note: typeof provenance.note === 'string' && provenance.note.trim() ? provenance.note.trim() : null,
+        sessionIds: Array.isArray(provenance.sessionIds)
+          ? provenance.sessionIds
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim().slice(0, MAX_PROVENANCE_SESSION_ID_LENGTH))
+            .filter(Boolean)
+            .slice(0, 8)
+          : [],
+        transcriptUrl:
+          typeof provenance.transcriptUrl === 'string' && provenance.transcriptUrl.trim()
+            ? provenance.transcriptUrl.trim().slice(0, 1_024)
+            : null,
+        intentSessionContext: Array.isArray(provenance.intentSessionContext)
+          ? provenance.intentSessionContext
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim().slice(0, MAX_PROVENANCE_INTENT_CONTEXT_LENGTH))
+            .filter(Boolean)
+            .slice(0, 8)
+          : [],
       },
     };
 

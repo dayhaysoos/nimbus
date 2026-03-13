@@ -24,6 +24,7 @@ function createWorkspaceDeploymentApiEnv(options?: {
     deploymentErrorCode: string | null;
     eventTypes: Set<string>;
     queueSendCount: number;
+    createdProvenance: Record<string, unknown> | null;
   };
 } {
   const state: {
@@ -33,6 +34,7 @@ function createWorkspaceDeploymentApiEnv(options?: {
     deploymentErrorCode: string | null;
     eventTypes: Set<string>;
     queueSendCount: number;
+    createdProvenance: Record<string, unknown> | null;
   } = {
     deploymentExists: false,
     deploymentStatus: options?.reuseFailed ? 'failed' : 'queued',
@@ -40,6 +42,7 @@ function createWorkspaceDeploymentApiEnv(options?: {
     deploymentErrorCode: options?.reuseFailed ? 'provider_auth_failed' : options?.reuseRetryScheduled ? 'retry_scheduled' : null,
     eventTypes: options?.reuseRetryScheduled ? new Set<string>(['deployment_enqueued']) : new Set<string>(),
     queueSendCount: 0,
+    createdProvenance: null,
   };
 
   const env = {
@@ -128,6 +131,11 @@ function createWorkspaceDeploymentApiEnv(options?: {
               return {
                 async first<T>() {
                   state.deploymentExists = true;
+                  try {
+                    state.createdProvenance = JSON.parse(String(values[7])) as Record<string, unknown>;
+                  } catch {
+                    state.createdProvenance = null;
+                  }
                   return {
                     id: values[0],
                     workspace_id: values[1],
@@ -432,6 +440,31 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createWorkspaceDeploymentApiEnv();
+    const longSessionId = `ses_${'x'.repeat(300)}`;
+    const longIntentLine = `intent_${'y'.repeat(2000)}`;
+    const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
+      method: 'POST',
+      body: JSON.stringify({
+        provider: 'simulated',
+        provenance: {
+          sessionIds: [longSessionId],
+          intentSessionContext: [longIntentLine],
+        },
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-provenance-limits' },
+    });
+    const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
+    assert.equal(response.status, 202);
+    const sessionIds = (state.createdProvenance?.sessionIds ?? []) as string[];
+    const intentSessionContext = (state.createdProvenance?.intentSessionContext ?? []) as string[];
+    assert.equal(sessionIds.length, 1);
+    assert.equal(intentSessionContext.length, 1);
+    assert.equal(sessionIds[0].length <= 160, true);
+    assert.equal(intentSessionContext[0].length <= 800, true);
+  }
+
+  {
     const { env, state } = createWorkspaceDeploymentApiEnv({ reuseRetryScheduled: true });
     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
       method: 'POST',
@@ -489,6 +522,39 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
       const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
         method: 'POST',
         body: JSON.stringify({ provider: 'cloudflare_workers_assets', deploy: { outputDir: 'dist' } }),
+        headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-1' },
+      });
+      const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
+      assert.equal(response.status, 200);
+      assert.equal(state.queueSendCount, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      throw new Error('precheck should not run for reused deployment');
+    }) as typeof fetch;
+
+    try {
+      const { env, state } = createWorkspaceDeploymentApiEnv({
+        reuseRetryScheduled: true,
+        reuseRequestPayloadSha256: 'ce281e4c5ccf595ff5ed74316d66c519a863c09e75128ba9b16de629e9132e31',
+      });
+      const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
+        method: 'POST',
+        body: JSON.stringify({
+          provider: 'cloudflare_workers_assets',
+          deploy: { outputDir: 'dist' },
+          provenance: {
+            note: 'Use intent context during review',
+            sessionIds: ['ses_abc123'],
+            transcriptUrl: 'https://example.com/session/ses_abc123',
+            intentSessionContext: ['Do not change auth semantics.'],
+          },
+        }),
         headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-1' },
       });
       const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);

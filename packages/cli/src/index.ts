@@ -135,6 +135,10 @@ Options:
                       Poll interval for workspace deploy status checks
   --provider <name>   Deploy provider (simulated|cloudflare_workers_assets)
   --output-dir <path> Static build output directory (required for real provider)
+  --summarize-session <mode>
+                      Intent context summarization mode (auto|always|never)
+  --intent-token-budget <n>
+                      Token budget for Entire intent context capture (default: 1200)
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
   --severity-threshold <level>
@@ -333,6 +337,16 @@ async function main(): Promise<void> {
           }
           const outputDirFlag = flags['output-dir'];
           const outputDir = typeof outputDirFlag === 'string' ? outputDirFlag : undefined;
+          const summarizeSessionFlag = flags['summarize-session'];
+          let summarizeSession: 'auto' | 'always' | 'never' | undefined;
+          if (typeof summarizeSessionFlag === 'string') {
+            if (summarizeSessionFlag === 'auto' || summarizeSessionFlag === 'always' || summarizeSessionFlag === 'never') {
+              summarizeSession = summarizeSessionFlag;
+            } else {
+              throw new Error('Invalid --summarize-session value. Use auto, always, or never.');
+            }
+          }
+          const intentTokenBudget = parsePositiveIntegerFlag(flags['intent-token-budget']);
 
           await workspaceDeployCommand(workspaceId, {
             idempotencyKey,
@@ -343,6 +357,8 @@ async function main(): Promise<void> {
             pollIntervalMs,
             provider,
             outputDir,
+            summarizeSession,
+            intentTokenBudget,
           });
           break;
         }
