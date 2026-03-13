@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "29dc5c812720",
+  "session_id": "ses_31b328158ffepCqi23h2h0xmhP",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-13T02:03:54.762797Z",
+  "branch": "troubleshoot-agent-review",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/cli/src/commands/workspace/deploy.test.ts",
+    "packages/cli/src/commands/workspace/deploy.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.test.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/entire/context.ts",
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "d9ead2870cd4",
+  "token_usage": {
+    "input_tokens": 89545,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 177920,
+    "output_tokens": 6044,
+    "api_call_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-13T02:03:54.498309Z",
+    "agent_lines": 714,
+    "human_added": 83,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 797,
+    "agent_percentage": 89.58594730238394
+  }
+}
