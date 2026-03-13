@@ -1,0 +1,215 @@
+You are taking over Nimbus “Minimal Report UI V1” implementation.
+
+Context:
+- Product direction: keep GitHub/CI-native workflow, but add a lightweight visual report viewer.
+- We do NOT want a full dashboard yet.
+- We want an easy shareable/readable report page with strong copy-to-agent UX.
+- Spec reference: llm-docs/minimal-report-ui-v1.md
+
+
+Your mission:
+Build a minimal report viewer experience end-to-end on a throwaway branch with sensible defaults.
+
+
+Non-negotiable goals:
+1) Render a review by reviewId from existing worker API.
+2) Make it easy to copy report content into coding agents.
+3) Keep setup simple and avoid overbuilding.
+
+
+Implementation defaults (already decided):
+- URL route: /reports/:reviewId
+- Data source: existing API GET /api/reviews/:id
+- V1 has no auth/SSO complexity (public-by-reviewId is acceptable for now)
+- Show:
+  - summary header (recommendation, risk, findings count, status, timestamps)
+  - findings cards
+  - evidence list
+  - rendered markdown summary
+  - raw JSON (collapsible)
+- Copy actions:
+  - copy full markdown
+  - copy full JSON
+  - copy per-finding text
+  - copy per-finding “fix prompt”
+- Use this fix prompt template per finding:
+
+
+  You are helping fix a Nimbus code review finding.
+
+
+  Finding title: <title>
+  Severity: <severity>
+  Confidence: <confidence>
+  Description:
+  <description>
+
+
+  Conditions:
+  <conditions or "none provided”>
+
+
+  Locations:
+  <path:line list>
+
+
+  Suggested fix:
+  <suggestedFix or "not provided”>
+
+
+  Evidence refs:
+  <evidence refs list>
+
+
+  Please:
+  1) Propose a minimal safe code change.
+  2) Explain why it resolves the issue.
+  3) List any tests to run.
+  4) Return a patch-style diff when possible.
+
+
+- UX defaults:
+  - neutral clean style, readability-first
+  - toast feedback on copy (“Copied”)
+  - robust loading/empty/error states
+- Technical defaults:
+  - use existing web stack if present in repo; if absent, choose lightweight React+Vite
+  - sanitize markdown rendering
+  - static-host-friendly architecture
+
+
+Questions you might ask (already answered):
+- Should we include auth? → No, not in V1.
+- Should we build list/history pages? → No, single-report page only.
+- Should we support downloads? → Yes, markdown/json download buttons.
+- Should we include feedback buttons? → No, not in V1.
+- Should we optimize for branding? → No, optimize for clarity and utility.
+- Should we support queued/failed reviews? → Yes, first-class UI states.
+
+
+Execution style:
+- Work in vertical slices and run tests after each meaningful slice.
+- Reuse existing project patterns and keep changes surgical.
+- If you find no existing frontend target, create a small self-contained one with clear run instructions.
+- Add/update tests where practical (component/unit at minimum).
+- Include local run instructions and a quick smoke checklist.
+
+
+Deliverables:
+1) Implemented report UI route/page.
+2) Copy buttons (full + finding + fix prompt) working.
+3) Download markdown/json working.
+4) Tests green.
+5) Final report with:
+   - files changed
+   - commands run
+   - test results
+   - any follow-ups for post-V1.
+
+Do not forget to make a new branch for this.
+
+---
+
+Can you give me a report id real quick I can test with?
+
+---
+
+Go through the entire process to make me a workspace with a deployment id and create a review and give me the review id
+
+---
+
+Unable to load reviewUnexpected token '<', "<!doctype "... is not valid JSON
+
+---
+
+why do we need VITE_NIMNUS_API_BASE_URL to be able to see?
+
+---
+
+Evidencedeployment provider created
+deployment_provider_created · passed
+
+
+{
+  "provider": “simulated”,
+  "providerDeploymentId": “dep_b8lilwo4”,
+  "status": “succeeded”,
+  "deployedUrl": "https://deployments.nimbus.local/ws_r25wk6dk/dep_b8lilwo4”,
+  "outputDir": “.”
+}
+deployment succeeded
+deployment_succeeded · passed
+
+
+{
+  "deployedUrl": "https://deployments.nimbus.local/ws_r25wk6dk/dep_b8lilwo4”,
+  "sourceBundleKey": "workspaces/ws_r25wk6dk/deployments/dep_b8lilwo4/source.tar.gz”,
+  "sourceSnapshotSha256": “d4b134c18e92ca737cd38443455b0b7e4f9fc3848b8b7c1ecc2e871ce0f9cb66”
+}
+Deployed URL present
+deploy_probe · passed
+
+
+{
+  "url": "https://deployments.nimbus.local/ws_r25wk6dk/dep_b8lilwo4”
+}
+Deployment artifact recorded
+artifact · info
+
+
+{
+  "sourceBundleKey": "workspaces/ws_r25wk6dk/deployments/dep_b8lilwo4/source.tar.gz”,
+  "sourceSnapshotSha256": “d4b134c18e92ca737cd38443455b0b7e4f9fc3848b8b7c1ecc2e871ce0f9cb66”,
+  "outputBundleSha256": “d4b134c18e92ca737cd38443455b0b7e4f9fc3848b8b7c1ecc2e871ce0f9cb66”,
+  "outputDir": “.”,
+  "reviewDiffArtifactId": “art_jo87ftr6”
+}
+AI review analysis via cloudflare_agents_sdk
+analysis_agent · info
+
+
+{
+  "model": "claude-3-7-sonnet”,
+  "stepsExecuted": 3,
+  "usedTools": [
+    “diff_summary”,
+    “list_files”
+  ]
+
+Just hide it from the UI for now, maybe we can use this later
+
+---
+
+I know we are making an intent-based code review tool, but we don’t have to name that section as “Intent”. It’s to be treated as “Policies” so maybe we can refer to it as “Policy”, That section.
+
+---
+
+You can also hide the evidence section fromt he markdown section
+
+---
+
+yeah do that
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+I will keep running the review tool. As I do them, let me know at the end if the reviews/fixes are reaching “diminishing returns” territory. Meaning, they work that’s been done is in a good enough please where we may be able to open a PR and merge with confidence. Respond with “confirm” if you understand.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Based on where we are and where we’re going, what would you say should be next steps? I still think we can do a lot to improve the quality of the reviews
+
+---
+
+The quality evaluation harness is a bit too much. I think it’s something we should do but you are overengineering too early
