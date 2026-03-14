@@ -30,6 +30,13 @@
       "context": "",
       "content_hash": "/dd/fa7c25a183/2/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/dd/fa7c25a183/3/metadata.json",
+      "transcript": "/dd/fa7c25a183/3/full.jsonl",
+      "context": "",
+      "content_hash": "/dd/fa7c25a183/3/content_hash.txt",
+      "prompt": ""
     }
   ]
 }
