@@ -3,6 +3,7 @@ import type {
   ReviewContext,
   ReviewEvidenceItem,
   ReviewFinding,
+  ReviewFindingSeverityV2,
   ReviewRecommendation,
   ReviewReport,
   ReviewRunResponse,
@@ -51,7 +52,8 @@ class ReviewContextAssemblyError extends Error {
 }
 
 const REVIEW_MAX_RETRIES = 2;
-const REVIEW_SEVERITY_RANK: Record<ReviewSeverity, number> = {
+const REVIEW_SEVERITY_RANK: Record<ReviewFindingSeverityV2, number> = {
+  info: 0,
   critical: 4,
   high: 3,
   medium: 2,
@@ -143,8 +145,12 @@ function buildReviewMarkdown(report: ReviewReport): string {
     report.findings.length === 0
       ? ['No actionable findings were emitted for this deployment review.']
       : report.findings.map((finding) => {
-          const location = finding.locations[0] ? `${finding.locations[0].path}:${finding.locations[0].line}` : 'deployment-level';
-          return `[${finding.severity}/${finding.confidence}] ${finding.title} (${location})`;
+          const location = finding.locations[0]
+            ? finding.locations[0].startLine !== null && finding.locations[0].endLine !== null
+              ? `${finding.locations[0].filePath}:${finding.locations[0].startLine}-${finding.locations[0].endLine}`
+              : finding.locations[0].filePath
+            : 'deployment-level';
+          return `[${finding.severity}/${finding.category}/${finding.passType}] ${finding.description} (${location})`;
         });
 
   return [
@@ -167,16 +173,12 @@ function buildReviewMarkdown(report: ReviewReport): string {
     .trim();
 }
 
-function buildFindingId(reviewId: string, index: number): string {
-  return `f_${reviewId}_${String(index).padStart(3, '0')}`;
-}
-
 function mergeFindings(primary: ReviewFinding[], secondary: ReviewFinding[]): ReviewFinding[] {
   const seen = new Set<string>();
   const merged: ReviewFinding[] = [];
 
   for (const finding of [...primary, ...secondary]) {
-    const key = [finding.title.trim().toLowerCase(), finding.locations[0]?.path ?? '', String(finding.locations[0]?.line ?? 0)].join('::');
+    const key = JSON.stringify(finding);
     if (seen.has(key)) {
       continue;
     }
@@ -197,18 +199,15 @@ function buildHeuristicFindings(
       const step = typeof eventPayload.step === 'string' ? eventPayload.step : 'validation';
       return [
         {
-          id: buildFindingId(review.id, index + 1),
           severity: 'medium',
-          confidence: 'high',
-          title: `Validation tool missing for ${step}`,
-          description: typeof eventPayload.message === 'string' ? eventPayload.message : 'Validation tool missing in runtime.',
-          conditions: `Observed during ${step} validation for deployment ${review.deploymentId}.`,
-          locations: [],
-          suggestedFix: {
-            kind: 'text',
-            value: `Install the required ${step} validation tool in the deployment runtime or disable that validation step explicitly.`,
-          },
-          evidenceRefs: [`ev_${event.seq}`],
+          category: 'logic',
+          passType: 'single',
+          locations: [{ filePath: 'deployment', startLine: null, endLine: null }],
+          description:
+            typeof eventPayload.message === 'string'
+              ? eventPayload.message
+              : `Validation tool missing for ${step} in runtime.`,
+          suggestedFix: `Install the required ${step} validation tool in the deployment runtime or disable that validation step explicitly.`,
         },
       ];
     }
@@ -216,36 +215,24 @@ function buildHeuristicFindings(
       const step = typeof eventPayload.step === 'string' ? eventPayload.step : 'validation';
       return [
         {
-          id: buildFindingId(review.id, index + 1),
           severity: 'low',
-          confidence: 'medium',
-          title: `Validation skipped for ${step}`,
+          category: 'style',
+          passType: 'single',
+          locations: [{ filePath: 'deployment', startLine: null, endLine: null }],
           description: `Nimbus skipped ${step} validation while preparing this deployment review.`,
-          conditions: typeof eventPayload.reason === 'string' ? eventPayload.reason : 'skip reason not recorded',
-          locations: [],
-          suggestedFix: {
-            kind: 'text',
-            value: `Run the ${step} validation in the deployment path or document why it is intentionally skipped.`,
-          },
-          evidenceRefs: [`ev_${event.seq}`],
+          suggestedFix: `Run the ${step} validation in the deployment path or document why it is intentionally skipped.`,
         },
       ];
     }
     if (event.eventType === 'deployment_toolchain_unknown_fallback') {
       return [
         {
-          id: buildFindingId(review.id, index + 1),
           severity: 'low',
-          confidence: 'medium',
-          title: 'Toolchain detection fell back to unknown defaults',
+          category: 'style',
+          passType: 'single',
+          locations: [{ filePath: 'deployment', startLine: null, endLine: null }],
           description: 'Deployment completed after a toolchain fallback, which may hide package-manager-specific issues.',
-          conditions: `Observed while reviewing deployment ${review.deploymentId}.`,
-          locations: [],
-          suggestedFix: {
-            kind: 'text',
-            value: 'Declare an explicit package manager and lockfile so future deploys and reviews use deterministic tooling.',
-          },
-          evidenceRefs: [`ev_${event.seq}`],
+          suggestedFix: 'Declare an explicit package manager and lockfile so future deploys and reviews use deterministic tooling.',
         },
       ];
     }
@@ -648,6 +635,7 @@ async function assembleReviewContextBootstrap(
   const COCHANGE_LOOKBACK_SESSIONS = 5;
   const COCHANGE_TOP_N = 20;
   const CONVENTION_FILE_MAX_COUNT = 10;
+  const DEFAULT_REVIEW_CONTEXT_TOKEN_BUDGET = 32_000;
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
@@ -686,10 +674,12 @@ async function assembleReviewContextBootstrap(
   const sessionIntent = sessionIntentCandidates[0] ?? null;
   const attributionTrailer = readOptionalString(requestProvenance.attributionTrailer);
   const agentType = readOptionalString(requestProvenance.agentType);
-  const tokenBudget =
+  const requestedTokenBudget =
     readOptionalNumber(requestProvenance.reviewContextTokenBudget) ??
     readOptionalNumber(requestProvenance.contextTokenBudget) ??
     null;
+  const defaultTokenBudget = readOptionalNumber(env.REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET) ?? DEFAULT_REVIEW_CONTEXT_TOKEN_BUDGET;
+  const tokenBudget = requestedTokenBudget ?? defaultTokenBudget;
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
@@ -977,11 +967,12 @@ async function assembleReviewContextBootstrap(
     payload: {
       estimatedTokens: contextPayload.stats.estimatedTokens,
       tokenBudget,
+      tokenBudgetSource: requestedTokenBudget !== null ? 'request_provenance' : 'default',
       exceeded: tokenBudget !== null && contextPayload.stats.estimatedTokens > tokenBudget,
     },
   });
 
-  if (tokenBudget !== null && contextPayload.stats.estimatedTokens > tokenBudget) {
+  if (contextPayload.stats.estimatedTokens > tokenBudget) {
     throw new ReviewContextAssemblyError(
       'review_context_budget_exceeded',
       `ReviewContext estimated token usage (${contextPayload.stats.estimatedTokens}) exceeds configured budget (${tokenBudget}). Increase the budget and retry.`
@@ -1195,80 +1186,79 @@ async function buildWorkspaceDeploymentReport(
     typeof resultArtifact.sourceBundleKey === 'string' && resultArtifact.sourceBundleKey.trim()
       ? resultArtifact.sourceBundleKey.trim()
       : deployment.sourceBundleKey ?? null;
-  try {
-    const promptGoal = provenanceTask?.prompt?.trim() || baseGoal;
-    if (reviewAgentEnabled && deploymentSourceBundleKey) {
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_analysis_agent_started',
-        payload: {
-          provider: 'cloudflare_agents_sdk',
-          model: (env.AGENT_MODEL ?? 'claude-3-7-sonnet').trim() || 'claude-3-7-sonnet',
-        },
-      });
-    }
-    if (reviewAgentEnabled && deploymentSourceBundleKey) {
-      agentAnalysis = await runWorkspaceDeploymentAgentAnalysis(env, {
-        reviewId: review.id,
-        workspaceId: review.workspaceId,
-        deploymentId: review.deploymentId,
-        deploymentSandboxId: `review-snapshot-${review.id}`,
-        sourceBundleKey: deploymentSourceBundleKey,
-        authoritativeDiffSnapshot: authoritativeDiff
-          ? {
-        source: authoritativeDiff.source,
-        artifactId: authoritativeDiff.artifactId,
-        patch: authoritativeDiff.patch,
-      }
-          : undefined,
-        goal: promptGoal,
-        constraints: baseConstraints,
-        decisions: baseDecisions.filter(Boolean),
-        intentSessionContext,
-        evidenceCatalog: analysisEvidence.map((item) => ({
-          id: item.id,
-          type: item.type,
-          label: item.label,
-          status: item.status,
-        })),
-        deploymentSummary: {
-          provider: deployment.provider,
-          deployedUrl: deployment.deployedUrl,
-          validationSummary: JSON.stringify(requestValidation),
-        },
-        rootListing: {},
-        diffSnapshot: {},
-      });
-    }
-    if (agentAnalysis) {
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_analysis_agent_completed',
-        payload: {
-          provider: agentAnalysis.provider,
-          model: agentAnalysis.model,
-          stepsExecuted: agentAnalysis.stepsExecuted,
-          findingCount: agentAnalysis.findings.length,
-        },
-      });
-    } else if (reviewAgentEnabled && !deploymentSourceBundleKey) {
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_analysis_fallback',
-        payload: {
-          message: 'Deployment snapshot unavailable; skipping agent analysis',
-        },
-      });
-    }
-  } catch (error) {
-    const message = formatReviewAnalysisError(error);
+  const promptGoal = provenanceTask?.prompt?.trim() || baseGoal;
+  if (reviewAgentEnabled && deploymentSourceBundleKey) {
     await appendReviewEvent(env.DB, {
       reviewId: review.id,
-      eventType: 'review_analysis_fallback',
+      eventType: 'review_analysis_agent_started',
       payload: {
-        message,
+        provider: 'cloudflare_agents_sdk',
+        model: (env.AGENT_MODEL ?? 'claude-3-7-sonnet').trim() || 'claude-3-7-sonnet',
       },
     });
+
+    agentAnalysis = await runWorkspaceDeploymentAgentAnalysis(env, {
+      reviewId: review.id,
+      workspaceId: review.workspaceId,
+      deploymentId: review.deploymentId,
+      deploymentSandboxId: `review-snapshot-${review.id}`,
+      sourceBundleKey: deploymentSourceBundleKey,
+      authoritativeDiffSnapshot: authoritativeDiff
+        ? {
+            source: authoritativeDiff.source,
+            artifactId: authoritativeDiff.artifactId,
+            patch: authoritativeDiff.patch,
+          }
+        : undefined,
+      goal: promptGoal,
+      constraints: baseConstraints,
+      decisions: baseDecisions.filter(Boolean),
+      intentSessionContext,
+      evidenceCatalog: analysisEvidence.map((item) => ({
+        id: item.id,
+        type: item.type,
+        label: item.label,
+        status: item.status,
+      })),
+      deploymentSummary: {
+        provider: deployment.provider,
+        deployedUrl: deployment.deployedUrl,
+        validationSummary: JSON.stringify(requestValidation),
+      },
+      reviewContext,
+      rootListing: {},
+      diffSnapshot: {},
+      onLifecycleEvent: async (eventType, eventPayload) => {
+        await appendReviewEvent(env.DB, {
+          reviewId: review.id,
+          eventType,
+          payload: eventPayload,
+        });
+      },
+    });
+
+    if (!agentAnalysis) {
+      throw new Error('Review analysis did not produce output.');
+    }
+
+    await appendReviewEvent(env.DB, {
+      reviewId: review.id,
+      eventType: 'review_analysis_agent_completed',
+      payload: {
+        provider: agentAnalysis.provider,
+        model: agentAnalysis.model,
+        stepsExecuted: agentAnalysis.stepsExecuted,
+        findingCount: agentAnalysis.findings.length,
+      },
+    });
+  }
+
+  if (reviewAgentEnabled && !deploymentSourceBundleKey) {
+    throw new Error('Deployment snapshot unavailable; review analysis cannot proceed without source bundle.');
+  }
+
+  if (reviewAgentEnabled && !agentAnalysis) {
+    throw new Error('Review analysis did not produce output.');
   }
 
   const severityFloor = REVIEW_SEVERITY_RANK[severityThreshold as ReviewSeverity] ?? REVIEW_SEVERITY_RANK.low;
@@ -1290,17 +1280,14 @@ async function buildWorkspaceDeploymentReport(
       }
     : null;
   const evidence = buildEvidence(deploymentEvents, deployment, resultArtifact, includeValidationEvidence, agentEvidence);
-  const evidenceIds = new Set(evidence.map((item) => item.id));
-  const findings = mergedFindings.map((finding) => ({
-    ...finding,
-    evidenceRefs: finding.evidenceRefs.filter((reference) => evidenceIds.has(reference)),
-  }));
+  const findings = mergedFindings;
 
   const riskLevel = deriveRiskLevel(findings, 'low');
   const recommendation = deriveRecommendation(findings);
   const summary = {
     riskLevel,
     findingCounts: {
+      info: findings.filter((finding) => finding.severity === 'info').length,
       critical: findings.filter((finding) => finding.severity === 'critical').length,
       high: findings.filter((finding) => finding.severity === 'high').length,
       medium: findings.filter((finding) => finding.severity === 'medium').length,
@@ -1327,6 +1314,8 @@ async function buildWorkspaceDeploymentReport(
   const report: ReviewReport = {
     summary,
     findings,
+    summaryText: agentAnalysis?.summary,
+    furtherPassesLowYield: agentAnalysis?.furtherPassesLowYield,
     intent,
     evidence,
     provenance: includeProvenance
@@ -1344,6 +1333,17 @@ async function buildWorkspaceDeploymentReport(
             estimatedTokens: reviewContext.stats.estimatedTokens,
             tokenBudget: reviewContext.stats.tokenBudget,
           },
+          outputSchemaVersion: 'v2',
+          passArchitecture: 'single',
+          validation: agentAnalysis?.validation,
+          furtherPassesLowYield:
+            typeof agentAnalysis?.furtherPassesLowYield === 'boolean'
+              ? {
+                  value: agentAnalysis.furtherPassesLowYield,
+                  source: 'model-self-assessment' as const,
+                  reliability: 'weak-signal-phase2' as const,
+                }
+              : undefined,
         }
       : {
           sessionIds: [],
@@ -1400,10 +1400,10 @@ async function executeReviewRun(
       reviewId: review.id,
       eventType: 'review_finding_emitted',
       payload: {
-        findingId: finding.id,
         severity: finding.severity,
-        confidence: finding.confidence,
-        title: finding.title,
+        category: finding.category,
+        passType: finding.passType,
+        description: finding.description,
       },
     });
   }
@@ -1455,11 +1455,25 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
       },
     });
     await replaceReviewFindings(env.DB, reviewId, report.findings);
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_analysis_findings_persisted',
+      payload: {
+        findingCount: report.findings.length,
+      },
+    });
     await updateReviewRunStatus(env.DB, reviewId, 'succeeded', {
       report,
       markdownSummary: report.markdownSummary,
       errorCode: null,
       errorMessage: null,
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_analysis_succeeded',
+      payload: {
+        findingCount: report.findings.length,
+      },
     });
     await appendReviewEvent(env.DB, {
       reviewId,
@@ -1470,7 +1484,7 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatReviewAnalysisError(error);
     const latest = await getReviewRun(env.DB, reviewId);
     const attemptCount = latest?.attemptCount ?? review?.attemptCount ?? 0;
 

@@ -4,7 +4,6 @@ import type {
   JobListItem,
   JobStatus,
   JobPhase,
-  ReviewConfidence,
   ReviewFinding,
   ReviewReport,
   ReviewRunRecord,
@@ -12,7 +11,6 @@ import type {
   ReviewRunStatus,
   ReviewContext,
   ReviewContextRef,
-  ReviewSeverity,
   ReviewTargetType,
   ReviewMode,
   WorkspaceRecord,
@@ -613,7 +611,90 @@ function toWorkspaceDeploymentResponse(record: WorkspaceDeploymentRecord): Works
 }
 
 function toReviewFindingRecord(value: unknown): ReviewFinding[] {
-  return Array.isArray(value) ? (value as ReviewFinding[]) : [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  // Phase 2 contract: strict V2 query surfaces intentionally exclude legacy finding shapes.
+  // We do not attempt semantic V1->V2 conversion at read time because legacy reports were
+  // generated without full ReviewContext and are not trustworthy for canonical V2 semantics.
+  return value.flatMap((item) => {
+    const record = item && typeof item === 'object' && !Array.isArray(item) ? (item as Record<string, unknown>) : null;
+    if (!record) {
+      return [];
+    }
+
+    const severity = typeof record.severity === 'string' ? record.severity.trim() : '';
+    const category = typeof record.category === 'string' ? record.category.trim() : '';
+    const passType = typeof record.passType === 'string' ? record.passType.trim() : '';
+    const description = typeof record.description === 'string' ? record.description.trim() : '';
+    const suggestedFix = typeof record.suggestedFix === 'string' ? record.suggestedFix.trim() : '';
+    if (!severity || !category || !passType || !description) {
+      return [];
+    }
+
+    if (!['info', 'low', 'medium', 'high', 'critical'].includes(severity)) {
+      return [];
+    }
+    if (!['security', 'logic', 'style', 'breaking-change'].includes(category)) {
+      return [];
+    }
+    if (passType !== 'single') {
+      return [];
+    }
+
+    const locationsRaw = Array.isArray(record.locations) ? record.locations : [];
+    const locations = locationsRaw.flatMap((locationItem) => {
+      const location =
+        locationItem && typeof locationItem === 'object' && !Array.isArray(locationItem)
+          ? (locationItem as Record<string, unknown>)
+          : null;
+      if (!location) {
+        return [];
+      }
+
+      const filePath = typeof location.filePath === 'string' ? location.filePath.trim() : '';
+      if (!filePath) {
+        return [];
+      }
+      const startLine = location.startLine;
+      const endLine = location.endLine;
+      const nullRange = startLine === null && endLine === null;
+      const numericRange =
+        typeof startLine === 'number' &&
+        Number.isInteger(startLine) &&
+        startLine > 0 &&
+        typeof endLine === 'number' &&
+        Number.isInteger(endLine) &&
+        endLine >= startLine;
+      if (!nullRange && !numericRange) {
+        return [];
+      }
+
+      return [
+        {
+          filePath,
+          startLine: nullRange ? null : (startLine as number),
+          endLine: nullRange ? null : (endLine as number),
+        },
+      ];
+    });
+
+    if (locations.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        severity: severity as ReviewFinding['severity'],
+        category: category as ReviewFinding['category'],
+        passType: passType as ReviewFinding['passType'],
+        locations,
+        description,
+        suggestedFix,
+      },
+    ];
+  });
 }
 
 function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
@@ -667,6 +748,12 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
 
   if (report?.summary) {
     response.summary = report.summary;
+  }
+  if (typeof report?.summaryText === 'string') {
+    response.summaryText = report.summaryText;
+  }
+  if (typeof report?.furtherPassesLowYield === 'boolean') {
+    response.furtherPassesLowYield = report.furtherPassesLowYield;
   }
   if (report?.intent) {
     response.intent = report.intent;
@@ -2957,31 +3044,27 @@ export async function replaceReviewFindings(
   for (const finding of findings) {
     await db
       .prepare(
-        `INSERT INTO review_findings (
+       `INSERT INTO review_findings (
            id,
            review_id,
            severity,
-           confidence,
-           title,
+           category,
+           pass_type,
            description,
-           conditions,
            locations_json,
-           suggested_fix_json,
-           evidence_refs_json
-         )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           suggested_fix
+          )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
-        finding.id,
+        generatePrefixedId('rf'),
         reviewId,
         finding.severity,
-        finding.confidence,
-        finding.title,
+        finding.category,
+        finding.passType,
         finding.description,
-        finding.conditions,
         JSON.stringify(finding.locations),
-        finding.suggestedFix ? JSON.stringify(finding.suggestedFix) : null,
-        JSON.stringify(finding.evidenceRefs)
+        finding.suggestedFix
       )
       .run();
   }

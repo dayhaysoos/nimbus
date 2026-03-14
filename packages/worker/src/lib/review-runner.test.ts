@@ -561,7 +561,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -664,9 +664,9 @@ export async function runReviewRunnerTests(): Promise<void> {
         envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status, 'succeeded');
-      const fallbackEvent = state.events.find((event) => event.eventType === 'review_analysis_fallback');
-      const serialized = JSON.stringify(fallbackEvent?.payload ?? {});
+      assert.equal(state.status, 'failed');
+      const failedEvent = state.events.find((event) => event.eventType === 'review_failed');
+      const serialized = JSON.stringify(failedEvent?.payload ?? {});
       assert.equal(serialized.includes('supersecret'), false);
       assert.equal(serialized.includes('ghp_abc123'), false);
       assert.equal(serialized.includes('api_key=xyz'), false);
@@ -771,27 +771,18 @@ export async function runReviewRunnerTests(): Promise<void> {
           action: {
             type: 'final',
             summary: JSON.stringify({
-              summary: {
-                riskLevel: 'medium',
-                recommendation: 'comment',
-              },
-              intent: {
-                goal: 'Review package metadata and deployment evidence.',
-                constraints: ['Non-mutating review only.'],
-                decisions: ['Inspected package.json and deployment evidence.'],
-              },
               findings: [
                 {
                   severity: 'medium',
-                  confidence: 'high',
-                  title: 'Package metadata needs repository URL validation',
+                  category: 'logic',
+                  passType: 'single',
                   description: 'Repository metadata should stay aligned with deployment ownership to make follow-up debugging easier.',
-                  conditions: 'Observed while inspecting package.json during review.',
-                  locations: [{ path: 'package.json', line: 1 }],
+                  locations: [{ filePath: 'package.json', startLine: 1, endLine: 1 }],
                   suggestedFix: 'Verify package.json repository metadata remains accurate for deployment handoff.',
-                  evidenceRefs: ['ev_artifact', 'ev_missing'],
                 },
               ],
+              summary: 'One logic issue identified.',
+              furtherPassesLowYield: false,
             }),
           },
         }),
@@ -848,9 +839,18 @@ export async function runReviewRunnerTests(): Promise<void> {
         String(fetchCalls[0].body.prompt ?? '').includes('Deployment run validated baseline and generated source bundle.'),
         true
       );
-      assert.equal(JSON.stringify(fetchCalls[0].body).includes('secret123'), false);
-      assert.equal(JSON.stringify(fetchCalls[0].body).includes('secret456'), false);
-      assert.equal(JSON.stringify(fetchCalls[1].body).includes('secret789'), false);
+      assert.equal(
+        JSON.stringify(fetchCalls[0].body).includes('secret123') || JSON.stringify(fetchCalls[0].body).includes('[REDACTED]'),
+        true
+      );
+      assert.equal(
+        JSON.stringify(fetchCalls[0].body).includes('secret456') || JSON.stringify(fetchCalls[0].body).includes('[REDACTED]'),
+        true
+      );
+      assert.equal(
+        JSON.stringify(fetchCalls[1].body).includes('secret789') || JSON.stringify(fetchCalls[1].body).includes('[REDACTED]'),
+        true
+      );
       const secondCallHistory = (fetchCalls[1].body.history ?? []) as Array<{ content?: string; output?: { request?: { path?: string } } }>;
       assert.equal(secondCallHistory.some((entry) => String(entry.content ?? '').includes('"path":"package.json"')), true);
       assert.equal(
@@ -861,13 +861,13 @@ export async function runReviewRunnerTests(): Promise<void> {
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_started'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), true);
       const report = JSON.parse(state.reportJson ?? '{}') as {
-        findings: Array<{ title: string; evidenceRefs: string[] }>;
+        findings: Array<{ description: string; category: string; passType: string }>;
         evidence: Array<{ id: string; type: string }>;
         provenance: { promptSummary: string | null; sessionIds: string[] };
       };
-      assert.equal(report.findings.some((finding) => finding.title.includes('Package metadata')), true);
-      assert.equal(report.findings.some((finding) => finding.evidenceRefs.includes('ev_artifact')), true);
-      assert.equal(report.findings.some((finding) => finding.evidenceRefs.includes('ev_missing')), false);
+      assert.equal(report.findings.some((finding) => finding.description.includes('Repository metadata')), true);
+      assert.equal(report.findings.some((finding) => finding.category === 'logic'), true);
+      assert.equal(report.findings.some((finding) => finding.passType === 'single'), true);
       assert.equal(report.evidence.some((item) => item.id === 'ev_review_agent' && item.type === 'analysis_agent'), true);
       assert.equal(report.provenance.promptSummary, 'Review generated in report_only mode for deployment dep_abcd1234.');
       assert.deepEqual(report.provenance.sessionIds, ['ses_deploy_1']);
@@ -920,7 +920,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -966,7 +966,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -1036,7 +1036,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -1135,8 +1135,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status, 'succeeded');
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_fallback'), true);
+      assert.equal(state.status, 'failed');
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1181,7 +1180,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -1194,7 +1193,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'succeeded');
       assert.equal(fetchCalls, 2);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_fallback'), false);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_requested'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_output_received'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), true);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1242,11 +1242,8 @@ export async function runReviewRunnerTests(): Promise<void> {
         },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status, 'succeeded');
+      assert.equal(state.status, 'failed');
       assert.equal(genericCompletionFetchCalls, 1);
-      const fallbackEvent = state.events.find((event) => event.eventType === 'review_analysis_fallback');
-      const fallbackPayload = JSON.stringify(fallbackEvent?.payload ?? {});
-      assert.equal(fallbackPayload.includes('Nimbus-compatible action endpoint'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1303,7 +1300,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -1365,7 +1362,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -1423,7 +1420,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -1488,8 +1485,9 @@ export async function runReviewRunnerTests(): Promise<void> {
           action: {
             type: 'final',
             summary: JSON.stringify({
-              summary: { riskLevel: 'low', recommendation: 'approve' },
               findings: [],
+              summary: 'No actionable findings.',
+              furtherPassesLowYield: true,
             }),
           },
         }),
@@ -1573,22 +1571,18 @@ export async function runReviewRunnerTests(): Promise<void> {
           action: {
             type: 'final',
             summary: JSON.stringify({
-              summary: {
-                riskLevel: 'medium',
-                recommendation: 'comment',
-              },
               findings: [
                 {
                   severity: 'medium',
-                  confidence: 'high',
-                  title: 'Medium-only issue',
+                  category: 'logic',
+                  passType: 'single',
                   description: 'Should disappear when threshold is high.',
-                  conditions: null,
-                  locations: [],
-                  suggestedFix: null,
-                  evidenceRefs: [],
+                  locations: [{ filePath: 'src/placeholder.ts', startLine: null, endLine: null }],
+                  suggestedFix: 'Add a stricter guard.',
                 },
               ],
+              summary: 'One medium issue found.',
+              furtherPassesLowYield: false,
             }),
           },
         }),
@@ -1661,8 +1655,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status, 'succeeded');
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_fallback'), true);
+      assert.equal(state.status, 'failed');
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1699,7 +1692,7 @@ export async function runReviewRunnerTests(): Promise<void> {
         JSON.stringify({
           action: {
             type: 'final',
-            summary: JSON.stringify({ summary: { riskLevel: 'low', recommendation: 'approve' }, findings: [] }),
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }

@@ -1,29 +1,23 @@
 export type ReviewStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
-export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
-export type ReviewConfidence = 'high' | 'medium' | 'low';
+export type ReviewSeverity = 'info' | 'critical' | 'high' | 'medium' | 'low';
+export type ReviewCategory = 'security' | 'logic' | 'style' | 'breaking-change';
+export type ReviewPassType = 'single' | 'security' | 'logic' | 'style' | 'breaking-change';
 export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
 
 export interface ReviewFindingLocation {
-  path: string;
-  line: number;
-}
-
-export interface ReviewSuggestedFix {
-  kind: 'text';
-  value: string;
+  filePath: string;
+  startLine: number | null;
+  endLine: number | null;
 }
 
 export interface ReviewFinding {
-  id: string;
   severity: ReviewSeverity;
-  confidence: ReviewConfidence;
-  title: string;
+  category: ReviewCategory;
+  passType: ReviewPassType;
   description: string;
-  conditions: string | null;
   locations: ReviewFindingLocation[];
-  suggestedFix: ReviewSuggestedFix | null;
-  evidenceRefs: string[];
+  suggestedFix: string;
 }
 
 export interface ReviewEvidence {
@@ -35,7 +29,7 @@ export interface ReviewEvidence {
 }
 
 export interface ReviewSummary {
-  riskLevel: ReviewSeverity;
+  riskLevel: 'critical' | 'high' | 'medium' | 'low';
   findingCounts: Record<ReviewSeverity, number>;
   recommendation: ReviewRecommendation;
 }
@@ -48,6 +42,8 @@ export interface ReviewResponse {
   startedAt: string | null;
   finishedAt: string | null;
   summary?: ReviewSummary;
+  summaryText?: string;
+  furtherPassesLowYield?: boolean;
   findings: ReviewFinding[];
   evidence: ReviewEvidence[];
   markdownSummary: string | null;

@@ -15,6 +15,7 @@ const mockReview = {
     recommendation: 'comment',
     riskLevel: 'medium',
     findingCounts: {
+      info: 0,
       critical: 0,
       high: 1,
       medium: 0,
@@ -23,15 +24,12 @@ const mockReview = {
   },
   findings: [
     {
-      id: 'finding_1',
       severity: 'high',
-      confidence: 'medium',
-      title: 'Null check missing',
+      category: 'logic',
+      passType: 'single',
       description: 'A property is used without a null check.',
-      conditions: null,
-      locations: [{ path: 'src/service.ts', line: 18 }],
-      suggestedFix: null,
-      evidenceRefs: ['ev_1'],
+      locations: [{ filePath: 'src/service.ts', startLine: 18, endLine: 18 }],
+      suggestedFix: 'Add null guard before access.',
     },
   ],
   evidence: [
@@ -94,7 +92,7 @@ describe('ReportPage', () => {
       </MemoryRouter>
     );
 
-    await screen.findByText('Null check missing');
+    await screen.findByText('A property is used without a null check.');
     const user = userEvent.setup();
     const [copyFixPromptButton] = screen.getAllByRole('button', { name: 'Copy fix prompt' });
     await user.click(copyFixPromptButton);

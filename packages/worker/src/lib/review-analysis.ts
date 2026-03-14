@@ -1,12 +1,11 @@
 import type { Sandbox } from '@cloudflare/sandbox';
 import type {
   Env,
-  ReviewConfidence,
+  ReviewAnalysisOutputV2,
+  ReviewContext,
   ReviewFinding,
-  ReviewRecommendation,
-  ReviewSeverity,
-  ReviewSuggestedFix,
 } from '../types.js';
+import { validateAndNormalizeReviewAnalysisOutputV2 } from './review-output-v2.js';
 
 const WORKSPACE_ROOT = '/workspace';
 const BUNDLE_BASE64_PATH = '/tmp/review-source.tar.gz.base64';
@@ -18,6 +17,10 @@ const DEFAULT_REVIEW_MAX_FILE_BYTES = 48_000;
 const DEFAULT_REVIEW_MAX_OUTPUT_BYTES = 96_000;
 const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
 const MAX_COMMAND_TIMEOUT_MS = 2 * 60_000;
+const PROMPT_DIFF_HUNKS_MAX_BYTES = 48_000;
+const PROMPT_CHANGED_FILES_MAX_BYTES = 80_000;
+const PROMPT_RELATED_FILES_MAX_BYTES = 36_000;
+const PROMPT_CONVENTION_FILES_MAX_BYTES = 20_000;
 
 interface SandboxClient {
   exec(
@@ -72,13 +75,20 @@ export interface ReviewAgentIntent {
 
 export interface ReviewAgentAnalysisResult {
   findings: ReviewFinding[];
-  recommendation: ReviewRecommendation;
-  riskLevel: ReviewSeverity;
+  summary: string;
+  furtherPassesLowYield: boolean;
   intent: ReviewAgentIntent | null;
   provider: string;
   model: string;
   stepsExecuted: number;
   usedTools: string[];
+  validation: {
+    firstPassValid: boolean;
+    repairAttempted: boolean;
+    repairSucceeded: boolean;
+    validationErrorCount: number;
+    dedupedExactCount: number;
+  };
 }
 
 interface ReviewAgentPromptInput {
@@ -97,8 +107,10 @@ interface ReviewAgentPromptInput {
     deployedUrl: string | null;
     validationSummary: string;
   };
+  reviewContext: ReviewContext;
   rootListing: unknown;
   diffSnapshot: unknown;
+  onLifecycleEvent?: (eventType: string, payload: Record<string, unknown>) => Promise<void> | void;
 }
 
 interface ReviewToolContext {
@@ -144,6 +156,12 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
+function boundedJson(value: unknown, maxBytes: number): string {
+  const serialized = JSON.stringify(value);
+  const clamped = clampText(serialized, maxBytes);
+  return clamped.truncated ? `${clamped.text} [TRUNCATED]` : clamped.text;
+}
+
 function stripCodeFences(value: string): string {
   const trimmed = value.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
@@ -160,75 +178,6 @@ function extractJsonObject(value: string): string {
   return stripped;
 }
 
-function normalizeSeverity(value: unknown, fallback: ReviewSeverity): ReviewSeverity {
-  return value === 'critical' || value === 'high' || value === 'medium' || value === 'low' ? value : fallback;
-}
-
-function normalizeConfidence(value: unknown, fallback: ReviewConfidence): ReviewConfidence {
-  return value === 'high' || value === 'medium' || value === 'low' ? value : fallback;
-}
-
-function normalizeRecommendation(value: unknown, fallback: ReviewRecommendation): ReviewRecommendation {
-  return value === 'approve' || value === 'comment' || value === 'request_changes' ? value : fallback;
-}
-
-function normalizeSuggestedFix(value: unknown): ReviewSuggestedFix | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  return {
-    kind: 'text',
-    value: trimmed,
-  };
-}
-
-function normalizeLocations(value: unknown): Array<{ path: string; line: number }> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.flatMap((item) => {
-    const record = asRecord(item);
-    const path = typeof record.path === 'string' ? record.path.trim() : '';
-    const line = typeof record.line === 'number' && Number.isFinite(record.line) ? Math.max(1, Math.floor(record.line)) : 1;
-    return path ? [{ path, line }] : [];
-  });
-}
-
-function normalizeFindings(reviewId: string, value: unknown): ReviewFinding[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((item, index) => {
-    const record = asRecord(item);
-    const title = typeof record.title === 'string' ? record.title.trim() : '';
-    const description = typeof record.description === 'string' ? record.description.trim() : '';
-    if (!title || !description) {
-      return [];
-    }
-
-    const id = typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `fa_${reviewId}_${String(index + 1).padStart(3, '0')}`;
-    const conditions = typeof record.conditions === 'string' && record.conditions.trim() ? record.conditions.trim() : null;
-    return [
-      {
-        id,
-        severity: normalizeSeverity(record.severity, 'low'),
-        confidence: normalizeConfidence(record.confidence, 'medium'),
-        title,
-        description,
-        conditions,
-        locations: normalizeLocations(record.locations),
-        suggestedFix: normalizeSuggestedFix(record.suggestedFix),
-        evidenceRefs: asStringArray(record.evidenceRefs),
-      },
-    ];
-  });
-}
-
 function normalizeIntent(value: unknown): ReviewAgentIntent | null {
   const record = asRecord(value);
   if (Object.keys(record).length === 0) {
@@ -243,36 +192,50 @@ function normalizeIntent(value: unknown): ReviewAgentIntent | null {
 }
 
 class ReviewAgentOutputError extends Error {
+  code: string;
+  details: Record<string, unknown> | null;
+
   constructor(message: string) {
     super(message);
     this.name = 'ReviewAgentOutputError';
+    this.code = 'review_analysis_invalid_output';
+    this.details = null;
+  }
+
+  withCode(code: string, details?: Record<string, unknown>): ReviewAgentOutputError {
+    this.code = code;
+    this.details = details ?? null;
+    return this;
   }
 }
 
-function parseFinalReport(reviewId: string, summary: string): {
-  findings: ReviewFinding[];
-  recommendation: ReviewRecommendation;
-  riskLevel: ReviewSeverity;
-  intent: ReviewAgentIntent | null;
-} {
+function parseJsonOutput(summary: string): unknown {
   try {
-    const parsed = JSON.parse(extractJsonObject(summary)) as unknown;
-    const record = asRecord(parsed);
-    const summaryBlock = asRecord(record.summary);
-    return {
-      findings: normalizeFindings(reviewId, record.findings),
-      recommendation: normalizeRecommendation(summaryBlock.recommendation, 'approve'),
-      riskLevel: normalizeSeverity(summaryBlock.riskLevel, 'low'),
-      intent: normalizeIntent(record.intent),
-    };
+    return JSON.parse(extractJsonObject(summary)) as unknown;
   } catch {
     const summaryText = stripCodeFences(summary).trim();
     throw new ReviewAgentOutputError(
       summaryText
         ? `Review agent returned malformed final output: ${summaryText.slice(0, 240)}`
         : 'Review agent returned malformed final output'
+    ).withCode('review_analysis_invalid_output');
+  }
+}
+
+function validateOutputOrThrow(payload: unknown): { output: ReviewAnalysisOutputV2; dedupedExactCount: number } {
+  const validated = validateAndNormalizeReviewAnalysisOutputV2(payload);
+  if (!validated.ok) {
+    throw new ReviewAgentOutputError('Review agent output does not match required schema').withCode(
+      'review_analysis_invalid_output',
+      {
+        errors: validated.errors,
+      }
     );
   }
+  return {
+    output: validated.value,
+    dedupedExactCount: validated.dedupedExactCount,
+  };
 }
 
 function isGenericProviderCompletionSummary(summary: string): boolean {
@@ -350,33 +313,65 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
   const promptDiffSnapshot = input.authoritativeDiffSnapshot !== undefined
     ? clampAuthoritativeDiffSnapshot(input.authoritativeDiffSnapshot, 32_000)
     : undefined;
+  const context = input.reviewContext;
+
+  const changedFiles = context.retrieval.changedFiles.map((file) => ({
+    path: file.path,
+    content: file.content,
+    byteSize: file.byteSize,
+  }));
+  const relatedFiles = context.retrieval.relatedFiles.map((file) => ({
+    path: file.path,
+    content: file.content,
+    byteSize: file.byteSize,
+    coChangeFrequency: file.coChangeFrequency,
+    supportingSessionIds: file.supportingSessionIds,
+  }));
+  const conventionFiles = context.retrieval.conventionFiles.map((file) => ({
+    path: file.path,
+    content: file.content,
+    byteSize: file.byteSize,
+  }));
+
   return [
     'You are Nimbus Review, a non-mutating code review agent.',
-    'Review the deployment target and return only actionable findings that are justified by inspected code, diff context, or deployment evidence.',
+    'Analyze the provided full ReviewContext and return only actionable findings supported by code context.',
     'Never propose edits or run mutating commands. Prefer no findings over weak findings.',
     'Use only these tools when needed: list_files, read_file, diff_summary.',
     '',
     'Return your final answer as raw JSON with this shape and no surrounding prose:',
     '{',
-    '  "summary": { "riskLevel": "low|medium|high|critical", "recommendation": "approve|comment|request_changes" },',
-    '  "intent": { "goal": string|null, "constraints": string[], "decisions": string[] },',
     '  "findings": [',
     '    {',
-    '      "severity": "critical|high|medium|low",',
-    '      "confidence": "high|medium|low",',
-    '      "title": string,',
+    '      "severity": "info|low|medium|high|critical",',
+    '      "category": "security|logic|style|breaking-change",',
+    '      "passType": "single|security|logic|style|breaking-change",',
+    '      "locations": [{ "filePath": string, "startLine": number|null, "endLine": number|null }],',
     '      "description": string,',
-    '      "conditions": string|null,',
-    '      "locations": [{ "path": string, "line": number }],',
-    '      "suggestedFix": string|null,',
-    '      "evidenceRefs": string[]',
+    '      "suggestedFix": string',
     '    }',
-    '  ]',
+    '  ],',
+    '  "summary": string,',
+    '  "furtherPassesLowYield": boolean',
     '}',
     '',
+    'Phase 2 constraints:',
+    '- passType must be set explicitly on every finding and be "single" in this phase.',
+    '- category must be one of security, logic, style, breaking-change.',
+    '- locations must contain at least one location; file-only location is allowed with null line values.',
+    '- findings must be self-contained and actionable without rereading the diff.',
+    '',
+    'Context weighting rules:',
+    '- Changed files are directly modified in this commit and should get highest weight.',
+    '- Related files are historical co-change context from Entire checkpoint session history and are not directly modified in this commit.',
+    '- Use related files to understand coupling/impact, but do not treat them as direct modified evidence.',
+    '',
+    `Review Context ID: ${context.id}`,
     `Review ID: ${input.reviewId}`,
     `Workspace ID: ${input.workspaceId}`,
     `Deployment ID: ${input.deploymentId}`,
+    `Checkpoint: ${context.checkpoint.checkpointId} (${context.checkpoint.branch})`,
+    `Checkpoint Session ID: ${context.checkpoint.session.sessionId}`,
     `Goal: ${input.goal}`,
     `Constraints: ${JSON.stringify(input.constraints)}`,
     `Decisions: ${JSON.stringify(input.decisions)}`,
@@ -385,13 +380,20 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
       : 'Intent session context excerpts: []',
     `Deployment summary: ${JSON.stringify(input.deploymentSummary)}`,
     `Evidence catalog: ${JSON.stringify(input.evidenceCatalog)}`,
+    '',
+    `Diff hunks (direct changes): ${boundedJson(context.retrieval.diffHunks, PROMPT_DIFF_HUNKS_MAX_BYTES)}`,
+    `Changed files (directly modified): ${boundedJson(changedFiles, PROMPT_CHANGED_FILES_MAX_BYTES)}`,
+    `Related files (historical co-change context only): ${boundedJson(relatedFiles, PROMPT_RELATED_FILES_MAX_BYTES)}`,
+    `Convention/config files: ${boundedJson(conventionFiles, PROMPT_CONVENTION_FILES_MAX_BYTES)}`,
+    `Co-change retrieval stats: ${JSON.stringify(context.retrieval.coChange)}`,
+    `Review context stats: ${JSON.stringify(context.stats)}`,
     promptDiffSnapshot !== undefined
       ? `Authoritative deployed diff snapshot: ${JSON.stringify(promptDiffSnapshot)}`
       : 'Authoritative deployed diff snapshot: unavailable',
     `Initial root listing: ${JSON.stringify(input.rootListing)}`,
     `Initial diff snapshot: ${JSON.stringify(input.diffSnapshot)}`,
     '',
-    'If you cannot justify a concrete issue, return an empty findings array and the most appropriate low-risk recommendation.',
+    'If you cannot justify a concrete issue, return an empty findings array with a concise summary.',
   ].join('\n');
 }
 
@@ -864,6 +866,11 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         diffSnapshot,
       })
     );
+    if (input.onLifecycleEvent) {
+      await input.onLifecycleEvent('review_analysis_prompt_built', {
+        reviewContextId: input.reviewContext.id,
+      });
+    }
 
     const provider = new CloudflareAgentSdkReviewProvider(endpoint, authToken);
     const policy: ReviewCommandPolicy = {
@@ -876,7 +883,12 @@ export async function runWorkspaceDeploymentAgentAnalysis(
 
     const history: ReviewAgentHistoryEntry[] = [];
     const usedTools: string[] = [];
-    let malformedFinalOutputError: ReviewAgentOutputError | null = null;
+    let finalValidationError: ReviewAgentOutputError | null = null;
+    let repairAttempted = false;
+    let repairSucceeded = false;
+    let firstPassValid = false;
+    let validationErrorCount = 0;
+    let dedupedExactCount = 0;
     for (let step = 1; step <= maxSteps; step += 1) {
       const action = await provider.next({
         prompt,
@@ -887,14 +899,52 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       });
 
       if (action.type === 'final') {
+        if (input.onLifecycleEvent) {
+          await input.onLifecycleEvent('review_analysis_model_output_received', {
+            step,
+            repairAttempted,
+          });
+        }
         try {
-          const parsed = parseFinalReport(input.reviewId, action.summary);
+          const parsed = parseJsonOutput(action.summary);
+          const validated = validateOutputOrThrow(parsed);
+          firstPassValid = !repairAttempted;
+          repairSucceeded = repairAttempted;
+          validationErrorCount = finalValidationError?.details && Array.isArray(finalValidationError.details.errors)
+            ? finalValidationError.details.errors.length
+            : 0;
+          dedupedExactCount = validated.dedupedExactCount;
+          if (repairAttempted && input.onLifecycleEvent) {
+            await input.onLifecycleEvent('review_analysis_repair_output_received', {
+              validationErrorCount,
+              valid: true,
+            });
+          }
+          if (input.onLifecycleEvent) {
+            await input.onLifecycleEvent('review_analysis_output_validated', {
+              firstPassValid,
+              repairAttempted,
+              repairSucceeded,
+              validationErrorCount,
+              findingCount: validated.output.findings.length,
+            });
+          }
           return {
-            ...parsed,
+            findings: validated.output.findings,
+            summary: validated.output.summary,
+            furtherPassesLowYield: validated.output.furtherPassesLowYield,
+            intent: null,
             provider: 'cloudflare_agents_sdk',
             model,
             stepsExecuted: step,
             usedTools,
+            validation: {
+              firstPassValid,
+              repairAttempted,
+              repairSucceeded,
+              validationErrorCount,
+              dedupedExactCount,
+            },
           };
         } catch (error) {
           if (error instanceof ReviewAgentOutputError && isGenericProviderCompletionSummary(action.summary)) {
@@ -903,33 +953,58 @@ export async function runWorkspaceDeploymentAgentAnalysis(
             );
           }
 
-          if (error instanceof ReviewAgentOutputError && step < maxSteps) {
-            malformedFinalOutputError = error;
+          if (error instanceof ReviewAgentOutputError && !repairAttempted && step < maxSteps) {
+            finalValidationError = error;
+            repairAttempted = true;
+            const validationErrors = error.details && Array.isArray(error.details.errors) ? error.details.errors : [];
+            validationErrorCount = validationErrors.length;
+            if (input.onLifecycleEvent) {
+              await input.onLifecycleEvent('review_analysis_output_validation_failed', {
+                errorCode: error.code,
+                validationErrorCount,
+              });
+              await input.onLifecycleEvent('review_analysis_repair_requested', {
+                validationErrorCount,
+              });
+            }
             history.push({
               role: 'assistant',
-              content: 'final_output_validator: returned final summary did not match required JSON schema; retrying final output',
+              content: 'final_output_validator: output failed schema; return corrected JSON only.',
             });
             history.push({
               role: 'tool',
               tool: 'final_output_validator',
               output: {
                 ok: false,
-                error: 'Final summary must be a raw JSON object with summary, intent, and findings fields.',
+                error: 'Output must match ReviewAnalysisOutputV2 exactly.',
                 requiredShape: {
-                  summary: {
-                    riskLevel: 'low|medium|high|critical',
-                    recommendation: 'approve|comment|request_changes',
-                  },
-                  intent: {
-                    goal: 'string|null',
-                    constraints: 'string[]',
-                    decisions: 'string[]',
-                  },
-                  findings: 'array',
+                  findings: [
+                    {
+                      severity: 'info|low|medium|high|critical',
+                      category: 'security|logic|style|breaking-change',
+                      passType: 'single|security|logic|style|breaking-change',
+                      locations: [{ filePath: 'string', startLine: 'number|null', endLine: 'number|null' }],
+                      description: 'string',
+                      suggestedFix: 'string',
+                    },
+                  ],
+                  summary: 'string',
+                  furtherPassesLowYield: 'boolean',
                 },
+                validationErrors,
               },
             });
             continue;
+          }
+
+          if (error instanceof ReviewAgentOutputError && repairAttempted) {
+            if (input.onLifecycleEvent) {
+              await input.onLifecycleEvent('review_analysis_repair_output_received', {
+                validationErrorCount,
+                valid: false,
+              });
+            }
+            throw error.withCode('review_analysis_invalid_output_after_repair');
           }
 
           throw error;
@@ -948,8 +1023,8 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       history.push({ role: 'tool', tool: action.tool, output: sanitizeToolContext(output) });
     }
 
-    if (malformedFinalOutputError) {
-      throw malformedFinalOutputError;
+    if (finalValidationError) {
+      throw finalValidationError;
     }
     throw new Error('Review analysis exceeded maximum step count');
   } finally {
