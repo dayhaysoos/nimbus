@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "303a6bc7dade",
+  "strategy": "manual-commit",
+  "branch": "prompt-output-structure",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/types.ts",
+    "packages/worker/migrations/0011_review_findings_v2.sql",
+    "packages/worker/src/lib/db.review.test.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-output-v2.test.ts",
+    "packages/worker/src/lib/review-output-v2.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/30/3a6bc7dade/0/metadata.json",
+      "transcript": "/30/3a6bc7dade/0/full.jsonl",
+      "context": "/30/3a6bc7dade/0/context.md",
+      "content_hash": "/30/3a6bc7dade/0/content_hash.txt",
+      "prompt": "/30/3a6bc7dade/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 238877,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 987264,
+    "output_tokens": 7323,
+    "api_call_count": 14
+  }
+}
