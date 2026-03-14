@@ -3,7 +3,7 @@
   "checkpoint_id": "ee103b433f1d",
   "strategy": "manual-commit",
   "branch": "prompt-output-structure",
-  "checkpoints_count": 8,
+  "checkpoints_count": 9,
   "files_touched": [
     "package.json",
     "packages/agent-endpoint/package.json",
@@ -89,13 +89,20 @@
       "context": "/ee/103b433f1d/7/context.md",
       "content_hash": "/ee/103b433f1d/7/content_hash.txt",
       "prompt": "/ee/103b433f1d/7/prompt.txt"
+    },
+    {
+      "metadata": "/ee/103b433f1d/8/metadata.json",
+      "transcript": "/ee/103b433f1d/8/full.jsonl",
+      "context": "/ee/103b433f1d/8/context.md",
+      "content_hash": "/ee/103b433f1d/8/content_hash.txt",
+      "prompt": "/ee/103b433f1d/8/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 1252397,
+    "input_tokens": 1329585,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 7779712,
-    "output_tokens": 50405,
-    "api_call_count": 112
+    "cache_read_tokens": 8007936,
+    "output_tokens": 54551,
+    "api_call_count": 118
   }
 }
