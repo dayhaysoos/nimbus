@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "d3d79e2ffd92",
+  "session_id": "ses_312db0595ffeB19V2d052ISTxL",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-14T16:31:21.009565Z",
+  "branch": "prompt-output-structure",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/preflight.ts",
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/types.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "79866d499d2f",
+  "token_usage": {
+    "input_tokens": 168364,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 658688,
+    "output_tokens": 8518,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-14T16:31:20.492307Z",
+    "agent_lines": 689,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 689,
+    "agent_percentage": 100
+  }
+}
