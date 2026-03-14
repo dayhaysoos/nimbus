@@ -31,6 +31,13 @@
       "context": "",
       "content_hash": "/eb/25520e9945/2/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/eb/25520e9945/3/metadata.json",
+      "transcript": "/eb/25520e9945/3/full.jsonl",
+      "context": "",
+      "content_hash": "/eb/25520e9945/3/content_hash.txt",
+      "prompt": ""
     }
   ]
 }
