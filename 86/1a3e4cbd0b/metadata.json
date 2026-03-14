@@ -1,0 +1,22 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "861a3e4cbd0b",
+  "strategy": "manual-commit",
+  "branch": "prompt-output-structure",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/86/1a3e4cbd0b/0/metadata.json",
+      "transcript": "/86/1a3e4cbd0b/0/full.jsonl",
+      "context": "",
+      "content_hash": "/86/1a3e4cbd0b/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
