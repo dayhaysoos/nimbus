@@ -3,7 +3,7 @@
   "checkpoint_id": "fba364e3d99d",
   "strategy": "manual-commit",
   "branch": "prompt-output-structure",
-  "checkpoints_count": 2,
+  "checkpoints_count": 3,
   "files_touched": [
     "packages/cli/src/commands/review/create.ts",
     "packages/cli/src/commands/review/events.ts",
@@ -30,13 +30,20 @@
       "context": "/fb/a364e3d99d/1/context.md",
       "content_hash": "/fb/a364e3d99d/1/content_hash.txt",
       "prompt": "/fb/a364e3d99d/1/prompt.txt"
+    },
+    {
+      "metadata": "/fb/a364e3d99d/2/metadata.json",
+      "transcript": "/fb/a364e3d99d/2/full.jsonl",
+      "context": "/fb/a364e3d99d/2/context.md",
+      "content_hash": "/fb/a364e3d99d/2/content_hash.txt",
+      "prompt": "/fb/a364e3d99d/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 291411,
+    "input_tokens": 414047,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1802496,
-    "output_tokens": 15333,
-    "api_call_count": 23
+    "cache_read_tokens": 2732288,
+    "output_tokens": 23180,
+    "api_call_count": 36
   }
 }
