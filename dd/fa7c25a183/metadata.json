@@ -16,6 +16,13 @@
       "context": "",
       "content_hash": "/dd/fa7c25a183/0/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/dd/fa7c25a183/1/metadata.json",
+      "transcript": "/dd/fa7c25a183/1/full.jsonl",
+      "context": "",
+      "content_hash": "/dd/fa7c25a183/1/content_hash.txt",
+      "prompt": ""
     }
   ]
 }
