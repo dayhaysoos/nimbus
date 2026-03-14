@@ -60,6 +60,13 @@ const REVIEW_SEVERITY_RANK: Record<ReviewFindingSeverityV2, number> = {
   low: 1,
 };
 const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
+const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
+const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
+
+interface ReviewRunExecutionOptions {
+  cochangeGithubToken?: string | null;
+  allowRetryScheduling?: boolean;
+}
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -90,7 +97,7 @@ function redactReviewText(value: string | null): string | null {
 
   const redacted = value
     .replace(/(authorization:\s*bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
-    .replace(/gh[spu]_[a-z0-9_]+/gi, '[REDACTED_TOKEN]')
+    .replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]')
     .replace(/(api[_-]?key\s*[:=]\s*)([^\s,]+)/gi, '$1[REDACTED]')
     .replace(/(token\s*[:=]\s*)([^\s,]+)/gi, '$1[REDACTED]');
   return redacted.length > 600 ? `${redacted.slice(0, 597)}...` : redacted;
@@ -472,6 +479,31 @@ function readOptionalNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function stripSensitiveTokenFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSensitiveTokenFields(item));
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string' && GITHUB_TOKEN_PATTERN_TEST.test(value)) {
+      return value.replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]');
+    }
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).reduce<Record<string, unknown>>((result, [key, nested]) => {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === 'x-review-github-token' ||
+      normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'authorization'
+    ) {
+      return result;
+    }
+    result[key] = stripSensitiveTokenFields(nested);
+    return result;
+  }, {});
+}
+
 function resolveReviewAnalysisModel(payload: Record<string, unknown>, env: Env): string {
   const requested = readOptionalString(payload.model);
   if (requested) {
@@ -515,7 +547,7 @@ function mergeProvenance(
 }
 
 function parseTouchedFilesFromMetadata(record: Record<string, unknown>): string[] {
-  const candidates = [record.touchedFiles, record.touched_files, record.changedFiles, record.changed_files, record.files];
+  const candidates = [record.touchedFiles, record.touched_files, record.files_touched, record.changedFiles, record.changed_files, record.files];
   for (const candidate of candidates) {
     if (!Array.isArray(candidate)) {
       continue;
@@ -537,21 +569,18 @@ function parseTouchedFilesFromMetadata(record: Record<string, unknown>): string[
   return [];
 }
 
-function buildGitHubHeaders(env: Env): Record<string, string> {
+function buildGitHubHeaders(githubToken: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
   };
-  const token = readOptionalString(env.REVIEW_CONTEXT_GITHUB_TOKEN);
-  if (token) {
-    headers.Authorization = token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
-  }
+  headers.Authorization = githubToken.toLowerCase().startsWith('bearer ') ? githubToken : `Bearer ${githubToken}`;
   return headers;
 }
 
-async function fetchGitHubJson(env: Env, url: string): Promise<Record<string, unknown>> {
+async function fetchGitHubJson(url: string, githubToken: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
-    headers: buildGitHubHeaders(env),
+    headers: buildGitHubHeaders(githubToken),
   });
 
   if (!response.ok) {
@@ -568,9 +597,9 @@ async function fetchGitHubJson(env: Env, url: string): Promise<Record<string, un
   return asRecord(data);
 }
 
-async function fetchGitHubArray(env: Env, url: string): Promise<unknown[]> {
+async function fetchGitHubArray(url: string, githubToken: string): Promise<unknown[]> {
   const response = await fetch(url, {
-    headers: buildGitHubHeaders(env),
+    headers: buildGitHubHeaders(githubToken),
   });
 
   if (!response.ok) {
@@ -595,18 +624,15 @@ function classifyCochangeSkipReason(error: unknown): string {
 }
 
 async function fetchCochangeFromCheckpointBranch(
-  env: Env,
   repo: string,
   changedPaths: string[],
-  lookbackSessions: number
+  lookbackSessions: number,
+  githubToken: string
 ): Promise<{
   relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
   sessionsScanned: number;
 }> {
-  const commits = await fetchGitHubArray(
-    env,
-    `https://api.github.com/repos/${repo}/commits?sha=entire/checkpoints/v1&per_page=${lookbackSessions}`
-  );
+  const commits = await fetchGitHubArray(`https://api.github.com/repos/${repo}/commits?sha=entire/checkpoints/v1&per_page=${lookbackSessions}`, githubToken);
 
   const frequencyByChangedPath = new Map<string, Map<string, { count: number; sessions: Set<string> }>>();
   for (const changedPath of changedPaths) {
@@ -621,7 +647,7 @@ async function fetchCochangeFromCheckpointBranch(
       continue;
     }
 
-    const detail = await fetchGitHubJson(env, `https://api.github.com/repos/${repo}/commits/${sha}`);
+    const detail = await fetchGitHubJson(`https://api.github.com/repos/${repo}/commits/${sha}`, githubToken);
     const files = Array.isArray(detail.files) ? detail.files : [];
     const metadataPaths = files
       .map((entry) => readOptionalString(asRecord(entry).filename))
@@ -630,7 +656,7 @@ async function fetchCochangeFromCheckpointBranch(
 
     const touchedFiles = new Set<string>();
     for (const metadataPath of metadataPaths) {
-      const file = await fetchGitHubJson(env, `https://api.github.com/repos/${repo}/contents/${metadataPath}?ref=${sha}`);
+      const file = await fetchGitHubJson(`https://api.github.com/repos/${repo}/contents/${metadataPath}?ref=${sha}`, githubToken);
       const content = readOptionalString(file.content);
       if (!content) {
         continue;
@@ -698,7 +724,8 @@ async function fetchCochangeFromCheckpointBranch(
 async function assembleReviewContextBootstrap(
   env: Env,
   review: ReviewRunResponse,
-  reviewPayload: Record<string, unknown>
+  reviewPayload: Record<string, unknown>,
+  options?: ReviewRunExecutionOptions
 ): Promise<ReviewContext> {
   const COCHANGE_LOOKBACK_SESSIONS = 5;
   const COCHANGE_TOP_N = 20;
@@ -893,20 +920,13 @@ async function assembleReviewContextBootstrap(
   let coChangeSkipped = false;
   let coChangeSkipReason: string | null = null;
   let coChangeAvailable = false;
-  const githubToken = readOptionalString(env.REVIEW_CONTEXT_GITHUB_TOKEN);
+  const githubToken = readOptionalString(options?.cochangeGithubToken) ?? readOptionalString(env.REVIEW_CONTEXT_GITHUB_TOKEN);
 
   if (!githubToken) {
-    coChangeSkipped = true;
-    coChangeSkipReason = 'missing_github_token';
-    await appendReviewEvent(env.DB, {
-      reviewId: review.id,
-      eventType: 'review_context_cochange_skipped',
-      payload: {
-        reason: coChangeSkipReason,
-        repo: repoSlug,
-        lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
-      },
-    });
+    throw new ReviewContextAssemblyError(
+      'review_context_github_token_missing',
+      'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env'
+    );
   } else {
     try {
       await appendReviewEvent(env.DB, {
@@ -936,12 +956,7 @@ async function assembleReviewContextBootstrap(
       }
 
       if (changedPathsMissingCache.length > 0) {
-        const fetched = await fetchCochangeFromCheckpointBranch(
-          env,
-          repoSlug,
-          changedPathsMissingCache,
-          COCHANGE_LOOKBACK_SESSIONS
-        );
+        const fetched = await fetchCochangeFromCheckpointBranch(repoSlug, changedPathsMissingCache, COCHANGE_LOOKBACK_SESSIONS, githubToken);
         sessionsScanned += fetched.sessionsScanned;
         for (const changedPath of changedPathsMissingCache) {
           const entries = fetched.relatedByChangedPath[changedPath] ?? [];
@@ -1011,19 +1026,23 @@ async function assembleReviewContextBootstrap(
         },
       });
     } catch (error) {
-      coChangeSkipped = true;
-      coChangeSkipReason = classifyCochangeSkipReason(error);
-      relatedFiles = [];
-      sessionsScanned = 0;
+      const reason = classifyCochangeSkipReason(error);
       await appendReviewEvent(env.DB, {
         reviewId: review.id,
-        eventType: 'review_context_cochange_skipped',
+        eventType: 'review_context_cochange_failed',
         payload: {
-          reason: coChangeSkipReason,
+          reason,
           repo: repoSlug,
           lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
         },
       });
+      if (error instanceof ReviewContextAssemblyError) {
+        throw error;
+      }
+      throw new ReviewContextAssemblyError(
+        'review_context_github_api_error',
+        `Co-change context retrieval failed (${reason}).`
+      );
     }
   }
 
@@ -1113,7 +1132,7 @@ async function assembleReviewContextBootstrap(
   }
 
   const r2Key = `review-context/${review.id}/${contextId}.json`;
-  const serialized = JSON.stringify(contextPayload);
+  const serialized = JSON.stringify(stripSensitiveTokenFields(contextPayload));
   await storageBucket.put(r2Key, serialized, {
     httpMetadata: {
       contentType: 'application/json',
@@ -1547,7 +1566,7 @@ async function executeReviewRun(
   return report;
 }
 
-export async function processReviewRun(env: Env, reviewId: string): Promise<void> {
+export async function processReviewRun(env: Env, reviewId: string, options?: ReviewRunExecutionOptions): Promise<void> {
   const claimed = await claimReviewRunForExecution(env.DB, reviewId);
   if (!claimed) {
     const existing = await getReviewRun(env.DB, reviewId);
@@ -1581,7 +1600,7 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
       return;
     }
 
-    const reviewContext = await assembleReviewContextBootstrap(env, review, payload);
+    const reviewContext = await assembleReviewContextBootstrap(env, review, payload, options);
     const report = await executeReviewRun(env, review, payload, reviewContext);
     await appendReviewEvent(env.DB, {
       reviewId,
@@ -1624,7 +1643,8 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
     const latest = await getReviewRun(env.DB, reviewId);
     const attemptCount = latest?.attemptCount ?? review?.attemptCount ?? 0;
 
-    if ((error instanceof QueueRetryError || transientReviewFailure(message)) && attemptCount <= REVIEW_MAX_RETRIES) {
+    const allowRetryScheduling = options?.allowRetryScheduling !== false;
+    if (allowRetryScheduling && (error instanceof QueueRetryError || transientReviewFailure(message)) && attemptCount <= REVIEW_MAX_RETRIES) {
       await replaceReviewFindings(env.DB, reviewId, []);
       await updateReviewRunStatus(env.DB, reviewId, 'queued', {
         report: null,
@@ -1676,10 +1696,15 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
   }
 }
 
-export async function runReviewInlineWithRetries(env: Env, reviewId: string, maxCycles = 4): Promise<void> {
+export async function runReviewInlineWithRetries(
+  env: Env,
+  reviewId: string,
+  maxCycles = 4,
+  options?: ReviewRunExecutionOptions
+): Promise<void> {
   for (let cycle = 0; cycle < maxCycles; cycle += 1) {
     try {
-      await processReviewRun(env, reviewId);
+      await processReviewRun(env, reviewId, options);
     } catch {
       // Retry scheduling is inferred from persisted status.
     }
@@ -1694,6 +1719,26 @@ export async function runReviewInlineWithRetries(env: Env, reviewId: string, max
     if (latest.error?.code !== 'retry_scheduled') {
       return;
     }
+  }
+
+  const latest = await getReviewRun(env.DB, reviewId);
+  if (latest?.status === 'queued' && latest.error?.code === 'retry_scheduled') {
+    const message = `Review ${reviewId} remained queued after inline retries`;
+    await replaceReviewFindings(env.DB, reviewId, []);
+    await updateReviewRunStatus(env.DB, reviewId, 'failed', {
+      report: null,
+      markdownSummary: null,
+      errorCode: 'review_execution_failed',
+      errorMessage: message,
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_failed',
+      payload: {
+        code: 'review_execution_failed',
+        message,
+      },
+    });
   }
 }
 

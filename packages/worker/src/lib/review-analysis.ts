@@ -22,6 +22,7 @@ const PROMPT_CHANGED_FILES_MAX_BYTES = 80_000;
 const PROMPT_RELATED_FILES_MAX_BYTES = 36_000;
 const PROMPT_CONVENTION_FILES_MAX_BYTES = 20_000;
 const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
+const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
 
 interface SandboxClient {
   exec(
@@ -283,7 +284,7 @@ function redactReviewText(value: string | null): string | null {
 
   const redacted = value
     .replace(/(authorization:\s*bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
-    .replace(/gh[spu]_[a-z0-9_]+/gi, '[REDACTED_TOKEN]')
+    .replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]')
     .replace(/((?:"|')?api[_-]?key(?:"|')?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[REDACTED]')
     .replace(/((?:"|')?token(?:"|')?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[REDACTED]');
   return redacted.length > 600 ? `${redacted.slice(0, 597)}...` : redacted;
@@ -384,6 +385,10 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     '  "summary": string,',
     '  "furtherPassesLowYield": boolean',
     '}',
+    '',
+    'Critical field typing requirements:',
+    '- summary must be a plain JSON string value (not an object, array, number, or nested structure).',
+    '- furtherPassesLowYield must be exactly true or false (JSON boolean only; do not use strings like "true"/"false" and do not use null).',
     '',
     'Phase 2 constraints:',
     '- passType must be set explicitly on every finding and be "single" in this phase.',
@@ -1012,7 +1017,9 @@ export async function runWorkspaceDeploymentAgentAnalysis(
             }
             history.push({
               role: 'assistant',
-              content: 'final_output_validator: output failed schema; return corrected JSON only.',
+              content: `final_output_validator: output failed schema; return corrected JSON only. Fix exactly these validation errors: ${JSON.stringify(
+                validationErrors
+              )}. Ensure summary is a plain string and furtherPassesLowYield is a JSON boolean true|false.`,
             });
             history.push({
               role: 'tool',

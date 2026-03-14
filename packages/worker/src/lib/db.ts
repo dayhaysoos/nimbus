@@ -478,6 +478,34 @@ function parseJsonOrFallback(value: string | null, fallback: unknown): unknown {
   }
 }
 
+const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
+const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
+
+function stripSensitiveTokenFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSensitiveTokenFields(item));
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string' && GITHUB_TOKEN_PATTERN_TEST.test(value)) {
+      return value.replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]');
+    }
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).reduce<Record<string, unknown>>((result, [key, nested]) => {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === 'x-review-github-token' ||
+      normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'authorization'
+    ) {
+      return result;
+    }
+    result[key] = stripSensitiveTokenFields(nested);
+    return result;
+  }, {});
+}
+
 function toWorkspaceOperationResponse(record: WorkspaceOperationRecord): WorkspaceOperationResponse {
   const warnings = parseJsonOrFallback(record.warnings_json, []);
   const result = parseJsonOrFallback(record.result_json, undefined);
@@ -2700,6 +2728,8 @@ export async function createReviewRun(
   }
 
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const sanitizedRequestPayload = stripSensitiveTokenFields(input.requestPayload ?? {});
+  const sanitizedProvenance = stripSensitiveTokenFields(input.provenance ?? {});
   const reviewRecord = await db
     .prepare(
       `INSERT INTO review_runs (
@@ -2726,9 +2756,9 @@ export async function createReviewRun(
       input.targetType,
       input.mode,
       input.idempotencyKey,
-      JSON.stringify(input.requestPayload ?? {}),
+      JSON.stringify(sanitizedRequestPayload),
       input.requestPayloadSha256,
-      JSON.stringify(input.provenance ?? {}),
+      JSON.stringify(sanitizedProvenance),
       now,
       now
     )
@@ -2934,11 +2964,11 @@ export async function updateReviewRunStatus(
   }
   if (options?.report !== undefined) {
     updates.push('report_json = ?');
-    values.push(options.report ? JSON.stringify(options.report) : null);
+    values.push(options.report ? JSON.stringify(stripSensitiveTokenFields(options.report)) : null);
   }
   if (options?.markdownSummary !== undefined) {
     updates.push('markdown_summary = ?');
-    values.push(options.markdownSummary);
+    values.push(typeof options.markdownSummary === 'string' ? (stripSensitiveTokenFields(options.markdownSummary) as string) : options.markdownSummary);
   }
   if (options?.errorCode !== undefined) {
     updates.push('error_code = ?');
@@ -2980,7 +3010,7 @@ export async function appendReviewEvent(
       `INSERT INTO review_events (review_id, seq, event_type, payload_json)
        VALUES (?, ?, ?, ?)`
     )
-    .bind(input.reviewId, seq, input.eventType, JSON.stringify(input.payload))
+    .bind(input.reviewId, seq, input.eventType, JSON.stringify(stripSensitiveTokenFields(input.payload)))
     .run();
 
   return seq;

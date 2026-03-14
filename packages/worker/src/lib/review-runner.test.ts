@@ -414,8 +414,10 @@ function createReviewRunnerEnv(options?: {
                         value === 'review_context_budget_exceeded' ||
                         value === 'review_context_source_bundle_missing' ||
                         value === 'review_context_diff_missing' ||
-                        value === 'review_context_changed_files_missing')
-                   ) as string | null;
+                        value === 'review_context_changed_files_missing' ||
+                        value === 'review_context_github_token_missing' ||
+                        value === 'review_context_github_api_error')
+                    ) as string | null;
                   const reportValue = values.find((value) => typeof value === 'string' && String(value).includes('findingCounts'));
                   if (typeof reportValue === 'string') {
                     state.reportJson = reportValue;
@@ -489,6 +491,7 @@ function createReviewRunnerEnv(options?: {
           },
         }
       : undefined,
+    REVIEW_CONTEXT_GITHUB_TOKEN: 'ghp_test_token',
     ...(options?.envOverrides ?? {}),
   };
 
@@ -496,6 +499,30 @@ function createReviewRunnerEnv(options?: {
 }
 
 export async function runReviewRunnerTests(): Promise<void> {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+    const url = String(input);
+    if (url.includes('api.github.com/repos/') && /\/commits\?sha=/i.test(url)) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('api.github.com/repos/') && /\/commits\/[a-z0-9]{7,40}$/i.test(url)) {
+      return new Response(JSON.stringify({ files: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    if (url.includes('api.github.com/repos/') && url.includes('/contents/')) {
+      return new Response(JSON.stringify({ content: '' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    return new Response(
+      JSON.stringify({
+        action: {
+          type: 'final',
+          summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+        },
+      }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } }
+    );
+  }) as typeof fetch;
+
+  try {
   setReviewAnalysisSandboxResolverForTests(async () => ({
     async exec(command: string) {
       if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
@@ -683,10 +710,10 @@ export async function runReviewRunnerTests(): Promise<void> {
     globalThis.fetch = (async (): Promise<Response> => {
       return new Response(
         JSON.stringify({
-          action: {
-            type: 'final',
-            summary: 'plain text completion token=supersecret ghp_abc123 api_key=xyz',
-          },
+            action: {
+              type: 'final',
+              summary: 'plain text completion token=supersecret ghp_abcdefghijklmnopqrstuvwxyz12 api_key=xyz',
+            },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
@@ -700,12 +727,97 @@ export async function runReviewRunnerTests(): Promise<void> {
       const fallbackEvent = state.events.find((event) => event.eventType === 'review_analysis_output_fallback_applied');
       const serialized = JSON.stringify(fallbackEvent?.payload ?? {});
       assert.equal(serialized.includes('supersecret'), false);
-      assert.equal(serialized.includes('ghp_abc123'), false);
+      assert.equal(serialized.includes('ghp_abcdefghijklmnopqrstuvwxyz12'), false);
       assert.equal(serialized.includes('api_key=xyz'), false);
       assert.equal(state.events.some((event) => event.eventType === 'review_failed'), true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.includes('api.github.com/repos/') && /\/commits\?sha=/i.test(url)) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('api.github.com/repos/') && /\/commits\/[a-z0-9]{7,40}$/i.test(url)) {
+        return new Response(JSON.stringify({ files: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('api.github.com/repos/') && url.includes('/contents/')) {
+        return new Response(JSON.stringify({ content: '' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: {
+          REVIEW_CONTEXT_GITHUB_TOKEN: 'ghp_worker_secret_abc',
+        },
+        deploymentRequestProvenance: {
+          commitDiffPatch:
+            'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status === 'succeeded' || state.status === 'failed', true);
+      assert.notEqual(state.errorCode, 'review_context_github_token_missing');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.includes('api.github.com/repos/') && /\/commits\?sha=/i.test(url)) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('api.github.com/repos/') && /\/commits\/[a-z0-9]{7,40}$/i.test(url)) {
+        return new Response(JSON.stringify({ files: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('api.github.com/repos/') && url.includes('/contents/')) {
+        return new Response(JSON.stringify({ content: '' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const headerToken = 'ghp_user_header_abc';
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: {
+          REVIEW_CONTEXT_GITHUB_TOKEN: undefined,
+        },
+        deploymentRequestProvenance: {
+          commitDiffPatch:
+            'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234', { cochangeGithubToken: headerToken });
+      assert.equal(state.status === 'succeeded' || state.status === 'failed', true);
+      assert.notEqual(state.errorCode, 'review_context_github_token_missing');
+      assert.equal(JSON.stringify(state.events).includes(headerToken), false);
+      assert.equal((state.reportJson ?? '').includes(headerToken), false);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   }
 
@@ -745,6 +857,45 @@ export async function runReviewRunnerTests(): Promise<void> {
     assert.equal(state.status, 'queued');
     assert.equal(state.errorCode, 'retry_scheduled');
     assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), true);
+    setReviewAnalysisSandboxResolverForTests(null);
+  }
+
+  {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    const { env, state } = createReviewRunnerEnv({
+      deploymentEvents: [
+        {
+          seq: 1,
+          event_type: 'deployment_validation_tool_missing',
+          payload_json: '{"step":"test","message":"pnpm missing"}',
+          created_at: '2026-03-11T00:00:10.000Z',
+        },
+      ],
+      failReviewFindingsInsertOnce: true,
+    });
+    await processReviewRun(env as never, 'rev_abcd1234', { allowRetryScheduling: false });
+    assert.equal(state.status, 'failed');
+    assert.equal(state.errorCode, 'review_execution_failed');
+    assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), false);
     setReviewAnalysisSandboxResolverForTests(null);
   }
 
@@ -1511,17 +1662,18 @@ export async function runReviewRunnerTests(): Promise<void> {
       },
     }) as never);
     const { env, state } = createReviewRunnerEnv({
+      envOverrides: {
+        REVIEW_CONTEXT_GITHUB_TOKEN: undefined,
+      },
       deploymentRequestProvenance: {
         commitDiffPatch:
           'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
       },
     });
     await processReviewRun(env as never, 'rev_abcd1234');
-    assert.equal(state.status, 'succeeded');
-    const skipped = state.events.find((event) => event.eventType === 'review_context_cochange_skipped');
-    assert.equal(Boolean(skipped), true);
-    assert.equal((skipped?.payload as { reason?: string } | undefined)?.reason, 'missing_github_token');
-    assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_succeeded'), true);
+    assert.equal(state.status, 'failed');
+    assert.equal(state.errorCode, 'review_context_github_token_missing');
+    assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_failed'), true);
     setReviewAnalysisSandboxResolverForTests(null);
   }
 
@@ -1565,11 +1717,12 @@ export async function runReviewRunnerTests(): Promise<void> {
         },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status, 'succeeded');
-      const skipped = state.events.find((event) => event.eventType === 'review_context_cochange_skipped');
-      assert.equal(Boolean(skipped), true);
-      assert.equal((skipped?.payload as { reason?: string } | undefined)?.reason, 'rate_limited');
-      assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_succeeded'), true);
+      assert.equal(state.status, 'failed');
+      assert.equal(state.errorCode, 'review_context_github_api_error');
+      const failed = state.events.find((event) => event.eventType === 'review_context_cochange_failed');
+      assert.equal(Boolean(failed), true);
+      assert.equal((failed?.payload as { reason?: string } | undefined)?.reason, 'rate_limited');
+      assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_failed'), true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -2062,5 +2215,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
     }
+  }
+  } finally {
+    globalThis.fetch = originalFetch;
   }
 }
