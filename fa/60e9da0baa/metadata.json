@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "fa60e9da0baa",
+  "strategy": "manual-commit",
+  "branch": "prompt-output-structure",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fa/60e9da0baa/0/metadata.json",
+      "transcript": "/fa/60e9da0baa/0/full.jsonl",
+      "context": "",
+      "content_hash": "/fa/60e9da0baa/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
