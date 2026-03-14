@@ -19,6 +19,7 @@ function createReviewApiEnv(options?: {
   reviewErrorCode?: string | null;
   reviewAttemptCount?: number;
   existingRequestPayloadSha256?: string;
+  workerReviewGithubToken?: string;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -40,6 +41,7 @@ function createReviewApiEnv(options?: {
   };
 
   const env = {
+    REVIEW_CONTEXT_GITHUB_TOKEN: options?.workerReviewGithubToken ?? 'ghp_worker_default_token_abcdefghijklmnopqrstuvwxyz',
     REVIEWS_QUEUE: {
       async send() {
         state.queueSendCount += 1;
@@ -337,9 +339,10 @@ function createReviewApiEnv(options?: {
 }
 
 export async function runReviewApiTests(): Promise<void> {
+  let waitUntilCount = 0;
   const ctx = {
     waitUntil() {
-      // no-op
+      waitUntilCount += 1;
     },
   } as unknown as ExecutionContext;
 
@@ -349,6 +352,17 @@ export async function runReviewApiTests(): Promise<void> {
       method: 'POST',
       body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
       headers: { 'Content-Type': 'application/json' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+  }
+
+  {
+    const { env } = createReviewApiEnv({ workerReviewGithubToken: '' });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-missing-token' },
     });
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 400);
@@ -370,6 +384,7 @@ export async function runReviewApiTests(): Promise<void> {
 
   {
     const { env, state } = createReviewApiEnv();
+    waitUntilCount = 0;
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
       body: JSON.stringify({
@@ -445,6 +460,48 @@ export async function runReviewApiTests(): Promise<void> {
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 202);
     assert.equal(state.createdRequestPayload?.model, 'sonnet-4.5');
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ workerReviewGithubToken: '' });
+    waitUntilCount = 0;
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'idem-review-header-token',
+        'X-Review-Github-Token': 'ghp_user_token_123',
+      },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    assert.equal(state.queueSendCount, 0);
+    assert.equal(waitUntilCount, 1);
+    assert.equal(JSON.stringify(state.createdRequestPayload ?? {}).includes('ghp_user_token_123'), false);
+    assert.equal((state.createdRequestPayload as Record<string, unknown> | null)?.['review_context_github_token'], undefined);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ workerReviewGithubToken: 'ghp_worker_token_abc' });
+    waitUntilCount = 0;
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'idem-review-header-and-worker-token',
+        'X-Review-Github-Token': 'ghp_user_token_456',
+      },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    assert.equal(state.queueSendCount, 1);
+    assert.equal(waitUntilCount, 0);
   }
 
   {

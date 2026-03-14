@@ -99,3 +99,19 @@ export async function handleGetDeployReadiness(env: Env): Promise<Response> {
     checks,
   });
 }
+
+export async function handleGetReviewReadiness(env: Env): Promise<Response> {
+  const hasWorkerGithubToken = typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim().length > 0;
+  const checks = [
+    {
+      code: 'review_context_github_token_configured',
+      ok: hasWorkerGithubToken,
+      details: hasWorkerGithubToken ? 'configured' : 'missing',
+    },
+  ];
+
+  return jsonResponse({
+    ok: checks.every((check) => check.ok),
+    checks,
+  });
+}

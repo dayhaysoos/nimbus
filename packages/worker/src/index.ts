@@ -43,7 +43,7 @@ import {
 } from './lib/workspace-deployment-runner.js';
 import { parseReviewQueueMessage } from './lib/review-queue.js';
 import { processReviewRun, shouldRetryReviewError } from './lib/review-runner.js';
-import { handleGetDeployReadiness } from './api/system.js';
+import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';
 import type { Env } from './types.js';
 
 // Re-export Sandbox for Durable Object binding
@@ -53,7 +53,7 @@ export { Sandbox };
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token',
 };
 
 export default {
@@ -274,6 +274,11 @@ export default {
     // Route: GET /api/system/deploy-readiness
     if (url.pathname === '/api/system/deploy-readiness' && request.method === 'GET') {
       return handleGetDeployReadiness(env);
+    }
+
+    // Route: GET /api/system/review-readiness
+    if (url.pathname === '/api/system/review-readiness' && request.method === 'GET') {
+      return handleGetReviewReadiness(env);
     }
 
     // 404 for unknown routes

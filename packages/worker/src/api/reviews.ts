@@ -17,7 +17,7 @@ import { runReviewInlineWithRetries } from '../lib/review-runner.js';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token',
 };
 
 const REVIEW_STREAM_POLL_INTERVAL_MS = 50;
@@ -63,6 +63,33 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isSeverityThreshold(value: unknown): value is 'low' | 'medium' | 'high' | 'critical' {
   return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
+}
+
+function readReviewGithubTokenHeader(request: Request): string | null {
+  const value = request.headers.get('X-Review-Github-Token');
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function stripSensitiveTokenFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSensitiveTokenFields(item));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).reduce<Record<string, unknown>>((result, [key, nested]) => {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === 'x-review-github-token' ||
+      normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'authorization'
+    ) {
+      return result;
+    }
+    result[key] = stripSensitiveTokenFields(nested);
+    return result;
+  }, {});
 }
 
 function withSortedKeys(value: unknown): unknown {
@@ -317,6 +344,16 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
     if (!idempotencyKey) {
       return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);
     }
+    const reviewGithubToken = readReviewGithubTokenHeader(request);
+    const workerGithubToken = typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+      ? env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+      : null;
+    if (!reviewGithubToken && !workerGithubToken) {
+      return jsonResponse(
+        { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
+        400
+      );
+    }
 
     const payloadRaw = await request.text();
     const payload = payloadRaw.trim() ? (JSON.parse(payloadRaw) as unknown) : {};
@@ -386,6 +423,7 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       provenance,
       model,
     });
+    const sanitizedRequestPayload = stripSensitiveTokenFields(requestPayload) as Record<string, unknown>;
 
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));
     const requestPayloadSha256Aliases: string[] = [];
@@ -412,7 +450,15 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
         const shouldReenqueueRecoveredReview =
           created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
         if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-          if (env.REVIEWS_QUEUE) {
+          if (env.REVIEWS_QUEUE && workerGithubToken) {
+            await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
+          } else if (reviewGithubToken && ctx) {
+            ctx.waitUntil(
+              runReviewInlineWithRetries(env, created.review.id, 4, {
+                cochangeGithubToken: reviewGithubToken,
+              })
+            );
+          } else if (env.REVIEWS_QUEUE) {
             await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
           } else if (ctx) {
             ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
@@ -422,7 +468,14 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
             reviewId: created.review.id,
             eventType: 'review_enqueued',
             payload: {
-              mode: env.REVIEWS_QUEUE ? 'queue' : 'inline',
+              mode:
+                env.REVIEWS_QUEUE && workerGithubToken
+                  ? 'queue'
+                  : reviewGithubToken && ctx
+                    ? 'inline'
+                    : env.REVIEWS_QUEUE
+                      ? 'queue'
+                      : 'inline',
               reused: created.reused,
               recovered: shouldReenqueueRecoveredReview,
             },
@@ -467,7 +520,7 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       targetType: 'workspace_deployment',
       mode: 'report_only',
       idempotencyKey,
-      requestPayload,
+      requestPayload: sanitizedRequestPayload,
       requestPayloadSha256,
       requestPayloadSha256Aliases,
       provenance: {
@@ -492,7 +545,15 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       const shouldReenqueueRecoveredReview =
         created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
       if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-        if (env.REVIEWS_QUEUE) {
+        if (env.REVIEWS_QUEUE && workerGithubToken) {
+          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
+        } else if (reviewGithubToken && ctx) {
+          ctx.waitUntil(
+            runReviewInlineWithRetries(env, created.review.id, 4, {
+              cochangeGithubToken: reviewGithubToken,
+            })
+          );
+        } else if (env.REVIEWS_QUEUE) {
           await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
         } else if (ctx) {
           ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
@@ -502,7 +563,14 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
           reviewId: created.review.id,
           eventType: 'review_enqueued',
           payload: {
-            mode: env.REVIEWS_QUEUE ? 'queue' : 'inline',
+            mode:
+              env.REVIEWS_QUEUE && workerGithubToken
+                ? 'queue'
+                : reviewGithubToken && ctx
+                  ? 'inline'
+                  : env.REVIEWS_QUEUE
+                    ? 'queue'
+                    : 'inline',
             reused: created.reused,
             recovered: shouldReenqueueRecoveredReview,
           },
