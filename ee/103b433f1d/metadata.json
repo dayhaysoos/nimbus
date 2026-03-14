@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "ee103b433f1d",
+  "strategy": "manual-commit",
+  "branch": "prompt-output-structure",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "package.json",
+    "packages/agent-endpoint/package.json",
+    "packages/agent-endpoint/src/index.test.ts",
+    "packages/agent-endpoint/src/index.ts",
+    "packages/agent-endpoint/src/lib/agent.test.ts",
+    "packages/agent-endpoint/src/lib/agent.ts",
+    "packages/agent-endpoint/src/lib/run-tests.ts",
+    "packages/agent-endpoint/tsconfig.json",
+    "packages/agent-endpoint/tsconfig.test.json",
+    "packages/agent-endpoint/wrangler.toml",
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/preflight.ts",
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/cli/src/commands/workspace/deploy.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/types.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-output-v2.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/workspace-task-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml",
+    "pnpm-lock.yaml",
+    "scripts/setup-worker.mjs"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ee/103b433f1d/0/metadata.json",
+      "transcript": "/ee/103b433f1d/0/full.jsonl",
+      "context": "/ee/103b433f1d/0/context.md",
+      "content_hash": "/ee/103b433f1d/0/content_hash.txt",
+      "prompt": "/ee/103b433f1d/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 164736,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1239296,
+    "output_tokens": 9445,
+    "api_call_count": 15
+  }
+}
