@@ -87,7 +87,45 @@ function buildReviewRequestPayload(input: {
   deploymentId: string;
   policy: Record<string, unknown>;
   format: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+  model: string | undefined;
 }) {
+  const note = typeof input.provenance.note === 'string' && input.provenance.note.trim()
+    ? input.provenance.note.trim()
+    : null;
+  const transcriptUrl = typeof input.provenance.transcriptUrl === 'string' && input.provenance.transcriptUrl.trim()
+    ? input.provenance.transcriptUrl.trim()
+    : null;
+  const sessionIds = Array.isArray(input.provenance.sessionIds)
+    ? Array.from(new Set(input.provenance.sessionIds.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)))
+    : [];
+  const intentSessionContext = Array.isArray(input.provenance.intentSessionContext)
+    ? Array.from(
+        new Set(
+          input.provenance.intentSessionContext
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      )
+    : [];
+  const commitSha = typeof input.provenance.commitSha === 'string' && input.provenance.commitSha.trim()
+    ? input.provenance.commitSha.trim()
+    : undefined;
+  const commitDiffPatch = typeof input.provenance.commitDiffPatch === 'string' && input.provenance.commitDiffPatch.trim()
+    ? input.provenance.commitDiffPatch
+    : undefined;
+  const commitDiffPatchSha256 =
+    typeof input.provenance.commitDiffPatchSha256 === 'string' && input.provenance.commitDiffPatchSha256.trim()
+      ? input.provenance.commitDiffPatchSha256.trim()
+      : undefined;
+  const commitDiffPatchTruncated = input.provenance.commitDiffPatchTruncated === true;
+  const commitDiffPatchOriginalChars =
+    typeof input.provenance.commitDiffPatchOriginalChars === 'number' && Number.isFinite(input.provenance.commitDiffPatchOriginalChars)
+      ? Math.max(0, Math.floor(input.provenance.commitDiffPatchOriginalChars))
+      : undefined;
+  const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
+
   const normalized = {
     target: {
       type: 'workspace_deployment' as const,
@@ -112,7 +150,17 @@ function buildReviewRequestPayload(input: {
     },
     provenance: {
       trigger: 'api',
+      ...(note ? { note } : {}),
+      ...(transcriptUrl ? { transcriptUrl } : {}),
+      ...(sessionIds.length > 0 ? { sessionIds } : {}),
+      ...(intentSessionContext.length > 0 ? { intentSessionContext } : {}),
+      ...(commitSha ? { commitSha } : {}),
+      ...(commitDiffPatch ? { commitDiffPatch } : {}),
+      ...(commitDiffPatchSha256 ? { commitDiffPatchSha256 } : {}),
+      ...(commitDiffPatchTruncated ? { commitDiffPatchTruncated } : {}),
+      ...(typeof commitDiffPatchOriginalChars === 'number' ? { commitDiffPatchOriginalChars } : {}),
     },
+    ...(model ? { model } : {}),
   };
 
   const idempotencyPayload: Record<string, unknown> = {
@@ -157,6 +205,9 @@ function buildReviewRequestPayload(input: {
       includeMarkdownSummary: normalized.format.includeMarkdownSummary,
     };
   }
+  if (normalized.model) {
+    idempotencyPayload.model = normalized.model;
+  }
 
   return {
     requestPayload: normalized,
@@ -196,6 +247,51 @@ function buildLegacyReviewRequestPayload(input: {
       trigger: 'api',
     },
   };
+}
+
+function hasExtendedReviewIdempotencyInputs(input: {
+  provenance: Record<string, unknown>;
+  model: string | undefined;
+}): boolean {
+  if (typeof input.model === 'string' && input.model.trim()) {
+    return true;
+  }
+  const provenance = input.provenance;
+  if (typeof provenance.note === 'string' && provenance.note.trim()) {
+    return true;
+  }
+  if (typeof provenance.transcriptUrl === 'string' && provenance.transcriptUrl.trim()) {
+    return true;
+  }
+  if (typeof provenance.commitSha === 'string' && provenance.commitSha.trim()) {
+    return true;
+  }
+  if (typeof provenance.commitDiffPatch === 'string' && provenance.commitDiffPatch.trim()) {
+    return true;
+  }
+  if (typeof provenance.commitDiffPatchSha256 === 'string' && provenance.commitDiffPatchSha256.trim()) {
+    return true;
+  }
+  if (provenance.commitDiffPatchTruncated === true) {
+    return true;
+  }
+  if (
+    typeof provenance.commitDiffPatchOriginalChars === 'number' &&
+    Number.isFinite(provenance.commitDiffPatchOriginalChars) &&
+    provenance.commitDiffPatchOriginalChars > 0
+  ) {
+    return true;
+  }
+  if (Array.isArray(provenance.sessionIds) && provenance.sessionIds.some((item) => typeof item === 'string' && item.trim())) {
+    return true;
+  }
+  if (
+    Array.isArray(provenance.intentSessionContext) &&
+    provenance.intentSessionContext.some((item) => typeof item === 'string' && item.trim())
+  ) {
+    return true;
+  }
+  return false;
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -265,6 +361,11 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
 
     const policy = isRecord(payload.policy) ? payload.policy : {};
     const format = isRecord(payload.format) ? payload.format : {};
+    const provenance = isRecord(payload.provenance) ? payload.provenance : {};
+    if (payload.model !== undefined && (typeof payload.model !== 'string' || !payload.model.trim())) {
+      return jsonResponse({ error: 'model must be a non-empty string when provided' }, 400);
+    }
+    const model = typeof payload.model === 'string' ? payload.model.trim() : undefined;
     const severityThresholdValue =
       typeof policy.severityThreshold === 'string' ? policy.severityThreshold.trim() : policy.severityThreshold;
     if (severityThresholdValue !== undefined && !isSeverityThreshold(severityThresholdValue)) {
@@ -282,13 +383,20 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       deploymentId,
       policy,
       format,
+      provenance,
+      model,
     });
 
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));
-    const legacyRequestPayloadSha256 = await sha256Hex(
-      JSON.stringify(buildLegacyReviewRequestPayload({ workspaceId, deploymentId, policy, format }))
-    );
-    const requestPayloadSha256Aliases = legacyRequestPayloadSha256 === requestPayloadSha256 ? [] : [legacyRequestPayloadSha256];
+    const requestPayloadSha256Aliases: string[] = [];
+    if (!hasExtendedReviewIdempotencyInputs({ provenance, model })) {
+      const legacyRequestPayloadSha256 = await sha256Hex(
+        JSON.stringify(buildLegacyReviewRequestPayload({ workspaceId, deploymentId, policy, format }))
+      );
+      if (legacyRequestPayloadSha256 !== requestPayloadSha256) {
+        requestPayloadSha256Aliases.push(legacyRequestPayloadSha256);
+      }
+    }
     const existingReview = await getReviewRunByIdempotency(
       env.DB,
       workspaceId,

@@ -199,8 +199,14 @@ Important workspace/review flags:
 - `workspace deploy --no-tests --no-build`: skip validation steps during manual cloud smoke flows
 - `review create --severity-threshold <level>`: limit persisted findings by severity
 - `review create --max-findings <n>`: cap persisted findings
+- `review create --model <name>`: override review analysis model for this run
 - `review create --no-provenance`: suppress provenance in final report output
 - `review create --no-validation-evidence`: suppress deploy/validation evidence in final report output
+
+Review model defaults:
+
+- Review analysis resolves model in this order: request `model` override, then `REVIEW_MODEL`, then `AGENT_MODEL`.
+- If no model env/config is set, review analysis defaults to `sonnet-4.5`.
 
 ## Notes
 

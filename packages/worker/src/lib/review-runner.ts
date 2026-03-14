@@ -59,6 +59,7 @@ const REVIEW_SEVERITY_RANK: Record<ReviewFindingSeverityV2, number> = {
   medium: 2,
   low: 1,
 };
+const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -139,6 +140,17 @@ function buildReviewMarkdown(report: ReviewReport): string {
   }
   if (report.provenance.sessionIds.length > 0) {
     provenanceLines.push(`Sessions: ${report.provenance.sessionIds.join(', ')}`);
+  }
+  if (report.provenance.coChange) {
+    if (report.provenance.coChange.coChangeSkipped) {
+      provenanceLines.push(
+        `Co-change context skipped (${report.provenance.coChange.coChangeSkipReason ?? 'unknown_reason'}). Baseline review only; set REVIEW_CONTEXT_GITHUB_TOKEN for full quality review context.`
+      );
+    } else if (report.provenance.coChange.coChangeAvailable) {
+      provenanceLines.push(`Co-change context included (${report.provenance.coChange.relatedFileCount} related files).`);
+    } else {
+      provenanceLines.push('Co-change lookup ran successfully and found no related files.');
+    }
   }
 
   const findingLines =
@@ -460,6 +472,48 @@ function readOptionalNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function resolveReviewAnalysisModel(payload: Record<string, unknown>, env: Env): string {
+  const requested = readOptionalString(payload.model);
+  if (requested) {
+    return requested;
+  }
+  const reviewModel = readOptionalString(env.REVIEW_MODEL);
+  if (reviewModel) {
+    return reviewModel;
+  }
+  const agentModel = readOptionalString(env.AGENT_MODEL);
+  if (agentModel) {
+    return agentModel;
+  }
+  return DEFAULT_REVIEW_MODEL;
+}
+
+function mergeProvenance(
+  deploymentProvenance: Record<string, unknown>,
+  reviewProvenance: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...deploymentProvenance,
+    ...reviewProvenance,
+  };
+
+  const deploymentSessionIds = parseStringArray(deploymentProvenance.sessionIds);
+  const reviewSessionIds = parseStringArray(reviewProvenance.sessionIds);
+  const mergedSessionIds = Array.from(new Set([...deploymentSessionIds, ...reviewSessionIds]));
+  if (mergedSessionIds.length > 0) {
+    merged.sessionIds = mergedSessionIds;
+  }
+
+  const deploymentIntent = parseStringArray(deploymentProvenance.intentSessionContext);
+  const reviewIntent = parseStringArray(reviewProvenance.intentSessionContext);
+  const mergedIntent = Array.from(new Set([...deploymentIntent, ...reviewIntent]));
+  if (mergedIntent.length > 0) {
+    merged.intentSessionContext = mergedIntent;
+  }
+
+  return merged;
+}
+
 function parseTouchedFilesFromMetadata(record: Record<string, unknown>): string[] {
   const candidates = [record.touchedFiles, record.touched_files, record.changedFiles, record.changed_files, record.files];
   for (const candidate of candidates) {
@@ -501,9 +555,12 @@ async function fetchGitHubJson(env: Env, url: string): Promise<Record<string, un
   });
 
   if (!response.ok) {
+    const rateLimited =
+      response.status === 429 ||
+      (response.status === 403 && (response.headers.get('x-ratelimit-remaining') ?? '').trim() === '0');
     throw new ReviewContextAssemblyError(
       'review_context_github_api_error',
-      `GitHub API request failed (${response.status}) for ${url}`
+      `GitHub API request failed (${response.status}) for ${url}${rateLimited ? ' [rate_limited]' : ''}`
     );
   }
 
@@ -517,14 +574,24 @@ async function fetchGitHubArray(env: Env, url: string): Promise<unknown[]> {
   });
 
   if (!response.ok) {
+    const rateLimited =
+      response.status === 429 ||
+      (response.status === 403 && (response.headers.get('x-ratelimit-remaining') ?? '').trim() === '0');
     throw new ReviewContextAssemblyError(
       'review_context_github_api_error',
-      `GitHub API request failed (${response.status}) for ${url}`
+      `GitHub API request failed (${response.status}) for ${url}${rateLimited ? ' [rate_limited]' : ''}`
     );
   }
 
   const data = (await response.json()) as unknown;
   return Array.isArray(data) ? data : [];
+}
+
+function classifyCochangeSkipReason(error: unknown): string {
+  if (error instanceof ReviewContextAssemblyError && /\[rate_limited\]/.test(error.message)) {
+    return 'rate_limited';
+  }
+  return 'github_api_error';
 }
 
 async function fetchCochangeFromCheckpointBranch(
@@ -630,12 +697,12 @@ async function fetchCochangeFromCheckpointBranch(
 
 async function assembleReviewContextBootstrap(
   env: Env,
-  review: ReviewRunResponse
+  review: ReviewRunResponse,
+  reviewPayload: Record<string, unknown>
 ): Promise<ReviewContext> {
   const COCHANGE_LOOKBACK_SESSIONS = 5;
   const COCHANGE_TOP_N = 20;
   const CONVENTION_FILE_MAX_COUNT = 10;
-  const DEFAULT_REVIEW_CONTEXT_TOKEN_BUDGET = 32_000;
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
@@ -660,7 +727,9 @@ async function assembleReviewContextBootstrap(
   }
 
   const deploymentRequest = (await getWorkspaceDeploymentRequestPayload(env.DB, review.deploymentId)) ?? {};
-  const requestProvenance = asRecord(deploymentRequest.provenance);
+  const deploymentRequestProvenance = asRecord(deploymentRequest.provenance);
+  const reviewRequestProvenance = asRecord(reviewPayload.provenance);
+  const requestProvenance = mergeProvenance(deploymentRequestProvenance, reviewRequestProvenance);
   const sessionIds = uniqueStrings(parseStringArray(requestProvenance.sessionIds));
   if (sessionIds.length === 0) {
     throw new ReviewContextAssemblyError(
@@ -678,8 +747,8 @@ async function assembleReviewContextBootstrap(
     readOptionalNumber(requestProvenance.reviewContextTokenBudget) ??
     readOptionalNumber(requestProvenance.contextTokenBudget) ??
     null;
-  const defaultTokenBudget = readOptionalNumber(env.REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET) ?? DEFAULT_REVIEW_CONTEXT_TOKEN_BUDGET;
-  const tokenBudget = requestedTokenBudget ?? defaultTokenBudget;
+  const configuredTokenBudget = readOptionalNumber(env.REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET);
+  const tokenBudget = requestedTokenBudget ?? configuredTokenBudget ?? null;
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
@@ -714,7 +783,15 @@ async function assembleReviewContextBootstrap(
     provenanceOperationId,
     reviewDiffArtifactId
   );
-  const diffPatch = authoritativeDiff?.patch ?? null;
+  const commitDiffPatch = readOptionalString(requestProvenance.commitDiffPatch);
+  const authoritativeDiffPatch = readOptionalString(authoritativeDiff?.patch);
+  const diffPatch = authoritativeDiffPatch ?? commitDiffPatch ?? null;
+  if (!diffPatch) {
+    throw new ReviewContextAssemblyError(
+      'review_context_diff_missing',
+      'Review context assembly requires non-empty diff patch context. Ensure deployment provenance includes review diff artifact or commit diff patch.'
+    );
+  }
   const changedPaths = diffPatch ? parseChangedPathsFromDiff(diffPatch) : [];
   const diffHunks = diffPatch ? parseDiffHunks(diffPatch) : [];
 
@@ -722,10 +799,11 @@ async function assembleReviewContextBootstrap(
     reviewId: review.id,
     eventType: 'review_context_diff_collected',
     payload: {
-      source: authoritativeDiff?.source ?? null,
-      artifactId: authoritativeDiff?.artifactId ?? null,
+      source: authoritativeDiffPatch ? authoritativeDiff?.source ?? null : commitDiffPatch ? 'commit_patch' : null,
+      artifactId: authoritativeDiffPatch ? authoritativeDiff?.artifactId ?? null : null,
       hasDiff: Boolean(diffPatch),
       patchBytes: diffPatch ? new TextEncoder().encode(diffPatch).byteLength : 0,
+      fallbackUsed: !authoritativeDiffPatch && Boolean(commitDiffPatch),
     },
   });
 
@@ -812,106 +890,142 @@ async function assembleReviewContextBootstrap(
     supportingSessionIds: string[];
   }> = [];
   let sessionsScanned = 0;
-  await appendReviewEvent(env.DB, {
-    reviewId: review.id,
-    eventType: 'review_context_cochange_lookup_started',
-    payload: {
-      repo: repoSlug,
-      lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
-    },
-  });
+  let coChangeSkipped = false;
+  let coChangeSkipReason: string | null = null;
+  let coChangeAvailable = false;
+  const githubToken = readOptionalString(env.REVIEW_CONTEXT_GITHUB_TOKEN);
 
-  const relatedFrequency = new Map<string, { frequency: number; sessionIds: string[] }>();
-  const entriesByChangedPath = new Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>();
-  const changedPathsMissingCache: string[] = [];
-  for (const changedPath of changedPaths) {
-    const cached = await getReviewCochangeCache(env.DB, {
-      filePath: changedPath,
-      repo: repoSlug,
-    });
-    const entries = cached?.cochange;
-    const cachedLookbackSessions = cached?.lookbackSessions ?? null;
-    if (entries && cachedLookbackSessions === COCHANGE_LOOKBACK_SESSIONS) {
-      entriesByChangedPath.set(changedPath, entries);
-    } else {
-      changedPathsMissingCache.push(changedPath);
-    }
-  }
-
-  if (changedPathsMissingCache.length > 0) {
-    const fetched = await fetchCochangeFromCheckpointBranch(
-      env,
-      repoSlug,
-      changedPathsMissingCache,
-      COCHANGE_LOOKBACK_SESSIONS
-    );
-    sessionsScanned += fetched.sessionsScanned;
-    for (const changedPath of changedPathsMissingCache) {
-      const entries = fetched.relatedByChangedPath[changedPath] ?? [];
-      entriesByChangedPath.set(changedPath, entries);
-      await upsertReviewCochangeCache(env.DB, {
-        filePath: changedPath,
+  if (!githubToken) {
+    coChangeSkipped = true;
+    coChangeSkipReason = 'missing_github_token';
+    await appendReviewEvent(env.DB, {
+      reviewId: review.id,
+      eventType: 'review_context_cochange_skipped',
+      payload: {
+        reason: coChangeSkipReason,
         repo: repoSlug,
-        branch: 'entire/checkpoints/v1',
-        cochange: entries,
         lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+      },
+    });
+  } else {
+    try {
+      await appendReviewEvent(env.DB, {
+        reviewId: review.id,
+        eventType: 'review_context_cochange_lookup_started',
+        payload: {
+          repo: repoSlug,
+          lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+        },
+      });
+
+      const relatedFrequency = new Map<string, { frequency: number; sessionIds: string[] }>();
+      const entriesByChangedPath = new Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>();
+      const changedPathsMissingCache: string[] = [];
+      for (const changedPath of changedPaths) {
+        const cached = await getReviewCochangeCache(env.DB, {
+          filePath: changedPath,
+          repo: repoSlug,
+        });
+        const entries = cached?.cochange;
+        const cachedLookbackSessions = cached?.lookbackSessions ?? null;
+        if (entries && cachedLookbackSessions === COCHANGE_LOOKBACK_SESSIONS) {
+          entriesByChangedPath.set(changedPath, entries);
+        } else {
+          changedPathsMissingCache.push(changedPath);
+        }
+      }
+
+      if (changedPathsMissingCache.length > 0) {
+        const fetched = await fetchCochangeFromCheckpointBranch(
+          env,
+          repoSlug,
+          changedPathsMissingCache,
+          COCHANGE_LOOKBACK_SESSIONS
+        );
+        sessionsScanned += fetched.sessionsScanned;
+        for (const changedPath of changedPathsMissingCache) {
+          const entries = fetched.relatedByChangedPath[changedPath] ?? [];
+          entriesByChangedPath.set(changedPath, entries);
+          await upsertReviewCochangeCache(env.DB, {
+            filePath: changedPath,
+            repo: repoSlug,
+            branch: 'entire/checkpoints/v1',
+            cochange: entries,
+            lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+          });
+        }
+      }
+
+      for (const changedPath of changedPaths) {
+        const entries = entriesByChangedPath.get(changedPath) ?? [];
+        for (const entry of entries) {
+          const existing = relatedFrequency.get(entry.path) ?? { frequency: 0, sessionIds: [] };
+          existing.frequency += entry.frequency;
+          existing.sessionIds = Array.from(new Set([...existing.sessionIds, ...entry.sessionIds]));
+          relatedFrequency.set(entry.path, existing);
+        }
+      }
+
+      const changedPathSet = new Set(changedPaths);
+      const rankedRelated = Array.from(relatedFrequency.entries())
+        .map(([path, value]) => ({ path, ...value }))
+        .filter((item) => !changedPathSet.has(item.path))
+        .sort((left, right) => right.frequency - left.frequency)
+        .slice(0, COCHANGE_TOP_N);
+
+      const relatedReads = rankedRelated.length
+        ? await readWorkspaceFilesFromSourceBundle(env, {
+            sourceBundleKey: deploymentSourceBundleKey,
+            sandboxId: `review-context-${review.id}-related`,
+            paths: rankedRelated.map((item) => item.path),
+          })
+        : [];
+      const readByPath = new Map(relatedReads.map((item) => [item.path, item]));
+      relatedFiles = rankedRelated
+        .flatMap((item) => {
+          const read = readByPath.get(item.path);
+          if (!read || read.content === null || read.error) {
+            return [];
+          }
+          return [
+            {
+              path: item.path,
+              content: read.content,
+              byteSize: read.bytes,
+              source: 'related' as const,
+              score: item.frequency,
+              coChangeFrequency: item.frequency,
+              supportingSessionIds: item.sessionIds,
+            },
+          ];
+        });
+      coChangeAvailable = relatedFiles.length > 0;
+
+      await appendReviewEvent(env.DB, {
+        reviewId: review.id,
+        eventType: 'review_context_cochange_lookup_completed',
+        payload: {
+          repo: repoSlug,
+          relatedFileCount: relatedFiles.length,
+          topN: COCHANGE_TOP_N,
+        },
+      });
+    } catch (error) {
+      coChangeSkipped = true;
+      coChangeSkipReason = classifyCochangeSkipReason(error);
+      relatedFiles = [];
+      sessionsScanned = 0;
+      await appendReviewEvent(env.DB, {
+        reviewId: review.id,
+        eventType: 'review_context_cochange_skipped',
+        payload: {
+          reason: coChangeSkipReason,
+          repo: repoSlug,
+          lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+        },
       });
     }
   }
-
-  for (const changedPath of changedPaths) {
-    const entries = entriesByChangedPath.get(changedPath) ?? [];
-    for (const entry of entries) {
-      const existing = relatedFrequency.get(entry.path) ?? { frequency: 0, sessionIds: [] };
-      existing.frequency += entry.frequency;
-      existing.sessionIds = Array.from(new Set([...existing.sessionIds, ...entry.sessionIds]));
-      relatedFrequency.set(entry.path, existing);
-    }
-  }
-
-  const changedPathSet = new Set(changedPaths);
-  const rankedRelated = Array.from(relatedFrequency.entries())
-    .map(([path, value]) => ({ path, ...value }))
-    .filter((item) => !changedPathSet.has(item.path))
-    .sort((left, right) => right.frequency - left.frequency)
-    .slice(0, COCHANGE_TOP_N);
-
-  const relatedReads = rankedRelated.length
-    ? await readWorkspaceFilesFromSourceBundle(env, {
-        sourceBundleKey: deploymentSourceBundleKey,
-        sandboxId: `review-context-${review.id}-related`,
-        paths: rankedRelated.map((item) => item.path),
-      })
-    : [];
-  const readByPath = new Map(relatedReads.map((item) => [item.path, item]));
-  relatedFiles = rankedRelated
-    .flatMap((item) => {
-      const read = readByPath.get(item.path);
-      if (!read || read.content === null || read.error) {
-        return [];
-      }
-      return [
-        {
-          path: item.path,
-          content: read.content,
-          byteSize: read.bytes,
-          source: 'related' as const,
-          score: item.frequency,
-          coChangeFrequency: item.frequency,
-          supportingSessionIds: item.sessionIds,
-        },
-      ];
-    });
-
-  await appendReviewEvent(env.DB, {
-    reviewId: review.id,
-    eventType: 'review_context_cochange_lookup_completed',
-    payload: {
-      repo: repoSlug,
-      relatedFileCount: relatedFiles.length,
-      topN: COCHANGE_TOP_N,
-    },
-  });
 
   const assembledAt = new Date().toISOString();
   const contextId = generateReviewContextId();
@@ -943,6 +1057,9 @@ async function assembleReviewContextBootstrap(
         sessionsScanned,
         filesConsidered: changedPaths.length,
         topN: COCHANGE_TOP_N,
+        coChangeSkipped,
+        coChangeSkipReason,
+        coChangeAvailable,
       },
     },
     stats: {
@@ -967,12 +1084,17 @@ async function assembleReviewContextBootstrap(
     payload: {
       estimatedTokens: contextPayload.stats.estimatedTokens,
       tokenBudget,
-      tokenBudgetSource: requestedTokenBudget !== null ? 'request_provenance' : 'default',
+      tokenBudgetSource:
+        requestedTokenBudget !== null
+          ? 'request_provenance'
+          : configuredTokenBudget !== null
+            ? 'configured_env'
+            : 'unconfigured',
       exceeded: tokenBudget !== null && contextPayload.stats.estimatedTokens > tokenBudget,
     },
   });
 
-  if (contextPayload.stats.estimatedTokens > tokenBudget) {
+  if (tokenBudget !== null && contextPayload.stats.estimatedTokens > tokenBudget) {
     throw new ReviewContextAssemblyError(
       'review_context_budget_exceeded',
       `ReviewContext estimated token usage (${contextPayload.stats.estimatedTokens}) exceeds configured budget (${tokenBudget}). Increase the budget and retry.`
@@ -1109,11 +1231,12 @@ async function buildWorkspaceDeploymentReport(
   const deploymentEvents = await listWorkspaceDeploymentEvents(env.DB, review.workspaceId, review.deploymentId, 0, 500);
   const reviewPolicy = asRecord(payload.policy);
   const reviewFormat = asRecord(payload.format);
+  const reviewAnalysisModel = resolveReviewAnalysisModel(payload, env);
   const result = asRecord(deployment.result);
   const resultProvenance = asRecord(result.provenance);
   const resultArtifact = asRecord(result.artifact);
   const requestValidation = asRecord(deploymentRequest.validation);
-  const requestProvenance = asRecord(deploymentRequest.provenance);
+  const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
   const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
@@ -1193,7 +1316,7 @@ async function buildWorkspaceDeploymentReport(
       eventType: 'review_analysis_agent_started',
       payload: {
         provider: 'cloudflare_agents_sdk',
-        model: (env.AGENT_MODEL ?? 'claude-3-7-sonnet').trim() || 'claude-3-7-sonnet',
+        model: reviewAnalysisModel,
       },
     });
 
@@ -1203,6 +1326,7 @@ async function buildWorkspaceDeploymentReport(
       deploymentId: review.deploymentId,
       deploymentSandboxId: `review-snapshot-${review.id}`,
       sourceBundleKey: deploymentSourceBundleKey,
+      modelOverride: reviewAnalysisModel,
       authoritativeDiffSnapshot: authoritativeDiff
         ? {
             source: authoritativeDiff.source,
@@ -1239,6 +1363,12 @@ async function buildWorkspaceDeploymentReport(
 
     if (!agentAnalysis) {
       throw new Error('Review analysis did not produce output.');
+    }
+
+    if (agentAnalysis.validation.fallbackApplied) {
+      throw new Error(
+        `Review analysis produced non-authoritative fallback output (${agentAnalysis.validation.fallbackReason ?? 'unknown'}).`
+      );
     }
 
     await appendReviewEvent(env.DB, {
@@ -1332,6 +1462,12 @@ async function buildWorkspaceDeploymentReport(
             totalBytesIncluded: reviewContext.stats.totalBytesIncluded,
             estimatedTokens: reviewContext.stats.estimatedTokens,
             tokenBudget: reviewContext.stats.tokenBudget,
+          },
+          coChange: {
+            coChangeSkipped: reviewContext.retrieval.coChange.coChangeSkipped,
+            coChangeSkipReason: reviewContext.retrieval.coChange.coChangeSkipReason,
+            coChangeAvailable: reviewContext.retrieval.coChange.coChangeAvailable,
+            relatedFileCount: reviewContext.retrieval.relatedFiles.length,
           },
           outputSchemaVersion: 'v2',
           passArchitecture: 'single',
@@ -1445,7 +1581,7 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
       return;
     }
 
-    const reviewContext = await assembleReviewContextBootstrap(env, review);
+    const reviewContext = await assembleReviewContextBootstrap(env, review, payload);
     const report = await executeReviewRun(env, review, payload, reviewContext);
     await appendReviewEvent(env.DB, {
       reviewId,

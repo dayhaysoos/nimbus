@@ -355,6 +355,20 @@ export async function runReviewApiTests(): Promise<void> {
   }
 
   {
+    const { env } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        model: '   ',
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-invalid-model' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+  }
+
+  {
     const { env, state } = createReviewApiEnv();
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
@@ -387,7 +401,50 @@ export async function runReviewApiTests(): Promise<void> {
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 202);
     const createdProvenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
-    assert.deepEqual(createdProvenance, { trigger: 'api' });
+    assert.deepEqual(createdProvenance, {
+      trigger: 'api',
+      note: 'Use commit intent context from Entire history',
+      sessionIds: ['ses_123', 'ses_456'],
+      transcriptUrl: 'https://example.com/transcript',
+      intentSessionContext: ['Focus on auth regression risk.'],
+    });
+  }
+
+  {
+    const { env, state } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        provenance: {
+          commitSha: 'a'.repeat(40),
+          commitDiffPatch: 'diff --git a/src/a.ts b/src/a.ts\nindex 1111111..2222222 100644\n--- a/src/a.ts\n+++ b/src/a.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        },
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-commit-provenance' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    const createdProvenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
+    assert.equal(createdProvenance.trigger, 'api');
+    assert.equal(createdProvenance.commitSha, 'a'.repeat(40));
+    assert.equal(typeof createdProvenance.commitDiffPatch, 'string');
+    assert.equal(String(createdProvenance.commitDiffPatch).includes('diff --git'), true);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        model: ' sonnet-4.5 ',
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-model-override' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    assert.equal(state.createdRequestPayload?.model, 'sonnet-4.5');
   }
 
   {
@@ -464,6 +521,48 @@ export async function runReviewApiTests(): Promise<void> {
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 200);
     assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reused: true,
+      reviewExists: true,
+      existingRequestPayloadSha256: 'f004b542a0ca344c9a93ab94447edbb0ec52d21236f442491bac726f7430c745',
+    });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        model: 'sonnet-4.5-review-override',
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-legacy' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 409);
+    assert.equal(state.createdRequestPayload, null);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reused: true,
+      reviewExists: true,
+      existingRequestPayloadSha256: 'f004b542a0ca344c9a93ab94447edbb0ec52d21236f442491bac726f7430c745',
+    });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        provenance: {
+          commitDiffPatchSha256: 'a'.repeat(64),
+          commitDiffPatchTruncated: true,
+          commitDiffPatchOriginalChars: 120001,
+        },
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-legacy' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 409);
+    assert.equal(state.createdRequestPayload, null);
   }
 
   {

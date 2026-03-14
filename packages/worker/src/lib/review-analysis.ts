@@ -21,6 +21,7 @@ const PROMPT_DIFF_HUNKS_MAX_BYTES = 48_000;
 const PROMPT_CHANGED_FILES_MAX_BYTES = 80_000;
 const PROMPT_RELATED_FILES_MAX_BYTES = 36_000;
 const PROMPT_CONVENTION_FILES_MAX_BYTES = 20_000;
+const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
 
 interface SandboxClient {
   exec(
@@ -88,6 +89,8 @@ export interface ReviewAgentAnalysisResult {
     repairSucceeded: boolean;
     validationErrorCount: number;
     dedupedExactCount: number;
+    fallbackApplied: boolean;
+    fallbackReason: string | null;
   };
 }
 
@@ -146,6 +149,10 @@ function parseIntegerString(value: string | undefined, fallback: number, min: nu
     return fallback;
   }
   return Math.max(min, Math.min(max, parsed));
+}
+
+function readOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -235,6 +242,29 @@ function validateOutputOrThrow(payload: unknown): { output: ReviewAnalysisOutput
   return {
     output: validated.value,
     dedupedExactCount: validated.dedupedExactCount,
+  };
+}
+
+function extractValidationErrors(error: ReviewAgentOutputError | null): Array<{ path: string; message: string }> {
+  if (!error?.details || !Array.isArray(error.details.errors)) {
+    return [];
+  }
+  return error.details.errors
+    .map((item) => {
+      const record = asRecord(item);
+      const path = typeof record.path === 'string' ? record.path : '';
+      const message = typeof record.message === 'string' ? record.message : '';
+      return path && message ? { path, message } : null;
+    })
+    .filter((item): item is { path: string; message: string } => Boolean(item))
+    .slice(0, 20);
+}
+
+function buildFallbackAnalysisOutput(reason: string): ReviewAnalysisOutputV2 {
+  return {
+    findings: [],
+    summary: `Structured model output was invalid after repair (${reason}); emitted fallback empty findings output.`,
+    furtherPassesLowYield: true,
   };
 }
 
@@ -834,6 +864,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
   env: Env,
   input: ReviewAgentPromptInput & {
     deploymentSandboxId: string;
+    modelOverride?: string;
   }
 ): Promise<ReviewAgentAnalysisResult | null> {
   const endpoint = (env.AGENT_SDK_URL ?? '').trim();
@@ -841,7 +872,11 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     return null;
   }
 
-  const model = (env.AGENT_MODEL ?? 'claude-3-7-sonnet').trim() || 'claude-3-7-sonnet';
+  const model =
+    readOptionalString(input.modelOverride) ??
+    readOptionalString(env.REVIEW_MODEL) ??
+    readOptionalString(env.AGENT_MODEL) ??
+    DEFAULT_REVIEW_MODEL;
   const authToken = (env.AGENT_SDK_AUTH_TOKEN ?? '').trim() || null;
   const maxSteps = parseIntegerString(env.REVIEW_AGENT_MAX_STEPS, DEFAULT_REVIEW_AGENT_MAX_STEPS, 1, 12);
   const maxFileBytes = parseIntegerString(env.REVIEW_AGENT_MAX_FILE_BYTES, DEFAULT_REVIEW_MAX_FILE_BYTES, 1_024, 200_000);
@@ -889,6 +924,8 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     let firstPassValid = false;
     let validationErrorCount = 0;
     let dedupedExactCount = 0;
+    let fallbackApplied = false;
+    let fallbackReason: string | null = null;
     for (let step = 1; step <= maxSteps; step += 1) {
       const action = await provider.next({
         prompt,
@@ -944,24 +981,30 @@ export async function runWorkspaceDeploymentAgentAnalysis(
               repairSucceeded,
               validationErrorCount,
               dedupedExactCount,
+              fallbackApplied,
+              fallbackReason,
             },
           };
         } catch (error) {
           if (error instanceof ReviewAgentOutputError && isGenericProviderCompletionSummary(action.summary)) {
-            throw new ReviewAgentOutputError(
-              'Review agent returned provider completion text instead of structured JSON; verify AGENT_SDK_URL points to the Nimbus-compatible action endpoint'
-            );
+            const wrapped = new ReviewAgentOutputError(
+              'Review agent returned provider completion text instead of structured JSON; applying schema repair/fallback path'
+            ).withCode('review_analysis_invalid_output', {
+              errors: [{ path: '$', message: 'Provider completion summary returned instead of required JSON payload.' }],
+            });
+            error = wrapped;
           }
 
           if (error instanceof ReviewAgentOutputError && !repairAttempted && step < maxSteps) {
             finalValidationError = error;
             repairAttempted = true;
-            const validationErrors = error.details && Array.isArray(error.details.errors) ? error.details.errors : [];
+            const validationErrors = extractValidationErrors(error);
             validationErrorCount = validationErrors.length;
             if (input.onLifecycleEvent) {
               await input.onLifecycleEvent('review_analysis_output_validation_failed', {
                 errorCode: error.code,
                 validationErrorCount,
+                validationErrors,
               });
               await input.onLifecycleEvent('review_analysis_repair_requested', {
                 validationErrorCount,
@@ -998,13 +1041,43 @@ export async function runWorkspaceDeploymentAgentAnalysis(
           }
 
           if (error instanceof ReviewAgentOutputError && repairAttempted) {
+            finalValidationError = error;
+            const validationErrors = extractValidationErrors(error);
+            validationErrorCount = validationErrors.length;
             if (input.onLifecycleEvent) {
               await input.onLifecycleEvent('review_analysis_repair_output_received', {
                 validationErrorCount,
                 valid: false,
+                validationErrors,
+              });
+              await input.onLifecycleEvent('review_analysis_output_fallback_applied', {
+                reason: 'invalid_after_repair',
+                validationErrorCount,
+                validationErrors,
               });
             }
-            throw error.withCode('review_analysis_invalid_output_after_repair');
+            fallbackApplied = true;
+            fallbackReason = 'invalid_after_repair';
+            const fallback = buildFallbackAnalysisOutput(fallbackReason);
+            return {
+              findings: fallback.findings,
+              summary: fallback.summary,
+              furtherPassesLowYield: fallback.furtherPassesLowYield,
+              intent: null,
+              provider: 'cloudflare_agents_sdk',
+              model,
+              stepsExecuted: step,
+              usedTools,
+              validation: {
+                firstPassValid: false,
+                repairAttempted: true,
+                repairSucceeded: false,
+                validationErrorCount,
+                dedupedExactCount,
+                fallbackApplied,
+                fallbackReason,
+              },
+            };
           }
 
           throw error;

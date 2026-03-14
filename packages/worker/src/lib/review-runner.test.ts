@@ -300,6 +300,8 @@ function createReviewRunnerEnv(options?: {
                         sessionIds: ['ses_review_1'],
                         intentSessionContext: ['Harden deployment validation before release.'],
                         repo: 'dayhaysoos/nimbus',
+                        commitSha: 'a'.repeat(40),
+                        commitDiffPatch: 'diff --git a b\n',
                         taskId: options?.workspaceTaskRecord ? 'tsk_123' : null,
                         operationId: options?.workspaceOperationRecord ? 'op_patch' : null,
                         ...(options?.deploymentRequestProvenance ?? {}),
@@ -410,8 +412,10 @@ function createReviewRunnerEnv(options?: {
                         value === 'review_context_deployment_not_found' ||
                         value === 'review_context_storage_unavailable' ||
                         value === 'review_context_budget_exceeded' ||
-                        value === 'review_context_source_bundle_missing')
-                  ) as string | null;
+                        value === 'review_context_source_bundle_missing' ||
+                        value === 'review_context_diff_missing' ||
+                        value === 'review_context_changed_files_missing')
+                   ) as string | null;
                   const reportValue = values.find((value) => typeof value === 'string' && String(value).includes('findingCounts'));
                   if (typeof reportValue === 'string') {
                     state.reportJson = reportValue;
@@ -452,9 +456,15 @@ function createReviewRunnerEnv(options?: {
     },
     SOURCE_BUNDLES: {
       async get() {
+        const encodedBundle =
+          'H4sIAMDGtGkC/+3NQQ6CMBSE4a49xTuBPgXcGA7TkO4KNG0xHN+nK+IeY8L/bWYymyl5uITVjymGcy1uF2rubftJ852qzaa/96t2Nom6H1hK9dnu3TGFNc25yjBPpcrTxyVIL7fHyQEAAAAAAAAAAAAAAAAA/toLBIFmrAAoAAA=';
+        const bundleBytes = Buffer.from(encodedBundle, 'base64');
         return {
           async arrayBuffer() {
-            return new TextEncoder().encode('fake bundle bytes').buffer;
+            return bundleBytes.buffer.slice(
+              bundleBytes.byteOffset,
+              bundleBytes.byteOffset + bundleBytes.byteLength
+            );
           },
           async text() {
             return '';
@@ -486,7 +496,29 @@ function createReviewRunnerEnv(options?: {
 }
 
 export async function runReviewRunnerTests(): Promise<void> {
-  setReviewAnalysisSandboxResolverForTests(null);
+  setReviewAnalysisSandboxResolverForTests(async () => ({
+    async exec(command: string) {
+      if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+        return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+      }
+      if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+        return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+      }
+      if (command.includes('git --no-pager diff')) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    },
+    async writeFile() {
+      return undefined;
+    },
+    async destroy() {
+      return undefined;
+    },
+  }) as never);
   {
     const { env, state } = createReviewRunnerEnv();
     await processReviewRun(env as never, 'rev_abcd1234');
@@ -665,12 +697,12 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      const failedEvent = state.events.find((event) => event.eventType === 'review_failed');
-      const serialized = JSON.stringify(failedEvent?.payload ?? {});
+      const fallbackEvent = state.events.find((event) => event.eventType === 'review_analysis_output_fallback_applied');
+      const serialized = JSON.stringify(fallbackEvent?.payload ?? {});
       assert.equal(serialized.includes('supersecret'), false);
       assert.equal(serialized.includes('ghp_abc123'), false);
       assert.equal(serialized.includes('api_key=xyz'), false);
-      assert.equal(serialized.includes('[REDACTED]') || serialized.includes('[REDACTED_TOKEN]'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_failed'), true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -678,6 +710,26 @@ export async function runReviewRunnerTests(): Promise<void> {
   }
 
   {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
     const { env, state } = createReviewRunnerEnv({
       deploymentEvents: [
         {
@@ -693,9 +745,30 @@ export async function runReviewRunnerTests(): Promise<void> {
     assert.equal(state.status, 'queued');
     assert.equal(state.errorCode, 'retry_scheduled');
     assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), true);
+    setReviewAnalysisSandboxResolverForTests(null);
   }
 
   {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
     const { env, state } = createReviewRunnerEnv({
       failReviewEventTypeOnce: 'review_succeeded',
     });
@@ -703,6 +776,7 @@ export async function runReviewRunnerTests(): Promise<void> {
     assert.equal(state.status, 'queued');
     assert.equal(state.reportJson, null);
     assert.equal(state.markdownSummary, null);
+    setReviewAnalysisSandboxResolverForTests(null);
   }
 
   {
@@ -833,6 +907,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'succeeded');
       assert.equal(fetchCalls.length, 2);
+      assert.equal(fetchCalls[0]?.body.model, 'claude-test');
       assert.equal(capturedSandboxId, 'review-snapshot-rev_abcd1234');
       assert.equal(String(fetchCalls[0].body.prompt ?? '').includes('Intent session context excerpts'), true);
       assert.equal(
@@ -869,8 +944,159 @@ export async function runReviewRunnerTests(): Promise<void> {
       assert.equal(report.findings.some((finding) => finding.category === 'logic'), true);
       assert.equal(report.findings.some((finding) => finding.passType === 'single'), true);
       assert.equal(report.evidence.some((item) => item.id === 'ev_review_agent' && item.type === 'analysis_agent'), true);
-      assert.equal(report.provenance.promptSummary, 'Review generated in report_only mode for deployment dep_abcd1234.');
-      assert.deepEqual(report.provenance.sessionIds, ['ses_deploy_1']);
+      assert.equal(report.provenance.promptSummary, 'Review against Entire intent history for auth hardening.');
+      assert.deepEqual(report.provenance.sessionIds, ['ses_deploy_1', 'ses_review_1']);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    const fetchBodies: Array<Record<string, unknown>> = [];
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      fetchBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: {
+          AGENT_SDK_URL: 'https://agent.example.com',
+          AGENT_MODEL: 'sonnet-4.5',
+        },
+        payload: {
+          model: 'sonnet-4.5-review-override',
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(fetchBodies[0]?.model, 'sonnet-4.5-review-override');
+      const startedEvent = state.events.find((event) => event.eventType === 'review_analysis_agent_started');
+      assert.equal((startedEvent?.payload as Record<string, unknown> | undefined)?.model, 'sonnet-4.5-review-override');
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    const fetchBodies: Array<Record<string, unknown>> = [];
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      fetchBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: {
+          AGENT_SDK_URL: 'https://agent.example.com',
+          REVIEW_MODEL: 'sonnet-4.5-alias',
+          AGENT_MODEL: undefined,
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(fetchBodies[0]?.model, 'sonnet-4.5-alias');
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    const fetchBodies: Array<Record<string, unknown>> = [];
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      fetchBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: {
+          AGENT_SDK_URL: 'https://agent.example.com',
+          REVIEW_MODEL: '   ',
+          AGENT_MODEL: 'sonnet-4.5-fallback',
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(fetchBodies[0]?.model, 'sonnet-4.5-fallback');
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1136,6 +1362,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1243,7 +1470,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      assert.equal(genericCompletionFetchCalls, 1);
+      assert.equal(genericCompletionFetchCalls, 2);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1259,6 +1487,93 @@ export async function runReviewRunnerTests(): Promise<void> {
     assert.equal(state.status, 'failed');
     assert.equal(state.errorCode, 'unsupported_without_entire_checkpoint_context');
     assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_failed'), true);
+  }
+
+  {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    const { env, state } = createReviewRunnerEnv({
+      deploymentRequestProvenance: {
+        commitDiffPatch:
+          'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    const skipped = state.events.find((event) => event.eventType === 'review_context_cochange_skipped');
+    assert.equal(Boolean(skipped), true);
+    assert.equal((skipped?.payload as { reason?: string } | undefined)?.reason, 'missing_github_token');
+    assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_succeeded'), true);
+    setReviewAnalysisSandboxResolverForTests(null);
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.includes('api.github.com')) {
+        return new Response('forbidden', { status: 403, headers: { 'x-ratelimit-remaining': '0' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: {
+          REVIEW_CONTEXT_GITHUB_TOKEN: 'ghp_test_token',
+        },
+        deploymentRequestProvenance: {
+          commitDiffPatch:
+            'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      const skipped = state.events.find((event) => event.eventType === 'review_context_cochange_skipped');
+      assert.equal(Boolean(skipped), true);
+      assert.equal((skipped?.payload as { reason?: string } | undefined)?.reason, 'rate_limited');
+      assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_succeeded'), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
   }
 
   {
@@ -1656,6 +1971,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;

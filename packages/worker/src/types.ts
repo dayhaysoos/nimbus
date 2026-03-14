@@ -55,6 +55,7 @@ export interface Env {
 
   AGENT_PROVIDER?: string;
   AGENT_MODEL?: string;
+  REVIEW_MODEL?: string;
   AGENT_SDK_URL?: string;
   AGENT_SDK_AUTH_TOKEN?: string;
   REVIEW_AGENT_MAX_STEPS?: string;
@@ -575,6 +576,9 @@ export interface ReviewContext {
       sessionsScanned: number;
       filesConsidered: number;
       topN: number;
+      coChangeSkipped: boolean;
+      coChangeSkipReason: string | null;
+      coChangeAvailable: boolean;
     };
   };
   stats: {
@@ -607,6 +611,12 @@ export interface ReviewProvenanceSummary {
     estimatedTokens: number;
     tokenBudget: number | null;
   };
+  coChange?: {
+    coChangeSkipped: boolean;
+    coChangeSkipReason: string | null;
+    coChangeAvailable: boolean;
+    relatedFileCount: number;
+  };
   outputSchemaVersion?: 'v2';
   passArchitecture?: 'single';
   validation?: {
@@ -615,6 +625,8 @@ export interface ReviewProvenanceSummary {
     repairSucceeded: boolean;
     validationErrorCount: number;
     dedupedExactCount: number;
+    fallbackApplied?: boolean;
+    fallbackReason?: string | null;
   };
   furtherPassesLowYield?: {
     value: boolean;
