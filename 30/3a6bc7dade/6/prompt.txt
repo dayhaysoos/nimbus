@@ -1,0 +1,253 @@
+You are continuing Nimbus review quality work, moving from Phase 1 (Context Retrieval) into Phase 2 (Prompt and Output Structure).
+
+## Current Project Context
+
+
+We already completed Phase 1 context retrieval end-to-end in worker/CLI:
+- ReviewContext assembly before analysis (changed files, diff hunks, conventions, co-change related files)
+- Strict Entire-checkpoint constraints (no silent degradation)
+- Co-change via `entire/checkpoints/v1` with D1 cache
+- Context storage in R2 + D1 refs
+- Provenance wiring (`provenance.repo`, session context) and test coverage
+- Hard-fail behavior when required context is missing
+
+
+Reference docs:
+- `llm-docs/review-context-phase1-spec.md` (style/template to follow)
+- `llm-docs/review-quality-phases-context-prompt-integration.md` (updated direction for Phase 2)
+
+
+## Phase 2 Direction (Must Follow)
+
+
+Phase 2 is now:
+- Single broad pass that consumes full ReviewContext from Phase 1
+- Structured findings output so users can act quickly
+- Multi-pass/sub-agent architecture is explicitly deferred for now
+
+
+Required finding schema expectations:
+- severity
+- category (`security | logic | style | breaking-change`)
+- affected file and line range
+- clear description
+- suggested fix/next step
+- `passType` field with valid values:
+  - `'single' | 'security' | 'logic' | 'style' | 'breaking-change’`
+  - default for Phase 2: `’single’`
+
+
+`passType` is forward-compatible; do not require schema migration later when multi-pass is introduced.
+
+
+## How I Want You To Work
+
+
+Use a **vertical slice approach**:
+1. Propose one meaningful slice
+2. Implement it
+3. Run tests
+4. Fix failures
+5. Report progress
+6. Move to next slice
+
+
+Do NOT batch giant speculative changes. Keep slices small and shippable.
+
+
+## Interview Requirement (Important)
+
+
+Before implementation, **interview me on technical and implementation details** until you no longer need clarification.
+- Ask focused, high-impact questions
+- Prefer one question at a time when answers materially affect design
+- Keep going until requirements are unambiguous enough to implement confidently
+- Then produce final implementation plan and start slices
+
+
+## Deliverable Required Before Coding
+
+
+Create a new Phase 2 spec doc in the same style/depth as Phase 1:
+- Path: `llm-docs/review-prompt-phase2-spec.md`
+- Include:
+  - scope + non-negotiables
+  - type contracts/schema updates
+  - workflow/lifecycle integration points
+  - prompt construction strategy using ReviewContext
+  - finding output contract (including `passType`)
+  - failure behavior
+  - SSE/provenance/report implications
+  - defaults/config knobs
+  - out-of-scope
+  - acceptance criteria
+  - phased vertical-slice implementation plan with tests for each slice
+
+
+After drafting spec, ask for my sign-off, then implement slice-by-slice.
+
+---
+
+Wouldn’t it be better to allow breaking shape since we have 0 users?
+
+---
+
+Persist structured findings directly to the canonical stored review result schema in D1 and the report payload. Do not create a temporary mapping layer.
+
+Reasoning: passType is already being added to the finding structure, which means the schema is changing regardless. Do it once correctly. A temporary mapping layer will become debt that blocks Phase 4 branch aggregation work, which depends on structured findings being queryable from the DB. Build the right schema now so the report UI, export format, and future branch-level document don't require a migration later.
+
+
+The canonical finding shape to persist:
+- severity
+- category (security | logic | style | breaking-change)
+- passType (single | security | logic | style | breaking-change) — defaults to 'single' for Phase 2
+- affected file and line range
+- clear description
+- suggested fix or next step
+
+
+Update D1 schema, report payload shape, and any existing finding serialization/deserialization accordingly.
+
+---
+
+2
+
+---
+
+2
+
+---
+
+3
+
+---
+
+2
+
+---
+
+3
+
+---
+
+1
+
+---
+
+Yes make it required. “single” will be default for now.
+
+---
+
+2
+
+---
+
+I’ll go with your recommendation here
+
+---
+
+2
+
+---
+
+1 for now. I would love the richer streaming in a follow up later.
+
+---
+
+1
+
+---
+
+A few targeted updates to the Phase 2 spec before implementation begins:
+
+1. **Backfill scope** — revert the migration backfill guidance in Section 2 to the original decision. Old findings rows get `pass_type = 'single'` only. All other new V2 fields (locations, category, suggestedFix) are null on legacy rows. Legacy rows are excluded from any query surface that requires strict V2 semantics. Do not spend implementation time attempting to map old findings into the full V2 shape — that data was generated without ReviewContext and is not trustworthy enough to backfill meaningfully.
+
+
+2. **Related files prompt framing** — in Section 4 prompt construction, add explicit framing guidance for how co-change related files are presented to the model. They must be introduced distinctly from changed files. The prompt should make clear that related files are historically co-changed with the modified code (surfaced from Entire checkpoint session history), not directly modified in this commit. The model needs this distinction to correctly weight related file context — without it, related files get treated the same as changed files and the co-change signal is diluted.
+
+
+3. **furtherPassesLowYield caveat** — add a note in Section 7 (provenance) that `furtherPassesLowYield` is model-self-assessed and should be treated as a weak signal in Phase 2. Track it in provenance for future calibration but do not surface it in the UI as authoritative. Revisit its reliability once real usage data is available.
+
+
+No other changes.
+
+---
+
+Go ahead and start building.
+
+---
+
+actually go ahead and complete all the slices and we’ll test/review after.
+
+---
+
+Before we start runinng reviews andtesting, I was wondering what it would take to support OpenRouter for this.
+
+Before we make any decisions on OpenRouter integration, answer the following questions only. Do not implement anything yet.
+
+1. How deeply is the Cloudflare AI SDK currently used in the review analysis pass specifically? Is it just wrapping the model call, or is it also handling streaming, tool use, context management, or anything else beyond a basic completion request?
+
+
+2. Are there any other places in the Nimbus worker (outside of review analysis) that depend on the Cloudflare AI SDK? List them.
+
+
+3. Does the current review analysis pass use streaming for the model response, or is it a single blocking completion call?
+
+
+4. Is the model/provider currently hardcoded or is there already any configuration surface for it (env var, wrangler binding, etc)?
+
+
+Context for why I'm asking: We're considering introducing OpenRouter as the model provider for review analysis. OpenRouter is OpenAI API-compatible, accepts a single API key, and gives users access to Claude, GPT, Gemini, Mistral and others without needing provider-specific keys. The integration would replace or sit alongside the Cloudflare AI SDK for the model call layer specifically.
+
+
+The intended design is a thin `ReviewModelClient` interface:
+
+
+interface ReviewModelClient {
+  complete(prompt: string): Promise<string>
+}
+
+
+With provider implementations injected via config — starting with an `OpenRouterModelClient` that calls `https://openrouter.ai/api/v1/chat/completions` using a standard fetch with the user's `OPENROUTER_API_KEY` env var. This abstraction means the review runner never knows which provider it's talking to, and adding providers later is just a new interface implementation.
+
+
+The goal is reducing adoption friction — one OpenRouter key works with any supported model and is simpler to set up than Cloudflare AI bindings or provider-specific keys. This also naturally aligns with Phase 4 integration surface work.
+
+
+Answer the four questions above only. Do not act on any of this yet.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+should you maybe add comments that explain this in the review so it stops surfacing it?
+
+---
+
+do all of that
+
+---
+
+do it
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
