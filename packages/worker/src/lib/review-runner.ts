@@ -3,6 +3,7 @@ import type {
   ReviewContext,
   ReviewEvidenceItem,
   ReviewFinding,
+  ReviewFindingSeverityV2,
   ReviewRecommendation,
   ReviewReport,
   ReviewRunResponse,
@@ -14,7 +15,7 @@ import {
   createReviewContextBlobReference,
   generateReviewContextId,
   getReviewRun,
-  getReviewCochangeCache,
+  getReviewCochangeCacheBatch,
   getReviewRunRequestPayload,
   getWorkspace,
   getWorkspaceArtifactById,
@@ -24,7 +25,7 @@ import {
   getWorkspaceTask,
   listWorkspaceDeploymentEvents,
   replaceReviewFindings,
-  upsertReviewCochangeCache,
+  upsertReviewCochangeCacheBatch,
   updateReviewRunStatus,
 } from './db.js';
 import {
@@ -42,21 +43,32 @@ class QueueRetryError extends Error {
 
 class ReviewContextAssemblyError extends Error {
   code: string;
+  details: string | null;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, details: string | null = null) {
     super(message);
     this.name = 'ReviewContextAssemblyError';
     this.code = code;
+    this.details = details;
   }
 }
 
 const REVIEW_MAX_RETRIES = 2;
-const REVIEW_SEVERITY_RANK: Record<ReviewSeverity, number> = {
+const REVIEW_SEVERITY_RANK: Record<ReviewFindingSeverityV2, number> = {
+  info: 0,
   critical: 4,
   high: 3,
   medium: 2,
   low: 1,
 };
+const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
+const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
+const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
+
+interface ReviewRunExecutionOptions {
+  cochangeGithubToken?: string | null;
+  allowRetryScheduling?: boolean;
+}
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
@@ -87,7 +99,7 @@ function redactReviewText(value: string | null): string | null {
 
   const redacted = value
     .replace(/(authorization:\s*bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
-    .replace(/gh[spu]_[a-z0-9_]+/gi, '[REDACTED_TOKEN]')
+    .replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]')
     .replace(/(api[_-]?key\s*[:=]\s*)([^\s,]+)/gi, '$1[REDACTED]')
     .replace(/(token\s*[:=]\s*)([^\s,]+)/gi, '$1[REDACTED]');
   return redacted.length > 600 ? `${redacted.slice(0, 597)}...` : redacted;
@@ -138,13 +150,33 @@ function buildReviewMarkdown(report: ReviewReport): string {
   if (report.provenance.sessionIds.length > 0) {
     provenanceLines.push(`Sessions: ${report.provenance.sessionIds.join(', ')}`);
   }
+  if (report.provenance.contextResolution?.contextResolution === 'branch_fallback') {
+    provenanceLines.push(
+      `Context resolution: branch fallback from checkpoint ${report.provenance.contextResolution.originalCheckpointId} to ${report.provenance.contextResolution.resolvedCheckpointId} (${report.provenance.contextResolution.resolvedCommitSha.slice(0, 12)}).`
+    );
+  }
+  if (report.provenance.coChange) {
+    if (report.provenance.coChange.coChangeSkipped) {
+      provenanceLines.push(
+        `Co-change context skipped (${report.provenance.coChange.coChangeSkipReason ?? 'unknown_reason'}). Baseline review only; set REVIEW_CONTEXT_GITHUB_TOKEN for full quality review context.`
+      );
+    } else if (report.provenance.coChange.coChangeAvailable) {
+      provenanceLines.push(`Co-change context included (${report.provenance.coChange.relatedFileCount} related files).`);
+    } else {
+      provenanceLines.push('Co-change lookup ran successfully and found no related files.');
+    }
+  }
 
   const findingLines =
     report.findings.length === 0
       ? ['No actionable findings were emitted for this deployment review.']
       : report.findings.map((finding) => {
-          const location = finding.locations[0] ? `${finding.locations[0].path}:${finding.locations[0].line}` : 'deployment-level';
-          return `[${finding.severity}/${finding.confidence}] ${finding.title} (${location})`;
+          const location = finding.locations[0]
+            ? finding.locations[0].startLine !== null && finding.locations[0].endLine !== null
+              ? `${finding.locations[0].filePath}:${finding.locations[0].startLine}-${finding.locations[0].endLine}`
+              : finding.locations[0].filePath
+            : 'deployment-level';
+          return `[${finding.severity}/${finding.category}/${finding.passType}] ${finding.description} (${location})`;
         });
 
   return [
@@ -167,16 +199,12 @@ function buildReviewMarkdown(report: ReviewReport): string {
     .trim();
 }
 
-function buildFindingId(reviewId: string, index: number): string {
-  return `f_${reviewId}_${String(index).padStart(3, '0')}`;
-}
-
 function mergeFindings(primary: ReviewFinding[], secondary: ReviewFinding[]): ReviewFinding[] {
   const seen = new Set<string>();
   const merged: ReviewFinding[] = [];
 
   for (const finding of [...primary, ...secondary]) {
-    const key = [finding.title.trim().toLowerCase(), finding.locations[0]?.path ?? '', String(finding.locations[0]?.line ?? 0)].join('::');
+    const key = JSON.stringify(finding);
     if (seen.has(key)) {
       continue;
     }
@@ -197,18 +225,15 @@ function buildHeuristicFindings(
       const step = typeof eventPayload.step === 'string' ? eventPayload.step : 'validation';
       return [
         {
-          id: buildFindingId(review.id, index + 1),
           severity: 'medium',
-          confidence: 'high',
-          title: `Validation tool missing for ${step}`,
-          description: typeof eventPayload.message === 'string' ? eventPayload.message : 'Validation tool missing in runtime.',
-          conditions: `Observed during ${step} validation for deployment ${review.deploymentId}.`,
-          locations: [],
-          suggestedFix: {
-            kind: 'text',
-            value: `Install the required ${step} validation tool in the deployment runtime or disable that validation step explicitly.`,
-          },
-          evidenceRefs: [`ev_${event.seq}`],
+          category: 'logic',
+          passType: 'single',
+          locations: [{ filePath: 'deployment', startLine: null, endLine: null }],
+          description:
+            typeof eventPayload.message === 'string'
+              ? eventPayload.message
+              : `Validation tool missing for ${step} in runtime.`,
+          suggestedFix: `Install the required ${step} validation tool in the deployment runtime or disable that validation step explicitly.`,
         },
       ];
     }
@@ -216,36 +241,24 @@ function buildHeuristicFindings(
       const step = typeof eventPayload.step === 'string' ? eventPayload.step : 'validation';
       return [
         {
-          id: buildFindingId(review.id, index + 1),
           severity: 'low',
-          confidence: 'medium',
-          title: `Validation skipped for ${step}`,
+          category: 'style',
+          passType: 'single',
+          locations: [{ filePath: 'deployment', startLine: null, endLine: null }],
           description: `Nimbus skipped ${step} validation while preparing this deployment review.`,
-          conditions: typeof eventPayload.reason === 'string' ? eventPayload.reason : 'skip reason not recorded',
-          locations: [],
-          suggestedFix: {
-            kind: 'text',
-            value: `Run the ${step} validation in the deployment path or document why it is intentionally skipped.`,
-          },
-          evidenceRefs: [`ev_${event.seq}`],
+          suggestedFix: `Run the ${step} validation in the deployment path or document why it is intentionally skipped.`,
         },
       ];
     }
     if (event.eventType === 'deployment_toolchain_unknown_fallback') {
       return [
         {
-          id: buildFindingId(review.id, index + 1),
           severity: 'low',
-          confidence: 'medium',
-          title: 'Toolchain detection fell back to unknown defaults',
+          category: 'style',
+          passType: 'single',
+          locations: [{ filePath: 'deployment', startLine: null, endLine: null }],
           description: 'Deployment completed after a toolchain fallback, which may hide package-manager-specific issues.',
-          conditions: `Observed while reviewing deployment ${review.deploymentId}.`,
-          locations: [],
-          suggestedFix: {
-            kind: 'text',
-            value: 'Declare an explicit package manager and lockfile so future deploys and reviews use deterministic tooling.',
-          },
-          evidenceRefs: [`ev_${event.seq}`],
+          suggestedFix: 'Declare an explicit package manager and lockfile so future deploys and reviews use deterministic tooling.',
         },
       ];
     }
@@ -473,8 +486,75 @@ function readOptionalNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
+function stripSensitiveTokenFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSensitiveTokenFields(item));
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string' && GITHUB_TOKEN_PATTERN_TEST.test(value)) {
+      return value.replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]');
+    }
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).reduce<Record<string, unknown>>((result, [key, nested]) => {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === 'x-review-github-token' ||
+      normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'authorization'
+    ) {
+      return result;
+    }
+    result[key] = stripSensitiveTokenFields(nested);
+    return result;
+  }, {});
+}
+
+function resolveReviewAnalysisModel(payload: Record<string, unknown>, env: Env): string {
+  const requested = readOptionalString(payload.model);
+  if (requested) {
+    return requested;
+  }
+  const reviewModel = readOptionalString(env.REVIEW_MODEL);
+  if (reviewModel) {
+    return reviewModel;
+  }
+  const agentModel = readOptionalString(env.AGENT_MODEL);
+  if (agentModel) {
+    return agentModel;
+  }
+  return DEFAULT_REVIEW_MODEL;
+}
+
+function mergeProvenance(
+  deploymentProvenance: Record<string, unknown>,
+  reviewProvenance: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...deploymentProvenance,
+    ...reviewProvenance,
+  };
+
+  const deploymentSessionIds = parseStringArray(deploymentProvenance.sessionIds);
+  const reviewSessionIds = parseStringArray(reviewProvenance.sessionIds);
+  const mergedSessionIds = Array.from(new Set([...deploymentSessionIds, ...reviewSessionIds]));
+  if (mergedSessionIds.length > 0) {
+    merged.sessionIds = mergedSessionIds;
+  }
+
+  const deploymentIntent = parseStringArray(deploymentProvenance.intentSessionContext);
+  const reviewIntent = parseStringArray(reviewProvenance.intentSessionContext);
+  const mergedIntent = Array.from(new Set([...deploymentIntent, ...reviewIntent]));
+  if (mergedIntent.length > 0) {
+    merged.intentSessionContext = mergedIntent;
+  }
+
+  return merged;
+}
+
 function parseTouchedFilesFromMetadata(record: Record<string, unknown>): string[] {
-  const candidates = [record.touchedFiles, record.touched_files, record.changedFiles, record.changed_files, record.files];
+  const candidates = [record.touchedFiles, record.touched_files, record.files_touched, record.changedFiles, record.changed_files, record.files];
   for (const candidate of candidates) {
     if (!Array.isArray(candidate)) {
       continue;
@@ -496,27 +576,30 @@ function parseTouchedFilesFromMetadata(record: Record<string, unknown>): string[
   return [];
 }
 
-function buildGitHubHeaders(env: Env): Record<string, string> {
+function buildGitHubHeaders(githubToken: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'nimbus-worker/1.0',
   };
-  const token = readOptionalString(env.REVIEW_CONTEXT_GITHUB_TOKEN);
-  if (token) {
-    headers.Authorization = token.toLowerCase().startsWith('bearer ') ? token : `Bearer ${token}`;
-  }
+  headers.Authorization = githubToken.toLowerCase().startsWith('bearer ') ? githubToken : `Bearer ${githubToken}`;
   return headers;
 }
 
-async function fetchGitHubJson(env: Env, url: string): Promise<Record<string, unknown>> {
+async function fetchGitHubJson(url: string, githubToken: string): Promise<Record<string, unknown>> {
   const response = await fetch(url, {
-    headers: buildGitHubHeaders(env),
+    headers: buildGitHubHeaders(githubToken),
   });
 
   if (!response.ok) {
+    const rateLimited =
+      response.status === 429 ||
+      (response.status === 403 && (response.headers.get('x-ratelimit-remaining') ?? '').trim() === '0');
+    const responseBody = redactReviewText(await response.text());
     throw new ReviewContextAssemblyError(
       'review_context_github_api_error',
-      `GitHub API request failed (${response.status}) for ${url}`
+      `GitHub API request failed (${response.status}) for ${url}${rateLimited ? ' [rate_limited]' : ''}`,
+      responseBody
     );
   }
 
@@ -524,15 +607,20 @@ async function fetchGitHubJson(env: Env, url: string): Promise<Record<string, un
   return asRecord(data);
 }
 
-async function fetchGitHubArray(env: Env, url: string): Promise<unknown[]> {
+async function fetchGitHubArray(url: string, githubToken: string): Promise<unknown[]> {
   const response = await fetch(url, {
-    headers: buildGitHubHeaders(env),
+    headers: buildGitHubHeaders(githubToken),
   });
 
   if (!response.ok) {
+    const rateLimited =
+      response.status === 429 ||
+      (response.status === 403 && (response.headers.get('x-ratelimit-remaining') ?? '').trim() === '0');
+    const responseBody = redactReviewText(await response.text());
     throw new ReviewContextAssemblyError(
       'review_context_github_api_error',
-      `GitHub API request failed (${response.status}) for ${url}`
+      `GitHub API request failed (${response.status}) for ${url}${rateLimited ? ' [rate_limited]' : ''}`,
+      responseBody
     );
   }
 
@@ -540,19 +628,23 @@ async function fetchGitHubArray(env: Env, url: string): Promise<unknown[]> {
   return Array.isArray(data) ? data : [];
 }
 
+function classifyCochangeSkipReason(error: unknown): string {
+  if (error instanceof ReviewContextAssemblyError && /\[rate_limited\]/.test(error.message)) {
+    return 'rate_limited';
+  }
+  return 'github_api_error';
+}
+
 async function fetchCochangeFromCheckpointBranch(
-  env: Env,
   repo: string,
   changedPaths: string[],
-  lookbackSessions: number
+  lookbackSessions: number,
+  githubToken: string
 ): Promise<{
   relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
   sessionsScanned: number;
 }> {
-  const commits = await fetchGitHubArray(
-    env,
-    `https://api.github.com/repos/${repo}/commits?sha=entire/checkpoints/v1&per_page=${lookbackSessions}`
-  );
+  const commits = await fetchGitHubArray(`https://api.github.com/repos/${repo}/commits?sha=entire/checkpoints/v1&per_page=${lookbackSessions}`, githubToken);
 
   const frequencyByChangedPath = new Map<string, Map<string, { count: number; sessions: Set<string> }>>();
   for (const changedPath of changedPaths) {
@@ -567,7 +659,7 @@ async function fetchCochangeFromCheckpointBranch(
       continue;
     }
 
-    const detail = await fetchGitHubJson(env, `https://api.github.com/repos/${repo}/commits/${sha}`);
+    const detail = await fetchGitHubJson(`https://api.github.com/repos/${repo}/commits/${sha}`, githubToken);
     const files = Array.isArray(detail.files) ? detail.files : [];
     const metadataPaths = files
       .map((entry) => readOptionalString(asRecord(entry).filename))
@@ -576,7 +668,7 @@ async function fetchCochangeFromCheckpointBranch(
 
     const touchedFiles = new Set<string>();
     for (const metadataPath of metadataPaths) {
-      const file = await fetchGitHubJson(env, `https://api.github.com/repos/${repo}/contents/${metadataPath}?ref=${sha}`);
+      const file = await fetchGitHubJson(`https://api.github.com/repos/${repo}/contents/${metadataPath}?ref=${sha}`, githubToken);
       const content = readOptionalString(file.content);
       if (!content) {
         continue;
@@ -643,7 +735,9 @@ async function fetchCochangeFromCheckpointBranch(
 
 async function assembleReviewContextBootstrap(
   env: Env,
-  review: ReviewRunResponse
+  review: ReviewRunResponse,
+  reviewPayload: Record<string, unknown>,
+  options?: ReviewRunExecutionOptions
 ): Promise<ReviewContext> {
   const COCHANGE_LOOKBACK_SESSIONS = 5;
   const COCHANGE_TOP_N = 20;
@@ -672,7 +766,9 @@ async function assembleReviewContextBootstrap(
   }
 
   const deploymentRequest = (await getWorkspaceDeploymentRequestPayload(env.DB, review.deploymentId)) ?? {};
-  const requestProvenance = asRecord(deploymentRequest.provenance);
+  const deploymentRequestProvenance = asRecord(deploymentRequest.provenance);
+  const reviewRequestProvenance = asRecord(reviewPayload.provenance);
+  const requestProvenance = mergeProvenance(deploymentRequestProvenance, reviewRequestProvenance);
   const sessionIds = uniqueStrings(parseStringArray(requestProvenance.sessionIds));
   if (sessionIds.length === 0) {
     throw new ReviewContextAssemblyError(
@@ -686,10 +782,12 @@ async function assembleReviewContextBootstrap(
   const sessionIntent = sessionIntentCandidates[0] ?? null;
   const attributionTrailer = readOptionalString(requestProvenance.attributionTrailer);
   const agentType = readOptionalString(requestProvenance.agentType);
-  const tokenBudget =
+  const requestedTokenBudget =
     readOptionalNumber(requestProvenance.reviewContextTokenBudget) ??
     readOptionalNumber(requestProvenance.contextTokenBudget) ??
     null;
+  const configuredTokenBudget = readOptionalNumber(env.REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET);
+  const tokenBudget = requestedTokenBudget ?? configuredTokenBudget ?? null;
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
@@ -724,7 +822,15 @@ async function assembleReviewContextBootstrap(
     provenanceOperationId,
     reviewDiffArtifactId
   );
-  const diffPatch = authoritativeDiff?.patch ?? null;
+  const commitDiffPatch = readOptionalString(requestProvenance.commitDiffPatch);
+  const authoritativeDiffPatch = readOptionalString(authoritativeDiff?.patch);
+  const diffPatch = authoritativeDiffPatch ?? commitDiffPatch ?? null;
+  if (!diffPatch) {
+    throw new ReviewContextAssemblyError(
+      'review_context_diff_missing',
+      'Review context assembly requires non-empty diff patch context. Ensure deployment provenance includes review diff artifact or commit diff patch.'
+    );
+  }
   const changedPaths = diffPatch ? parseChangedPathsFromDiff(diffPatch) : [];
   const diffHunks = diffPatch ? parseDiffHunks(diffPatch) : [];
 
@@ -732,10 +838,11 @@ async function assembleReviewContextBootstrap(
     reviewId: review.id,
     eventType: 'review_context_diff_collected',
     payload: {
-      source: authoritativeDiff?.source ?? null,
-      artifactId: authoritativeDiff?.artifactId ?? null,
+      source: authoritativeDiffPatch ? authoritativeDiff?.source ?? null : commitDiffPatch ? 'commit_patch' : null,
+      artifactId: authoritativeDiffPatch ? authoritativeDiff?.artifactId ?? null : null,
       hasDiff: Boolean(diffPatch),
       patchBytes: diffPatch ? new TextEncoder().encode(diffPatch).byteLength : 0,
+      fallbackUsed: !authoritativeDiffPatch && Boolean(commitDiffPatch),
     },
   });
 
@@ -822,106 +929,147 @@ async function assembleReviewContextBootstrap(
     supportingSessionIds: string[];
   }> = [];
   let sessionsScanned = 0;
-  await appendReviewEvent(env.DB, {
-    reviewId: review.id,
-    eventType: 'review_context_cochange_lookup_started',
-    payload: {
-      repo: repoSlug,
-      lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
-    },
-  });
+  let coChangeSkipped = false;
+  let coChangeSkipReason: string | null = null;
+  let coChangeAvailable = false;
+  const githubToken = readOptionalString(options?.cochangeGithubToken) ?? readOptionalString(env.REVIEW_CONTEXT_GITHUB_TOKEN);
 
-  const relatedFrequency = new Map<string, { frequency: number; sessionIds: string[] }>();
-  const entriesByChangedPath = new Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>();
-  const changedPathsMissingCache: string[] = [];
-  for (const changedPath of changedPaths) {
-    const cached = await getReviewCochangeCache(env.DB, {
-      filePath: changedPath,
-      repo: repoSlug,
-    });
-    const entries = cached?.cochange;
-    const cachedLookbackSessions = cached?.lookbackSessions ?? null;
-    if (entries && cachedLookbackSessions === COCHANGE_LOOKBACK_SESSIONS) {
-      entriesByChangedPath.set(changedPath, entries);
-    } else {
-      changedPathsMissingCache.push(changedPath);
-    }
-  }
-
-  if (changedPathsMissingCache.length > 0) {
-    const fetched = await fetchCochangeFromCheckpointBranch(
-      env,
-      repoSlug,
-      changedPathsMissingCache,
-      COCHANGE_LOOKBACK_SESSIONS
+  if (!githubToken) {
+    throw new ReviewContextAssemblyError(
+      'review_context_github_token_missing',
+      'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env'
     );
-    sessionsScanned += fetched.sessionsScanned;
-    for (const changedPath of changedPathsMissingCache) {
-      const entries = fetched.relatedByChangedPath[changedPath] ?? [];
-      entriesByChangedPath.set(changedPath, entries);
-      await upsertReviewCochangeCache(env.DB, {
-        filePath: changedPath,
-        repo: repoSlug,
-        branch: 'entire/checkpoints/v1',
-        cochange: entries,
-        lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
-      });
-    }
-  }
-
-  for (const changedPath of changedPaths) {
-    const entries = entriesByChangedPath.get(changedPath) ?? [];
-    for (const entry of entries) {
-      const existing = relatedFrequency.get(entry.path) ?? { frequency: 0, sessionIds: [] };
-      existing.frequency += entry.frequency;
-      existing.sessionIds = Array.from(new Set([...existing.sessionIds, ...entry.sessionIds]));
-      relatedFrequency.set(entry.path, existing);
-    }
-  }
-
-  const changedPathSet = new Set(changedPaths);
-  const rankedRelated = Array.from(relatedFrequency.entries())
-    .map(([path, value]) => ({ path, ...value }))
-    .filter((item) => !changedPathSet.has(item.path))
-    .sort((left, right) => right.frequency - left.frequency)
-    .slice(0, COCHANGE_TOP_N);
-
-  const relatedReads = rankedRelated.length
-    ? await readWorkspaceFilesFromSourceBundle(env, {
-        sourceBundleKey: deploymentSourceBundleKey,
-        sandboxId: `review-context-${review.id}-related`,
-        paths: rankedRelated.map((item) => item.path),
-      })
-    : [];
-  const readByPath = new Map(relatedReads.map((item) => [item.path, item]));
-  relatedFiles = rankedRelated
-    .flatMap((item) => {
-      const read = readByPath.get(item.path);
-      if (!read || read.content === null || read.error) {
-        return [];
-      }
-      return [
-        {
-          path: item.path,
-          content: read.content,
-          byteSize: read.bytes,
-          source: 'related' as const,
-          score: item.frequency,
-          coChangeFrequency: item.frequency,
-          supportingSessionIds: item.sessionIds,
+  } else {
+    try {
+      await appendReviewEvent(env.DB, {
+        reviewId: review.id,
+        eventType: 'review_context_cochange_lookup_started',
+        payload: {
+          repo: repoSlug,
+          lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
         },
-      ];
-    });
+      });
 
-  await appendReviewEvent(env.DB, {
-    reviewId: review.id,
-    eventType: 'review_context_cochange_lookup_completed',
-    payload: {
-      repo: repoSlug,
-      relatedFileCount: relatedFiles.length,
-      topN: COCHANGE_TOP_N,
-    },
-  });
+      const relatedFrequency = new Map<string, { frequency: number; sessionIds: string[] }>();
+      const entriesByChangedPath = new Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>();
+      const changedPathsMissingCache: string[] = [];
+      const cachedRows = await getReviewCochangeCacheBatch(env.DB, {
+        repo: repoSlug,
+        filePaths: changedPaths,
+      });
+      const cacheByPath = new Map(cachedRows.map((row) => [row.filePath, row]));
+
+      for (const changedPath of changedPaths) {
+        const cached = cacheByPath.get(changedPath);
+        const entries = cached?.cochange;
+        const cachedLookbackSessions = cached?.lookbackSessions ?? null;
+        if (entries && cachedLookbackSessions === COCHANGE_LOOKBACK_SESSIONS) {
+          entriesByChangedPath.set(changedPath, entries);
+        } else {
+          changedPathsMissingCache.push(changedPath);
+        }
+      }
+
+      if (changedPathsMissingCache.length > 0) {
+        const fetched = await fetchCochangeFromCheckpointBranch(repoSlug, changedPathsMissingCache, COCHANGE_LOOKBACK_SESSIONS, githubToken);
+        sessionsScanned += fetched.sessionsScanned;
+        const cacheUpserts: Array<{
+          filePath: string;
+          repo: string;
+          branch: string;
+          cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>;
+          lookbackSessions: number;
+        }> = [];
+        for (const changedPath of changedPathsMissingCache) {
+          const entries = fetched.relatedByChangedPath[changedPath] ?? [];
+          entriesByChangedPath.set(changedPath, entries);
+          cacheUpserts.push({
+            filePath: changedPath,
+            repo: repoSlug,
+            branch: 'entire/checkpoints/v1',
+            cochange: entries,
+            lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+          });
+        }
+        await upsertReviewCochangeCacheBatch(env.DB, cacheUpserts);
+      }
+
+      for (const changedPath of changedPaths) {
+        const entries = entriesByChangedPath.get(changedPath) ?? [];
+        for (const entry of entries) {
+          const existing = relatedFrequency.get(entry.path) ?? { frequency: 0, sessionIds: [] };
+          existing.frequency += entry.frequency;
+          existing.sessionIds = Array.from(new Set([...existing.sessionIds, ...entry.sessionIds]));
+          relatedFrequency.set(entry.path, existing);
+        }
+      }
+
+      const changedPathSet = new Set(changedPaths);
+      const rankedRelated = Array.from(relatedFrequency.entries())
+        .map(([path, value]) => ({ path, ...value }))
+        .filter((item) => !changedPathSet.has(item.path))
+        .sort((left, right) => right.frequency - left.frequency)
+        .slice(0, COCHANGE_TOP_N);
+
+      const relatedReads = rankedRelated.length
+        ? await readWorkspaceFilesFromSourceBundle(env, {
+            sourceBundleKey: deploymentSourceBundleKey,
+            sandboxId: `review-context-${review.id}-related`,
+            paths: rankedRelated.map((item) => item.path),
+          })
+        : [];
+      const readByPath = new Map(relatedReads.map((item) => [item.path, item]));
+      relatedFiles = rankedRelated
+        .flatMap((item) => {
+          const read = readByPath.get(item.path);
+          if (!read || read.content === null || read.error) {
+            return [];
+          }
+          return [
+            {
+              path: item.path,
+              content: read.content,
+              byteSize: read.bytes,
+              source: 'related' as const,
+              score: item.frequency,
+              coChangeFrequency: item.frequency,
+              supportingSessionIds: item.sessionIds,
+            },
+          ];
+        });
+      coChangeAvailable = relatedFiles.length > 0;
+
+      await appendReviewEvent(env.DB, {
+        reviewId: review.id,
+        eventType: 'review_context_cochange_lookup_completed',
+        payload: {
+          repo: repoSlug,
+          relatedFileCount: relatedFiles.length,
+          topN: COCHANGE_TOP_N,
+        },
+      });
+    } catch (error) {
+      const reason = classifyCochangeSkipReason(error);
+      await appendReviewEvent(env.DB, {
+        reviewId: review.id,
+        eventType: 'review_context_cochange_failed',
+        payload: {
+          reason,
+          repo: repoSlug,
+          lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+          githubResponseBody:
+            error instanceof ReviewContextAssemblyError ? error.details : redactReviewText(error instanceof Error ? error.message : String(error)),
+        },
+      });
+      if (error instanceof ReviewContextAssemblyError) {
+        throw error;
+      }
+      throw new ReviewContextAssemblyError(
+        'review_context_github_api_error',
+        `Co-change context retrieval failed (${reason}).`
+      );
+    }
+  }
 
   const assembledAt = new Date().toISOString();
   const contextId = generateReviewContextId();
@@ -953,6 +1101,9 @@ async function assembleReviewContextBootstrap(
         sessionsScanned,
         filesConsidered: changedPaths.length,
         topN: COCHANGE_TOP_N,
+        coChangeSkipped,
+        coChangeSkipReason,
+        coChangeAvailable,
       },
     },
     stats: {
@@ -977,6 +1128,12 @@ async function assembleReviewContextBootstrap(
     payload: {
       estimatedTokens: contextPayload.stats.estimatedTokens,
       tokenBudget,
+      tokenBudgetSource:
+        requestedTokenBudget !== null
+          ? 'request_provenance'
+          : configuredTokenBudget !== null
+            ? 'configured_env'
+            : 'unconfigured',
       exceeded: tokenBudget !== null && contextPayload.stats.estimatedTokens > tokenBudget,
     },
   });
@@ -1000,7 +1157,7 @@ async function assembleReviewContextBootstrap(
   }
 
   const r2Key = `review-context/${review.id}/${contextId}.json`;
-  const serialized = JSON.stringify(contextPayload);
+  const serialized = JSON.stringify(stripSensitiveTokenFields(contextPayload));
   await storageBucket.put(r2Key, serialized, {
     httpMetadata: {
       contentType: 'application/json',
@@ -1118,11 +1275,12 @@ async function buildWorkspaceDeploymentReport(
   const deploymentEvents = await listWorkspaceDeploymentEvents(env.DB, review.workspaceId, review.deploymentId, 0, 500);
   const reviewPolicy = asRecord(payload.policy);
   const reviewFormat = asRecord(payload.format);
+  const reviewAnalysisModel = resolveReviewAnalysisModel(payload, env);
   const result = asRecord(deployment.result);
   const resultProvenance = asRecord(result.provenance);
   const resultArtifact = asRecord(result.artifact);
   const requestValidation = asRecord(deploymentRequest.validation);
-  const requestProvenance = asRecord(deploymentRequest.provenance);
+  const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
   const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
@@ -1195,80 +1353,86 @@ async function buildWorkspaceDeploymentReport(
     typeof resultArtifact.sourceBundleKey === 'string' && resultArtifact.sourceBundleKey.trim()
       ? resultArtifact.sourceBundleKey.trim()
       : deployment.sourceBundleKey ?? null;
-  try {
-    const promptGoal = provenanceTask?.prompt?.trim() || baseGoal;
-    if (reviewAgentEnabled && deploymentSourceBundleKey) {
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_analysis_agent_started',
-        payload: {
-          provider: 'cloudflare_agents_sdk',
-          model: (env.AGENT_MODEL ?? 'claude-3-7-sonnet').trim() || 'claude-3-7-sonnet',
-        },
-      });
-    }
-    if (reviewAgentEnabled && deploymentSourceBundleKey) {
-      agentAnalysis = await runWorkspaceDeploymentAgentAnalysis(env, {
-        reviewId: review.id,
-        workspaceId: review.workspaceId,
-        deploymentId: review.deploymentId,
-        deploymentSandboxId: `review-snapshot-${review.id}`,
-        sourceBundleKey: deploymentSourceBundleKey,
-        authoritativeDiffSnapshot: authoritativeDiff
-          ? {
-        source: authoritativeDiff.source,
-        artifactId: authoritativeDiff.artifactId,
-        patch: authoritativeDiff.patch,
-      }
-          : undefined,
-        goal: promptGoal,
-        constraints: baseConstraints,
-        decisions: baseDecisions.filter(Boolean),
-        intentSessionContext,
-        evidenceCatalog: analysisEvidence.map((item) => ({
-          id: item.id,
-          type: item.type,
-          label: item.label,
-          status: item.status,
-        })),
-        deploymentSummary: {
-          provider: deployment.provider,
-          deployedUrl: deployment.deployedUrl,
-          validationSummary: JSON.stringify(requestValidation),
-        },
-        rootListing: {},
-        diffSnapshot: {},
-      });
-    }
-    if (agentAnalysis) {
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_analysis_agent_completed',
-        payload: {
-          provider: agentAnalysis.provider,
-          model: agentAnalysis.model,
-          stepsExecuted: agentAnalysis.stepsExecuted,
-          findingCount: agentAnalysis.findings.length,
-        },
-      });
-    } else if (reviewAgentEnabled && !deploymentSourceBundleKey) {
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_analysis_fallback',
-        payload: {
-          message: 'Deployment snapshot unavailable; skipping agent analysis',
-        },
-      });
-    }
-  } catch (error) {
-    const message = formatReviewAnalysisError(error);
+  const promptGoal = provenanceTask?.prompt?.trim() || baseGoal;
+  if (reviewAgentEnabled && deploymentSourceBundleKey) {
     await appendReviewEvent(env.DB, {
       reviewId: review.id,
-      eventType: 'review_analysis_fallback',
+      eventType: 'review_analysis_agent_started',
       payload: {
-        message,
+        provider: 'cloudflare_agents_sdk',
+        model: reviewAnalysisModel,
       },
     });
+
+    agentAnalysis = await runWorkspaceDeploymentAgentAnalysis(env, {
+      reviewId: review.id,
+      workspaceId: review.workspaceId,
+      deploymentId: review.deploymentId,
+      deploymentSandboxId: `review-snapshot-${review.id}`,
+      sourceBundleKey: deploymentSourceBundleKey,
+      modelOverride: reviewAnalysisModel,
+      authoritativeDiffSnapshot: authoritativeDiff
+        ? {
+            source: authoritativeDiff.source,
+            artifactId: authoritativeDiff.artifactId,
+            patch: authoritativeDiff.patch,
+          }
+        : undefined,
+      goal: promptGoal,
+      constraints: baseConstraints,
+      decisions: baseDecisions.filter(Boolean),
+      intentSessionContext,
+      evidenceCatalog: analysisEvidence.map((item) => ({
+        id: item.id,
+        type: item.type,
+        label: item.label,
+        status: item.status,
+      })),
+      deploymentSummary: {
+        provider: deployment.provider,
+        deployedUrl: deployment.deployedUrl,
+        validationSummary: JSON.stringify(requestValidation),
+      },
+      reviewContext,
+      rootListing: {},
+      diffSnapshot: {},
+      onLifecycleEvent: async (eventType, eventPayload) => {
+        await appendReviewEvent(env.DB, {
+          reviewId: review.id,
+          eventType,
+          payload: eventPayload,
+        });
+      },
+    });
+
+    if (!agentAnalysis) {
+      throw new Error('Review analysis did not produce output.');
+    }
+
+    if (agentAnalysis.validation.fallbackApplied) {
+      throw new Error(
+        `Review analysis produced non-authoritative fallback output (${agentAnalysis.validation.fallbackReason ?? 'unknown'}).`
+      );
+    }
+
+    await appendReviewEvent(env.DB, {
+      reviewId: review.id,
+      eventType: 'review_analysis_agent_completed',
+      payload: {
+        provider: agentAnalysis.provider,
+        model: agentAnalysis.model,
+        stepsExecuted: agentAnalysis.stepsExecuted,
+        findingCount: agentAnalysis.findings.length,
+      },
+    });
+  }
+
+  if (reviewAgentEnabled && !deploymentSourceBundleKey) {
+    throw new Error('Deployment snapshot unavailable; review analysis cannot proceed without source bundle.');
+  }
+
+  if (reviewAgentEnabled && !agentAnalysis) {
+    throw new Error('Review analysis did not produce output.');
   }
 
   const severityFloor = REVIEW_SEVERITY_RANK[severityThreshold as ReviewSeverity] ?? REVIEW_SEVERITY_RANK.low;
@@ -1290,17 +1454,14 @@ async function buildWorkspaceDeploymentReport(
       }
     : null;
   const evidence = buildEvidence(deploymentEvents, deployment, resultArtifact, includeValidationEvidence, agentEvidence);
-  const evidenceIds = new Set(evidence.map((item) => item.id));
-  const findings = mergedFindings.map((finding) => ({
-    ...finding,
-    evidenceRefs: finding.evidenceRefs.filter((reference) => evidenceIds.has(reference)),
-  }));
+  const findings = mergedFindings;
 
   const riskLevel = deriveRiskLevel(findings, 'low');
   const recommendation = deriveRecommendation(findings);
   const summary = {
     riskLevel,
     findingCounts: {
+      info: findings.filter((finding) => finding.severity === 'info').length,
       critical: findings.filter((finding) => finding.severity === 'critical').length,
       high: findings.filter((finding) => finding.severity === 'high').length,
       medium: findings.filter((finding) => finding.severity === 'medium').length,
@@ -1323,10 +1484,36 @@ async function buildWorkspaceDeploymentReport(
     typeof requestProvenance.transcriptUrl === 'string' && requestProvenance.transcriptUrl.trim()
       ? requestProvenance.transcriptUrl.trim()
       : null;
+  const contextResolutionMode =
+    requestProvenance.contextResolution === 'branch_fallback' || requestProvenance.contextResolution === 'direct'
+      ? requestProvenance.contextResolution
+      : 'direct';
+  const contextResolutionOriginalCheckpointId =
+    typeof requestProvenance.contextResolutionOriginalCheckpointId === 'string' &&
+    requestProvenance.contextResolutionOriginalCheckpointId.trim()
+      ? requestProvenance.contextResolutionOriginalCheckpointId.trim()
+      : null;
+  const contextResolutionResolvedCheckpointId =
+    typeof requestProvenance.contextResolutionResolvedCheckpointId === 'string' &&
+    requestProvenance.contextResolutionResolvedCheckpointId.trim()
+      ? requestProvenance.contextResolutionResolvedCheckpointId.trim()
+      : null;
+  const contextResolutionResolvedCommitSha =
+    typeof requestProvenance.contextResolutionResolvedCommitSha === 'string' &&
+    requestProvenance.contextResolutionResolvedCommitSha.trim()
+      ? requestProvenance.contextResolutionResolvedCommitSha.trim()
+      : null;
+  const contextResolutionResolvedCommitMessage =
+    typeof requestProvenance.contextResolutionResolvedCommitMessage === 'string' &&
+    requestProvenance.contextResolutionResolvedCommitMessage.trim()
+      ? requestProvenance.contextResolutionResolvedCommitMessage.trim()
+      : null;
 
   const report: ReviewReport = {
     summary,
     findings,
+    summaryText: agentAnalysis?.summary,
+    furtherPassesLowYield: agentAnalysis?.furtherPassesLowYield,
     intent,
     evidence,
     provenance: includeProvenance
@@ -1344,6 +1531,36 @@ async function buildWorkspaceDeploymentReport(
             estimatedTokens: reviewContext.stats.estimatedTokens,
             tokenBudget: reviewContext.stats.tokenBudget,
           },
+          coChange: {
+            coChangeSkipped: reviewContext.retrieval.coChange.coChangeSkipped,
+            coChangeSkipReason: reviewContext.retrieval.coChange.coChangeSkipReason,
+            coChangeAvailable: reviewContext.retrieval.coChange.coChangeAvailable,
+            relatedFileCount: reviewContext.retrieval.relatedFiles.length,
+          },
+          contextResolution:
+            contextResolutionMode === 'branch_fallback' &&
+            contextResolutionOriginalCheckpointId &&
+            contextResolutionResolvedCheckpointId &&
+            contextResolutionResolvedCommitSha
+              ? {
+                  contextResolution: 'branch_fallback',
+                  originalCheckpointId: contextResolutionOriginalCheckpointId,
+                  resolvedCheckpointId: contextResolutionResolvedCheckpointId,
+                  resolvedCommitSha: contextResolutionResolvedCommitSha,
+                  resolvedCommitMessage: contextResolutionResolvedCommitMessage,
+                }
+              : undefined,
+          outputSchemaVersion: 'v2',
+          passArchitecture: 'single',
+          validation: agentAnalysis?.validation,
+          furtherPassesLowYield:
+            typeof agentAnalysis?.furtherPassesLowYield === 'boolean'
+              ? {
+                  value: agentAnalysis.furtherPassesLowYield,
+                  source: 'model-self-assessment' as const,
+                  reliability: 'weak-signal-phase2' as const,
+                }
+              : undefined,
         }
       : {
           sessionIds: [],
@@ -1400,10 +1617,10 @@ async function executeReviewRun(
       reviewId: review.id,
       eventType: 'review_finding_emitted',
       payload: {
-        findingId: finding.id,
         severity: finding.severity,
-        confidence: finding.confidence,
-        title: finding.title,
+        category: finding.category,
+        passType: finding.passType,
+        description: finding.description,
       },
     });
   }
@@ -1411,7 +1628,7 @@ async function executeReviewRun(
   return report;
 }
 
-export async function processReviewRun(env: Env, reviewId: string): Promise<void> {
+export async function processReviewRun(env: Env, reviewId: string, options?: ReviewRunExecutionOptions): Promise<void> {
   const claimed = await claimReviewRunForExecution(env.DB, reviewId);
   if (!claimed) {
     const existing = await getReviewRun(env.DB, reviewId);
@@ -1445,7 +1662,7 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
       return;
     }
 
-    const reviewContext = await assembleReviewContextBootstrap(env, review);
+    const reviewContext = await assembleReviewContextBootstrap(env, review, payload, options);
     const report = await executeReviewRun(env, review, payload, reviewContext);
     await appendReviewEvent(env.DB, {
       reviewId,
@@ -1455,11 +1672,25 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
       },
     });
     await replaceReviewFindings(env.DB, reviewId, report.findings);
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_analysis_findings_persisted',
+      payload: {
+        findingCount: report.findings.length,
+      },
+    });
     await updateReviewRunStatus(env.DB, reviewId, 'succeeded', {
       report,
       markdownSummary: report.markdownSummary,
       errorCode: null,
       errorMessage: null,
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_analysis_succeeded',
+      payload: {
+        findingCount: report.findings.length,
+      },
     });
     await appendReviewEvent(env.DB, {
       reviewId,
@@ -1470,11 +1701,12 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
       },
     });
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const message = formatReviewAnalysisError(error);
     const latest = await getReviewRun(env.DB, reviewId);
     const attemptCount = latest?.attemptCount ?? review?.attemptCount ?? 0;
 
-    if ((error instanceof QueueRetryError || transientReviewFailure(message)) && attemptCount <= REVIEW_MAX_RETRIES) {
+    const allowRetryScheduling = options?.allowRetryScheduling !== false;
+    if (allowRetryScheduling && (error instanceof QueueRetryError || transientReviewFailure(message)) && attemptCount <= REVIEW_MAX_RETRIES) {
       await replaceReviewFindings(env.DB, reviewId, []);
       await updateReviewRunStatus(env.DB, reviewId, 'queued', {
         report: null,
@@ -1526,10 +1758,15 @@ export async function processReviewRun(env: Env, reviewId: string): Promise<void
   }
 }
 
-export async function runReviewInlineWithRetries(env: Env, reviewId: string, maxCycles = 4): Promise<void> {
+export async function runReviewInlineWithRetries(
+  env: Env,
+  reviewId: string,
+  maxCycles = 4,
+  options?: ReviewRunExecutionOptions
+): Promise<void> {
   for (let cycle = 0; cycle < maxCycles; cycle += 1) {
     try {
-      await processReviewRun(env, reviewId);
+      await processReviewRun(env, reviewId, options);
     } catch {
       // Retry scheduling is inferred from persisted status.
     }
@@ -1544,6 +1781,26 @@ export async function runReviewInlineWithRetries(env: Env, reviewId: string, max
     if (latest.error?.code !== 'retry_scheduled') {
       return;
     }
+  }
+
+  const latest = await getReviewRun(env.DB, reviewId);
+  if (latest?.status === 'queued' && latest.error?.code === 'retry_scheduled') {
+    const message = `Review ${reviewId} remained queued after inline retries`;
+    await replaceReviewFindings(env.DB, reviewId, []);
+    await updateReviewRunStatus(env.DB, reviewId, 'failed', {
+      report: null,
+      markdownSummary: null,
+      errorCode: 'review_execution_failed',
+      errorMessage: message,
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_failed',
+      payload: {
+        code: 'review_execution_failed',
+        message,
+      },
+    });
   }
 }
 

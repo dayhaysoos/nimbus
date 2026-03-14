@@ -1,0 +1,17 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "./.test-dist",
+    "rootDir": "./src",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "target": "ES2020",
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false,
+    "types": ["@cloudflare/workers-types", "node"]
+  },
+  "include": ["src/index.ts", "src/index.test.ts", "src/lib/agent.ts", "src/lib/agent.test.ts", "src/lib/run-tests.ts"],
+  "exclude": ["node_modules", ".test-dist"]
+}

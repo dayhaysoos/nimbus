@@ -9,6 +9,8 @@ import {
 } from '../../lib/api.js';
 import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
+import type { WorkspaceDeploymentResponse } from '../../lib/types.js';
+import type { ReviewEntireContextResolution } from '../review/preflight.js';
 
 function buildIdempotencyKey(workspaceId: string): string {
   const seed = `${workspaceId}:${Date.now()}:${Math.random()}`;
@@ -89,6 +91,20 @@ export function setWorkspaceDeployRepositorySlugResolverForTests(
   resolveRepositorySlugForProvenanceFn = resolver ?? resolveRepositorySlugForProvenance;
 }
 
+interface WorkspaceDeployReporter {
+  message: (text: string) => void;
+  success: (text: string) => void;
+  warning: (text: string) => void;
+  error: (text: string) => void;
+}
+
+const DEFAULT_REPORTER: WorkspaceDeployReporter = {
+  message: (text) => p.log.message(text),
+  success: (text) => p.log.success(text),
+  warning: (text) => p.log.warning(text),
+  error: (text) => p.log.error(text),
+};
+
 export async function workspaceDeployCommand(
   workspaceId: string,
   options?: {
@@ -102,8 +118,11 @@ export async function workspaceDeployCommand(
     outputDir?: string;
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
+    reporter?: WorkspaceDeployReporter;
+    entireIntentContextOverride?: ReviewEntireContextResolution;
   }
-): Promise<void> {
+): Promise<WorkspaceDeploymentResponse | null> {
+  const reporter = options?.reporter ?? DEFAULT_REPORTER;
   const workerUrl = getWorkerUrl();
   if (!workerUrl) {
     throw new Error('NIMBUS_WORKER_URL environment variable is required');
@@ -154,43 +173,46 @@ export async function workspaceDeployCommand(
   const remediations = Array.isArray(preflight.preflight.remediations)
     ? preflight.preflight.remediations
     : [];
-  p.log.message('Preflight checks:');
+  reporter.message('Preflight checks:');
   for (const check of checks) {
-    p.log.message(`- ${check.code}: ${check.ok ? 'ok' : check.details ?? 'failed'}`);
+    reporter.message(`- ${check.code}: ${check.ok ? 'ok' : check.details ?? 'failed'}`);
   }
   if (toolchain) {
-    p.log.message(
+    reporter.message(
       `Toolchain: ${toolchain.manager}${toolchain.version ? '@' + toolchain.version : ''} (${toolchain.detectedFrom})`
     );
   }
   if (remediations.length > 0) {
-    p.log.message('Remediations:');
+    reporter.message('Remediations:');
     for (const remediation of remediations) {
-      p.log.message(`- ${remediation.code}: ${remediation.applied ? 'applied' : remediation.details ?? 'not applied'}`);
+      reporter.message(`- ${remediation.code}: ${remediation.applied ? 'applied' : remediation.details ?? 'not applied'}`);
     }
   }
 
   if (!preflight.preflight.ok) {
-    p.log.error('Workspace deployment preflight failed');
+    reporter.error('Workspace deployment preflight failed');
     const failedCheck = checks.find((check) => !check.ok);
     if (failedCheck?.code === 'git_baseline' && !autoFixEnabled) {
-      p.log.warning('Tip: rerun with `--auto-fix` to allow safe baseline rehydrate remediation.');
+      reporter.warning('Tip: rerun with `--auto-fix` to allow safe baseline rehydrate remediation.');
     }
     if (preflight.nextAction) {
-      p.log.warning(`Next action: ${preflight.nextAction}`);
+      reporter.warning(`Next action: ${preflight.nextAction}`);
     }
     throw new Error('Workspace deploy preflight failed');
   }
 
   if (options?.preflightOnly) {
-    p.log.success('Preflight passed (preflight-only mode)');
-    return;
+    reporter.success('Preflight passed (preflight-only mode)');
+    return null;
   }
 
   const workspace = await getWorkspace(workerUrl, workspaceId);
+  const contextOverride = options?.entireIntentContextOverride;
   let entireIntentContext;
-  if (!workspace.checkpointId) {
-    p.log.warning(
+  if (contextOverride) {
+    entireIntentContext = contextOverride.context;
+  } else if (!workspace.checkpointId) {
+    reporter.warning(
       `Workspace ${workspaceId} has no checkpoint ID; proceeding without Entire checkpoint intent context.`
     );
     entireIntentContext = {
@@ -214,7 +236,7 @@ export async function workspaceDeployCommand(
     }
   }
 
-  p.log.success('Preflight passed');
+  reporter.success('Preflight passed');
   const repositorySlug = resolveRepositorySlugForProvenanceFn();
   if (!repositorySlug) {
     throw new Error(
@@ -246,36 +268,41 @@ export async function workspaceDeployCommand(
       transcriptUrl: entireIntentContext?.transcriptUrl ?? null,
       intentSessionContext: entireIntentContext?.intentSessionContext ?? [],
       repo: repositorySlug,
+      contextResolution: contextOverride?.contextResolution,
+      contextResolutionOriginalCheckpointId: contextOverride?.originalCheckpointId,
+      contextResolutionResolvedCheckpointId: contextOverride?.resolvedCheckpointId,
+      contextResolutionResolvedCommitSha: contextOverride?.resolvedCommitSha,
+      contextResolutionResolvedCommitMessage: contextOverride?.resolvedCommitSubject,
     },
   });
 
   const deploymentId = created.deployment.id;
-  p.log.message(`Deployment queued: ${deploymentId}`);
+  reporter.message(`Deployment queued: ${deploymentId}`);
 
   while (true) {
     await sleep(pollIntervalMs);
     const current = await getWorkspaceDeployment(workerUrl, workspaceId, deploymentId);
     const status = current.deployment.status;
-    p.log.message(`Status: ${status}`);
+    reporter.message(`Status: ${status}`);
 
     if (status === 'queued' || status === 'running') {
       continue;
     }
 
     if (status === 'succeeded') {
-      p.log.success(`${current.deployment.provider === 'simulated' ? 'Deployed URL' : 'Live URL'}: ${current.deployment.deployedUrl ?? '(none)'}`);
+      reporter.success(`${current.deployment.provider === 'simulated' ? 'Deployed URL' : 'Live URL'}: ${current.deployment.deployedUrl ?? '(none)'}`);
       if (current.deployment.provider === 'simulated') {
-        p.log.message('Note: simulated provider returns a synthetic URL; no live site is published yet.');
+        reporter.message('Note: simulated provider returns a synthetic URL; no live site is published yet.');
       }
-      return;
+      return current.deployment;
     }
 
     const error = current.deployment.error;
     if (error) {
-      p.log.error(`${error.code}: ${error.message}`);
+      reporter.error(`${error.code}: ${error.message}`);
     }
     if (current.nextAction) {
-      p.log.warning(`Next action: ${current.nextAction}`);
+      reporter.warning(`Next action: ${current.nextAction}`);
     }
     throw new Error(`Workspace deployment ended in non-success status: ${status}`);
   }

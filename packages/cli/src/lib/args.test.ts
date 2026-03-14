@@ -50,6 +50,8 @@ export function runArgsParsingTests(): void {
   {
     const parsed = parseArgs([
       'review',
+      '--commit',
+      'main~1',
       '--workspace',
       'ws_abc12345',
       '--deployment',
@@ -58,6 +60,8 @@ export function runArgsParsingTests(): void {
       'medium',
       '--max-findings',
       '12',
+      '--model',
+      'sonnet-4.5',
       '--no-provenance',
       '--no-validation-evidence',
       '--format',
@@ -68,13 +72,21 @@ export function runArgsParsingTests(): void {
       'rev_abcd1234',
     ]);
     assert.equal(parsed.flags.workspace, 'ws_abc12345');
+    assert.equal(parsed.flags.commit, 'main~1');
     assert.equal(parsed.flags.deployment, 'dep_abcd1234');
     assert.equal(parsed.flags['severity-threshold'], 'medium');
     assert.equal(parsed.flags['max-findings'], '12');
+    assert.equal(parsed.flags.model, 'sonnet-4.5');
     assert.equal(parsed.flags['no-provenance'], true);
     assert.equal(parsed.flags['no-validation-evidence'], true);
     assert.equal(parsed.flags.format, 'markdown');
     assert.equal(parsed.flags.out, 'review.md');
+  }
+
+  {
+    const parsed = parseArgs(['review', 'create', '--commit']);
+    assert.equal(parsed.flags.commit, true);
+    assert.deepEqual(parsed.positional, ['create']);
   }
 
   assert.throws(

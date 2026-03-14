@@ -22,6 +22,10 @@ const LONG_VALUE_FLAGS = new Set([
   'max-findings',
   'summarize-session',
   'intent-token-budget',
+  'model',
+]);
+const OPTIONAL_VALUE_FLAGS = new Set([
+  'commit',
 ]);
 const SHORT_VALUE_FLAGS = new Set<string>();
 
@@ -73,6 +77,12 @@ export function parseArgs(args: string[]): ParsedCliArgs {
         }
 
         throw new Error(`Missing value for --${key}`);
+      } else if (OPTIONAL_VALUE_FLAGS.has(key)) {
+        if (i + 1 < args.length && !args[i + 1].startsWith('-')) {
+          appendFlagValue(flags, key, args[++i]);
+        } else {
+          appendFlagValue(flags, key, true);
+        }
       } else {
         appendFlagValue(flags, key, true);
       }

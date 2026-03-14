@@ -1,12 +1,11 @@
 import type { Sandbox } from '@cloudflare/sandbox';
 import type {
   Env,
-  ReviewConfidence,
+  ReviewAnalysisOutputV2,
+  ReviewContext,
   ReviewFinding,
-  ReviewRecommendation,
-  ReviewSeverity,
-  ReviewSuggestedFix,
 } from '../types.js';
+import { validateAndNormalizeReviewAnalysisOutputV2 } from './review-output-v2.js';
 
 const WORKSPACE_ROOT = '/workspace';
 const BUNDLE_BASE64_PATH = '/tmp/review-source.tar.gz.base64';
@@ -18,6 +17,13 @@ const DEFAULT_REVIEW_MAX_FILE_BYTES = 48_000;
 const DEFAULT_REVIEW_MAX_OUTPUT_BYTES = 96_000;
 const DEFAULT_COMMAND_TIMEOUT_MS = 30_000;
 const MAX_COMMAND_TIMEOUT_MS = 2 * 60_000;
+const PROMPT_DIFF_HUNKS_MAX_BYTES = 48_000;
+const PROMPT_CHANGED_FILES_MAX_BYTES = 80_000;
+const PROMPT_RELATED_FILES_MAX_BYTES = 36_000;
+const PROMPT_CONVENTION_FILES_MAX_BYTES = 20_000;
+const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
+const REVIEW_PROVIDER_TIMEOUT_MS = 120_000;
+const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
 
 interface SandboxClient {
   exec(
@@ -72,13 +78,22 @@ export interface ReviewAgentIntent {
 
 export interface ReviewAgentAnalysisResult {
   findings: ReviewFinding[];
-  recommendation: ReviewRecommendation;
-  riskLevel: ReviewSeverity;
+  summary: string;
+  furtherPassesLowYield: boolean;
   intent: ReviewAgentIntent | null;
   provider: string;
   model: string;
   stepsExecuted: number;
   usedTools: string[];
+  validation: {
+    firstPassValid: boolean;
+    repairAttempted: boolean;
+    repairSucceeded: boolean;
+    validationErrorCount: number;
+    dedupedExactCount: number;
+    fallbackApplied: boolean;
+    fallbackReason: string | null;
+  };
 }
 
 interface ReviewAgentPromptInput {
@@ -97,8 +112,10 @@ interface ReviewAgentPromptInput {
     deployedUrl: string | null;
     validationSummary: string;
   };
+  reviewContext: ReviewContext;
   rootListing: unknown;
   diffSnapshot: unknown;
+  onLifecycleEvent?: (eventType: string, payload: Record<string, unknown>) => Promise<void> | void;
 }
 
 interface ReviewToolContext {
@@ -136,12 +153,22 @@ function parseIntegerString(value: string | undefined, fallback: number, min: nu
   return Math.max(min, Math.min(max, parsed));
 }
 
+function readOptionalString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 function asStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function boundedJson(value: unknown, maxBytes: number): string {
+  const serialized = JSON.stringify(value);
+  const clamped = clampText(serialized, maxBytes);
+  return clamped.truncated ? `${clamped.text} [TRUNCATED]` : clamped.text;
 }
 
 function stripCodeFences(value: string): string {
@@ -160,75 +187,6 @@ function extractJsonObject(value: string): string {
   return stripped;
 }
 
-function normalizeSeverity(value: unknown, fallback: ReviewSeverity): ReviewSeverity {
-  return value === 'critical' || value === 'high' || value === 'medium' || value === 'low' ? value : fallback;
-}
-
-function normalizeConfidence(value: unknown, fallback: ReviewConfidence): ReviewConfidence {
-  return value === 'high' || value === 'medium' || value === 'low' ? value : fallback;
-}
-
-function normalizeRecommendation(value: unknown, fallback: ReviewRecommendation): ReviewRecommendation {
-  return value === 'approve' || value === 'comment' || value === 'request_changes' ? value : fallback;
-}
-
-function normalizeSuggestedFix(value: unknown): ReviewSuggestedFix | null {
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return null;
-  }
-  return {
-    kind: 'text',
-    value: trimmed,
-  };
-}
-
-function normalizeLocations(value: unknown): Array<{ path: string; line: number }> {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-  return value.flatMap((item) => {
-    const record = asRecord(item);
-    const path = typeof record.path === 'string' ? record.path.trim() : '';
-    const line = typeof record.line === 'number' && Number.isFinite(record.line) ? Math.max(1, Math.floor(record.line)) : 1;
-    return path ? [{ path, line }] : [];
-  });
-}
-
-function normalizeFindings(reviewId: string, value: unknown): ReviewFinding[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value.flatMap((item, index) => {
-    const record = asRecord(item);
-    const title = typeof record.title === 'string' ? record.title.trim() : '';
-    const description = typeof record.description === 'string' ? record.description.trim() : '';
-    if (!title || !description) {
-      return [];
-    }
-
-    const id = typeof record.id === 'string' && record.id.trim() ? record.id.trim() : `fa_${reviewId}_${String(index + 1).padStart(3, '0')}`;
-    const conditions = typeof record.conditions === 'string' && record.conditions.trim() ? record.conditions.trim() : null;
-    return [
-      {
-        id,
-        severity: normalizeSeverity(record.severity, 'low'),
-        confidence: normalizeConfidence(record.confidence, 'medium'),
-        title,
-        description,
-        conditions,
-        locations: normalizeLocations(record.locations),
-        suggestedFix: normalizeSuggestedFix(record.suggestedFix),
-        evidenceRefs: asStringArray(record.evidenceRefs),
-      },
-    ];
-  });
-}
-
 function normalizeIntent(value: unknown): ReviewAgentIntent | null {
   const record = asRecord(value);
   if (Object.keys(record).length === 0) {
@@ -243,36 +201,73 @@ function normalizeIntent(value: unknown): ReviewAgentIntent | null {
 }
 
 class ReviewAgentOutputError extends Error {
+  code: string;
+  details: Record<string, unknown> | null;
+
   constructor(message: string) {
     super(message);
     this.name = 'ReviewAgentOutputError';
+    this.code = 'review_analysis_invalid_output';
+    this.details = null;
+  }
+
+  withCode(code: string, details?: Record<string, unknown>): ReviewAgentOutputError {
+    this.code = code;
+    this.details = details ?? null;
+    return this;
   }
 }
 
-function parseFinalReport(reviewId: string, summary: string): {
-  findings: ReviewFinding[];
-  recommendation: ReviewRecommendation;
-  riskLevel: ReviewSeverity;
-  intent: ReviewAgentIntent | null;
-} {
+function parseJsonOutput(summary: string): unknown {
   try {
-    const parsed = JSON.parse(extractJsonObject(summary)) as unknown;
-    const record = asRecord(parsed);
-    const summaryBlock = asRecord(record.summary);
-    return {
-      findings: normalizeFindings(reviewId, record.findings),
-      recommendation: normalizeRecommendation(summaryBlock.recommendation, 'approve'),
-      riskLevel: normalizeSeverity(summaryBlock.riskLevel, 'low'),
-      intent: normalizeIntent(record.intent),
-    };
+    return JSON.parse(extractJsonObject(summary)) as unknown;
   } catch {
     const summaryText = stripCodeFences(summary).trim();
     throw new ReviewAgentOutputError(
       summaryText
         ? `Review agent returned malformed final output: ${summaryText.slice(0, 240)}`
         : 'Review agent returned malformed final output'
+    ).withCode('review_analysis_invalid_output');
+  }
+}
+
+function validateOutputOrThrow(payload: unknown): { output: ReviewAnalysisOutputV2; dedupedExactCount: number } {
+  const validated = validateAndNormalizeReviewAnalysisOutputV2(payload);
+  if (!validated.ok) {
+    throw new ReviewAgentOutputError('Review agent output does not match required schema').withCode(
+      'review_analysis_invalid_output',
+      {
+        errors: validated.errors,
+      }
     );
   }
+  return {
+    output: validated.value,
+    dedupedExactCount: validated.dedupedExactCount,
+  };
+}
+
+function extractValidationErrors(error: ReviewAgentOutputError | null): Array<{ path: string; message: string }> {
+  if (!error?.details || !Array.isArray(error.details.errors)) {
+    return [];
+  }
+  return error.details.errors
+    .map((item) => {
+      const record = asRecord(item);
+      const path = typeof record.path === 'string' ? record.path : '';
+      const message = typeof record.message === 'string' ? record.message : '';
+      return path && message ? { path, message } : null;
+    })
+    .filter((item): item is { path: string; message: string } => Boolean(item))
+    .slice(0, 20);
+}
+
+function buildFallbackAnalysisOutput(reason: string): ReviewAnalysisOutputV2 {
+  return {
+    findings: [],
+    summary: `Structured model output was invalid after repair (${reason}); emitted fallback empty findings output.`,
+    furtherPassesLowYield: true,
+  };
 }
 
 function isGenericProviderCompletionSummary(summary: string): boolean {
@@ -283,6 +278,10 @@ function sanitizeErrorMessage(input: string): string {
   return redactReviewText(input) ?? '';
 }
 
+function isWorkerToWorkerFetchRestriction(status: number, responseBody: string): boolean {
+  return status === 404 && /error\s*code\s*:\s*1042/i.test(responseBody);
+}
+
 function redactReviewText(value: string | null): string | null {
   if (!value) {
     return null;
@@ -290,7 +289,7 @@ function redactReviewText(value: string | null): string | null {
 
   const redacted = value
     .replace(/(authorization:\s*bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
-    .replace(/gh[spu]_[a-z0-9_]+/gi, '[REDACTED_TOKEN]')
+    .replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]')
     .replace(/((?:"|')?api[_-]?key(?:"|')?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[REDACTED]')
     .replace(/((?:"|')?token(?:"|')?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[REDACTED]');
   return redacted.length > 600 ? `${redacted.slice(0, 597)}...` : redacted;
@@ -350,33 +349,71 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
   const promptDiffSnapshot = input.authoritativeDiffSnapshot !== undefined
     ? clampAuthoritativeDiffSnapshot(input.authoritativeDiffSnapshot, 32_000)
     : undefined;
+  const context = input.reviewContext;
+
+  const changedFiles = context.retrieval.changedFiles.map((file) => ({
+    path: file.path,
+    content: file.content,
+    byteSize: file.byteSize,
+  }));
+  const relatedFiles = context.retrieval.relatedFiles.map((file) => ({
+    path: file.path,
+    content: file.content,
+    byteSize: file.byteSize,
+    coChangeFrequency: file.coChangeFrequency,
+    supportingSessionIds: file.supportingSessionIds,
+  }));
+  const conventionFiles = context.retrieval.conventionFiles.map((file) => ({
+    path: file.path,
+    content: file.content,
+    byteSize: file.byteSize,
+  }));
+
   return [
     'You are Nimbus Review, a non-mutating code review agent.',
-    'Review the deployment target and return only actionable findings that are justified by inspected code, diff context, or deployment evidence.',
+    'Analyze the provided full ReviewContext and return only actionable findings supported by code context.',
     'Never propose edits or run mutating commands. Prefer no findings over weak findings.',
     'Use only these tools when needed: list_files, read_file, diff_summary.',
     '',
     'Return your final answer as raw JSON with this shape and no surrounding prose:',
     '{',
-    '  "summary": { "riskLevel": "low|medium|high|critical", "recommendation": "approve|comment|request_changes" },',
-    '  "intent": { "goal": string|null, "constraints": string[], "decisions": string[] },',
     '  "findings": [',
     '    {',
-    '      "severity": "critical|high|medium|low",',
-    '      "confidence": "high|medium|low",',
-    '      "title": string,',
+    '      "severity": "info|low|medium|high|critical",',
+    '      "category": "security|logic|style|breaking-change",',
+    '      "passType": "single|security|logic|style|breaking-change",',
+    '      "locations": [{ "filePath": string, "startLine": number|null, "endLine": number|null }],',
     '      "description": string,',
-    '      "conditions": string|null,',
-    '      "locations": [{ "path": string, "line": number }],',
-    '      "suggestedFix": string|null,',
-    '      "evidenceRefs": string[]',
+    '      "suggestedFix": string',
     '    }',
-    '  ]',
+    '  ],',
+    '  "summary": string,',
+    '  "furtherPassesLowYield": boolean',
     '}',
     '',
+    'Critical field typing requirements:',
+    '- summary must be a plain JSON string value (not an object, array, number, or nested structure).',
+    '- furtherPassesLowYield must be exactly true or false (JSON boolean only; do not use strings like "true"/"false" and do not use null).',
+    '- Do not return summary as an object (for example with riskLevel/recommendation).',
+    '- Do not return summaryText or any alternate summary field; only return summary.',
+    '',
+    'Phase 2 constraints:',
+    '- passType must be set explicitly on every finding and be "single" in this phase.',
+    '- category must be one of security, logic, style, breaking-change.',
+    '- locations must contain at least one location; file-only location is allowed with null line values.',
+    '- findings must be self-contained and actionable without rereading the diff.',
+    '',
+    'Context weighting rules:',
+    '- Changed files are directly modified in this commit and should get highest weight.',
+    '- Related files are historical co-change context from Entire checkpoint session history and are not directly modified in this commit.',
+    '- Use related files to understand coupling/impact, but do not treat them as direct modified evidence.',
+    '',
+    `Review Context ID: ${context.id}`,
     `Review ID: ${input.reviewId}`,
     `Workspace ID: ${input.workspaceId}`,
     `Deployment ID: ${input.deploymentId}`,
+    `Checkpoint: ${context.checkpoint.checkpointId} (${context.checkpoint.branch})`,
+    `Checkpoint Session ID: ${context.checkpoint.session.sessionId}`,
     `Goal: ${input.goal}`,
     `Constraints: ${JSON.stringify(input.constraints)}`,
     `Decisions: ${JSON.stringify(input.decisions)}`,
@@ -385,13 +422,20 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
       : 'Intent session context excerpts: []',
     `Deployment summary: ${JSON.stringify(input.deploymentSummary)}`,
     `Evidence catalog: ${JSON.stringify(input.evidenceCatalog)}`,
+    '',
+    `Diff hunks (direct changes): ${boundedJson(context.retrieval.diffHunks, PROMPT_DIFF_HUNKS_MAX_BYTES)}`,
+    `Changed files (directly modified): ${boundedJson(changedFiles, PROMPT_CHANGED_FILES_MAX_BYTES)}`,
+    `Related files (historical co-change context only): ${boundedJson(relatedFiles, PROMPT_RELATED_FILES_MAX_BYTES)}`,
+    `Convention/config files: ${boundedJson(conventionFiles, PROMPT_CONVENTION_FILES_MAX_BYTES)}`,
+    `Co-change retrieval stats: ${JSON.stringify(context.retrieval.coChange)}`,
+    `Review context stats: ${JSON.stringify(context.stats)}`,
     promptDiffSnapshot !== undefined
       ? `Authoritative deployed diff snapshot: ${JSON.stringify(promptDiffSnapshot)}`
       : 'Authoritative deployed diff snapshot: unavailable',
     `Initial root listing: ${JSON.stringify(input.rootListing)}`,
     `Initial diff snapshot: ${JSON.stringify(input.diffSnapshot)}`,
     '',
-    'If you cannot justify a concrete issue, return an empty findings array and the most appropriate low-risk recommendation.',
+    'If you cannot justify a concrete issue, return an empty findings array with a concise summary.',
   ].join('\n');
 }
 
@@ -634,27 +678,65 @@ class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
     step: number;
     history: ReviewAgentHistoryEntry[];
   }): Promise<ReviewAgentAction> {
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
-      },
-      body: JSON.stringify({
-        mode: 'workspace_task',
-        prompt: input.prompt,
-        model: input.model,
-        maxSteps: input.maxSteps,
-        step: input.step,
-        history: input.history,
-      }),
+    const controller = new AbortController();
+    let timedOut = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<Response>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort('review_provider_timeout');
+        reject(new Error('review_provider_timeout'));
+      }, REVIEW_PROVIDER_TIMEOUT_MS);
     });
+    let response: Response;
+    try {
+      response = await Promise.race([
+        fetch(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            mode: 'workspace_task',
+            prompt: input.prompt,
+            model: input.model,
+            maxSteps: input.maxSteps,
+            step: input.step,
+            history: input.history,
+          }),
+          signal: controller.signal,
+        }),
+        timeoutPromise,
+      ]);
+    } catch (error) {
+      if (timedOut || (error instanceof Error && error.name === 'AbortError')) {
+        throw new Error(
+          `Review analysis provider request timed out after ${Math.floor(REVIEW_PROVIDER_TIMEOUT_MS / 1000)} seconds`
+        );
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    }
 
     if (!response.ok) {
-      if (response.status >= 500 || response.status === 429) {
-        throw new Error(`Review analysis provider temporarily unavailable (status ${response.status})`);
+      const providerErrorBody = redactReviewText(await response.text()) ?? '';
+      if (isWorkerToWorkerFetchRestriction(response.status, providerErrorBody)) {
+        throw new Error(
+          `Review analysis provider request blocked by Cloudflare Worker-to-Worker fetch restriction (error code 1042). Enable the 'global_fetch_strictly_public' compatibility flag on this worker or switch to a service binding.${providerErrorBody ? ` Provider response: ${providerErrorBody}` : ''}`
+        );
       }
-      throw new Error(`Review analysis provider request failed with status ${response.status}`);
+      if (response.status >= 500 || response.status === 429) {
+        throw new Error(
+          `Review analysis provider temporarily unavailable (status ${response.status})${providerErrorBody ? `: ${providerErrorBody}` : ''}`
+        );
+      }
+      throw new Error(
+        `Review analysis provider request failed with status ${response.status}${providerErrorBody ? `: ${providerErrorBody}` : ''}`
+      );
     }
 
     const parsed = (await response.json()) as unknown;
@@ -832,6 +914,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
   env: Env,
   input: ReviewAgentPromptInput & {
     deploymentSandboxId: string;
+    modelOverride?: string;
   }
 ): Promise<ReviewAgentAnalysisResult | null> {
   const endpoint = (env.AGENT_SDK_URL ?? '').trim();
@@ -839,8 +922,22 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     return null;
   }
 
-  const model = (env.AGENT_MODEL ?? 'claude-3-7-sonnet').trim() || 'claude-3-7-sonnet';
+  const model =
+    readOptionalString(input.modelOverride) ??
+    readOptionalString(env.REVIEW_MODEL) ??
+    readOptionalString(env.AGENT_MODEL) ??
+    DEFAULT_REVIEW_MODEL;
   const authToken = (env.AGENT_SDK_AUTH_TOKEN ?? '').trim() || null;
+  let endpointHost: string | null = null;
+  let endpointPath: string | null = null;
+  try {
+    const parsedEndpoint = new URL(endpoint);
+    endpointHost = parsedEndpoint.host;
+    endpointPath = parsedEndpoint.pathname;
+  } catch {
+    endpointHost = null;
+    endpointPath = null;
+  }
   const maxSteps = parseIntegerString(env.REVIEW_AGENT_MAX_STEPS, DEFAULT_REVIEW_AGENT_MAX_STEPS, 1, 12);
   const maxFileBytes = parseIntegerString(env.REVIEW_AGENT_MAX_FILE_BYTES, DEFAULT_REVIEW_MAX_FILE_BYTES, 1_024, 200_000);
   if (!env.WORKSPACE_ARTIFACTS && !env.SOURCE_BUNDLES) {
@@ -864,6 +961,11 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         diffSnapshot,
       })
     );
+    if (input.onLifecycleEvent) {
+      await input.onLifecycleEvent('review_analysis_prompt_built', {
+        reviewContextId: input.reviewContext.id,
+      });
+    }
 
     const provider = new CloudflareAgentSdkReviewProvider(endpoint, authToken);
     const policy: ReviewCommandPolicy = {
@@ -876,8 +978,23 @@ export async function runWorkspaceDeploymentAgentAnalysis(
 
     const history: ReviewAgentHistoryEntry[] = [];
     const usedTools: string[] = [];
-    let malformedFinalOutputError: ReviewAgentOutputError | null = null;
+    let finalValidationError: ReviewAgentOutputError | null = null;
+    let repairAttempted = false;
+    let repairSucceeded = false;
+    let firstPassValid = false;
+    let validationErrorCount = 0;
+    let dedupedExactCount = 0;
+    let fallbackApplied = false;
+    let fallbackReason: string | null = null;
     for (let step = 1; step <= maxSteps; step += 1) {
+      if (input.onLifecycleEvent) {
+        await input.onLifecycleEvent('review_analysis_provider_request_started', {
+          step,
+          endpointHost,
+          endpointPath,
+          hasAuthToken: Boolean(authToken),
+        });
+      }
       const action = await provider.next({
         prompt,
         model,
@@ -887,49 +1004,150 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       });
 
       if (action.type === 'final') {
+        if (input.onLifecycleEvent) {
+          await input.onLifecycleEvent('review_analysis_model_output_received', {
+            step,
+            repairAttempted,
+          });
+        }
         try {
-          const parsed = parseFinalReport(input.reviewId, action.summary);
+          const parsed = parseJsonOutput(action.summary);
+          const validated = validateOutputOrThrow(parsed);
+          firstPassValid = !repairAttempted;
+          repairSucceeded = repairAttempted;
+          validationErrorCount = finalValidationError?.details && Array.isArray(finalValidationError.details.errors)
+            ? finalValidationError.details.errors.length
+            : 0;
+          dedupedExactCount = validated.dedupedExactCount;
+          if (repairAttempted && input.onLifecycleEvent) {
+            await input.onLifecycleEvent('review_analysis_repair_output_received', {
+              validationErrorCount,
+              valid: true,
+            });
+          }
+          if (input.onLifecycleEvent) {
+            await input.onLifecycleEvent('review_analysis_output_validated', {
+              firstPassValid,
+              repairAttempted,
+              repairSucceeded,
+              validationErrorCount,
+              findingCount: validated.output.findings.length,
+            });
+          }
           return {
-            ...parsed,
+            findings: validated.output.findings,
+            summary: validated.output.summary,
+            furtherPassesLowYield: validated.output.furtherPassesLowYield,
+            intent: null,
             provider: 'cloudflare_agents_sdk',
             model,
             stepsExecuted: step,
             usedTools,
+            validation: {
+              firstPassValid,
+              repairAttempted,
+              repairSucceeded,
+              validationErrorCount,
+              dedupedExactCount,
+              fallbackApplied,
+              fallbackReason,
+            },
           };
         } catch (error) {
           if (error instanceof ReviewAgentOutputError && isGenericProviderCompletionSummary(action.summary)) {
-            throw new ReviewAgentOutputError(
-              'Review agent returned provider completion text instead of structured JSON; verify AGENT_SDK_URL points to the Nimbus-compatible action endpoint'
-            );
+            const wrapped = new ReviewAgentOutputError(
+              'Review agent returned provider completion text instead of structured JSON; applying schema repair/fallback path'
+            ).withCode('review_analysis_invalid_output', {
+              errors: [{ path: '$', message: 'Provider completion summary returned instead of required JSON payload.' }],
+            });
+            error = wrapped;
           }
 
-          if (error instanceof ReviewAgentOutputError && step < maxSteps) {
-            malformedFinalOutputError = error;
+          if (error instanceof ReviewAgentOutputError && !repairAttempted && step < maxSteps) {
+            finalValidationError = error;
+            repairAttempted = true;
+            const validationErrors = extractValidationErrors(error);
+            validationErrorCount = validationErrors.length;
+            if (input.onLifecycleEvent) {
+              await input.onLifecycleEvent('review_analysis_output_validation_failed', {
+                errorCode: error.code,
+                validationErrorCount,
+                validationErrors,
+              });
+              await input.onLifecycleEvent('review_analysis_repair_requested', {
+                validationErrorCount,
+              });
+            }
             history.push({
               role: 'assistant',
-              content: 'final_output_validator: returned final summary did not match required JSON schema; retrying final output',
+              content: `final_output_validator: output failed schema; return corrected JSON only. Fix exactly these validation errors: ${JSON.stringify(
+                validationErrors
+              )}. Ensure summary is a plain string and furtherPassesLowYield is a JSON boolean true|false.`,
             });
             history.push({
               role: 'tool',
               tool: 'final_output_validator',
               output: {
                 ok: false,
-                error: 'Final summary must be a raw JSON object with summary, intent, and findings fields.',
+                error: 'Output must match ReviewAnalysisOutputV2 exactly.',
                 requiredShape: {
-                  summary: {
-                    riskLevel: 'low|medium|high|critical',
-                    recommendation: 'approve|comment|request_changes',
-                  },
-                  intent: {
-                    goal: 'string|null',
-                    constraints: 'string[]',
-                    decisions: 'string[]',
-                  },
-                  findings: 'array',
+                  findings: [
+                    {
+                      severity: 'info|low|medium|high|critical',
+                      category: 'security|logic|style|breaking-change',
+                      passType: 'single|security|logic|style|breaking-change',
+                      locations: [{ filePath: 'string', startLine: 'number|null', endLine: 'number|null' }],
+                      description: 'string',
+                      suggestedFix: 'string',
+                    },
+                  ],
+                  summary: 'string',
+                  furtherPassesLowYield: 'boolean',
                 },
+                validationErrors,
               },
             });
             continue;
+          }
+
+          if (error instanceof ReviewAgentOutputError && repairAttempted) {
+            finalValidationError = error;
+            const validationErrors = extractValidationErrors(error);
+            validationErrorCount = validationErrors.length;
+            if (input.onLifecycleEvent) {
+              await input.onLifecycleEvent('review_analysis_repair_output_received', {
+                validationErrorCount,
+                valid: false,
+                validationErrors,
+              });
+              await input.onLifecycleEvent('review_analysis_output_fallback_applied', {
+                reason: 'invalid_after_repair',
+                validationErrorCount,
+                validationErrors,
+              });
+            }
+            fallbackApplied = true;
+            fallbackReason = 'invalid_after_repair';
+            const fallback = buildFallbackAnalysisOutput(fallbackReason);
+            return {
+              findings: fallback.findings,
+              summary: fallback.summary,
+              furtherPassesLowYield: fallback.furtherPassesLowYield,
+              intent: null,
+              provider: 'cloudflare_agents_sdk',
+              model,
+              stepsExecuted: step,
+              usedTools,
+              validation: {
+                firstPassValid: false,
+                repairAttempted: true,
+                repairSucceeded: false,
+                validationErrorCount,
+                dedupedExactCount,
+                fallbackApplied,
+                fallbackReason,
+              },
+            };
           }
 
           throw error;
@@ -948,8 +1166,8 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       history.push({ role: 'tool', tool: action.tool, output: sanitizeToolContext(output) });
     }
 
-    if (malformedFinalOutputError) {
-      throw malformedFinalOutputError;
+    if (finalValidationError) {
+      throw finalValidationError;
     }
     throw new Error('Review analysis exceeded maximum step count');
   } finally {

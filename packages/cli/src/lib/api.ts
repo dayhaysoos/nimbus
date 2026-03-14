@@ -14,6 +14,7 @@ import type {
   WorkspaceDeploymentGetResponse,
   WorkspaceDeploymentPreflightResponse,
   DeployReadinessResponse,
+  ReviewReadinessResponse,
 } from './types.js';
 
 /**
@@ -273,6 +274,11 @@ export async function createWorkspaceDeployment(
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
+      contextResolution?: 'direct' | 'branch_fallback';
+      contextResolutionOriginalCheckpointId?: string;
+      contextResolutionResolvedCheckpointId?: string;
+      contextResolutionResolvedCommitSha?: string;
+      contextResolutionResolvedCommitMessage?: string;
     };
   }
 ): Promise<WorkspaceDeploymentCreateResponse> {
@@ -315,6 +321,15 @@ export async function getDeployReadiness(workerUrl: string): Promise<DeployReadi
   return response.json() as Promise<DeployReadinessResponse>;
 }
 
+export async function getReviewReadiness(workerUrl: string): Promise<ReviewReadinessResponse> {
+  const response = await fetch(`${workerUrl}/api/system/review-readiness`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+  return response.json() as Promise<ReviewReadinessResponse>;
+}
+
 export async function createReview(
   workerUrl: string,
   idempotencyKey: string,
@@ -331,19 +346,35 @@ export async function createReview(
       includeProvenance?: boolean;
       includeValidationEvidence?: boolean;
     };
+    model?: string;
     provenance?: {
       note?: string | null;
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
+      commitSha?: string;
+      commitDiffPatch?: string;
+      commitDiffPatchSha256?: string;
+      commitDiffPatchTruncated?: boolean;
+      commitDiffPatchOriginalChars?: number;
+      contextResolution?: 'direct' | 'branch_fallback';
+      contextResolutionOriginalCheckpointId?: string;
+      contextResolutionResolvedCheckpointId?: string;
+      contextResolutionResolvedCommitSha?: string;
+      contextResolutionResolvedCommitMessage?: string;
     };
   }
 ): Promise<ReviewCreateResponse> {
+  const reviewGithubToken =
+    typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+      ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+      : null;
   const response = await fetch(`${workerUrl}/api/reviews`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
+      ...(reviewGithubToken ? { 'X-Review-Github-Token': reviewGithubToken } : {}),
     },
     body: JSON.stringify(payload),
   });

@@ -42,6 +42,36 @@ function statusMessage(review: ReviewResponse): string | null {
   return null;
 }
 
+function cochangeStatusMessage(review: ReviewResponse): string | null {
+  const coChange = review.provenance?.coChange;
+  if (!coChange) {
+    return null;
+  }
+  if (coChange.coChangeSkipped) {
+    const reason = coChange.coChangeSkipReason === 'missing_github_token'
+      ? 'missing GitHub token'
+      : coChange.coChangeSkipReason === 'rate_limited'
+        ? 'GitHub API rate limited'
+        : 'GitHub API unavailable';
+    return `Co-change context was skipped (${reason}). This review ran with baseline context only. Set REVIEW_CONTEXT_GITHUB_TOKEN to improve review quality.`;
+  }
+  if (coChange.coChangeAvailable) {
+    return `Co-change context included ${coChange.relatedFileCount} related file${coChange.relatedFileCount === 1 ? '' : 's'}.`;
+  }
+  return 'Co-change lookup ran successfully and found no related files.';
+}
+
+function contextResolutionMessage(review: ReviewResponse): string | null {
+  const contextResolution = review.provenance?.contextResolution;
+  if (!contextResolution || contextResolution.contextResolution !== 'branch_fallback') {
+    return null;
+  }
+  const commitLabel = contextResolution.resolvedCommitMessage?.trim()
+    ? `${contextResolution.resolvedCommitSha.slice(0, 7)} (${contextResolution.resolvedCommitMessage.trim()})`
+    : contextResolution.resolvedCommitSha.slice(0, 7);
+  return `Session context used branch fallback: checkpoint ${contextResolution.originalCheckpointId} had no readable context, so this review used checkpoint ${contextResolution.resolvedCheckpointId} from commit ${commitLabel}.`;
+}
+
 function normalizeMarkdownSummary(markdown: string | null): string {
   if (!markdown?.trim()) {
     return '';
@@ -92,32 +122,39 @@ function renderedMarkdown(markdown: string): string {
 }
 
 function findingCard(
+  keyId: string,
   finding: ReviewFinding,
   onCopyFinding: (item: ReviewFinding) => void,
   onCopyPrompt: (item: ReviewFinding) => void
 ): JSX.Element {
   return (
-    <article key={finding.id} className="card finding-card">
+    <article key={keyId} className="card finding-card">
       <header>
-        <h3>{finding.title}</h3>
+        <h3>{finding.description}</h3>
         <p className="finding-meta">
           <span>Severity: {finding.severity}</span>
-          <span>Confidence: {finding.confidence}</span>
+          <span>Category: {finding.category}</span>
+          <span>Pass: {finding.passType}</span>
         </p>
       </header>
-      <p>{finding.description}</p>
       <dl className="finding-details">
         <div>
-          <dt>Conditions</dt>
-          <dd>{finding.conditions?.trim() || 'none provided'}</dd>
-        </div>
-        <div>
           <dt>Locations</dt>
-          <dd>{finding.locations.length ? finding.locations.map((item) => `${item.path}:${item.line}`).join(', ') : 'none provided'}</dd>
+          <dd>
+            {finding.locations.length
+              ? finding.locations
+                  .map((item) =>
+                    item.startLine !== null && item.endLine !== null
+                      ? `${item.filePath}:${item.startLine}-${item.endLine}`
+                      : item.filePath
+                  )
+                  .join(', ')
+              : 'none provided'}
+          </dd>
         </div>
         <div>
           <dt>Suggested fix</dt>
-          <dd>{finding.suggestedFix?.value?.trim() || 'not provided'}</dd>
+          <dd>{finding.suggestedFix?.trim() || 'not provided'}</dd>
         </div>
       </dl>
       <div className="button-row">
@@ -256,6 +293,8 @@ export function ReportPage(): JSX.Element {
   }
 
   const statusBanner = statusMessage(review);
+  const cochangeBanner = cochangeStatusMessage(review);
+  const contextResolutionBanner = contextResolutionMessage(review);
   const markdownUnavailable = normalizedMarkdown.length === 0;
 
   return (
@@ -316,6 +355,20 @@ export function ReportPage(): JSX.Element {
         </section>
       )}
 
+      {cochangeBanner && (
+        <section className="card status-card">
+          <h2>Co-change context</h2>
+          <p>{cochangeBanner}</p>
+        </section>
+      )}
+
+      {contextResolutionBanner && (
+        <section className="card status-card">
+          <h2>Context resolution</h2>
+          <p>{contextResolutionBanner}</p>
+        </section>
+      )}
+
       <section className="section-block">
         <h2>Findings</h2>
         {review.findings.length === 0 ? (
@@ -326,6 +379,9 @@ export function ReportPage(): JSX.Element {
           <div className="stack">
             {review.findings.map((finding) =>
               findingCard(
+                `${finding.category}-${finding.passType}-${finding.severity}-${finding.description}-${finding.locations
+                  .map((location) => `${location.filePath}:${location.startLine ?? 'null'}:${location.endLine ?? 'null'}`)
+                  .join('|')}-${finding.suggestedFix}`,
                 finding,
                 (item) => {
                   void handleCopy(buildFindingText(item));

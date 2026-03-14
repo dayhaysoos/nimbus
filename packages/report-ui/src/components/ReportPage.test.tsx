@@ -15,6 +15,7 @@ const mockReview = {
     recommendation: 'comment',
     riskLevel: 'medium',
     findingCounts: {
+      info: 0,
       critical: 0,
       high: 1,
       medium: 0,
@@ -23,15 +24,12 @@ const mockReview = {
   },
   findings: [
     {
-      id: 'finding_1',
       severity: 'high',
-      confidence: 'medium',
-      title: 'Null check missing',
+      category: 'logic',
+      passType: 'single',
       description: 'A property is used without a null check.',
-      conditions: null,
-      locations: [{ path: 'src/service.ts', line: 18 }],
-      suggestedFix: null,
-      evidenceRefs: ['ev_1'],
+      locations: [{ filePath: 'src/service.ts', startLine: 18, endLine: 18 }],
+      suggestedFix: 'Add null guard before access.',
     },
   ],
   evidence: [
@@ -94,7 +92,7 @@ describe('ReportPage', () => {
       </MemoryRouter>
     );
 
-    await screen.findByText('Null check missing');
+    await screen.findByText('A property is used without a null check.');
     const user = userEvent.setup();
     const [copyFixPromptButton] = screen.getAllByRole('button', { name: 'Copy fix prompt' });
     await user.click(copyFixPromptButton);
@@ -127,5 +125,39 @@ describe('ReportPage', () => {
     await screen.findByText('Review review_123');
     expect(screen.getByRole('button', { name: 'Copy full markdown' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Download markdown' })).toBeDisabled();
+  });
+
+  it('shows co-change advisory when lookup is skipped', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            provenance: {
+              coChange: {
+                coChangeSkipped: true,
+                coChangeSkipReason: 'missing_github_token',
+                coChangeAvailable: false,
+                relatedFileCount: 0,
+              },
+            },
+          },
+        }),
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Co-change context');
+    expect(screen.getByText(/baseline context only/i)).toBeInTheDocument();
+    expect(screen.getByText(/REVIEW_CONTEXT_GITHUB_TOKEN/)).toBeInTheDocument();
   });
 });

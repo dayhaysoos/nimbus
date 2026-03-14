@@ -4,7 +4,6 @@ import type {
   JobListItem,
   JobStatus,
   JobPhase,
-  ReviewConfidence,
   ReviewFinding,
   ReviewReport,
   ReviewRunRecord,
@@ -12,7 +11,6 @@ import type {
   ReviewRunStatus,
   ReviewContext,
   ReviewContextRef,
-  ReviewSeverity,
   ReviewTargetType,
   ReviewMode,
   WorkspaceRecord,
@@ -480,6 +478,34 @@ function parseJsonOrFallback(value: string | null, fallback: unknown): unknown {
   }
 }
 
+const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
+const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
+
+function stripSensitiveTokenFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSensitiveTokenFields(item));
+  }
+  if (!value || typeof value !== 'object') {
+    if (typeof value === 'string' && GITHUB_TOKEN_PATTERN_TEST.test(value)) {
+      return value.replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]');
+    }
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).reduce<Record<string, unknown>>((result, [key, nested]) => {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === 'x-review-github-token' ||
+      normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'authorization'
+    ) {
+      return result;
+    }
+    result[key] = stripSensitiveTokenFields(nested);
+    return result;
+  }, {});
+}
+
 function toWorkspaceOperationResponse(record: WorkspaceOperationRecord): WorkspaceOperationResponse {
   const warnings = parseJsonOrFallback(record.warnings_json, []);
   const result = parseJsonOrFallback(record.result_json, undefined);
@@ -613,7 +639,90 @@ function toWorkspaceDeploymentResponse(record: WorkspaceDeploymentRecord): Works
 }
 
 function toReviewFindingRecord(value: unknown): ReviewFinding[] {
-  return Array.isArray(value) ? (value as ReviewFinding[]) : [];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  // Phase 2 contract: strict V2 query surfaces intentionally exclude legacy finding shapes.
+  // We do not attempt semantic V1->V2 conversion at read time because legacy reports were
+  // generated without full ReviewContext and are not trustworthy for canonical V2 semantics.
+  return value.flatMap((item) => {
+    const record = item && typeof item === 'object' && !Array.isArray(item) ? (item as Record<string, unknown>) : null;
+    if (!record) {
+      return [];
+    }
+
+    const severity = typeof record.severity === 'string' ? record.severity.trim() : '';
+    const category = typeof record.category === 'string' ? record.category.trim() : '';
+    const passType = typeof record.passType === 'string' ? record.passType.trim() : '';
+    const description = typeof record.description === 'string' ? record.description.trim() : '';
+    const suggestedFix = typeof record.suggestedFix === 'string' ? record.suggestedFix.trim() : '';
+    if (!severity || !category || !passType || !description) {
+      return [];
+    }
+
+    if (!['info', 'low', 'medium', 'high', 'critical'].includes(severity)) {
+      return [];
+    }
+    if (!['security', 'logic', 'style', 'breaking-change'].includes(category)) {
+      return [];
+    }
+    if (passType !== 'single') {
+      return [];
+    }
+
+    const locationsRaw = Array.isArray(record.locations) ? record.locations : [];
+    const locations = locationsRaw.flatMap((locationItem) => {
+      const location =
+        locationItem && typeof locationItem === 'object' && !Array.isArray(locationItem)
+          ? (locationItem as Record<string, unknown>)
+          : null;
+      if (!location) {
+        return [];
+      }
+
+      const filePath = typeof location.filePath === 'string' ? location.filePath.trim() : '';
+      if (!filePath) {
+        return [];
+      }
+      const startLine = location.startLine;
+      const endLine = location.endLine;
+      const nullRange = startLine === null && endLine === null;
+      const numericRange =
+        typeof startLine === 'number' &&
+        Number.isInteger(startLine) &&
+        startLine > 0 &&
+        typeof endLine === 'number' &&
+        Number.isInteger(endLine) &&
+        endLine >= startLine;
+      if (!nullRange && !numericRange) {
+        return [];
+      }
+
+      return [
+        {
+          filePath,
+          startLine: nullRange ? null : (startLine as number),
+          endLine: nullRange ? null : (endLine as number),
+        },
+      ];
+    });
+
+    if (locations.length === 0) {
+      return [];
+    }
+
+    return [
+      {
+        severity: severity as ReviewFinding['severity'],
+        category: category as ReviewFinding['category'],
+        passType: passType as ReviewFinding['passType'],
+        locations,
+        description,
+        suggestedFix,
+      },
+    ];
+  });
 }
 
 function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
@@ -667,6 +776,12 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
 
   if (report?.summary) {
     response.summary = report.summary;
+  }
+  if (typeof report?.summaryText === 'string') {
+    response.summaryText = report.summaryText;
+  }
+  if (typeof report?.furtherPassesLowYield === 'boolean') {
+    response.furtherPassesLowYield = report.furtherPassesLowYield;
   }
   if (report?.intent) {
     response.intent = report.intent;
@@ -2613,6 +2728,8 @@ export async function createReviewRun(
   }
 
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+  const sanitizedRequestPayload = stripSensitiveTokenFields(input.requestPayload ?? {});
+  const sanitizedProvenance = stripSensitiveTokenFields(input.provenance ?? {});
   const reviewRecord = await db
     .prepare(
       `INSERT INTO review_runs (
@@ -2639,9 +2756,9 @@ export async function createReviewRun(
       input.targetType,
       input.mode,
       input.idempotencyKey,
-      JSON.stringify(input.requestPayload ?? {}),
+      JSON.stringify(sanitizedRequestPayload),
       input.requestPayloadSha256,
-      JSON.stringify(input.provenance ?? {}),
+      JSON.stringify(sanitizedProvenance),
       now,
       now
     )
@@ -2847,11 +2964,11 @@ export async function updateReviewRunStatus(
   }
   if (options?.report !== undefined) {
     updates.push('report_json = ?');
-    values.push(options.report ? JSON.stringify(options.report) : null);
+    values.push(options.report ? JSON.stringify(stripSensitiveTokenFields(options.report)) : null);
   }
   if (options?.markdownSummary !== undefined) {
     updates.push('markdown_summary = ?');
-    values.push(options.markdownSummary);
+    values.push(typeof options.markdownSummary === 'string' ? (stripSensitiveTokenFields(options.markdownSummary) as string) : options.markdownSummary);
   }
   if (options?.errorCode !== undefined) {
     updates.push('error_code = ?');
@@ -2893,7 +3010,7 @@ export async function appendReviewEvent(
       `INSERT INTO review_events (review_id, seq, event_type, payload_json)
        VALUES (?, ?, ?, ?)`
     )
-    .bind(input.reviewId, seq, input.eventType, JSON.stringify(input.payload))
+    .bind(input.reviewId, seq, input.eventType, JSON.stringify(stripSensitiveTokenFields(input.payload)))
     .run();
 
   return seq;
@@ -2957,31 +3074,27 @@ export async function replaceReviewFindings(
   for (const finding of findings) {
     await db
       .prepare(
-        `INSERT INTO review_findings (
+       `INSERT INTO review_findings (
            id,
            review_id,
            severity,
-           confidence,
-           title,
+           category,
+           pass_type,
            description,
-           conditions,
            locations_json,
-           suggested_fix_json,
-           evidence_refs_json
-         )
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+           suggested_fix
+          )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
-        finding.id,
+        generatePrefixedId('rf'),
         reviewId,
         finding.severity,
-        finding.confidence,
-        finding.title,
+        finding.category,
+        finding.passType,
         finding.description,
-        finding.conditions,
         JSON.stringify(finding.locations),
-        finding.suggestedFix ? JSON.stringify(finding.suggestedFix) : null,
-        JSON.stringify(finding.evidenceRefs)
+        finding.suggestedFix
       )
       .run();
   }
@@ -3103,6 +3216,62 @@ export async function getReviewCochangeCache(
   };
 }
 
+export async function getReviewCochangeCacheBatch(
+  db: D1Database,
+  input: {
+    repo: string;
+    filePaths: string[];
+  }
+): Promise<Array<{ filePath: string; cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>; lastUpdated: string; lookbackSessions: number }>> {
+  const READ_CHUNK_SIZE = 200;
+  const uniquePaths = Array.from(new Set(input.filePaths.map((value) => value.trim()).filter(Boolean)));
+  if (uniquePaths.length === 0) {
+    return [];
+  }
+
+  const output: Array<{ filePath: string; cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>; lastUpdated: string; lookbackSessions: number }> = [];
+
+  for (let index = 0; index < uniquePaths.length; index += READ_CHUNK_SIZE) {
+    const chunk = uniquePaths.slice(index, index + READ_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const records = await db
+      .prepare(
+        `SELECT file_path, cochange_json, last_updated, lookback_sessions
+         FROM review_cochange_cache
+         WHERE repo = ? AND file_path IN (${placeholders})`
+      )
+      .bind(input.repo, ...chunk)
+      .all<{ file_path: string; cochange_json: string; last_updated: string; lookback_sessions: number }>();
+
+    const rows = Array.isArray(records.results) ? records.results : [];
+    output.push(
+      ...rows.map((record) => {
+        let cochange: Array<{ path: string; frequency: number; sessionIds: string[] }> = [];
+        try {
+          const parsed = JSON.parse(record.cochange_json) as unknown;
+          if (Array.isArray(parsed)) {
+            cochange = parsed.filter((item): item is { path: string; frequency: number; sessionIds: string[] } => {
+              const entry = item as Record<string, unknown>;
+              return typeof entry.path === 'string' && typeof entry.frequency === 'number' && Array.isArray(entry.sessionIds);
+            });
+          }
+        } catch {
+          cochange = [];
+        }
+
+        return {
+          filePath: record.file_path,
+          cochange,
+          lastUpdated: record.last_updated,
+          lookbackSessions: Number(record.lookback_sessions),
+        };
+      })
+    );
+  }
+
+  return output;
+}
+
 export async function upsertReviewCochangeCache(
   db: D1Database,
   input: {
@@ -3134,6 +3303,52 @@ export async function upsertReviewCochangeCache(
       lastUpdated
     )
     .run();
+}
+
+export async function upsertReviewCochangeCacheBatch(
+  db: D1Database,
+  input: Array<{
+    filePath: string;
+    repo: string;
+    branch: string;
+    cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>;
+    lookbackSessions: number;
+    lastUpdated?: string;
+  }>
+): Promise<void> {
+  const WRITE_CHUNK_SIZE = 100;
+  if (input.length === 0) {
+    return;
+  }
+
+  for (let index = 0; index < input.length; index += WRITE_CHUNK_SIZE) {
+    const chunk = input.slice(index, index + WRITE_CHUNK_SIZE);
+    const valuesSql = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+    const bindings: Array<string | number> = [];
+    for (const entry of chunk) {
+      bindings.push(
+        entry.filePath,
+        entry.repo,
+        entry.branch,
+        JSON.stringify(entry.cochange),
+        entry.lookbackSessions,
+        entry.lastUpdated ?? new Date().toISOString()
+      );
+    }
+
+    await db
+      .prepare(
+        `INSERT INTO review_cochange_cache (file_path, repo, branch, cochange_json, lookback_sessions, last_updated)
+         VALUES ${valuesSql}
+         ON CONFLICT(file_path, repo) DO UPDATE SET
+           branch = excluded.branch,
+           cochange_json = excluded.cochange_json,
+           lookback_sessions = excluded.lookback_sessions,
+           last_updated = excluded.last_updated`
+      )
+      .bind(...bindings)
+      .run();
+  }
 }
 
 export async function getLatestSuccessfulWorkspaceDeployment(

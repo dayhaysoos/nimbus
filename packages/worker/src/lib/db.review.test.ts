@@ -418,6 +418,98 @@ export async function runReviewDbTests(): Promise<void> {
   }
 
   {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_runs WHERE id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'rev_phase2_contract',
+                    workspace_id: 'ws_abc12345',
+                    deployment_id: 'dep_abcd1234',
+                    target_type: 'workspace_deployment',
+                    mode: 'report_only',
+                    status: 'succeeded',
+                    idempotency_key: 'idem-review',
+                    request_payload_json: '{}',
+                    request_payload_sha256: 'hash',
+                    provenance_json: '{}',
+                    last_event_seq: 0,
+                    attempt_count: 1,
+                    started_at: '2026-03-11T00:00:00.000Z',
+                    finished_at: '2026-03-11T00:01:00.000Z',
+                    report_json: JSON.stringify({
+                      summary: {
+                        riskLevel: 'low',
+                        findingCounts: { info: 0, critical: 0, high: 0, medium: 0, low: 0 },
+                        recommendation: 'approve',
+                      },
+                      findings: [
+                        {
+                          severity: 'high',
+                          confidence: 'medium',
+                          title: 'Legacy finding shape',
+                          description: 'legacy payload',
+                          conditions: null,
+                          locations: [{ path: 'src/legacy.ts', line: 12 }],
+                          suggestedFix: null,
+                          evidenceRefs: [],
+                        },
+                        {
+                          severity: 'medium',
+                          category: 'logic',
+                          passType: 'single',
+                          locations: [{ filePath: 'src/new.ts', startLine: 3, endLine: 4 }],
+                          description: 'Valid v2 finding',
+                          suggestedFix: '',
+                        },
+                      ],
+                      summaryText: 'Model summary text',
+                      furtherPassesLowYield: true,
+                      intent: { goal: null, constraints: [], decisions: [] },
+                      evidence: [],
+                      provenance: { sessionIds: [], promptSummary: null, transcriptUrl: null },
+                      markdownSummary: null,
+                    }),
+                    markdown_summary: null,
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:01:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const review = await getReviewRun(db, 'rev_phase2_contract');
+    assert.ok(review);
+    // Intentional Phase 2 behavior: strict V2 surfaces exclude legacy finding shapes.
+    assert.equal(review?.findings.length, 1);
+    assert.equal(review?.findings[0]?.description, 'Valid v2 finding');
+    assert.equal(review?.summaryText, 'Model summary text');
+    assert.equal(review?.furtherPassesLowYield, true);
+  }
+
+  {
     const statements: string[] = [];
     const db = {
       prepare(sql: string) {

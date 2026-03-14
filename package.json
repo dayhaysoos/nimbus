@@ -11,6 +11,7 @@
     "dev:report-ui": "pnpm --filter @dayhaysoos/nimbus-report-ui dev",
     "build": "pnpm -r build",
     "build:report-ui": "pnpm --filter @dayhaysoos/nimbus-report-ui build",
+    "deploy:agent-endpoint": "pnpm --filter @dayhaysoos/nimbus-agent-endpoint deploy",
     "deploy": "pnpm --filter @dayhaysoos/nimbus-worker deploy",
     "setup:worker": "node ./scripts/setup-worker.mjs",
     "test:cloudflare-contract": "node ./scripts/test-cloudflare-contract.mjs",

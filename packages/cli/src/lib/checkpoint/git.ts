@@ -104,6 +104,10 @@ export class GitRepo {
     return this.run(['show', '-s', '--format=%B', sha]);
   }
 
+  getCommitPatch(sha: string): string {
+    return this.run(['show', '--format=', '--no-ext-diff', '--unified=3', sha]);
+  }
+
   listCommits(ref: string): CommitHistoryEntry[] {
     const output = this.run(['log', '--format=%H%x1f%B%x1e', ref]);
     return parseGitLogOutput(output);

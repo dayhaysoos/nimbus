@@ -29,10 +29,11 @@ import { catWorkspaceFileCommand } from './commands/workspace/cat.js';
 import { workspaceDiffCommand } from './commands/workspace/diff.js';
 import { workspaceDeployCommand } from './commands/workspace/deploy.js';
 import { doctorCommand } from './commands/doctor.js';
-import { createReviewCommand } from './commands/review/create.js';
+import { createReviewCommand, createReviewFromCommitCommand } from './commands/review/create.js';
 import { reviewEventsCommand } from './commands/review/events.js';
 import { showReviewCommand } from './commands/review/show.js';
 import { exportReviewCommand } from './commands/review/export.js';
+import { reviewPreflightCommand } from './commands/review/preflight.js';
 import { parseArgs } from './lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
 
@@ -106,10 +107,14 @@ Commands:
                        Show workspace diff summary (use --include-patch for patch)
   workspace deploy <workspace-id>
                        Run deploy preflight, queue deploy, and poll status
+  review create --commit [commit-ish]
+                        Create workspace+deployment+review and block until review completion
   review create --workspace <id> --deployment <id>
-                      Create a report-only review run for a deployment
+                       Create a report-only review run for an existing deployment
+  review preflight [commit-ish]
+                       Validate Entire checkpoint/session metadata for review create
   review show <review-id>
-                      Show review status and summary
+                       Show review status and summary
   review events <review-id>
                       Stream review lifecycle events
   review export <review-id>
@@ -143,9 +148,11 @@ Options:
                       Token budget for Entire intent context capture (default: 1200)
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
+  --commit [value]    Commit-ish for one-command review flow (default: HEAD)
   --severity-threshold <level>
                       Review finding floor (low|medium|high|critical)
   --max-findings <n>  Maximum findings to include in report
+  --model <name>      Review analysis model override for this run
   --no-provenance     Suppress provenance summary in report output
   --no-validation-evidence
                       Suppress validation/deploy evidence in report output
@@ -168,8 +175,14 @@ Examples:
   nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123 --auto-fix
   nimbus workspace deploy ws_abc12345 --preflight-only
   nimbus workspace deploy ws_abc12345 --tests --build
+  nimbus review create --commit HEAD
+  nimbus review create --commit main~1
+  nimbus review create --commit HEAD --project-root apps/web
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
+  nimbus review create --commit HEAD --model sonnet-4.5
+  nimbus review preflight
+  nimbus review preflight HEAD~2
   nimbus review show rev_abcd1234
   nimbus review events rev_abcd1234
   nimbus review export rev_abcd1234 --format markdown --out review.md
@@ -376,21 +389,56 @@ async function main(): Promise<void> {
         if (reviewAction === 'create') {
           const workspaceFlag = flags.workspace;
           const deploymentFlag = flags.deployment;
+          const commitFlag = flags.commit;
           const workspaceId = typeof workspaceFlag === 'string' ? workspaceFlag : undefined;
           const deploymentId = typeof deploymentFlag === 'string' ? deploymentFlag : undefined;
-          if (!workspaceId || !deploymentId) {
-            p.log.error('Usage: nimbus review create --workspace <workspace-id> --deployment <deployment-id>');
+          const idempotencyKeyFlag = flags['idempotency-key'];
+          const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
+          const modelFlag = flags.model;
+          const model = typeof modelFlag === 'string' && modelFlag.trim() ? modelFlag.trim() : undefined;
+          const projectRootFlag = flags['project-root'];
+          const projectRoot = typeof projectRootFlag === 'string' && projectRootFlag.trim() ? projectRootFlag.trim() : undefined;
+          const severityThreshold = parseReviewSeverityThreshold(flags['severity-threshold']);
+          const maxFindings = parseReviewMaxFindings(flags['max-findings']);
+          const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;
+          const hasWorkspaceInputs = Boolean(workspaceId || deploymentId);
+          const unexpectedPositional = positional[1];
+
+          if (typeof unexpectedPositional === 'string' && unexpectedPositional.trim()) {
+            p.log.error('Usage error: review create does not accept positional arguments. Use --commit or --workspace/--deployment flags.');
             process.exit(1);
           }
 
-          const idempotencyKeyFlag = flags['idempotency-key'];
-          const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
-          const severityThreshold = parseReviewSeverityThreshold(flags['severity-threshold']);
-          const maxFindings = parseReviewMaxFindings(flags['max-findings']);
+          if (commitModeRequested && hasWorkspaceInputs) {
+            p.log.error('Usage error: --commit cannot be combined with --workspace/--deployment. Choose one review create mode.');
+            process.exit(1);
+          }
+
+          if (commitModeRequested || (!workspaceId && !deploymentId)) {
+            await createReviewFromCommitCommand({
+              commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',
+              projectRoot,
+              idempotencyKey,
+              severityThreshold,
+              maxFindings,
+              model,
+              includeProvenance: !Boolean(flags['no-provenance']),
+              includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
+              pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),
+            });
+            break;
+          }
+
+          if (!workspaceId || !deploymentId) {
+            p.log.error('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id>');
+            process.exit(1);
+          }
+
           await createReviewCommand(workspaceId, deploymentId, {
             idempotencyKey,
             severityThreshold,
             maxFindings,
+            model,
             includeProvenance: !Boolean(flags['no-provenance']),
             includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
           });
@@ -405,6 +453,24 @@ async function main(): Promise<void> {
           }
 
           await showReviewCommand(reviewId);
+          break;
+        }
+
+        if (reviewAction === 'preflight') {
+          const commitishArg = positional[1];
+          await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {
+            summarizeSession: (() => {
+              const summarizeSessionFlag = flags['summarize-session'];
+              if (typeof summarizeSessionFlag !== 'string') {
+                return undefined;
+              }
+              if (summarizeSessionFlag === 'auto' || summarizeSessionFlag === 'always' || summarizeSessionFlag === 'never') {
+                return summarizeSessionFlag;
+              }
+              throw new Error('Invalid --summarize-session value. Use auto, always, or never.');
+            })(),
+            intentTokenBudget: parsePositiveIntegerFlag(flags['intent-token-budget']),
+          });
           break;
         }
 
@@ -438,7 +504,7 @@ async function main(): Promise<void> {
           break;
         }
 
-        p.log.error('Unknown review command. Use: create, show, events, export');
+        p.log.error('Unknown review command. Use: create, preflight, show, events, export');
         process.exit(1);
       }
 

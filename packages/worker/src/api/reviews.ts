@@ -1,4 +1,4 @@
-import type { Env } from '../types.js';
+import type { Env, ReviewRunStatus } from '../types.js';
 import {
   ReviewIdempotencyConflictError,
   appendReviewEvent,
@@ -17,12 +17,15 @@ import { runReviewInlineWithRetries } from '../lib/review-runner.js';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token',
 };
 
-const REVIEW_STREAM_POLL_INTERVAL_MS = 50;
+// Keep review SSE polling at 1s to stay within Cloudflare per-invocation API request
+// limits. Sub-second polling (50ms) can exhaust subrequests on reviews lasting ~25s+.
+const REVIEW_STREAM_POLL_INTERVAL_MS = 1000;
 const REVIEW_STREAM_HEARTBEAT_INTERVAL_MS = 1000;
 const REVIEW_TERMINAL_EVENT_GRACE_MS = 1000;
+const REVIEW_STREAM_STATUS_REFRESH_POLLS = 5;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -65,6 +68,33 @@ function isSeverityThreshold(value: unknown): value is 'low' | 'medium' | 'high'
   return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
 }
 
+function readReviewGithubTokenHeader(request: Request): string | null {
+  const value = request.headers.get('X-Review-Github-Token');
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function stripSensitiveTokenFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSensitiveTokenFields(item));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).reduce<Record<string, unknown>>((result, [key, nested]) => {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === 'x-review-github-token' ||
+      normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'authorization'
+    ) {
+      return result;
+    }
+    result[key] = stripSensitiveTokenFields(nested);
+    return result;
+  }, {});
+}
+
 function withSortedKeys(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => withSortedKeys(item));
@@ -87,7 +117,69 @@ function buildReviewRequestPayload(input: {
   deploymentId: string;
   policy: Record<string, unknown>;
   format: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+  model: string | undefined;
 }) {
+  const note = typeof input.provenance.note === 'string' && input.provenance.note.trim()
+    ? input.provenance.note.trim()
+    : null;
+  const transcriptUrl = typeof input.provenance.transcriptUrl === 'string' && input.provenance.transcriptUrl.trim()
+    ? input.provenance.transcriptUrl.trim()
+    : null;
+  const sessionIds = Array.isArray(input.provenance.sessionIds)
+    ? Array.from(new Set(input.provenance.sessionIds.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)))
+    : [];
+  const intentSessionContext = Array.isArray(input.provenance.intentSessionContext)
+    ? Array.from(
+        new Set(
+          input.provenance.intentSessionContext
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      )
+    : [];
+  const commitSha = typeof input.provenance.commitSha === 'string' && input.provenance.commitSha.trim()
+    ? input.provenance.commitSha.trim()
+    : undefined;
+  const commitDiffPatch = typeof input.provenance.commitDiffPatch === 'string' && input.provenance.commitDiffPatch.trim()
+    ? input.provenance.commitDiffPatch
+    : undefined;
+  const commitDiffPatchSha256 =
+    typeof input.provenance.commitDiffPatchSha256 === 'string' && input.provenance.commitDiffPatchSha256.trim()
+      ? input.provenance.commitDiffPatchSha256.trim()
+      : undefined;
+  const commitDiffPatchTruncated = input.provenance.commitDiffPatchTruncated === true;
+  const commitDiffPatchOriginalChars =
+    typeof input.provenance.commitDiffPatchOriginalChars === 'number' && Number.isFinite(input.provenance.commitDiffPatchOriginalChars)
+      ? Math.max(0, Math.floor(input.provenance.commitDiffPatchOriginalChars))
+      : undefined;
+  const contextResolution =
+    input.provenance.contextResolution === 'branch_fallback' || input.provenance.contextResolution === 'direct'
+      ? input.provenance.contextResolution
+      : undefined;
+  const contextResolutionOriginalCheckpointId =
+    typeof input.provenance.contextResolutionOriginalCheckpointId === 'string' &&
+    input.provenance.contextResolutionOriginalCheckpointId.trim()
+      ? input.provenance.contextResolutionOriginalCheckpointId.trim()
+      : undefined;
+  const contextResolutionResolvedCheckpointId =
+    typeof input.provenance.contextResolutionResolvedCheckpointId === 'string' &&
+    input.provenance.contextResolutionResolvedCheckpointId.trim()
+      ? input.provenance.contextResolutionResolvedCheckpointId.trim()
+      : undefined;
+  const contextResolutionResolvedCommitSha =
+    typeof input.provenance.contextResolutionResolvedCommitSha === 'string' &&
+    input.provenance.contextResolutionResolvedCommitSha.trim()
+      ? input.provenance.contextResolutionResolvedCommitSha.trim()
+      : undefined;
+  const contextResolutionResolvedCommitMessage =
+    typeof input.provenance.contextResolutionResolvedCommitMessage === 'string' &&
+    input.provenance.contextResolutionResolvedCommitMessage.trim()
+      ? input.provenance.contextResolutionResolvedCommitMessage.trim()
+      : undefined;
+  const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
+
   const normalized = {
     target: {
       type: 'workspace_deployment' as const,
@@ -112,7 +204,22 @@ function buildReviewRequestPayload(input: {
     },
     provenance: {
       trigger: 'api',
+      ...(note ? { note } : {}),
+      ...(transcriptUrl ? { transcriptUrl } : {}),
+      ...(sessionIds.length > 0 ? { sessionIds } : {}),
+      ...(intentSessionContext.length > 0 ? { intentSessionContext } : {}),
+      ...(commitSha ? { commitSha } : {}),
+      ...(commitDiffPatch ? { commitDiffPatch } : {}),
+      ...(commitDiffPatchSha256 ? { commitDiffPatchSha256 } : {}),
+      ...(commitDiffPatchTruncated ? { commitDiffPatchTruncated } : {}),
+      ...(typeof commitDiffPatchOriginalChars === 'number' ? { commitDiffPatchOriginalChars } : {}),
+      ...(contextResolution ? { contextResolution } : {}),
+      ...(contextResolutionOriginalCheckpointId ? { contextResolutionOriginalCheckpointId } : {}),
+      ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),
+      ...(contextResolutionResolvedCommitSha ? { contextResolutionResolvedCommitSha } : {}),
+      ...(contextResolutionResolvedCommitMessage ? { contextResolutionResolvedCommitMessage } : {}),
     },
+    ...(model ? { model } : {}),
   };
 
   const idempotencyPayload: Record<string, unknown> = {
@@ -157,6 +264,9 @@ function buildReviewRequestPayload(input: {
       includeMarkdownSummary: normalized.format.includeMarkdownSummary,
     };
   }
+  if (normalized.model) {
+    idempotencyPayload.model = normalized.model;
+  }
 
   return {
     requestPayload: normalized,
@@ -198,6 +308,78 @@ function buildLegacyReviewRequestPayload(input: {
   };
 }
 
+function hasExtendedReviewIdempotencyInputs(input: {
+  provenance: Record<string, unknown>;
+  model: string | undefined;
+}): boolean {
+  if (typeof input.model === 'string' && input.model.trim()) {
+    return true;
+  }
+  const provenance = input.provenance;
+  if (typeof provenance.note === 'string' && provenance.note.trim()) {
+    return true;
+  }
+  if (typeof provenance.transcriptUrl === 'string' && provenance.transcriptUrl.trim()) {
+    return true;
+  }
+  if (typeof provenance.commitSha === 'string' && provenance.commitSha.trim()) {
+    return true;
+  }
+  if (typeof provenance.commitDiffPatch === 'string' && provenance.commitDiffPatch.trim()) {
+    return true;
+  }
+  if (typeof provenance.commitDiffPatchSha256 === 'string' && provenance.commitDiffPatchSha256.trim()) {
+    return true;
+  }
+  if (provenance.commitDiffPatchTruncated === true) {
+    return true;
+  }
+  if (
+    typeof provenance.commitDiffPatchOriginalChars === 'number' &&
+    Number.isFinite(provenance.commitDiffPatchOriginalChars) &&
+    provenance.commitDiffPatchOriginalChars > 0
+  ) {
+    return true;
+  }
+  if (provenance.contextResolution === 'branch_fallback' || provenance.contextResolution === 'direct') {
+    return true;
+  }
+  if (
+    typeof provenance.contextResolutionOriginalCheckpointId === 'string' &&
+    provenance.contextResolutionOriginalCheckpointId.trim()
+  ) {
+    return true;
+  }
+  if (
+    typeof provenance.contextResolutionResolvedCheckpointId === 'string' &&
+    provenance.contextResolutionResolvedCheckpointId.trim()
+  ) {
+    return true;
+  }
+  if (
+    typeof provenance.contextResolutionResolvedCommitSha === 'string' &&
+    provenance.contextResolutionResolvedCommitSha.trim()
+  ) {
+    return true;
+  }
+  if (
+    typeof provenance.contextResolutionResolvedCommitMessage === 'string' &&
+    provenance.contextResolutionResolvedCommitMessage.trim()
+  ) {
+    return true;
+  }
+  if (Array.isArray(provenance.sessionIds) && provenance.sessionIds.some((item) => typeof item === 'string' && item.trim())) {
+    return true;
+  }
+  if (
+    Array.isArray(provenance.intentSessionContext) &&
+    provenance.intentSessionContext.some((item) => typeof item === 'string' && item.trim())
+  ) {
+    return true;
+  }
+  return false;
+}
+
 async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest))
@@ -220,6 +402,16 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
     const idempotencyKey = (request.headers.get('Idempotency-Key') ?? '').trim();
     if (!idempotencyKey) {
       return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);
+    }
+    const reviewGithubToken = readReviewGithubTokenHeader(request);
+    const workerGithubToken = typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+      ? env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+      : null;
+    if (!reviewGithubToken && !workerGithubToken) {
+      return jsonResponse(
+        { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
+        400
+      );
     }
 
     const payloadRaw = await request.text();
@@ -265,6 +457,11 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
 
     const policy = isRecord(payload.policy) ? payload.policy : {};
     const format = isRecord(payload.format) ? payload.format : {};
+    const provenance = isRecord(payload.provenance) ? payload.provenance : {};
+    if (payload.model !== undefined && (typeof payload.model !== 'string' || !payload.model.trim())) {
+      return jsonResponse({ error: 'model must be a non-empty string when provided' }, 400);
+    }
+    const model = typeof payload.model === 'string' ? payload.model.trim() : undefined;
     const severityThresholdValue =
       typeof policy.severityThreshold === 'string' ? policy.severityThreshold.trim() : policy.severityThreshold;
     if (severityThresholdValue !== undefined && !isSeverityThreshold(severityThresholdValue)) {
@@ -282,13 +479,21 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       deploymentId,
       policy,
       format,
+      provenance,
+      model,
     });
+    const sanitizedRequestPayload = stripSensitiveTokenFields(requestPayload) as Record<string, unknown>;
 
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));
-    const legacyRequestPayloadSha256 = await sha256Hex(
-      JSON.stringify(buildLegacyReviewRequestPayload({ workspaceId, deploymentId, policy, format }))
-    );
-    const requestPayloadSha256Aliases = legacyRequestPayloadSha256 === requestPayloadSha256 ? [] : [legacyRequestPayloadSha256];
+    const requestPayloadSha256Aliases: string[] = [];
+    if (!hasExtendedReviewIdempotencyInputs({ provenance, model })) {
+      const legacyRequestPayloadSha256 = await sha256Hex(
+        JSON.stringify(buildLegacyReviewRequestPayload({ workspaceId, deploymentId, policy, format }))
+      );
+      if (legacyRequestPayloadSha256 !== requestPayloadSha256) {
+        requestPayloadSha256Aliases.push(legacyRequestPayloadSha256);
+      }
+    }
     const existingReview = await getReviewRunByIdempotency(
       env.DB,
       workspaceId,
@@ -304,7 +509,15 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
         const shouldReenqueueRecoveredReview =
           created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
         if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-          if (env.REVIEWS_QUEUE) {
+          if (env.REVIEWS_QUEUE && workerGithubToken) {
+            await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
+          } else if (reviewGithubToken && ctx) {
+            ctx.waitUntil(
+              runReviewInlineWithRetries(env, created.review.id, 4, {
+                cochangeGithubToken: reviewGithubToken,
+              })
+            );
+          } else if (env.REVIEWS_QUEUE) {
             await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
           } else if (ctx) {
             ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
@@ -314,7 +527,14 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
             reviewId: created.review.id,
             eventType: 'review_enqueued',
             payload: {
-              mode: env.REVIEWS_QUEUE ? 'queue' : 'inline',
+              mode:
+                env.REVIEWS_QUEUE && workerGithubToken
+                  ? 'queue'
+                  : reviewGithubToken && ctx
+                    ? 'inline'
+                    : env.REVIEWS_QUEUE
+                      ? 'queue'
+                      : 'inline',
               reused: created.reused,
               recovered: shouldReenqueueRecoveredReview,
             },
@@ -359,7 +579,7 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       targetType: 'workspace_deployment',
       mode: 'report_only',
       idempotencyKey,
-      requestPayload,
+      requestPayload: sanitizedRequestPayload,
       requestPayloadSha256,
       requestPayloadSha256Aliases,
       provenance: {
@@ -384,7 +604,15 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       const shouldReenqueueRecoveredReview =
         created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
       if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-        if (env.REVIEWS_QUEUE) {
+        if (env.REVIEWS_QUEUE && workerGithubToken) {
+          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
+        } else if (reviewGithubToken && ctx) {
+          ctx.waitUntil(
+            runReviewInlineWithRetries(env, created.review.id, 4, {
+              cochangeGithubToken: reviewGithubToken,
+            })
+          );
+        } else if (env.REVIEWS_QUEUE) {
           await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
         } else if (ctx) {
           ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
@@ -394,7 +622,14 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
           reviewId: created.review.id,
           eventType: 'review_enqueued',
           payload: {
-            mode: env.REVIEWS_QUEUE ? 'queue' : 'inline',
+            mode:
+              env.REVIEWS_QUEUE && workerGithubToken
+                ? 'queue'
+                : reviewGithubToken && ctx
+                  ? 'inline'
+                  : env.REVIEWS_QUEUE
+                    ? 'queue'
+                    : 'inline',
             reused: created.reused,
             recovered: shouldReenqueueRecoveredReview,
           },
@@ -457,9 +692,23 @@ export async function handleGetReviewEvents(reviewId: string, request: Request, 
           let lastHeartbeatAt = Date.now();
           let sawTerminalEvent = false;
           let terminalGraceDeadline: number | null = null;
+          let pollCount = 0;
 
           const isTerminalEventType = (eventType: string): boolean => {
             return eventType === 'review_succeeded' || eventType === 'review_failed' || eventType === 'review_cancelled';
+          };
+
+          const statusFromTerminalEventType = (eventType: string): ReviewRunStatus | null => {
+            if (eventType === 'review_succeeded') {
+              return 'succeeded';
+            }
+            if (eventType === 'review_failed') {
+              return 'failed';
+            }
+            if (eventType === 'review_cancelled') {
+              return 'cancelled';
+            }
+            return null;
           };
 
           const write = (chunk: string): void => {
@@ -472,6 +721,7 @@ export async function handleGetReviewEvents(reviewId: string, request: Request, 
               cursor = item.seq;
               if (isTerminalEventType(item.eventType)) {
                 sawTerminalEvent = true;
+                currentStatus = statusFromTerminalEventType(item.eventType) ?? currentStatus;
               }
               write(
                 formatSseDataWithId(item.seq, {
@@ -496,21 +746,24 @@ export async function handleGetReviewEvents(reviewId: string, request: Request, 
 
           while (currentStatus === 'queued' || currentStatus === 'running') {
             await sleep(REVIEW_STREAM_POLL_INTERVAL_MS);
+            pollCount += 1;
             await writePersistedEvents();
 
-            const latest = await getReviewRun(env.DB, reviewId);
-            if (!latest) {
-              write(
-                formatSseData({
-                  type: 'error',
-                  reviewId,
-                  message: 'Review not found during event stream',
-                })
-              );
-              break;
+            if (pollCount % REVIEW_STREAM_STATUS_REFRESH_POLLS === 0) {
+              const latest = await getReviewRun(env.DB, reviewId);
+              if (!latest) {
+                write(
+                  formatSseData({
+                    type: 'error',
+                    reviewId,
+                    message: 'Review not found during event stream',
+                  })
+                );
+                break;
+              }
+              currentStatus = latest.status;
             }
 
-            currentStatus = latest.status;
             if (currentStatus !== 'queued' && currentStatus !== 'running' && terminalGraceDeadline === null) {
               terminalGraceDeadline = Date.now() + REVIEW_TERMINAL_EVENT_GRACE_MS;
             }

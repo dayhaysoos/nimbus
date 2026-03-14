@@ -3,30 +3,25 @@ import { buildFixPrompt, buildFindingText, findingCount } from './review';
 import type { ReviewFinding, ReviewResponse } from '../types';
 
 const finding: ReviewFinding = {
-  id: 'finding_1',
-  title: 'Missing input validation',
+  category: 'logic',
+  passType: 'single',
   severity: 'high',
-  confidence: 'medium',
   description: 'User input is written to SQL query directly.',
-  conditions: null,
-  locations: [{ path: 'src/db.ts', line: 42 }],
-  suggestedFix: null,
-  evidenceRefs: [],
+  locations: [{ filePath: 'src/db.ts', startLine: 42, endLine: 42 }],
+  suggestedFix: '',
 };
 
 describe('review prompt builders', () => {
   it('builds fix prompt with fallback fields', () => {
     const prompt = buildFixPrompt(finding);
 
-    expect(prompt).toContain('Finding title: Missing input validation');
-    expect(prompt).toContain('Conditions:\nnone provided');
+    expect(prompt).toContain('Category: logic');
     expect(prompt).toContain('Suggested fix:\nnot provided');
-    expect(prompt).toContain('Evidence refs:\nnone provided');
   });
 
   it('builds finding text with location list', () => {
     const text = buildFindingText(finding);
-    expect(text).toContain('Locations:\nsrc/db.ts:42');
+    expect(text).toContain('Locations:\nsrc/db.ts:42-42');
   });
 });
 
@@ -43,6 +38,7 @@ describe('findingCount', () => {
         riskLevel: 'high',
         recommendation: 'request_changes',
         findingCounts: {
+          info: 0,
           critical: 1,
           high: 2,
           medium: 3,

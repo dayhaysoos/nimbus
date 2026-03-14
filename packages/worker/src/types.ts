@@ -55,12 +55,14 @@ export interface Env {
 
   AGENT_PROVIDER?: string;
   AGENT_MODEL?: string;
+  REVIEW_MODEL?: string;
   AGENT_SDK_URL?: string;
   AGENT_SDK_AUTH_TOKEN?: string;
   REVIEW_AGENT_MAX_STEPS?: string;
   REVIEW_AGENT_MAX_FILE_BYTES?: string;
   REVIEW_CONTEXT_REPO?: string;
   REVIEW_CONTEXT_GITHUB_TOKEN?: string;
+  REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET?: string;
 }
 
 // Job status type
@@ -473,33 +475,50 @@ export type ReviewMode = 'report_only';
 export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ReviewConfidence = 'high' | 'medium' | 'low';
 export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
+export type ReviewFindingSeverityV2 = 'info' | 'low' | 'medium' | 'high' | 'critical';
+export type ReviewFindingCategory = 'security' | 'logic' | 'style' | 'breaking-change';
+export type ReviewFindingPassType = 'single' | 'security' | 'logic' | 'style' | 'breaking-change';
 
 export interface ReviewReportSummary {
   riskLevel: ReviewSeverity;
-  findingCounts: Record<ReviewSeverity, number>;
+  findingCounts: Record<ReviewFindingSeverityV2, number>;
   recommendation: ReviewRecommendation;
 }
 
 export interface ReviewFindingLocation {
-  path: string;
-  line: number;
-}
-
-export interface ReviewSuggestedFix {
-  kind: 'text';
-  value: string;
+  filePath: string;
+  startLine: number | null;
+  endLine: number | null;
 }
 
 export interface ReviewFinding {
-  id: string;
-  severity: ReviewSeverity;
-  confidence: ReviewConfidence;
-  title: string;
-  description: string;
-  conditions: string | null;
+  severity: ReviewFindingSeverityV2;
+  category: ReviewFindingCategory;
+  passType: ReviewFindingPassType;
   locations: ReviewFindingLocation[];
-  suggestedFix: ReviewSuggestedFix | null;
-  evidenceRefs: string[];
+  description: string;
+  suggestedFix: string;
+}
+
+export interface ReviewFindingLocationV2 {
+  filePath: string;
+  startLine: number | null;
+  endLine: number | null;
+}
+
+export interface ReviewFindingV2 {
+  severity: ReviewFindingSeverityV2;
+  category: ReviewFindingCategory;
+  passType: ReviewFindingPassType;
+  locations: ReviewFindingLocationV2[];
+  description: string;
+  suggestedFix: string;
+}
+
+export interface ReviewAnalysisOutputV2 {
+  findings: ReviewFindingV2[];
+  summary: string;
+  furtherPassesLowYield: boolean;
 }
 
 export interface ReviewEvidenceItem {
@@ -557,6 +576,9 @@ export interface ReviewContext {
       sessionsScanned: number;
       filesConsidered: number;
       topN: number;
+      coChangeSkipped: boolean;
+      coChangeSkipReason: string | null;
+      coChangeAvailable: boolean;
     };
   };
   stats: {
@@ -589,11 +611,42 @@ export interface ReviewProvenanceSummary {
     estimatedTokens: number;
     tokenBudget: number | null;
   };
+  coChange?: {
+    coChangeSkipped: boolean;
+    coChangeSkipReason: string | null;
+    coChangeAvailable: boolean;
+    relatedFileCount: number;
+  };
+  contextResolution?: {
+    contextResolution: 'direct' | 'branch_fallback';
+    originalCheckpointId: string;
+    resolvedCheckpointId: string;
+    resolvedCommitSha: string;
+    resolvedCommitMessage: string | null;
+  };
+  outputSchemaVersion?: 'v2';
+  passArchitecture?: 'single';
+  validation?: {
+    firstPassValid: boolean;
+    repairAttempted: boolean;
+    repairSucceeded: boolean;
+    validationErrorCount: number;
+    dedupedExactCount: number;
+    fallbackApplied?: boolean;
+    fallbackReason?: string | null;
+  };
+  furtherPassesLowYield?: {
+    value: boolean;
+    source: 'model-self-assessment';
+    reliability: 'weak-signal-phase2';
+  };
 }
 
 export interface ReviewReport {
   summary: ReviewReportSummary;
   findings: ReviewFinding[];
+  summaryText?: string;
+  furtherPassesLowYield?: boolean;
   intent: ReviewIntentSummary;
   evidence: ReviewEvidenceItem[];
   provenance: ReviewProvenanceSummary;
@@ -641,6 +694,8 @@ export interface ReviewRunResponse {
   createdAt: string;
   updatedAt: string;
   summary?: ReviewReportSummary;
+  summaryText?: string;
+  furtherPassesLowYield?: boolean;
   findings: ReviewFinding[];
   intent?: ReviewIntentSummary;
   evidence: ReviewEvidenceItem[];
