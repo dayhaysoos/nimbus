@@ -3,7 +3,7 @@
   "checkpoint_id": "fa60e9da0baa",
   "strategy": "manual-commit",
   "branch": "prompt-output-structure",
-  "checkpoints_count": 1,
+  "checkpoints_count": 5,
   "files_touched": [
     "README.md",
     "packages/worker/src/api/reviews.test.ts",
@@ -49,6 +49,20 @@
       "context": "",
       "content_hash": "/fa/60e9da0baa/4/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/fa/60e9da0baa/5/metadata.json",
+      "transcript": "/fa/60e9da0baa/5/full.jsonl",
+      "context": "/fa/60e9da0baa/5/context.md",
+      "content_hash": "/fa/60e9da0baa/5/content_hash.txt",
+      "prompt": "/fa/60e9da0baa/5/prompt.txt"
     }
-  ]
+  ],
+  "token_usage": {
+    "input_tokens": 370510,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 3120256,
+    "output_tokens": 5917,
+    "api_call_count": 20
+  }
 }
