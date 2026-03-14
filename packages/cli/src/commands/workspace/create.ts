@@ -20,7 +20,7 @@ export interface CreateWorkspaceOptions {
   projectRoot?: string;
 }
 
-interface WorkspaceSourceSummary {
+export interface WorkspaceSourceSummary {
   commitSha: string;
   checkpointId: string | null;
   sourceRef: string | null;
@@ -46,7 +46,7 @@ function isValidProjectRootPath(candidatePaths: string[], normalizedProjectRoot:
   return candidatePaths.some((path) => path.startsWith(`${normalizedProjectRoot}/`));
 }
 
-function resolveWorkspaceSource(checkpointOrCommitish: string, options: CreateWorkspaceOptions): WorkspaceSourceSummary {
+export function resolveWorkspaceSource(checkpointOrCommitish: string, options: CreateWorkspaceOptions): WorkspaceSourceSummary {
   const git = new GitRepo(process.cwd());
   const parsedInput = parseDeployInput(checkpointOrCommitish);
   const sourceRef = options.ref ?? git.getCurrentBranchRef();
@@ -90,6 +90,42 @@ function resolveWorkspaceSource(checkpointOrCommitish: string, options: CreateWo
   };
 }
 
+export async function createWorkspaceFromCommitish(
+  checkpointOrCommitish: string,
+  options: CreateWorkspaceOptions
+): Promise<{ source: WorkspaceSourceSummary; workspace: Awaited<ReturnType<typeof createWorkspace>>['workspace'] }> {
+  const source = resolveWorkspaceSource(checkpointOrCommitish, options);
+  const created = await createWorkspaceFromResolvedSource(source);
+  return { source, workspace: created.workspace };
+}
+
+export async function createWorkspaceFromResolvedSource(
+  source: WorkspaceSourceSummary
+): Promise<Awaited<ReturnType<typeof createWorkspace>>> {
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) {
+    throw new Error('NIMBUS_WORKER_URL environment variable is required for workspace creation.');
+  }
+
+  const sourceArchive = createSourceArchiveFromCommit(source.commitSha);
+  const metadata = buildCheckpointCreateMetadata({
+    checkpointId: source.checkpointId,
+    commitSha: source.commitSha,
+    ref: source.sourceRef ?? undefined,
+    projectRoot: source.projectRoot,
+    runTestsIfPresent: true,
+    runLintIfPresent: true,
+  });
+
+  const formData = buildCheckpointCreateFormData(
+    metadata,
+    sourceArchive,
+    buildSourceBundleFilename(source.commitSha)
+  );
+
+  return createWorkspace(workerUrl, formData);
+}
+
 export async function createWorkspaceCommand(
   checkpointOrCommitish: string,
   options: CreateWorkspaceOptions
@@ -99,32 +135,9 @@ export async function createWorkspaceCommand(
 
   try {
     const source = resolveWorkspaceSource(checkpointOrCommitish, options);
-    const workerUrl = getWorkerUrl();
-
-    if (!workerUrl) {
-      throw new Error('NIMBUS_WORKER_URL environment variable is required for workspace creation.');
-    }
-
     spinner.message('Creating source archive from commit...');
-    const sourceArchive = createSourceArchiveFromCommit(source.commitSha);
-
     spinner.message('Uploading source bundle and creating workspace...');
-    const metadata = buildCheckpointCreateMetadata({
-      checkpointId: source.checkpointId,
-      commitSha: source.commitSha,
-      ref: source.sourceRef ?? undefined,
-      projectRoot: source.projectRoot,
-      runTestsIfPresent: true,
-      runLintIfPresent: true,
-    });
-
-    const formData = buildCheckpointCreateFormData(
-      metadata,
-      sourceArchive,
-      buildSourceBundleFilename(source.commitSha)
-    );
-
-    const created = await createWorkspace(workerUrl, formData);
+    const created = await createWorkspaceFromResolvedSource(source);
 
     spinner.stop('Workspace created');
     p.log.success(`Workspace ready: ${created.workspace.id}`);

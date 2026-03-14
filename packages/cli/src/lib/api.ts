@@ -331,11 +331,17 @@ export async function createReview(
       includeProvenance?: boolean;
       includeValidationEvidence?: boolean;
     };
+    model?: string;
     provenance?: {
       note?: string | null;
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
+      commitSha?: string;
+      commitDiffPatch?: string;
+      commitDiffPatchSha256?: string;
+      commitDiffPatchTruncated?: boolean;
+      commitDiffPatchOriginalChars?: number;
     };
   }
 ): Promise<ReviewCreateResponse> {
