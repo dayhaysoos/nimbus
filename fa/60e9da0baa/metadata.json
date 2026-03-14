@@ -28,6 +28,13 @@
       "context": "",
       "content_hash": "/fa/60e9da0baa/1/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/fa/60e9da0baa/2/metadata.json",
+      "transcript": "/fa/60e9da0baa/2/full.jsonl",
+      "context": "",
+      "content_hash": "/fa/60e9da0baa/2/content_hash.txt",
+      "prompt": ""
     }
   ]
 }
