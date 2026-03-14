@@ -1,0 +1,1080 @@
+{
+  "info": {
+    "id": "ses_3136efdfaffeBTZRAKNQngZHKx",
+    "slug": "witty-island",
+    "projectID": "e636a08f504c17bb94725f03ccc30ead67d304f9",
+    "directory": "/Users/nickdejesus/Code/nimbus",
+    "parentID": "ses_316c7f4fdffet0JWKRHKWRLEE4",
+    "title": "review changes [commit|branch|pr], defaults to uncommitted (@build subagent)",
+    "version": "1.2.26",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "permission": [
+      {
+        "permission": "todowrite",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "todoread",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "task",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1773495452165,
+      "updated": 1773495493442
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1773495452169
+        },
+        "summary": {
+          "diffs": []
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "gpt-5.3-codex"
+        },
+        "tools": {
+          "todowrite": false,
+          "todoread": false,
+          "task": false
+        },
+        "id": "msg_cec9102080017VZ13A6swVsuA2",
+        "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "You are a code reviewer. Your job is to review code changes and provide actionable feedback.\n\n---\n\nInput: \n\n---\n\n## Determining What to Review\n\nBased on the input provided, determine which type of review to perform:\n\n1. **No arguments (default)**: Review all uncommitted changes\n   - Run: `git diff` for unstaged changes\n   - Run: `git diff --cached` for staged changes\n   - Run: `git status --short` to identify untracked (net new) files\n\n2. **Commit hash** (40-char SHA or short hash): Review that specific commit\n   - Run: `git show `\n\n3. **Branch name**: Compare current branch to the specified branch\n   - Run: `git diff ...HEAD`\n\n4. **PR URL or number** (contains \"github.com\" or \"pull\" or looks like a PR number): Review the pull request\n   - Run: `gh pr view ` to get PR context\n   - Run: `gh pr diff ` to get the diff\n\nUse best judgement when processing input.\n\n---\n\n## Gathering Context\n\n**Diffs alone are not enough.** After getting the diff, read the entire file(s) being modified to understand the full context. Code that looks wrong in isolation may be correct given surrounding logic—and vice versa.\n\n- Use the diff to identify which files changed\n- Use `git status --short` to identify untracked files, then read their full contents\n- Read the full file to understand existing patterns, control flow, and error handling\n- Check for existing style guide or conventions files (CONVENTIONS.md, AGENTS.md, .editorconfig, etc.)\n\n---\n\n## What to Look For\n\n**Bugs** - Your primary focus.\n- Logic errors, off-by-one mistakes, incorrect conditionals\n- If-else guards: missing guards, incorrect branching, unreachable code paths\n- Edge cases: null/empty/undefined inputs, error conditions, race conditions\n- Security issues: injection, auth bypass, data exposure\n- Broken error handling that swallows failures, throws unexpectedly or returns error types that are not caught.\n\n**Structure** - Does the code fit the codebase?\n- Does it follow existing patterns and conventions?\n- Are there established abstractions it should use but doesn't?\n- Excessive nesting that could be flattened with early returns or extraction\n\n**Performance** - Only flag if obviously problematic.\n- O(n²) on unbounded data, N+1 queries, blocking I/O on hot paths\n\n**Behavior Changes** - If a behavioral change is introduced, raise it (especially if it's possibly unintentional).\n\n---\n\n## Before You Flag Something\n\n**Be certain.** If you're going to call something a bug, you need to be confident it actually is one.\n\n- Only review the changes - do not review pre-existing code that wasn't modified\n- Don't flag something as a bug if you're unsure - investigate first\n- Don't invent hypothetical problems - if an edge case matters, explain the realistic scenario where it breaks\n- If you need more context to be sure, use the tools below to get it\n\n**Don't be a zealot about style.** When checking code against conventions:\n\n- Verify the code is *actually* in violation. Don't complain about else statements if early returns are already being used correctly.\n- Some \"violations\" are acceptable when they're the simplest option. A `let` statement is fine if the alternative is convoluted.\n- Excessive nesting is a legitimate concern regardless of other style choices.\n- Don't flag style preferences as issues unless they clearly violate established project conventions.\n\n---\n\n## Tools\n\nUse these to inform your review:\n\n- **Explore agent** - Find how existing code handles similar problems. Check patterns, conventions, and prior art before claiming something doesn't fit.\n- **Exa Code Context** - Verify correct usage of libraries/APIs before flagging something as wrong.\n- **Exa Web Search** - Research best practices if you're unsure about a pattern.\n\nIf you're uncertain about something and can't verify it with these tools, say \"I'm not sure about X\" rather than flagging it as a definite issue.\n\n---\n\n## Output\n\n1. If there is a bug, be direct and clear about why it is a bug.\n2. Clearly communicate severity of issues. Do not overstate severity.\n3. Critiques should clearly and explicitly communicate the scenarios, environments, or inputs that are necessary for the bug to arise. The comment should immediately indicate that the issue's severity depends on these factors.\n4. Your tone should be matter-of-fact and not accusatory or overly positive. It should read as a helpful AI assistant suggestion without sounding too much like a human reviewer.\n5. Write so the reader can quickly understand the issue without reading too closely.\n6. AVOID flattery, do not give any comments that are not helpful to the reader. Avoid phrasing like \"Great job ...\", \"Thanks for ...\".",
+          "id": "prt_cec910209001sZiEkdyoqRzquT",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec9102080017VZ13A6swVsuA2"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773495452173,
+          "completed": 1773495455867
+        },
+        "parentID": "msg_cec9102080017VZ13A6swVsuA2",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0048965,
+        "tokens": {
+          "total": 7389,
+          "input": 182,
+          "output": 167,
+          "reasoning": 72,
+          "cache": {
+            "read": 7040,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cec91020d001v8aHqIRAZoTjj3",
+        "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "id": "prt_cec9105170013tPVjIhWLCOzIf",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91020d001v8aHqIRAZoTjj3"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Planning comprehensive file change detection**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_07c6ecedaf1c7d830169b5649cf1dc8196bcf8e033e6794fb7",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773495453094,
+            "end": 1773495455019
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91020d001v8aHqIRAZoTjj3"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff",
+              "description": "Shows unstaged changes diff"
+            },
+            "output": "diff --git a/packages/cli/src/commands/review/create.ts b/packages/cli/src/commands/review/create.ts\nindex b9f77b1..66950c0 100644\n--- a/packages/cli/src/commands/review/create.ts\n+++ b/packages/cli/src/commands/review/create.ts\n@@ -11,6 +11,7 @@ import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../wo\n import { GitRepo } from '../../lib/checkpoint/git.js';\n import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';\n import { formatEvent } from './events.js';\n+import { buildMissingCheckpointTrailerMessage } from './preflight.js';\n import type {\n   WorkspaceDeploymentResponse,\n   WorkspaceResponse,\n@@ -208,9 +209,7 @@ export async function createReviewFromCommitCommand(\n       commitDiffPatchTruncated = normalizedPatch.truncated;\n       commitDiffPatchOriginalChars = normalizedPatch.originalChars;\n       if (!checkpointId) {\n-        throw new Error(\n-          `Commit ${commitSha.slice(0, 12)} does not include an Entire-Checkpoint trailer. Review creation requires Entire checkpoint context.`\n-        );\n+        throw new Error(buildMissingCheckpointTrailerMessage(commitSha, process.cwd()));\n       }\n       if (!commitDiffPatch.trim()) {\n         throw new Error(\ndiff --git a/packages/cli/src/commands/review/review.test.ts b/packages/cli/src/commands/review/review.test.ts\nindex 8dc150a..13639d2 100644\n--- a/packages/cli/src/commands/review/review.test.ts\n+++ b/packages/cli/src/commands/review/review.test.ts\n@@ -11,6 +11,12 @@ import {\n import { reviewEventsCommand } from './events.js';\n import { showReviewCommand } from './show.js';\n import { exportReviewCommand } from './export.js';\n+import {\n+  reviewPreflightCommand,\n+  setReviewPreflightCommitResolverForTests,\n+  setReviewPreflightContextResolverForTests,\n+  setReviewPreflightLastCheckpointResolverForTests,\n+} from './preflight.js';\n \n function createReviewResponseBody() {\n   return {\n@@ -67,6 +73,74 @@ export async function runReviewCommandTests(): Promise<void> {\n   process.env.NIMBUS_WORKER_URL = 'https://worker.example.com';\n \n   try {\n+    {\n+      setReviewPreflightCommitResolverForTests(() => ({\n+        commitSha: '1'.repeat(40),\n+        checkpointId: null,\n+        commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n+      }));\n+      setReviewPreflightLastCheckpointResolverForTests(() => ({\n+        commitSha: 'abc1234def567890123456789012345678901234',\n+        subject: 'feat: working checkpoint commit',\n+        commitsAgo: 3,\n+      }));\n+      await assert.rejects(\n+        () => reviewPreflightCommand('HEAD'),\n+        /This commit has no Entire-Checkpoint trailer\\. The last commit on this branch with valid checkpoint context was abc1234 \\('feat: working checkpoint commit'\\) 3 commits ago\\./\n+      );\n+      setReviewPreflightCommitResolverForTests(null);\n+      setReviewPreflightLastCheckpointResolverForTests(null);\n+    }\n+\n+    {\n+      setReviewPreflightCommitResolverForTests(() => ({\n+        commitSha: '2'.repeat(40),\n+        checkpointId: null,\n+        commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n+      }));\n+      setReviewPreflightLastCheckpointResolverForTests(() => null);\n+      await assert.rejects(\n+        () => reviewPreflightCommand('HEAD'),\n+        /This branch has no Entire session history\\. Make sure Entire capture is active before committing \\(`entire status` to verify\\)\\./\n+      );\n+      setReviewPreflightCommitResolverForTests(null);\n+      setReviewPreflightLastCheckpointResolverForTests(null);\n+    }\n+\n+    {\n+      setReviewPreflightCommitResolverForTests(() => ({\n+        commitSha: 'e'.repeat(40),\n+        checkpointId: 'fba364e3d99d',\n+        commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n+      }));\n+      setReviewPreflightContextResolverForTests(async () => ({\n+        note: 'Review with Entire checkpoint intent context (fba364e3d99d).',\n+        sessionIds: ['sess_123'],\n+        transcriptUrl: null,\n+        intentSessionContext: ['Constraint: Keep scope narrow.'],\n+      }));\n+      await reviewPreflightCommand('HEAD');\n+      setReviewPreflightCommitResolverForTests(null);\n+      setReviewPreflightContextResolverForTests(null);\n+    }\n+\n+    {\n+      setReviewPreflightCommitResolverForTests(() => ({\n+        commitSha: 'f'.repeat(40),\n+        checkpointId: 'ddfa7c25a183',\n+        commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n+      }));\n+      setReviewPreflightContextResolverForTests(async () => {\n+        throw new Error('Checkpoint ddfa7c25a183 had no readable session metadata');\n+      });\n+      await assert.rejects(\n+        () => reviewPreflightCommand('HEAD'),\n+        /Review preflight failed: Unable to resolve required Entire intent context/\n+      );\n+      setReviewPreflightCommitResolverForTests(null);\n+      setReviewPreflightContextResolverForTests(null);\n+    }\n+\n     {\n       let fetchCount = 0;\n       globalThis.fetch = (async (): Promise<Response> => {\n@@ -489,6 +563,9 @@ export async function runReviewCommandTests(): Promise<void> {\n   } finally {\n     setReviewCommitResolverForTests(null);\n     setReviewCreateFlowForTests(null);\n+    setReviewPreflightCommitResolverForTests(null);\n+    setReviewPreflightContextResolverForTests(null);\n+    setReviewPreflightLastCheckpointResolverForTests(null);\n     globalThis.fetch = originalFetch;\n     process.env.NIMBUS_WORKER_URL = originalWorkerUrl;\n   }\ndiff --git a/packages/cli/src/index.ts b/packages/cli/src/index.ts\nindex caa0317..bdaa62e 100644\n--- a/packages/cli/src/index.ts\n+++ b/packages/cli/src/index.ts\n@@ -33,6 +33,7 @@ import { createReviewCommand, createReviewFromCommitCommand } from './commands/r\n import { reviewEventsCommand } from './commands/review/events.js';\n import { showReviewCommand } from './commands/review/show.js';\n import { exportReviewCommand } from './commands/review/export.js';\n+import { reviewPreflightCommand } from './commands/review/preflight.js';\n import { parseArgs } from './lib/args.js';\n import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';\n \n@@ -110,8 +111,10 @@ Commands:\n                         Create workspace+deployment+review and block until review completion\n   review create --workspace <id> --deployment <id>\n                        Create a report-only review run for an existing deployment\n+  review preflight [commit-ish]\n+                       Validate Entire checkpoint/session metadata for review create\n   review show <review-id>\n-                      Show review status and summary\n+                       Show review status and summary\n   review events <review-id>\n                       Stream review lifecycle events\n   review export <review-id>\n@@ -178,6 +181,8 @@ Examples:\n   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234\n   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20\n   nimbus review create --commit HEAD --model sonnet-4.5\n+  nimbus review preflight\n+  nimbus review preflight HEAD~2\n   nimbus review show rev_abcd1234\n   nimbus review events rev_abcd1234\n   nimbus review export rev_abcd1234 --format markdown --out review.md\n@@ -403,7 +408,7 @@ async function main(): Promise<void> {\n             process.exit(1);\n           }\n \n-          if (commitModeRequested) {\n+          if (commitModeRequested || (!workspaceId && !deploymentId)) {\n             await createReviewFromCommitCommand({\n               commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',\n               projectRoot,\n@@ -420,7 +425,6 @@ async function main(): Promise<void> {\n \n           if (!workspaceId || !deploymentId) {\n             p.log.error('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id>');\n-            p.log.message('Tip: use --commit (defaults to HEAD) for one-command workspace+deploy+review flow.');\n             process.exit(1);\n           }\n \n@@ -446,6 +450,24 @@ async function main(): Promise<void> {\n           break;\n         }\n \n+        if (reviewAction === 'preflight') {\n+          const commitishArg = positional[1];\n+          await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {\n+            summarizeSession: (() => {\n+              const summarizeSessionFlag = flags['summarize-session'];\n+              if (typeof summarizeSessionFlag !== 'string') {\n+                return undefined;\n+              }\n+              if (summarizeSessionFlag === 'auto' || summarizeSessionFlag === 'always' || summarizeSessionFlag === 'never') {\n+                return summarizeSessionFlag;\n+              }\n+              throw new Error('Invalid --summarize-session value. Use auto, always, or never.');\n+            })(),\n+            intentTokenBudget: parsePositiveIntegerFlag(flags['intent-token-budget']),\n+          });\n+          break;\n+        }\n+\n         if (reviewAction === 'events') {\n           const reviewId = positional[1];\n           if (!reviewId) {\n@@ -476,7 +498,7 @@ async function main(): Promise<void> {\n           break;\n         }\n \n-        p.log.error('Unknown review command. Use: create, show, events, export');\n+        p.log.error('Unknown review command. Use: create, preflight, show, events, export');\n         process.exit(1);\n       }\n \n",
+            "title": "Shows unstaged changes diff",
+            "metadata": {
+              "output": "diff --git a/packages/cli/src/commands/review/create.ts b/packages/cli/src/commands/review/create.ts\nindex b9f77b1..66950c0 100644\n--- a/packages/cli/src/commands/review/create.ts\n+++ b/packages/cli/src/commands/review/create.ts\n@@ -11,6 +11,7 @@ import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../wo\n import { GitRepo } from '../../lib/checkpoint/git.js';\n import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';\n import { formatEvent } from './events.js';\n+import { buildMissingCheckpointTrailerMessage } from './preflight.js';\n import type {\n   WorkspaceDeploymentResponse,\n   WorkspaceResponse,\n@@ -208,9 +209,7 @@ export async function createReviewFromCommitCommand(\n       commitDiffPatchTruncated = normalizedPatch.truncated;\n       commitDiffPatchOriginalChars = normalizedPatch.originalChars;\n       if (!checkpointId) {\n-        throw new Error(\n-          `Commit ${commitSha.slice(0, 12)} does not include an Entire-Checkpoint trailer. Review creation requires Entire checkpoint context.`\n-        );\n+        throw new Error(buildMissingCheckpointTrailerMessage(commitSha, process.cwd()));\n       }\n       if (!commitDiffPatch.trim()) {\n         throw new Error(\ndiff --git a/packages/cli/src/commands/review/review.test.ts b/packages/cli/src/commands/review/review.test.ts\nindex 8dc150a..13639d2 100644\n--- a/packages/cli/src/commands/review/review.test.ts\n+++ b/packages/cli/src/commands/review/review.test.ts\n@@ -11,6 +11,12 @@ import {\n import { reviewEventsCommand } from './events.js';\n import { showReviewCommand } from './show.js';\n import { exportReviewCommand } from './export.js';\n+import {\n+  reviewPreflightCommand,\n+  setReviewPreflightCommitResolverForTests,\n+  setReviewPreflightContextResolverForTests,\n+  setReviewPreflightLastCheckpointResolverForTests,\n+} from './preflight.js';\n \n function createReviewResponseBody() {\n   return {\n@@ -67,6 +73,74 @@ export async function runReviewCommandTests(): Promise<void> {\n   process.env.NIMBUS_WORKER_URL = 'https://worker.example.com';\n \n   try {\n+    {\n+      setReviewPreflightCommitResolverForTests(() => ({\n+        commitSha: '1'.repeat(40),\n+        checkpointId: null,\n+        commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n+      }));\n+      setReviewPreflightLastCheckpointResolverForTests(() => ({\n+        commitSha: 'abc1234def567890123456789012345678901234',\n+        subject: 'feat: working checkpoint commit',\n+        commitsAgo: 3,\n+      }));\n+      await assert.rejects(\n+        () => reviewPreflightCommand('HEAD'),\n+        /This commit has no Entire-Checkpoint trailer\\. The last commit on this branch with valid checkpoint context was abc1234 \\('feat: working checkpoint commit'\\) 3 commits ago\\./\n+      );\n+      setReviewPreflightCommitResolverForTests(null);\n+      setReviewPreflightLastCheckpointResolverForTests(null);\n+    }\n+\n+    {\n+      setReviewPreflightCommitResolverForTests(() => ({\n+        commitSha: '2'.repeat(40),\n+        checkpointId: null,\n+        commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n+      }));\n+      setReviewPreflightLastCheckpointResolverForTests(() => null);\n+      await assert.rejects(\n+        () => reviewPreflightCommand('HEAD'),\n+        /This branch has no Entire session history\\. Make sure Entire capture is active before committing \\(`entire status` to verify\\)\\./\n+      );\n+      setReviewPreflightCommitResolverForTests(null);\n+      setReviewPreflightLastCheckpointResolverForTests(null);\n+    }\n+\n+    {\n+      setReviewPreflightCommitResolverForTests(() => ({\n+        commitSha: 'e'.repeat(40),\n+        checkpointId: 'fba364e3d99d',\n+        commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n+      }));\n+      setReviewPreflightContextResolverForTests(async () => ({\n+        note: 'Review with Entire checkpoint intent context (fba364e3d99d).',\n+        sessionIds: ['sess_123'],\n+        transcriptUrl: null,\n+        intentSessionContext: ['Constraint: Keep scope narrow.'],\n+      }));\n+      await reviewPreflightCommand('HEAD');\n+      setReviewPreflightCommitResolverForTests(null);\n+      setReviewPreflightContextResolverForTests(null);\n+    }\n+\n+    {\n+      setReviewPreflightCommitResolverForTests(() => ({\n+        commitSha: 'f'.repeat(40),\n+        checkpointId: 'ddfa7c25a183',\n+        commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n+      }));\n+      setReviewPreflightContextResolverForTests(async () => {\n+        throw new Error('Checkpoint ddfa7c25a183 had no readable session metadata');\n+      });\n+      await assert.rejects(\n+        () => reviewPreflightCommand('HEAD'),\n+        /Review preflight failed: Unable to resolve required Entire intent context/\n+      );\n+      setReviewPreflightCommitResolverForTests(null);\n+      setReviewPreflightContextResolverForTests(null);\n+    }\n+\n     {\n       let fetchCount = 0;\n       globalThis.fetch = (async (): Promise<Response> => {\n@@ -489,6 +563,9 @@ export async function runReviewCommandTests(): Promise<void> {\n   } finally {\n     setReviewCommitResolverForTests(null);\n     setReviewCreateFlowForTests(null);\n+    setReviewPreflightCommitResolverForTests(null);\n+    setReviewPreflightContextResolverForTests(null);\n+    setReviewPreflightLastCheckpointResolverForTests(null);\n     globalThis.fetch = originalFetch;\n     process.env.NIMBUS_WORKER_URL = originalWorkerUrl;\n   }\ndiff --git a/packages/cli/src/index.ts b/packages/cli/src/index.ts\nindex caa0317..bdaa62e 100644\n--- a/packages/cli/src/index.ts\n+++ b/packages/cli/src/index.ts\n@@ -33,6 +33,7 @@ import { createReviewCommand, createReviewFromCommitCommand } from './commands/r\n import { reviewEventsCommand } from './commands/review/events.js';\n import { showReviewCommand } from './commands/review/show.js';\n import { exportReviewCommand } from './commands/review/export.js';\n+import { reviewPreflightCommand } from './commands/review/preflight.js';\n import { parseArgs } from './lib/args.js';\n import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';\n \n@@ -110,8 +111,10 @@ Commands:\n                         Create workspace+deployment+review and block until review completion\n   review create --workspace <id> --deployment <id>\n                        Create a report-only review run for an existing deployment\n+  review preflight [commit-ish]\n+                       Validate Entire checkpoint/session metadata for review create\n   review show <review-id>\n-                      Show review status and summary\n+                       Show review status and summary\n   review events <review-id>\n                       Stream review lifecycle events\n   review export <review-id>\n@@ -178,6 +181,8 @@ Examples:\n   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234\n   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20\n   nimbus review create --commit HEAD --model sonnet-4.5\n+  nimbus review preflight\n+  nimbus review preflight HEAD~2\n   nimbus review show rev_abcd1234\n   nimbus review events rev_abcd1234\n   nimbus review export rev_abcd1234 --format markdown --out review.md\n@@ -403,7 +408,7 @@ async function main(): Promise<void> {\n             process.exit(1);\n           }\n \n-          if (commitModeRequested) {\n+          if (commitModeRequested || (!workspaceId && !deploymentId)) {\n             await createReviewFromCommitCommand({\n               commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',\n               projectRoot,\n@@ -420,7 +425,6 @@ async function main(): Promise<void> {\n \n           if (!workspaceId || !deploymentId) {\n             p.log.error('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id>');\n-            p.log.message('Tip: use --commit (defaults to HEAD) for one-command workspace+deploy+review flow.');\n             process.exit(1);\n           }\n \n@@ -446,6 +450,24 @@ async function main(): Promise<void> {\n           break;\n         }\n \n+        if (reviewAction === 'preflight') {\n+          const commitishArg = positional[1];\n+          await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {\n+            summarizeSession: (() => {\n+              const summarizeSessionFlag = flags['summarize-session'];\n+              if (typeof summarizeSessionFlag !== 'string') {\n+                return undefined;\n+              }\n+              if (summarizeSessionFlag === 'auto' || summarizeSessionFlag === 'always' || summarizeSessionFlag === 'never') {\n+                return summarizeSessionFlag;\n+              }\n+              throw new Error('Invalid --summarize-session value. Use auto, always, or never.');\n+            })(),\n+            intentTokenBudget: parsePositiveIntegerFlag(flags['intent-token-budget']),\n+          });\n+          break;\n+        }\n+\n         if (reviewAction === 'events') {\n           const reviewId = positional[1];\n           if (!reviewId) {\n@@ -476,7 +498,7 @@ async function main(): Promise<void> {\n           break;\n         }\n \n-        p.log.error('Unknown review command. Use: create, show, events, export');\n+        p.log.error('Unknown review command. Use: create, preflight, show, events, export');\n         process.exit(1);\n       }\n \n",
+              "exit": 0,
+              "description": "Shows unstaged changes diff",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495455031,
+              "end": 1773495455763
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_07c6ecedaf1c7d830169b5649edd008196aa52e580f545a799"
+            }
+          },
+          "id": "prt_cec910d2b001hey83WvXjRrAgg",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91020d001v8aHqIRAZoTjj3"
+        },
+        {
+          "type": "tool",
+          "callID": "call_fabSFnXihDIwiAJkypba1FVZ",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff --cached",
+              "description": "Shows staged changes diff"
+            },
+            "output": "",
+            "title": "Shows staged changes diff",
+            "metadata": {
+              "output": "",
+              "exit": 0,
+              "description": "Shows staged changes diff",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495455037,
+              "end": 1773495455761
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_07c6ecedaf1c7d830169b5649edd108196bc15babe2b77437f"
+            }
+          },
+          "id": "prt_cec910d3b001l80eHhLiPxLOcS",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91020d001v8aHqIRAZoTjj3"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git status --short",
+              "description": "Lists tracked and untracked changes"
+            },
+            "output": " M packages/cli/src/commands/review/create.ts\n M packages/cli/src/commands/review/review.test.ts\n M packages/cli/src/index.ts\n?? packages/cli/src/commands/review/preflight.ts\n",
+            "title": "Lists tracked and untracked changes",
+            "metadata": {
+              "output": " M packages/cli/src/commands/review/create.ts\n M packages/cli/src/commands/review/review.test.ts\n M packages/cli/src/index.ts\n?? packages/cli/src/commands/review/preflight.ts\n",
+              "exit": 0,
+              "description": "Lists tracked and untracked changes",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495455048,
+              "end": 1773495455762
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_07c6ecedaf1c7d830169b5649edd1c8196a351f88f238ebc5a"
+            }
+          },
+          "id": "prt_cec910d3e001ydbTtgGNLk3vAX",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91020d001v8aHqIRAZoTjj3"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "cost": 0.0048965,
+          "tokens": {
+            "total": 7389,
+            "input": 182,
+            "output": 167,
+            "reasoning": 72,
+            "cache": {
+              "read": 7040,
+              "write": 0
+            }
+          },
+          "id": "prt_cec911013001NRBV2ZKK3u8Y9p",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91020d001v8aHqIRAZoTjj3"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773495455868,
+          "completed": 1773495459937
+        },
+        "parentID": "msg_cec9102080017VZ13A6swVsuA2",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0100338,
+        "tokens": {
+          "total": 10063,
+          "input": 2516,
+          "output": 251,
+          "reasoning": 60,
+          "cache": {
+            "read": 7296,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cec91107b001HTX15YEIJQczcT",
+        "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "id": "REDACTED",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91107b001HTX15YEIJQczcT"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Planning comprehensive file reads**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_033132db1800ed690169b564a0913c8193b4197432125bc7fd",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773495456725,
+            "end": 1773495459449
+          },
+          "id": "prt_cec9113d5001OzpeQON85CLgOd",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91107b001HTX15YEIJQczcT"
+        },
+        {
+          "type": "tool",
+          "callID": "call_ci1aLjQ9kwxGAhOkl2UD6VeQ",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/cli/src/commands/review/create.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/cli/src/commands/review/create.ts</path>\n<type>file</type>\n<content>1: import * as p from '@clack/prompts';\n2: import { createHash } from 'crypto';\n3: import {\n4:   createReview,\n5:   getReview,\n6:   getWorkerUrl,\n7:   streamReviewEvents,\n8: } from '../../lib/api.js';\n9: import { workspaceDeployCommand } from '../workspace/deploy.js';\n10: import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../workspace/create.js';\n11: import { GitRepo } from '../../lib/checkpoint/git.js';\n12: import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';\n13: import { formatEvent } from './events.js';\n14: import { buildMissingCheckpointTrailerMessage } from './preflight.js';\n15: import type {\n16:   WorkspaceDeploymentResponse,\n17:   WorkspaceResponse,\n18: } from '../../lib/types.js';\n19: \n20: const MAX_COMMIT_DIFF_PATCH_CHARS = 120_000;\n21: \n22: function buildIdempotencyKey(workspaceId: string, deploymentId: string): string {\n23:   const seed = `${workspaceId}:${deploymentId}:${Date.now()}:${Math.random()}`;\n24:   return `review-${createHash('sha256').update(seed).digest('hex').slice(0, 20)}`;\n25: }\n26: \n27: export async function createReviewCommand(\n28:   workspaceId: string,\n29:   deploymentId: string,\n30:   options?: {\n31:     idempotencyKey?: string;\n32:     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';\n33:     maxFindings?: number;\n34:     model?: string;\n35:     includeProvenance?: boolean;\n36:     includeValidationEvidence?: boolean;\n37:   }\n38: ): Promise<void> {\n39:   const workerUrl = getWorkerUrl();\n40:   if (!workerUrl) {\n41:     throw new Error('NIMBUS_WORKER_URL environment variable is required');\n42:   }\n43: \n44:   const response = await createReview(workerUrl, options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId, deploymentId), {\n45:     target: {\n46:       type: 'workspace_deployment',\n47:       workspaceId,\n48:       deploymentId,\n49:     },\n50:     mode: 'report_only',\n51:     policy: {\n52:       severityThreshold: options?.severityThreshold ?? 'low',\n53:       maxFindings: options?.maxFindings,\n54:       includeProvenance: options?.includeProvenance ?? true,\n55:       includeValidationEvidence: options?.includeValidationEvidence ?? true,\n56:     },\n57:     model: options?.model,\n58:   });\n59: \n60:   p.log.success(`Review queued: ${response.reviewId}`);\n61:   p.log.message(`Status: ${response.status}`);\n62:   p.log.message(`Result URL: ${response.resultUrl}`);\n63:   p.log.message(`Events URL: ${response.eventsUrl}`);\n64: }\n65: \n66: interface CommitResolution {\n67:   commitSha: string;\n68:   checkpointId: string | null;\n69:   commitDiffPatch: string;\n70: }\n71: \n72: let resolveReviewCommitContextForTests: ((commitish: string) => CommitResolution) | null = null;\n73: let createWorkspaceForCommitFlow: (source: {\n74:   commitSha: string;\n75:   checkpointId: string | null;\n76:   sourceRef: string | null;\n77:   projectRoot: string;\n78: }) => Promise<{ workspace: WorkspaceResponse }> = createWorkspaceFromResolvedSource;\n79: let resolveWorkspaceSourceForCommitFlow: typeof resolveWorkspaceSource = resolveWorkspaceSource;\n80: let deployWorkspaceForCommitFlow: (\n81:   workspaceId: string,\n82:   options: Parameters<typeof workspaceDeployCommand>[1]\n83: ) => Promise<WorkspaceDeploymentResponse | null> = workspaceDeployCommand;\n84: let createReviewForCommitFlow: typeof createReview = createReview;\n85: let streamReviewEventsForCommitFlow: typeof streamReviewEvents = streamReviewEvents;\n86: let getReviewForCommitFlow: typeof getReview = getReview;\n87: \n88: export function setReviewCommitResolverForTests(resolver: ((commitish: string) => CommitResolution) | null): void {\n89:   resolveReviewCommitContextForTests = resolver;\n90: }\n91: \n92: export function setReviewCreateFlowForTests(\n93:   overrides:\n94:     | {\n95:         createWorkspace?: typeof createWorkspaceForCommitFlow;\n96:         resolveWorkspaceSource?: typeof resolveWorkspaceSourceForCommitFlow;\n97:         deployWorkspace?: typeof deployWorkspaceForCommitFlow;\n98:         createReview?: typeof createReviewForCommitFlow;\n99:         streamReviewEvents?: typeof streamReviewEventsForCommitFlow;\n100:         getReview?: typeof getReviewForCommitFlow;\n101:       }\n102:     | null\n103: ): void {\n104:   createWorkspaceForCommitFlow = overrides?.createWorkspace ?? createWorkspaceFromResolvedSource;\n105:   resolveWorkspaceSourceForCommitFlow = overrides?.resolveWorkspaceSource ?? resolveWorkspaceSource;\n106:   deployWorkspaceForCommitFlow = overrides?.deployWorkspace ?? workspaceDeployCommand;\n107:   createReviewForCommitFlow = overrides?.createReview ?? createReview;\n108:   streamReviewEventsForCommitFlow = overrides?.streamReviewEvents ?? streamReviewEvents;\n109:   getReviewForCommitFlow = overrides?.getReview ?? getReview;\n110: }\n111: \n112: function resolveReviewCommitContext(commitish: string): CommitResolution {\n113:   if (resolveReviewCommitContextForTests) {\n114:     return resolveReviewCommitContextForTests(commitish);\n115:   }\n116:   const git = new GitRepo(process.cwd());\n117:   const commitSha = git.resolveCommitSha(commitish);\n118:   const trailers = parseCommitTrailers(git.getCommitMessage(commitSha));\n119:   return {\n120:     commitSha,\n121:     checkpointId: trailers.checkpointId,\n122:     commitDiffPatch: git.getCommitPatch(commitSha),\n123:   };\n124: }\n125: \n126: function buildWorkspaceIdempotencyKey(commitSha: string): string {\n127:   return `workspace-${createHash('sha256').update(`${commitSha}:${Date.now()}:${Math.random()}`).digest('hex').slice(0, 20)}`;\n128: }\n129: \n130: function deriveIdempotencyKey(base: string, scope: 'deploy' | 'review'): string {\n131:   return `${scope}-${createHash('sha256').update(`${base}:${scope}`).digest('hex').slice(0, 20)}`;\n132: }\n133: \n134: function normalizeResultUrl(workerUrl: string, resultUrl: string): string {\n135:   try {\n136:     return new URL(resultUrl, workerUrl).toString();\n137:   } catch {\n138:     return resultUrl;\n139:   }\n140: }\n141: \n142: function normalizeCommitDiffPatch(patch: string): {\n143:   patch: string;\n144:   sha256: string;\n145:   truncated: boolean;\n146:   originalChars: number;\n147: } {\n148:   const originalChars = patch.length;\n149:   const sha256 = createHash('sha256').update(patch).digest('hex');\n150:   if (originalChars <= MAX_COMMIT_DIFF_PATCH_CHARS) {\n151:     return {\n152:       patch,\n153:       sha256,\n154:       truncated: false,\n155:       originalChars,\n156:     };\n157:   }\n158: \n159:   return {\n160:     patch: `${patch.slice(0, MAX_COMMIT_DIFF_PATCH_CHARS)}\\n\\n[... NIMBUS TRUNCATED COMMIT PATCH ...]\\n`,\n161:     sha256,\n162:     truncated: true,\n163:     originalChars,\n164:   };\n165: }\n166: \n167: export async function createReviewFromCommitCommand(\n168:   options?: {\n169:     commitish?: string;\n170:     projectRoot?: string;\n171:     idempotencyKey?: string;\n172:     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';\n173:     maxFindings?: number;\n174:     model?: string;\n175:     includeProvenance?: boolean;\n176:     includeValidationEvidence?: boolean;\n177:     pollIntervalMs?: number;\n178:   }\n179: ): Promise<void> {\n180:   const workerUrl = getWorkerUrl();\n181:   if (!workerUrl) {\n182:     throw new Error('NIMBUS_WORKER_URL environment variable is required');\n183:   }\n184: \n185:   const commitish = options?.commitish?.trim() || 'HEAD';\n186:   const projectRoot = options?.projectRoot?.trim() || '.';\n187:   const spinner = p.spinner();\n188: \n189:   let commitSha = '';\n190:   let checkpointId = '';\n191:   let commitDiffPatch = '';\n192:   let workspaceId = '';\n193:   let deploymentId = '';\n194:   let reviewId = '';\n195:   let reviewResultUrl = '';\n196:   let commitDiffPatchSha256 = '';\n197:   let commitDiffPatchTruncated = false;\n198:   let commitDiffPatchOriginalChars = 0;\n199: \n200:   try {\n201:     spinner.start('Resolving checkpoint...');\n202:     try {\n203:       const resolved = resolveReviewCommitContext(commitish);\n204:       commitSha = resolved.commitSha;\n205:       checkpointId = resolved.checkpointId ?? '';\n206:       const normalizedPatch = normalizeCommitDiffPatch(resolved.commitDiffPatch);\n207:       commitDiffPatch = normalizedPatch.patch;\n208:       commitDiffPatchSha256 = normalizedPatch.sha256;\n209:       commitDiffPatchTruncated = normalizedPatch.truncated;\n210:       commitDiffPatchOriginalChars = normalizedPatch.originalChars;\n211:       if (!checkpointId) {\n212:         throw new Error(buildMissingCheckpointTrailerMessage(commitSha, process.cwd()));\n213:       }\n214:       if (!commitDiffPatch.trim()) {\n215:         throw new Error(\n216:           `Commit ${commitSha.slice(0, 12)} has no diff patch content. Review creation requires meaningful diff context.`\n217:         );\n218:       }\n219:       spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);\n220:     } catch (error) {\n221:       const message = error instanceof Error ? error.message : String(error);\n222:       spinner.stop('Checkpoint resolution failed');\n223:       throw new Error(`Review flow failed at checkpoint resolution: ${message}`);\n224:     }\n225: \n226:     spinner.start('Creating workspace...');\n227:     try {\n228:       const source = resolveWorkspaceSourceForCommitFlow(commitSha, { projectRoot });\n229:       const created = await createWorkspaceForCommitFlow(source);\n230:       workspaceId = created.workspace.id;\n231:       spinner.stop(`Workspace created: ${workspaceId}`);\n232:     } catch (error) {\n233:       const message = error instanceof Error ? error.message : String(error);\n234:       spinner.stop('Workspace creation failed');\n235:       throw new Error(`Review flow failed at workspace creation: ${message}`);\n236:     }\n237: \n238:     spinner.start('Deploying workspace...');\n239:     try {\n240:       const deploymentIdempotencyKey = options?.idempotencyKey?.trim()\n241:         ? deriveIdempotencyKey(options.idempotencyKey, 'deploy')\n242:         : buildWorkspaceIdempotencyKey(commitSha);\n243:       const deployment = await deployWorkspaceForCommitFlow(workspaceId, {\n244:         idempotencyKey: deploymentIdempotencyKey,\n245:         runTestsIfPresent: false,\n246:         runBuildIfPresent: false,\n247:         autoFix: false,\n248:         pollIntervalMs: options?.pollIntervalMs,\n249:         reporter: {\n250:           message: (text) => spinner.message(text),\n251:           success: (text) => spinner.message(text),\n252:           warning: (text) => spinner.message(text),\n253:           error: (text) => spinner.message(text),\n254:         },\n255:       });\n256:       if (!deployment) {\n257:         throw new Error('Workspace deploy returned no deployment result.');\n258:       }\n259:       deploymentId = deployment.id;\n260:       spinner.stop(`Deployment succeeded: ${deploymentId}`);\n261:     } catch (error) {\n262:       const message = error instanceof Error ? error.message : String(error);\n263:       spinner.stop('Workspace deploy failed');\n264:       throw new Error(`Review flow failed at workspace deploy: ${message}`);\n265:     }\n266: \n267:     spinner.start('Creating review...');\n268:     try {\n269:       const reviewIdempotencyKey = options?.idempotencyKey?.trim()\n270:         ? deriveIdempotencyKey(options.idempotencyKey, 'review')\n271:         : buildIdempotencyKey(workspaceId, deploymentId);\n272:       const response = await createReviewForCommitFlow(\n273:         workerUrl,\n274:         reviewIdempotencyKey,\n275:         {\n276:           target: {\n277:             type: 'workspace_deployment',\n278:             workspaceId,\n279:             deploymentId,\n280:           },\n281:           mode: 'report_only',\n282:           policy: {\n283:             severityThreshold: options?.severityThreshold ?? 'low',\n284:             maxFindings: options?.maxFindings,\n285:             includeProvenance: options?.includeProvenance ?? true,\n286:             includeValidationEvidence: options?.includeValidationEvidence ?? true,\n287:           },\n288:           model: options?.model,\n289:           provenance: {\n290:             note: `Review with Entire checkpoint intent context (${checkpointId}).`,\n291:             commitSha,\n292:             commitDiffPatch,\n293:             commitDiffPatchSha256,\n294:             commitDiffPatchTruncated,\n295:             commitDiffPatchOriginalChars,\n296:           },\n297:         }\n298:       );\n299:       reviewId = response.reviewId;\n300:       reviewResultUrl = normalizeResultUrl(workerUrl, response.resultUrl);\n301:       spinner.stop(`Review queued: ${reviewId}`);\n302:     } catch (error) {\n303:       const message = error instanceof Error ? error.message : String(error);\n304:       spinner.stop('Review creation failed');\n305:       throw new Error(`Review flow failed at review creation: ${message}`);\n306:     }\n307: \n308:     p.log.info(`Streaming review events for ${reviewId}`);\n309:     let terminalStatus: string | null = null;\n310:     await streamReviewEventsForCommitFlow(workerUrl, reviewId, async (event) => {\n311:       const line = formatEvent(event);\n312:       if (line) {\n313:         console.log(line);\n314:       }\n315:       if (event.data.type === 'terminal' && typeof event.data.status === 'string') {\n316:         terminalStatus = event.data.status;\n317:       }\n318:     });\n319: \n320:     const final = await getReviewForCommitFlow(workerUrl, reviewId);\n321:     const status = typeof terminalStatus === 'string' ? terminalStatus : final.review.status;\n322:     if (status !== 'succeeded') {\n323:       throw new Error(`Review flow failed at review execution: review ended with status ${status}`);\n324:     }\n325: \n326:     console.log(`Report URL: ${reviewResultUrl}`);\n327:   } catch (error) {\n328:     throw error;\n329:   }\n330: }\n\n(End of file - total 330 lines)\n</content>",
+            "title": "packages/cli/src/commands/review/create.ts",
+            "metadata": {
+              "preview": "import * as p from '@clack/prompts';\nimport { createHash } from 'crypto';\nimport {\n  createReview,\n  getReview,\n  getWorkerUrl,\n  streamReviewEvents,\n} from '../../lib/api.js';\nimport { workspaceDeployCommand } from '../workspace/deploy.js';\nimport { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../workspace/create.js';\nimport { GitRepo } from '../../lib/checkpoint/git.js';\nimport { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';\nimport { formatEvent } from './events.js';\nimport { buildMissingCheckpointTrailerMessage } from './preflight.js';\nimport type {\n  WorkspaceDeploymentResponse,\n  WorkspaceResponse,\n} from '../../lib/types.js';\n\nconst MAX_COMMIT_DIFF_PATCH_CHARS = 120_000;",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773495459461,
+              "end": 1773495459467
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_033132db1800ed690169b564a3472c8193bec18898371c8989"
+            }
+          },
+          "id": "prt_cec911e7a001yL6NwIa4inv8HW",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91107b001HTX15YEIJQczcT"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/cli/src/commands/review/review.test.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/cli/src/commands/review/review.test.ts</path>\n<type>file</type>\n<content>1: import { strict as assert } from 'assert';\n2: import { mkdtemp, readFile, rm } from 'fs/promises';\n3: import { tmpdir } from 'os';\n4: import { join } from 'path';\n5: import {\n6:   createReviewCommand,\n7:   createReviewFromCommitCommand,\n8:   setReviewCommitResolverForTests,\n9:   setReviewCreateFlowForTests,\n10: } from './create.js';\n11: import { reviewEventsCommand } from './events.js';\n12: import { showReviewCommand } from './show.js';\n13: import { exportReviewCommand } from './export.js';\n14: import {\n15:   reviewPreflightCommand,\n16:   setReviewPreflightCommitResolverForTests,\n17:   setReviewPreflightContextResolverForTests,\n18:   setReviewPreflightLastCheckpointResolverForTests,\n19: } from './preflight.js';\n20: \n21: function createReviewResponseBody() {\n22:   return {\n23:     review: {\n24:       id: 'rev_abcd1234',\n25:       workspaceId: 'ws_abc12345',\n26:       deploymentId: 'dep_abcd1234',\n27:       target: {\n28:         type: 'workspace_deployment',\n29:         workspaceId: 'ws_abc12345',\n30:         deploymentId: 'dep_abcd1234',\n31:       },\n32:       mode: 'report_only',\n33:       status: 'succeeded',\n34:       idempotencyKey: 'idem-review',\n35:       attemptCount: 1,\n36:       startedAt: '2026-03-11T00:00:00.000Z',\n37:       finishedAt: '2026-03-11T00:01:00.000Z',\n38:       createdAt: '2026-03-11T00:00:00.000Z',\n39:       updatedAt: '2026-03-11T00:01:00.000Z',\n40:       summary: {\n41:         riskLevel: 'low',\n42:         findingCounts: { critical: 0, high: 0, medium: 0, low: 0 },\n43:         recommendation: 'approve',\n44:       },\n45:       findings: [],\n46:       intent: {\n47:         goal: 'Assess deployment readiness.',\n48:         constraints: ['Non-mutating review only.'],\n49:         decisions: ['Deployment provider: simulated.'],\n50:       },\n51:       evidence: [\n52:         {\n53:           id: 'ev_deployed_url',\n54:           type: 'deploy_probe',\n55:           label: 'Deployed URL present',\n56:           status: 'passed',\n57:           metadata: { url: 'https://example.com' },\n58:         },\n59:       ],\n60:       provenance: {\n61:         sessionIds: [],\n62:         promptSummary: 'Review generated for deployment dep_abcd1234.',\n63:         transcriptUrl: null,\n64:       },\n65:       markdownSummary: '## Review Summary\\n\\n- Recommendation: approve\\n- Risk level: low\\n- Findings: 0',\n66:     },\n67:   };\n68: }\n69: \n70: export async function runReviewCommandTests(): Promise<void> {\n71:   const originalFetch = globalThis.fetch;\n72:   const originalWorkerUrl = process.env.NIMBUS_WORKER_URL;\n73:   process.env.NIMBUS_WORKER_URL = 'https://worker.example.com';\n74: \n75:   try {\n76:     {\n77:       setReviewPreflightCommitResolverForTests(() => ({\n78:         commitSha: '1'.repeat(40),\n79:         checkpointId: null,\n80:         commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n81:       }));\n82:       setReviewPreflightLastCheckpointResolverForTests(() => ({\n83:         commitSha: 'abc1234def567890123456789012345678901234',\n84:         subject: 'feat: working checkpoint commit',\n85:         commitsAgo: 3,\n86:       }));\n87:       await assert.rejects(\n88:         () => reviewPreflightCommand('HEAD'),\n89:         /This commit has no Entire-Checkpoint trailer\\. The last commit on this branch with valid checkpoint context was abc1234 \\('feat: working checkpoint commit'\\) 3 commits ago\\./\n90:       );\n91:       setReviewPreflightCommitResolverForTests(null);\n92:       setReviewPreflightLastCheckpointResolverForTests(null);\n93:     }\n94: \n95:     {\n96:       setReviewPreflightCommitResolverForTests(() => ({\n97:         commitSha: '2'.repeat(40),\n98:         checkpointId: null,\n99:         commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n100:       }));\n101:       setReviewPreflightLastCheckpointResolverForTests(() => null);\n102:       await assert.rejects(\n103:         () => reviewPreflightCommand('HEAD'),\n104:         /This branch has no Entire session history\\. Make sure Entire capture is active before committing \\(`entire status` to verify\\)\\./\n105:       );\n106:       setReviewPreflightCommitResolverForTests(null);\n107:       setReviewPreflightLastCheckpointResolverForTests(null);\n108:     }\n109: \n110:     {\n111:       setReviewPreflightCommitResolverForTests(() => ({\n112:         commitSha: 'e'.repeat(40),\n113:         checkpointId: 'fba364e3d99d',\n114:         commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n115:       }));\n116:       setReviewPreflightContextResolverForTests(async () => ({\n117:         note: 'Review with Entire checkpoint intent context (fba364e3d99d).',\n118:         sessionIds: ['sess_123'],\n119:         transcriptUrl: null,\n120:         intentSessionContext: ['Constraint: Keep scope narrow.'],\n121:       }));\n122:       await reviewPreflightCommand('HEAD');\n123:       setReviewPreflightCommitResolverForTests(null);\n124:       setReviewPreflightContextResolverForTests(null);\n125:     }\n126: \n127:     {\n128:       setReviewPreflightCommitResolverForTests(() => ({\n129:         commitSha: 'f'.repeat(40),\n130:         checkpointId: 'ddfa7c25a183',\n131:         commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n132:       }));\n133:       setReviewPreflightContextResolverForTests(async () => {\n134:         throw new Error('Checkpoint ddfa7c25a183 had no readable session metadata');\n135:       });\n136:       await assert.rejects(\n137:         () => reviewPreflightCommand('HEAD'),\n138:         /Review preflight failed: Unable to resolve required Entire intent context/\n139:       );\n140:       setReviewPreflightCommitResolverForTests(null);\n141:       setReviewPreflightContextResolverForTests(null);\n142:     }\n143: \n144:     {\n145:       let fetchCount = 0;\n146:       globalThis.fetch = (async (): Promise<Response> => {\n147:         fetchCount += 1;\n148:         throw new Error('fetch should not be called when checkpoint trailer is missing');\n149:       }) as typeof fetch;\n150: \n151:       setReviewCommitResolverForTests(() => ({\n152:         commitSha: 'a'.repeat(40),\n153:         checkpointId: null,\n154:         commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n155:       }));\n156: \n157:       await assert.rejects(\n158:         () => createReviewFromCommitCommand({ commitish: 'HEAD' }),\n159:         /Review flow failed at checkpoint resolution/\n160:       );\n161:       assert.equal(fetchCount, 0);\n162:       setReviewCommitResolverForTests(null);\n163:     }\n164: \n165:     {\n166:       const sequence: string[] = [];\n167:       const eventLines: string[] = [];\n168:       let deployIdempotencyKey: string | undefined;\n169:       let reviewIdempotencyKey: string | undefined;\n170:       let commitFlowReviewModel: string | undefined;\n171:       let commitFlowProjectRoot: string | undefined;\n172:       const originalConsoleLog = console.log;\n173:       console.log = (...args: unknown[]) => {\n174:         eventLines.push(args.map((value) => String(value)).join(' '));\n175:       };\n176:       try {\n177:         setReviewCommitResolverForTests(() => ({\n178:           commitSha: 'b'.repeat(40),\n179:           checkpointId: '8a513f56ed70',\n180:           commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n181:         }));\n182:         setReviewCreateFlowForTests({\n183:           resolveWorkspaceSource: (_commitSha, options) => {\n184:             commitFlowProjectRoot = options?.projectRoot;\n185:             return {\n186:             commitSha: 'b'.repeat(40),\n187:             checkpointId: '8a513f56ed70',\n188:             sourceRef: null,\n189:             projectRoot: options?.projectRoot ?? '.',\n190:           };\n191:           },\n192:           createWorkspace: async () => {\n193:             sequence.push('workspace.create');\n194:             return {\n195:               workspace: {\n196:                 id: 'ws_compound',\n197:                 status: 'ready',\n198:                 sourceType: 'checkpoint',\n199:                 checkpointId: '8a513f56ed70',\n200:                 commitSha: 'b'.repeat(40),\n201:                 sourceRef: null,\n202:                 sourceProjectRoot: '.',\n203:                 sourceBundleKey: 'bundle',\n204:                 sourceBundleSha256: 'f'.repeat(64),\n205:                 sourceBundleBytes: 123,\n206:                 sandboxId: 'workspace-ws_compound',\n207:                 baselineReady: true,\n208:                 errorCode: null,\n209:                 errorMessage: null,\n210:                 createdAt: '2026-03-11T00:00:00.000Z',\n211:                 updatedAt: '2026-03-11T00:00:00.000Z',\n212:                 deletedAt: null,\n213:                 eventsUrl: '/api/workspaces/ws_compound/events',\n214:               },\n215:             };\n216:           },\n217:           deployWorkspace: async (_workspaceId, deployOptions) => {\n218:             sequence.push('workspace.deploy');\n219:             deployIdempotencyKey = deployOptions?.idempotencyKey;\n220:             return {\n221:               id: 'dep_compound',\n222:               workspaceId: 'ws_compound',\n223:               status: 'succeeded',\n224:               provider: 'simulated',\n225:               idempotencyKey: 'idem-deploy',\n226:               maxRetries: 2,\n227:               attemptCount: 1,\n228:               sourceSnapshotSha256: null,\n229:               sourceBundleKey: 'bundle',\n230:               deployedUrl: 'https://example.dev',\n231:               providerDeploymentId: null,\n232:               cancelRequestedAt: null,\n233:               startedAt: '2026-03-11T00:00:00.000Z',\n234:               finishedAt: '2026-03-11T00:00:30.000Z',\n235:               createdAt: '2026-03-11T00:00:00.000Z',\n236:               updatedAt: '2026-03-11T00:00:30.000Z',\n237:               provenance: {},\n238:               toolchain: null,\n239:               dependencyCacheKey: null,\n240:               dependencyCacheHit: false,\n241:               remediations: [],\n242:             };\n243:           },\n244:           createReview: async (_workerUrl, idempotencyKey, payload) => {\n245:             sequence.push('review.create');\n246:             reviewIdempotencyKey = idempotencyKey;\n247:             commitFlowReviewModel = payload.model;\n248:             return {\n249:               reviewId: 'rev_compound',\n250:               status: 'queued',\n251:               eventsUrl: '/api/reviews/rev_compound/events',\n252:               resultUrl: '/reviews/rev_compound',\n253:             };\n254:           },\n255:           streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {\n256:             sequence.push('review.events');\n257:             await onEvent({\n258:               id: '1',\n259:               data: {\n260:                 type: 'review_created',\n261:                 seq: 1,\n262:                 createdAt: '2026-03-11T00:00:00.000Z',\n263:               },\n264:             });\n265:             await onEvent({ id: '2', data: { type: 'terminal', status: 'succeeded' } });\n266:           },\n267:           getReview: async () => {\n268:             sequence.push('review.show');\n269:             return createReviewResponseBody() as unknown as { review: any };\n270:           },\n271:         });\n272: \n273:         await createReviewFromCommitCommand({\n274:           commitish: 'HEAD',\n275:           projectRoot: 'apps/web',\n276:           idempotencyKey: 'idem-compound',\n277:           model: 'sonnet-4.5',\n278:         });\n279:         assert.deepEqual(sequence, ['workspace.create', 'workspace.deploy', 'review.create', 'review.events', 'review.show']);\n280:         assert.equal(eventLines.some((line) => line.includes('[1] review_created')), true);\n281:         assert.equal(eventLines[eventLines.length - 1], 'Report URL: https://worker.example.com/reviews/rev_compound');\n282:         assert.equal(typeof deployIdempotencyKey, 'string');\n283:         assert.equal(typeof reviewIdempotencyKey, 'string');\n284:         assert.equal(commitFlowReviewModel, 'sonnet-4.5');\n285:         assert.equal(commitFlowProjectRoot, 'apps/web');\n286:         assert.equal(deployIdempotencyKey?.startsWith('deploy-'), true);\n287:         assert.equal(reviewIdempotencyKey?.startsWith('review-'), true);\n288:       } finally {\n289:         console.log = originalConsoleLog;\n290:         setReviewCommitResolverForTests(null);\n291:         setReviewCreateFlowForTests(null);\n292:       }\n293:     }\n294: \n295:     {\n296:       let capturedProvenance: Record<string, unknown> | null = null;\n297:       const longPatch = `diff --git a/large.txt b/large.txt\\n@@ -1 +1 @@\\n-${'a'.repeat(140000)}\\n+${'b'.repeat(140000)}\\n`;\n298:       setReviewCommitResolverForTests(() => ({\n299:         commitSha: 'd'.repeat(40),\n300:         checkpointId: '8a513f56ed70',\n301:         commitDiffPatch: longPatch,\n302:       }));\n303:       setReviewCreateFlowForTests({\n304:         resolveWorkspaceSource: () => ({\n305:           commitSha: 'd'.repeat(40),\n306:           checkpointId: '8a513f56ed70',\n307:           sourceRef: null,\n308:           projectRoot: '.',\n309:         }),\n310:         createWorkspace: async () => ({\n311:           workspace: {\n312:             id: 'ws_longpatch',\n313:             status: 'ready',\n314:             sourceType: 'checkpoint',\n315:             checkpointId: '8a513f56ed70',\n316:             commitSha: 'd'.repeat(40),\n317:             sourceRef: null,\n318:             sourceProjectRoot: '.',\n319:             sourceBundleKey: 'bundle',\n320:             sourceBundleSha256: 'f'.repeat(64),\n321:             sourceBundleBytes: 123,\n322:             sandboxId: 'workspace-ws_longpatch',\n323:             baselineReady: true,\n324:             errorCode: null,\n325:             errorMessage: null,\n326:             createdAt: '2026-03-11T00:00:00.000Z',\n327:             updatedAt: '2026-03-11T00:00:00.000Z',\n328:             deletedAt: null,\n329:             eventsUrl: '/api/workspaces/ws_longpatch/events',\n330:           },\n331:         }),\n332:         deployWorkspace: async () => ({\n333:           id: 'dep_longpatch',\n334:           workspaceId: 'ws_longpatch',\n335:           status: 'succeeded',\n336:           provider: 'simulated',\n337:           idempotencyKey: 'idem-deploy',\n338:           maxRetries: 2,\n339:           attemptCount: 1,\n340:           sourceSnapshotSha256: null,\n341:           sourceBundleKey: 'bundle',\n342:           deployedUrl: 'https://example.dev',\n343:           providerDeploymentId: null,\n344:           cancelRequestedAt: null,\n345:           startedAt: '2026-03-11T00:00:00.000Z',\n346:           finishedAt: '2026-03-11T00:00:30.000Z',\n347:           createdAt: '2026-03-11T00:00:00.000Z',\n348:           updatedAt: '2026-03-11T00:00:30.000Z',\n349:           provenance: {},\n350:           toolchain: null,\n351:           dependencyCacheKey: null,\n352:           dependencyCacheHit: false,\n353:           remediations: [],\n354:         }),\n355:         createReview: async (_workerUrl, _idempotencyKey, payload) => {\n356:           capturedProvenance = (payload.provenance ?? null) as Record<string, unknown> | null;\n357:           return {\n358:             reviewId: 'rev_longpatch',\n359:             status: 'queued',\n360:             eventsUrl: '/api/reviews/rev_longpatch/events',\n361:             resultUrl: '/reviews/rev_longpatch',\n362:           };\n363:         },\n364:         streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {\n365:           await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });\n366:         },\n367:         getReview: async () => createReviewResponseBody() as unknown as { review: any },\n368:       });\n369: \n370:       await createReviewFromCommitCommand({ commitish: 'HEAD' });\n371:       const patch = String(capturedProvenance?.['commitDiffPatch'] ?? '');\n372:       assert.equal(patch.includes('[... NIMBUS TRUNCATED COMMIT PATCH ...]'), true);\n373:       assert.equal(typeof capturedProvenance?.['commitDiffPatchSha256'], 'string');\n374:       assert.equal(capturedProvenance?.['commitDiffPatchTruncated'], true);\n375:       assert.equal(capturedProvenance?.['commitDiffPatchOriginalChars'], longPatch.length);\n376:       setReviewCommitResolverForTests(null);\n377:       setReviewCreateFlowForTests(null);\n378:     }\n379: \n380:     {\n381:       setReviewCommitResolverForTests(() => ({\n382:         commitSha: 'c'.repeat(40),\n383:         checkpointId: '8a513f56ed70',\n384:         commitDiffPatch: 'diff --git a/file b/file\\nindex 111..222 100644\\n--- a/file\\n+++ b/file\\n@@ -1 +1 @@\\n-a\\n+b\\n',\n385:       }));\n386:       const sequence: string[] = [];\n387:       setReviewCreateFlowForTests({\n388:         resolveWorkspaceSource: () => ({\n389:           commitSha: 'c'.repeat(40),\n390:           checkpointId: '8a513f56ed70',\n391:           sourceRef: null,\n392:           projectRoot: '.',\n393:         }),\n394:         createWorkspace: async () => {\n395:           sequence.push('workspace.create');\n396:           return {\n397:             workspace: {\n398:               id: 'ws_faildeploy',\n399:               status: 'ready',\n400:               sourceType: 'checkpoint',\n401:               checkpointId: '8a513f56ed70',\n402:               commitSha: 'c'.repeat(40),\n403:               sourceRef: null,\n404:               sourceProjectRoot: '.',\n405:               sourceBundleKey: 'bundle',\n406:               sourceBundleSha256: 'f'.repeat(64),\n407:               sourceBundleBytes: 123,\n408:               sandboxId: 'workspace-ws_faildeploy',\n409:               baselineReady: true,\n410:               errorCode: null,\n411:               errorMessage: null,\n412:               createdAt: '2026-03-11T00:00:00.000Z',\n413:               updatedAt: '2026-03-11T00:00:00.000Z',\n414:               deletedAt: null,\n415:               eventsUrl: '/api/workspaces/ws_faildeploy/events',\n416:             },\n417:           };\n418:         },\n419:         deployWorkspace: async () => {\n420:           sequence.push('workspace.deploy');\n421:           throw new Error('deploy preflight failed');\n422:         },\n423:         createReview: async () => {\n424:           sequence.push('review.create');\n425:           throw new Error('should not be called');\n426:         },\n427:       });\n428: \n429:       await assert.rejects(\n430:         () => createReviewFromCommitCommand({ commitish: 'HEAD' }),\n431:         /Review flow failed at workspace deploy: deploy preflight failed/\n432:       );\n433:       assert.deepEqual(sequence, ['workspace.create', 'workspace.deploy']);\n434:       setReviewCommitResolverForTests(null);\n435:       setReviewCreateFlowForTests(null);\n436:     }\n437: \n438:     {\n439:       const requests: Array<{ url: string; init?: RequestInit }> = [];\n440:       globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {\n441:         requests.push({ url: String(input), init });\n442:         return new Response(\n443:           JSON.stringify({\n444:             reviewId: 'rev_abcd1234',\n445:             status: 'queued',\n446:             eventsUrl: '/api/reviews/rev_abcd1234/events',\n447:             resultUrl: '/api/reviews/rev_abcd1234',\n448:           }),\n449:           { status: 202, headers: { 'Content-Type': 'application/json' } }\n450:         );\n451:       }) as typeof fetch;\n452: \n453:       await createReviewCommand('ws_abc12345', 'dep_abcd1234', {\n454:         idempotencyKey: 'idem-review-1',\n455:         severityThreshold: 'medium',\n456:         maxFindings: 12,\n457:         model: 'sonnet-4.5',\n458:         includeProvenance: false,\n459:         includeValidationEvidence: false,\n460:       });\n461:       assert.equal(requests.length, 1);\n462:       assert.equal(requests[0].url.endsWith('/api/reviews'), true);\n463:       assert.equal((requests[0].init?.headers as Record<string, string>)['Idempotency-Key'], 'idem-review-1');\n464:       const requestBody = JSON.parse(String(requests[0].init?.body ?? '{}')) as {\n465:         model?: string;\n466:         policy?: {\n467:           severityThreshold?: string;\n468:           maxFindings?: number;\n469:           includeProvenance?: boolean;\n470:           includeValidationEvidence?: boolean;\n471:         };\n472:         provenance?: {\n473:           note?: string | null;\n474:           sessionIds?: string[];\n475:           intentSessionContext?: string[];\n476:         };\n477:       };\n478:       assert.equal(requestBody.policy?.severityThreshold, 'medium');\n479:       assert.equal(requestBody.policy?.maxFindings, 12);\n480:       assert.equal(requestBody.model, 'sonnet-4.5');\n481:       assert.equal(requestBody.policy?.includeProvenance, false);\n482:       assert.equal(requestBody.policy?.includeValidationEvidence, false);\n483:       assert.equal(requestBody.provenance, undefined);\n484:     }\n485: \n486:     {\n487:       let fetchCount = 0;\n488:       globalThis.fetch = (async (): Promise<Response> => {\n489:         fetchCount += 1;\n490:         return new Response(JSON.stringify(createReviewResponseBody()), {\n491:           status: 200,\n492:           headers: { 'Content-Type': 'application/json' },\n493:         });\n494:       }) as typeof fetch;\n495: \n496:       await showReviewCommand('rev_abcd1234');\n497:       assert.equal(fetchCount, 1);\n498:     }\n499: \n500:     {\n501:       const lines: string[] = [];\n502:       const originalConsoleLog = console.log;\n503:       console.log = (...args: unknown[]) => {\n504:         lines.push(args.map((value) => String(value)).join(' '));\n505:       };\n506:       try {\n507:         globalThis.fetch = (async (): Promise<Response> => {\n508:           const encoder = new TextEncoder();\n509:           const stream = new ReadableStream<Uint8Array>({\n510:             async start(controller) {\n511:               controller.enqueue(\n512:                 encoder.encode(\n513:                   ['id: 1', 'data: {\"type\":\"review_created\",\"seq\":1,\"createdAt\":\"2026-03-11T00:00:00.000Z\"}', '', ''].join('\\n')\n514:                 )\n515:               );\n516:               await new Promise((resolve) => setTimeout(resolve, 10));\n517:               controller.enqueue(\n518:                 encoder.encode(\n519:                   ['data: {\"type\":\"terminal\",\"status\":\"succeeded\"}', 'data: {\"type\":\"snapshot\",\"status\":\"succeeded\"}', '', ''].join('\\n')\n520:                 )\n521:               );\n522:               controller.close();\n523:             },\n524:           });\n525:           return new Response(stream, {\n526:             status: 200,\n527:             headers: { 'Content-Type': 'text/event-stream' },\n528:           });\n529:         }) as typeof fetch;\n530: \n531:         await reviewEventsCommand('rev_abcd1234');\n532:         assert.equal(lines.some((line) => line.includes('[1] review_created')), true);\n533:         assert.equal(lines.some((line) => line.includes('[terminal] status=succeeded')), true);\n534:         assert.equal(lines.some((line) => line.includes('[snapshot] status=succeeded')), true);\n535:       } finally {\n536:         console.log = originalConsoleLog;\n537:       }\n538:     }\n539: \n540:     {\n541:       globalThis.fetch = (async (): Promise<Response> => {\n542:         return new Response(JSON.stringify(createReviewResponseBody()), {\n543:           status: 200,\n544:           headers: { 'Content-Type': 'application/json' },\n545:         });\n546:       }) as typeof fetch;\n547: \n548:       const dir = await mkdtemp(join(tmpdir(), 'nimbus-review-'));\n549:       try {\n550:         const markdownPath = join(dir, 'review.md');\n551:         await exportReviewCommand('rev_abcd1234', 'markdown', markdownPath);\n552:         const markdown = await readFile(markdownPath, 'utf8');\n553:         assert.match(markdown, /## Review Summary/);\n554: \n555:         const jsonPath = join(dir, 'review.json');\n556:         await exportReviewCommand('rev_abcd1234', 'json', jsonPath);\n557:         const json = await readFile(jsonPath, 'utf8');\n558:         assert.match(json, /\"id\": \"rev_abcd1234\"/);\n559:       } finally {\n560:         await rm(dir, { recursive: true, force: true });\n561:       }\n562:     }\n563:   } finally {\n564:     setReviewCommitResolverForTests(null);\n565:     setReviewCreateFlowForTests(null);\n566:     setReviewPreflightCommitResolverForTests(null);\n567:     setReviewPreflightContextResolverForTests(null);\n568:     setReviewPreflightLastCheckpointResolverForTests(null);\n569:     globalThis.fetch = originalFetch;\n570:     process.env.NIMBUS_WORKER_URL = originalWorkerUrl;\n571:   }\n572: }\n\n(End of file - total 572 lines)\n</content>",
+            "title": "packages/cli/src/commands/review/review.test.ts",
+            "metadata": {
+              "preview": "import { strict as assert } from 'assert';\nimport { mkdtemp, readFile, rm } from 'fs/promises';\nimport { tmpdir } from 'os';\nimport { join } from 'path';\nimport {\n  createReviewCommand,\n  createReviewFromCommitCommand,\n  setReviewCommitResolverForTests,\n  setReviewCreateFlowForTests,\n} from './create.js';\nimport { reviewEventsCommand } from './events.js';\nimport { showReviewCommand } from './show.js';\nimport { exportReviewCommand } from './export.js';\nimport {\n  reviewPreflightCommand,\n  setReviewPreflightCommitResolverForTests,\n  setReviewPreflightContextResolverForTests,\n  setReviewPreflightLastCheckpointResolverForTests,\n} from './preflight.js';\n",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773495459617,
+              "end": 1773495459624
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_033132db1800ed690169b564a347388193afb487545e642582"
+            }
+          },
+          "id": "prt_cec911e86001HXxqrxB1Pzye83",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91107b001HTX15YEIJQczcT"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/cli/src/index.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/cli/src/index.ts</path>\n<type>file</type>\n<content>1: #!/usr/bin/env node\n2: \n3: import { config } from 'dotenv';\n4: import { resolve } from 'path';\n5: import { existsSync } from 'fs';\n6: \n7: // Load .env from repo root or current directory\n8: const envPaths = [\n9:   resolve(process.cwd(), '.env'),\n10:   resolve(process.cwd(), '..', '..', '.env'), // When run from packages/cli\n11: ];\n12: for (const envPath of envPaths) {\n13:   if (existsSync(envPath)) {\n14:     config({ path: envPath });\n15:     break;\n16:   }\n17: }\n18: \n19: import * as p from '@clack/prompts';\n20: import { listCommand } from './commands/list.js';\n21: import { watchCommand } from './commands/watch.js';\n22: import { deployCheckpointCommand } from './commands/deploy/checkpoint.js';\n23: import { resolveDeployCheckpointOptions } from './commands/deploy/checkpoint-options.js';\n24: import { createWorkspaceCommand } from './commands/workspace/create.js';\n25: import { showWorkspaceCommand } from './commands/workspace/show.js';\n26: import { destroyWorkspaceCommand } from './commands/workspace/destroy.js';\n27: import { listWorkspaceFilesCommand } from './commands/workspace/files.js';\n28: import { catWorkspaceFileCommand } from './commands/workspace/cat.js';\n29: import { workspaceDiffCommand } from './commands/workspace/diff.js';\n30: import { workspaceDeployCommand } from './commands/workspace/deploy.js';\n31: import { doctorCommand } from './commands/doctor.js';\n32: import { createReviewCommand, createReviewFromCommitCommand } from './commands/review/create.js';\n33: import { reviewEventsCommand } from './commands/review/events.js';\n34: import { showReviewCommand } from './commands/review/show.js';\n35: import { exportReviewCommand } from './commands/review/export.js';\n36: import { reviewPreflightCommand } from './commands/review/preflight.js';\n37: import { parseArgs } from './lib/args.js';\n38: import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';\n39: \n40: const VERSION = '0.1.0';\n41: \n42: function parsePositiveIntegerFlag(\n43:   value: string | boolean | string[] | undefined\n44: ): number | undefined {\n45:   const raw = Array.isArray(value) ? value[value.length - 1] : value;\n46:   if (typeof raw !== 'string') {\n47:     return undefined;\n48:   }\n49: \n50:   const parsed = Number(raw);\n51:   if (!Number.isFinite(parsed) || parsed <= 0) {\n52:     return undefined;\n53:   }\n54: \n55:   return Math.floor(parsed);\n56: }\n57: \n58: function normalizeCliToken(token: string): { value: string; changed: boolean } {\n59:   let value = token;\n60:   value = value\n61:     .replace(/[\\u2018\\u2019]/g, \"'\")\n62:     .replace(/[\\u201C\\u201D]/g, '\"');\n63:   if (/^[\\u2013\\u2014]/.test(value)) {\n64:     value = `--${value.slice(1)}`;\n65:   }\n66:   if ((value.startsWith('\"') && value.endsWith('\"')) || (value.startsWith(\"'\") && value.endsWith(\"'\"))) {\n67:     value = value.slice(1, -1);\n68:   }\n69:   return { value, changed: value !== token };\n70: }\n71: \n72: function normalizeCliArgs(rawArgs: string[]): { args: string[]; changed: boolean } {\n73:   const normalized: string[] = [];\n74:   let changed = false;\n75:   for (const token of rawArgs) {\n76:     const next = normalizeCliToken(token);\n77:     normalized.push(next.value);\n78:     if (next.changed) {\n79:       changed = true;\n80:     }\n81:   }\n82:   return { args: normalized, changed };\n83: }\n84: \n85: function showHelp(): void {\n86:   console.log(`\n87: nimbus - Entire checkpoint deployment CLI\n88: \n89: Usage:\n90:   nimbus <command> [options]\n91: \n92: Commands:\n93:   doctor             Validate worker deploy readiness and migrations\n94:   deploy checkpoint <checkpoint-id-or-commit-ish>\n95:                       Resolve checkpoint/commit source and queue a deployment job\n96:   workspace create <checkpoint-id-or-commit-ish>\n97:                      Create a persistent sandbox workspace from checkpoint source\n98:   workspace show <workspace-id>\n99:                       Show workspace status and source metadata\n100:   workspace destroy <workspace-id>\n101:                       Destroy sandbox workspace and source bundle\n102:   workspace files <workspace-id> [path]\n103:                       List files in workspace at path (default: .)\n104:   workspace cat <workspace-id> <path>\n105:                       Read file content from workspace\n106:   workspace diff <workspace-id>\n107:                        Show workspace diff summary (use --include-patch for patch)\n108:   workspace deploy <workspace-id>\n109:                        Run deploy preflight, queue deploy, and poll status\n110:   review create --commit [commit-ish]\n111:                         Create workspace+deployment+review and block until review completion\n112:   review create --workspace <id> --deployment <id>\n113:                        Create a report-only review run for an existing deployment\n114:   review preflight [commit-ish]\n115:                        Validate Entire checkpoint/session metadata for review create\n116:   review show <review-id>\n117:                        Show review status and summary\n118:   review events <review-id>\n119:                       Stream review lifecycle events\n120:   review export <review-id>\n121:                       Export a review as markdown or json\n122:   list               List all past jobs\n123:   watch <job-id>     Watch a job's progress\n124: \n125: Options:\n126:   --ref <ref>        Resolution hint for checkpoint lookup\n127:   --project-root <path>\n128:                      Deploy project root override for monorepos\n129:   --env-file <path>  Extra env file(s), comma-separated\n130:   --env KEY=VALUE    Explicit env override (repeatable)\n131:   --tests            Run tests during workspace deploy validation (default: off)\n132:   --build            Run build during workspace deploy validation (default: off)\n133:   --no-tests         Legacy alias to disable tests explicitly\n134:   --no-build         Legacy alias to disable build explicitly\n135:   --no-lint          Skip lint in checkpoint deploy metadata\n136:   --no-watch         Disable follow-up watch guidance\n137:   --include-patch    Include unified patch output for workspace diff\n138:   --max-bytes <n>    Max bytes for diff/file output truncation\n139:   --idempotency-key <key>\n140:                      Stable idempotency key for workspace deploy retries\n141:   --poll-interval-ms <n>\n142:                       Poll interval for workspace deploy status checks\n143:   --provider <name>   Deploy provider (simulated|cloudflare_workers_assets)\n144:   --output-dir <path> Static build output directory (required for real provider)\n145:   --summarize-session <mode>\n146:                       Intent context summarization mode (auto|always|never)\n147:   --intent-token-budget <n>\n148:                       Token budget for Entire intent context capture (default: 1200)\n149:   --workspace <id>    Workspace ID for review create\n150:   --deployment <id>   Deployment ID for review create\n151:   --commit [value]    Commit-ish for one-command review flow (default: HEAD)\n152:   --severity-threshold <level>\n153:                       Review finding floor (low|medium|high|critical)\n154:   --max-findings <n>  Maximum findings to include in report\n155:   --model <name>      Review analysis model override for this run\n156:   --no-provenance     Suppress provenance summary in report output\n157:   --no-validation-evidence\n158:                       Suppress validation/deploy evidence in report output\n159:   --format <type>     Review export format (markdown|json)\n160:   --out <path>        Review export output file path\n161:   --preflight-only   Run deploy preflight only (do not queue deploy)\n162:   --auto-fix         Allow safe preflight/deploy remediations\n163:   --no-dry-run       Upload source bundle and create checkpoint job\n164:   -h, --help         Show this help message\n165:   -v, --version      Show version\n166: \n167: Examples:\n168:   nimbus deploy checkpoint checkpoint:8a513f56ed70\n169:   nimbus workspace create checkpoint:8a513f56ed70 --project-root apps/web\n170:   nimbus workspace show ws_abc12345\n171:   nimbus workspace files ws_abc12345 src\n172:   nimbus workspace diff ws_abc12345 --include-patch --max-bytes 262144\n173:   nimbus workspace deploy ws_abc12345\n174:   nimbus workspace deploy ws_abc12345 --provider cloudflare_workers_assets --output-dir dist\n175:   nimbus workspace deploy ws_abc12345 --idempotency-key deploy-smoke-123 --auto-fix\n176:   nimbus workspace deploy ws_abc12345 --preflight-only\n177:   nimbus workspace deploy ws_abc12345 --tests --build\n178:   nimbus review create --commit HEAD\n179:   nimbus review create --commit main~1\n180:   nimbus review create --commit HEAD --project-root apps/web\n181:   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234\n182:   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20\n183:   nimbus review create --commit HEAD --model sonnet-4.5\n184:   nimbus review preflight\n185:   nimbus review preflight HEAD~2\n186:   nimbus review show rev_abcd1234\n187:   nimbus review events rev_abcd1234\n188:   nimbus review export rev_abcd1234 --format markdown --out review.md\n189:   nimbus doctor\n190:   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com\n191:   nimbus list\n192:   nimbus watch job_abc123\n193: \n194: Environment Variables:\n195:   NIMBUS_WORKER_URL  Worker URL (required) - Your self-hosted Nimbus worker\n196: \n197: Self-hosting: https://github.com/dayhaysoos/nimbus#self-hosting-guide\n198: `);\n199: }\n200: \n201: async function main(): Promise<void> {\n202:     const args = process.argv.slice(2);\n203:     const normalized = normalizeCliArgs(args);\n204:     try {\n205:     const { command, flags, positional } = parseArgs(normalized.args);\n206:     // Handle version flag\n207:     if (flags.version || flags.v) {\n208:       console.log(`nimbus v${VERSION}`);\n209:       process.exit(0);\n210:     }\n211: \n212:     // Handle help flag\n213:     if (flags.help || flags.h || !command) {\n214:       showHelp();\n215:       process.exit(command ? 0 : 1);\n216:     }\n217: \n218:     p.intro('@dayhaysoos/nimbus');\n219: \n220:     if (normalized.changed) {\n221:       p.log.warning('Detected smart punctuation in arguments; normalized to ASCII equivalents.');\n222:     }\n223: \n224:     switch (command) {\n225:       case 'doctor': {\n226:         await doctorCommand();\n227:         break;\n228:       }\n229: \n230:       case 'deploy': {\n231:         const deployTarget = positional[0];\n232:         const deployInput = positional[1];\n233: \n234:         if (deployTarget !== 'checkpoint') {\n235:           p.log.error('Missing or invalid deploy target. Usage: nimbus deploy checkpoint <checkpoint-id-or-commit-ish>');\n236:           process.exit(1);\n237:         }\n238: \n239:         if (!deployInput) {\n240:           p.log.error('Missing checkpoint ID or commit-ish. Usage: nimbus deploy checkpoint <checkpoint-id-or-commit-ish>');\n241:           process.exit(1);\n242:         }\n243: \n244:         const deployOptions = resolveDeployCheckpointOptions(flags);\n245:         await deployCheckpointCommand(deployInput, deployOptions);\n246:         break;\n247:       }\n248: \n249:       case 'workspace': {\n250:         const workspaceAction = positional[0];\n251: \n252:         if (workspaceAction === 'create') {\n253:           const input = positional[1];\n254:           if (!input) {\n255:             p.log.error(\n256:               'Missing checkpoint ID or commit-ish. Usage: nimbus workspace create <checkpoint-id-or-commit-ish>'\n257:             );\n258:             process.exit(1);\n259:           }\n260: \n261:           const projectRootFlag = flags['project-root'];\n262:           const refFlag = flags.ref;\n263:           const projectRoot = typeof projectRootFlag === 'string' ? projectRootFlag : undefined;\n264:           const ref = typeof refFlag === 'string' ? refFlag : undefined;\n265:           await createWorkspaceCommand(input, { ref, projectRoot });\n266:           break;\n267:         }\n268: \n269:         if (workspaceAction === 'show') {\n270:           const workspaceId = positional[1];\n271:           if (!workspaceId) {\n272:             p.log.error('Missing workspace ID. Usage: nimbus workspace show <workspace-id>');\n273:             process.exit(1);\n274:           }\n275: \n276:           await showWorkspaceCommand(workspaceId);\n277:           break;\n278:         }\n279: \n280:         if (workspaceAction === 'destroy') {\n281:           const workspaceId = positional[1];\n282:           if (!workspaceId) {\n283:             p.log.error('Missing workspace ID. Usage: nimbus workspace destroy <workspace-id>');\n284:             process.exit(1);\n285:           }\n286: \n287:           await destroyWorkspaceCommand(workspaceId);\n288:           break;\n289:         }\n290: \n291:         if (workspaceAction === 'files') {\n292:           const workspaceId = positional[1];\n293:           if (!workspaceId) {\n294:             p.log.error('Missing workspace ID. Usage: nimbus workspace files <workspace-id> [path]');\n295:             process.exit(1);\n296:           }\n297: \n298:           const path = positional[2];\n299:           await listWorkspaceFilesCommand(workspaceId, path);\n300:           break;\n301:         }\n302: \n303:         if (workspaceAction === 'cat') {\n304:           const workspaceId = positional[1];\n305:           const path = positional[2];\n306:           if (!workspaceId || !path) {\n307:             p.log.error('Usage: nimbus workspace cat <workspace-id> <path>');\n308:             process.exit(1);\n309:           }\n310: \n311:           const maxBytes = parsePositiveIntegerFlag(flags['max-bytes']);\n312: \n313:           await catWorkspaceFileCommand(workspaceId, path, maxBytes);\n314:           break;\n315:         }\n316: \n317:         if (workspaceAction === 'diff') {\n318:           const workspaceId = positional[1];\n319:           if (!workspaceId) {\n320:             p.log.error('Usage: nimbus workspace diff <workspace-id> [--include-patch] [--max-bytes <n>]');\n321:             process.exit(1);\n322:           }\n323: \n324:           const includePatch = Boolean(flags['include-patch']);\n325:           const maxBytes = parsePositiveIntegerFlag(flags['max-bytes']);\n326: \n327:           await workspaceDiffCommand(workspaceId, { includePatch, maxBytes });\n328:           break;\n329:         }\n330: \n331:         if (workspaceAction === 'deploy') {\n332:           const workspaceId = positional[1];\n333:           if (!workspaceId) {\n334:             p.log.error('Usage: nimbus workspace deploy <workspace-id>');\n335:             process.exit(1);\n336:           }\n337: \n338:           const idempotencyKeyFlag = flags['idempotency-key'];\n339:           const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;\n340:           const pollIntervalMs = parsePositiveIntegerFlag(flags['poll-interval-ms']);\n341:           const runTestsIfPresent = Boolean(flags.tests) && !Boolean(flags['no-tests']);\n342:           const runBuildIfPresent = Boolean(flags.build) && !Boolean(flags['no-build']);\n343:           const preflightOnly = Boolean(flags['preflight-only']);\n344:           const autoFix = Boolean(flags['auto-fix']);\n345:           const providerFlag = flags.provider;\n346:           let provider: 'simulated' | 'cloudflare_workers_assets' | undefined;\n347:           if (typeof providerFlag === 'string') {\n348:             if (providerFlag === 'simulated' || providerFlag === 'cloudflare_workers_assets') {\n349:               provider = providerFlag;\n350:             } else {\n351:               throw new Error('Invalid --provider value. Use simulated or cloudflare_workers_assets.');\n352:             }\n353:           }\n354:           const outputDirFlag = flags['output-dir'];\n355:           const outputDir = typeof outputDirFlag === 'string' ? outputDirFlag : undefined;\n356:           const summarizeSessionFlag = flags['summarize-session'];\n357:           let summarizeSession: 'auto' | 'always' | 'never' | undefined;\n358:           if (typeof summarizeSessionFlag === 'string') {\n359:             if (summarizeSessionFlag === 'auto' || summarizeSessionFlag === 'always' || summarizeSessionFlag === 'never') {\n360:               summarizeSession = summarizeSessionFlag;\n361:             } else {\n362:               throw new Error('Invalid --summarize-session value. Use auto, always, or never.');\n363:             }\n364:           }\n365:           const intentTokenBudget = parsePositiveIntegerFlag(flags['intent-token-budget']);\n366: \n367:           await workspaceDeployCommand(workspaceId, {\n368:             idempotencyKey,\n369:             runTestsIfPresent,\n370:             runBuildIfPresent,\n371:             preflightOnly,\n372:             autoFix,\n373:             pollIntervalMs,\n374:             provider,\n375:             outputDir,\n376:             summarizeSession,\n377:             intentTokenBudget,\n378:           });\n379:           break;\n380:         }\n381: \n382:         p.log.error('Unknown workspace command. Use: create, show, destroy, files, cat, diff, deploy');\n383:         process.exit(1);\n384:       }\n385: \n386:       case 'review': {\n387:         const reviewAction = positional[0];\n388: \n389:         if (reviewAction === 'create') {\n390:           const workspaceFlag = flags.workspace;\n391:           const deploymentFlag = flags.deployment;\n392:           const commitFlag = flags.commit;\n393:           const workspaceId = typeof workspaceFlag === 'string' ? workspaceFlag : undefined;\n394:           const deploymentId = typeof deploymentFlag === 'string' ? deploymentFlag : undefined;\n395:           const idempotencyKeyFlag = flags['idempotency-key'];\n396:           const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;\n397:           const modelFlag = flags.model;\n398:           const model = typeof modelFlag === 'string' && modelFlag.trim() ? modelFlag.trim() : undefined;\n399:           const projectRootFlag = flags['project-root'];\n400:           const projectRoot = typeof projectRootFlag === 'string' && projectRootFlag.trim() ? projectRootFlag.trim() : undefined;\n401:           const severityThreshold = parseReviewSeverityThreshold(flags['severity-threshold']);\n402:           const maxFindings = parseReviewMaxFindings(flags['max-findings']);\n403:           const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;\n404:           const hasWorkspaceInputs = Boolean(workspaceId || deploymentId);\n405: \n406:           if (commitModeRequested && hasWorkspaceInputs) {\n407:             p.log.error('Usage error: --commit cannot be combined with --workspace/--deployment. Choose one review create mode.');\n408:             process.exit(1);\n409:           }\n410: \n411:           if (commitModeRequested || (!workspaceId && !deploymentId)) {\n412:             await createReviewFromCommitCommand({\n413:               commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',\n414:               projectRoot,\n415:               idempotencyKey,\n416:               severityThreshold,\n417:               maxFindings,\n418:               model,\n419:               includeProvenance: !Boolean(flags['no-provenance']),\n420:               includeValidationEvidence: !Boolean(flags['no-validation-evidence']),\n421:               pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),\n422:             });\n423:             break;\n424:           }\n425: \n426:           if (!workspaceId || !deploymentId) {\n427:             p.log.error('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id>');\n428:             process.exit(1);\n429:           }\n430: \n431:           await createReviewCommand(workspaceId, deploymentId, {\n432:             idempotencyKey,\n433:             severityThreshold,\n434:             maxFindings,\n435:             model,\n436:             includeProvenance: !Boolean(flags['no-provenance']),\n437:             includeValidationEvidence: !Boolean(flags['no-validation-evidence']),\n438:           });\n439:           break;\n440:         }\n441: \n442:         if (reviewAction === 'show') {\n443:           const reviewId = positional[1];\n444:           if (!reviewId) {\n445:             p.log.error('Usage: nimbus review show <review-id>');\n446:             process.exit(1);\n447:           }\n448: \n449:           await showReviewCommand(reviewId);\n450:           break;\n451:         }\n452: \n453:         if (reviewAction === 'preflight') {\n454:           const commitishArg = positional[1];\n455:           await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {\n456:             summarizeSession: (() => {\n457:               const summarizeSessionFlag = flags['summarize-session'];\n458:               if (typeof summarizeSessionFlag !== 'string') {\n459:                 return undefined;\n460:               }\n461:               if (summarizeSessionFlag === 'auto' || summarizeSessionFlag === 'always' || summarizeSessionFlag === 'never') {\n462:                 return summarizeSessionFlag;\n463:               }\n464:               throw new Error('Invalid --summarize-session value. Use auto, always, or never.');\n465:             })(),\n466:             intentTokenBudget: parsePositiveIntegerFlag(flags['intent-token-budget']),\n467:           });\n468:           break;\n469:         }\n470: \n471:         if (reviewAction === 'events') {\n472:           const reviewId = positional[1];\n473:           if (!reviewId) {\n474:             p.log.error('Usage: nimbus review events <review-id>');\n475:             process.exit(1);\n476:           }\n477: \n478:           await reviewEventsCommand(reviewId);\n479:           break;\n480:         }\n481: \n482:         if (reviewAction === 'export') {\n483:           const reviewId = positional[1];\n484:           const formatFlag = flags.format;\n485:           const outFlag = flags.out;\n486:           const format = typeof formatFlag === 'string' ? formatFlag : 'markdown';\n487:           const outputPath = typeof outFlag === 'string' ? outFlag : undefined;\n488:           if (!reviewId || !outputPath) {\n489:             p.log.error('Usage: nimbus review export <review-id> --format <markdown|json> --out <path>');\n490:             process.exit(1);\n491:           }\n492:           if (format !== 'markdown' && format !== 'json') {\n493:             p.log.error('Invalid --format value. Use markdown or json.');\n494:             process.exit(1);\n495:           }\n496: \n497:           await exportReviewCommand(reviewId, format, outputPath);\n498:           break;\n499:         }\n500: \n501:         p.log.error('Unknown review command. Use: create, preflight, show, events, export');\n502:         process.exit(1);\n503:       }\n504: \n505:       case 'list': {\n506:         await listCommand();\n507:         break;\n508:       }\n509: \n510:       case 'watch': {\n511:         const jobId = positional[0];\n512:         if (!jobId) {\n513:           p.log.error('Missing job ID. Usage: nimbus watch <job-id>');\n514:           process.exit(1);\n515:         }\n516:         await watchCommand(jobId);\n517:         break;\n518:       }\n519: \n520:       default: {\n521:         p.log.error(`Unknown command: ${command}`);\n522:         p.log.info('Run \"nimbus --help\" for usage information.');\n523:         process.exit(1);\n524:       }\n525:     }\n526:   } catch (error) {\n527:     const message = error instanceof Error ? error.message : String(error);\n528:     p.log.error(message);\n529:     process.exit(1);\n530:   }\n531: }\n532: \n533: main();\n\n(End of file - total 533 lines)\n</content>",
+            "title": "packages/cli/src/index.ts",
+            "metadata": {
+              "preview": "#!/usr/bin/env node\n\nimport { config } from 'dotenv';\nimport { resolve } from 'path';\nimport { existsSync } from 'fs';\n\n// Load .env from repo root or current directory\nconst envPaths = [\n  resolve(process.cwd(), '.env'),\n  resolve(process.cwd(), '..', '..', '.env'), // When run from packages/cli\n];\nfor (const envPath of envPaths) {\n  if (existsSync(envPath)) {\n    config({ path: envPath });\n    break;\n  }\n}\n\nimport * as p from '@clack/prompts';\nimport { listCommand } from './commands/list.js';",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773495459618,
+              "end": 1773495459626
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_033132db1800ed690169b564a347408193b354a9a319431bd0"
+            }
+          },
+          "id": "prt_cec911f21001AzVgU5JvcESqwX",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91107b001HTX15YEIJQczcT"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/cli/src/commands/review/preflight.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/cli/src/commands/review/preflight.ts</path>\n<type>file</type>\n<content>1: import * as p from '@clack/prompts';\n2: import { GitRepo } from '../../lib/checkpoint/git.js';\n3: import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';\n4: import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';\n5: \n6: interface CommitResolution {\n7:   commitSha: string;\n8:   checkpointId: string | null;\n9:   commitDiffPatch: string;\n10: }\n11: \n12: interface LastCheckpointOnBranch {\n13:   commitSha: string;\n14:   subject: string;\n15:   commitsAgo: number;\n16: }\n17: \n18: let resolveCommitForTests: ((commitish: string) => CommitResolution) | null = null;\n19: let resolveEntireContextForTests: typeof resolveEntireIntentContextForCommit | null = null;\n20: let resolveLastCheckpointOnBranchForTests: ((commitSha: string, cwd: string) => LastCheckpointOnBranch | null) | null = null;\n21: \n22: export function setReviewPreflightCommitResolverForTests(\n23:   resolver: ((commitish: string) => CommitResolution) | null\n24: ): void {\n25:   resolveCommitForTests = resolver;\n26: }\n27: \n28: export function setReviewPreflightContextResolverForTests(\n29:   resolver: typeof resolveEntireIntentContextForCommit | null\n30: ): void {\n31:   resolveEntireContextForTests = resolver;\n32: }\n33: \n34: export function setReviewPreflightLastCheckpointResolverForTests(\n35:   resolver: ((commitSha: string, cwd: string) => LastCheckpointOnBranch | null) | null\n36: ): void {\n37:   resolveLastCheckpointOnBranchForTests = resolver;\n38: }\n39: \n40: function commitSubject(message: string): string {\n41:   const lines = message.split(/\\r?\\n/).map((line) => line.trim()).filter(Boolean);\n42:   return lines[0] ?? '(no commit subject)';\n43: }\n44: \n45: function findLastCheckpointOnBranch(commitSha: string, cwd = process.cwd()): LastCheckpointOnBranch | null {\n46:   if (resolveLastCheckpointOnBranchForTests) {\n47:     return resolveLastCheckpointOnBranchForTests(commitSha, cwd);\n48:   }\n49: \n50:   const git = new GitRepo(cwd);\n51:   const ref = git.getCurrentBranchRef() ?? 'HEAD';\n52:   const commits = git.listCommits(ref);\n53:   if (commits.length === 0) {\n54:     return null;\n55:   }\n56: \n57:   const currentIndex = commits.findIndex((entry) => entry.sha === commitSha);\n58:   const startIndex = currentIndex >= 0 ? currentIndex + 1 : 0;\n59:   for (let index = startIndex; index < commits.length; index += 1) {\n60:     const trailers = parseCommitTrailers(commits[index].message);\n61:     if (!trailers.checkpointId) {\n62:       continue;\n63:     }\n64:     const commitsAgo = currentIndex >= 0 ? index - currentIndex : index;\n65:     return {\n66:       commitSha: commits[index].sha,\n67:       subject: commitSubject(commits[index].message),\n68:       commitsAgo,\n69:     };\n70:   }\n71: \n72:   return null;\n73: }\n74: \n75: export function buildMissingCheckpointTrailerMessage(commitSha: string, cwd = process.cwd()): string {\n76:   const lastCheckpoint = findLastCheckpointOnBranch(commitSha, cwd);\n77:   if (lastCheckpoint) {\n78:     return `This commit has no Entire-Checkpoint trailer. The last commit on this branch with valid checkpoint context was ${lastCheckpoint.commitSha.slice(\n79:       0,\n80:       7\n81:     )} ('${lastCheckpoint.subject}') ${lastCheckpoint.commitsAgo} commits ago.`;\n82:   }\n83: \n84:   return 'This branch has no Entire session history. Make sure Entire capture is active before committing (`entire status` to verify).';\n85: }\n86: \n87: function resolveCommitContext(commitish: string): CommitResolution {\n88:   if (resolveCommitForTests) {\n89:     return resolveCommitForTests(commitish);\n90:   }\n91:   const git = new GitRepo(process.cwd());\n92:   const commitSha = git.resolveCommitSha(commitish);\n93:   const trailers = parseCommitTrailers(git.getCommitMessage(commitSha));\n94:   return {\n95:     commitSha,\n96:     checkpointId: trailers.checkpointId,\n97:     commitDiffPatch: git.getCommitPatch(commitSha),\n98:   };\n99: }\n100: \n101: export async function reviewPreflightCommand(\n102:   commitish = 'HEAD',\n103:   options?: {\n104:     summarizeSession?: 'auto' | 'always' | 'never';\n105:     intentTokenBudget?: number;\n106:   }\n107: ): Promise<void> {\n108:   const spinner = p.spinner();\n109:   const normalizedCommitish = commitish.trim() || 'HEAD';\n110: \n111:   let commitSha = '';\n112:   let checkpointId = '';\n113: \n114:   spinner.start('Resolving commit and checkpoint...');\n115:   try {\n116:     const resolved = resolveCommitContext(normalizedCommitish);\n117:     commitSha = resolved.commitSha;\n118:     checkpointId = resolved.checkpointId ?? '';\n119:     if (!checkpointId) {\n120:       throw new Error(buildMissingCheckpointTrailerMessage(commitSha, process.cwd()));\n121:     }\n122:     if (!resolved.commitDiffPatch.trim()) {\n123:       throw new Error(\n124:         `Commit ${commitSha.slice(0, 12)} has no diff patch content. Review creation requires meaningful diff context.`\n125:       );\n126:     }\n127:     spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);\n128:   } catch (error) {\n129:     const message = error instanceof Error ? error.message : String(error);\n130:     spinner.stop('Commit/checkpoint validation failed');\n131:     throw new Error(`Review preflight failed: ${message}`);\n132:   }\n133: \n134:   spinner.start('Validating Entire session metadata...');\n135:   try {\n136:     const contextResolver = resolveEntireContextForTests ?? resolveEntireIntentContextForCommit;\n137:     const context = await contextResolver(commitSha, process.cwd(), {\n138:       checkpointId,\n139:       summarizeSession: options?.summarizeSession ?? 'auto',\n140:       tokenBudget: options?.intentTokenBudget,\n141:     });\n142:     spinner.stop('Entire session metadata is readable');\n143:     p.log.success('Review preflight passed');\n144:     p.log.message(`Commit: ${commitSha}`);\n145:     p.log.message(`Checkpoint: ${checkpointId}`);\n146:     p.log.message(`Session IDs: ${context.sessionIds.length > 0 ? context.sessionIds.join(', ') : '(none)'}`);\n147:     p.log.message(`Intent context lines: ${context.intentSessionContext.length}`);\n148:   } catch (error) {\n149:     const message = error instanceof Error ? error.message : String(error);\n150:     spinner.stop('Entire session metadata validation failed');\n151:     throw new Error(\n152:       `Review preflight failed: Unable to resolve required Entire intent context for checkpoint ${checkpointId} at commit ${commitSha.slice(0, 12)}. ${message}`\n153:     );\n154:   }\n155: }\n\n(End of file - total 155 lines)\n</content>",
+            "title": "packages/cli/src/commands/review/preflight.ts",
+            "metadata": {
+              "preview": "import * as p from '@clack/prompts';\nimport { GitRepo } from '../../lib/checkpoint/git.js';\nimport { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';\nimport { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';\n\ninterface CommitResolution {\n  commitSha: string;\n  checkpointId: string | null;\n  commitDiffPatch: string;\n}\n\ninterface LastCheckpointOnBranch {\n  commitSha: string;\n  subject: string;\n  commitsAgo: number;\n}\n\nlet resolveCommitForTests: ((commitish: string) => CommitResolution) | null = null;\nlet resolveEntireContextForTests: typeof resolveEntireIntentContextForCommit | null = null;\nlet resolveLastCheckpointOnBranchForTests: ((commitSha: string, cwd: string) => LastCheckpointOnBranch | null) | null = null;",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773495459620,
+              "end": 1773495459626
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_033132db1800ed690169b564a347448193b299359e87c9937d"
+            }
+          },
+          "id": "prt_cec911f23001zvw1ayLibEWHEH",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91107b001HTX15YEIJQczcT"
+        },
+        {
+          "type": "tool",
+          "callID": "call_FsV89yLc5qI60W0XKlQZqaux",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/{CONVENTIONS.md,AGENTS.md,.editorconfig,STYLEGUIDE.md,README.md}"
+            },
+            "output": "/Users/nickdejesus/Code/nimbus/README.md\n/Users/nickdejesus/Code/nimbus/packages/report-ui/README.md",
+            "title": "",
+            "metadata": {
+              "count": 2,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495459621,
+              "end": 1773495459637
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_033132db1800ed690169b564a3474c8193bdcf8718a338380c"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91107b001HTX15YEIJQczcT"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "cost": 0.0100338,
+          "tokens": {
+            "total": 10063,
+            "input": 2516,
+            "output": 251,
+            "reasoning": 60,
+            "cache": {
+              "read": 7296,
+              "write": 0
+            }
+          },
+          "id": "prt_cec911ff4001XTg1CaistfuwQX",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91107b001HTX15YEIJQczcT"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773495459938,
+          "completed": 1773495463784
+        },
+        "parentID": "msg_cec9102080017VZ13A6swVsuA2",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.05013225,
+        "tokens": {
+          "total": 27611,
+          "input": 27503,
+          "output": 108,
+          "reasoning": 35,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cec912062001xMMD12ZF25Y8o6",
+        "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "id": "prt_cec912324001mKxZl7ruuypKBj",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912062001xMMD12ZF25Y8o6"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Adjusting glob search for agents**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0fe25cb73aedaf690169b564a5702c8190a523eb272992c5b3",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773495461581,
+            "end": 1773495463412
+          },
+          "id": "prt_cec9126cd0015NcQ2TQyq08Ym5",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912062001xMMD12ZF25Y8o6"
+        },
+        {
+          "type": "tool",
+          "callID": "call_crI2sMXc3lrO40JfTcsYLWSl",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/AGENTS.md"
+            },
+            "output": "No files found",
+            "title": "",
+            "metadata": {
+              "count": 0,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495463435,
+              "end": 1773495463444
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0fe25cb73aedaf690169b564a741e48190af484b37166b2498"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912062001xMMD12ZF25Y8o6"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/CONVENTIONS.md"
+            },
+            "output": "No files found",
+            "title": "",
+            "metadata": {
+              "count": 0,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495463579,
+              "end": 1773495463591
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0fe25cb73aedaf690169b564a741f8819089d0738beab890b7"
+            }
+          },
+          "id": "prt_cec912e0c001Wnl1xpMomt35Xo",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912062001xMMD12ZF25Y8o6"
+        },
+        {
+          "type": "tool",
+          "callID": "call_1XkdT09X8nCTItZXvppxQicU",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/.editorconfig"
+            },
+            "output": "No files found",
+            "title": "",
+            "metadata": {
+              "count": 0,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495463582,
+              "end": 1773495463592
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0fe25cb73aedaf690169b564a7420081909a728f0fa9af8f6b"
+            }
+          },
+          "id": "prt_cec912e9c001iT9KByzrMmRX5G",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912062001xMMD12ZF25Y8o6"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "cost": 0.05013225,
+          "tokens": {
+            "total": 27611,
+            "input": 27503,
+            "output": 108,
+            "reasoning": 35,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_cec912efd001KNhyKC37Wn9GSc",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912062001xMMD12ZF25Y8o6"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773495463785,
+          "completed": 1773495484828
+        },
+        "parentID": "msg_cec9102080017VZ13A6swVsuA2",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0368893,
+        "tokens": {
+          "total": 28794,
+          "input": 510,
+          "output": 1148,
+          "reasoning": 1084,
+          "cache": {
+            "read": 27136,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cec912f69001OUR0Td9jRjasgQ",
+        "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "id": "prt_cec913225001Bp6zI5n1LdL52X",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912f69001OUR0Td9jRjasgQ"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Assessing changes for bugs and test strategy**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_07347cf335df4a730169b564a943948199a69d56d8e209e2bc",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773495465398,
+            "end": 1773495484499
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912f69001OUR0Td9jRjasgQ"
+        },
+        {
+          "type": "tool",
+          "callID": "call_C0NpMcyvTSKJlVyPg2fsNbzh",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/package.json"
+            },
+            "output": "/Users/nickdejesus/Code/nimbus/.opencode/package.json\n/Users/nickdejesus/Code/nimbus/packages/report-ui/package.json\n/Users/nickdejesus/Code/nimbus/package.json\n/Users/nickdejesus/Code/nimbus/packages/cli/package.json\n/Users/nickdejesus/Code/nimbus/packages/worker/package.json",
+            "title": "",
+            "metadata": {
+              "count": 5,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495484520,
+              "end": 1773495484580
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_07347cf335df4a730169b564bc526881998e693f6536f2dcd3"
+            }
+          },
+          "id": "prt_cec918056001uDk0RjrCL0brr7",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912f69001OUR0Td9jRjasgQ"
+        },
+        {
+          "type": "tool",
+          "callID": "call_KiygNa82aE8ryGHiF6vBAzSl",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/package.json"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/package.json</path>\n<type>file</type>\n<content>1: {\n2:   \"name\": \"nimbus\",\n3:   \"private\": true,\n4:   \"packageManager\": \"pnpm@9.15.0\",\n5:   \"engines\": {\n6:     \"node\": \">=20.0.0\"\n7:   },\n8:   \"scripts\": {\n9:     \"preinstall\": \"node ./enforce-node-version.mjs\",\n10:     \"dev\": \"pnpm --filter @dayhaysoos/nimbus-worker dev\",\n11:     \"dev:report-ui\": \"pnpm --filter @dayhaysoos/nimbus-report-ui dev\",\n12:     \"build\": \"pnpm -r build\",\n13:     \"build:report-ui\": \"pnpm --filter @dayhaysoos/nimbus-report-ui build\",\n14:     \"deploy\": \"pnpm --filter @dayhaysoos/nimbus-worker deploy\",\n15:     \"setup:worker\": \"node ./scripts/setup-worker.mjs\",\n16:     \"test:cloudflare-contract\": \"node ./scripts/test-cloudflare-contract.mjs\",\n17:     \"test:report-ui\": \"pnpm --filter @dayhaysoos/nimbus-report-ui test\",\n18:     \"cli\": \"pnpm --filter @dayhaysoos/nimbus dev\",\n19:     \"wrangler\": \"pnpm --filter @dayhaysoos/nimbus-worker exec wrangler\"\n20:   },\n21:   \"devDependencies\": {\n22:     \"typescript\": \"^5.7.3\"\n23:   }\n24: }\n\n(End of file - total 24 lines)\n</content>",
+            "title": "package.json",
+            "metadata": {
+              "preview": "{\n  \"name\": \"nimbus\",\n  \"private\": true,\n  \"packageManager\": \"pnpm@9.15.0\",\n  \"engines\": {\n    \"node\": \">=20.0.0\"\n  },\n  \"scripts\": {\n    \"preinstall\": \"node ./enforce-node-version.mjs\",\n    \"dev\": \"pnpm --filter @dayhaysoos/nimbus-worker dev\",\n    \"dev:report-ui\": \"pnpm --filter @dayhaysoos/nimbus-report-ui dev\",\n    \"build\": \"pnpm -r build\",\n    \"build:report-ui\": \"pnpm --filter @dayhaysoos/nimbus-report-ui build\",\n    \"deploy\": \"pnpm --filter @dayhaysoos/nimbus-worker deploy\",\n    \"setup:worker\": \"node ./scripts/setup-worker.mjs\",\n    \"test:cloudflare-contract\": \"node ./scripts/test-cloudflare-contract.mjs\",\n    \"test:report-ui\": \"pnpm --filter @dayhaysoos/nimbus-report-ui test\",\n    \"cli\": \"pnpm --filter @dayhaysoos/nimbus dev\",\n    \"wrangler\": \"pnpm --filter @dayhaysoos/nimbus-worker exec wrangler\"\n  },",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773495484523,
+              "end": 1773495484527
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_07347cf335df4a730169b564bc52788199a1d68d3b5b82d156"
+            }
+          },
+          "id": "prt_cec918069001UtsJwSKsNPoEeO",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912f69001OUR0Td9jRjasgQ"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "cost": 0.0368893,
+          "tokens": {
+            "total": 28794,
+            "input": 510,
+            "output": 1148,
+            "reasoning": 1084,
+            "cache": {
+              "read": 27136,
+              "write": 0
+            }
+          },
+          "id": "prt_cec918125001uBHXsk3CqjJqoX",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec912f69001OUR0Td9jRjasgQ"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773495484829,
+          "completed": 1773495486420
+        },
+        "parentID": "msg_cec9102080017VZ13A6swVsuA2",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0067991,
+        "tokens": {
+          "total": 29310,
+          "input": 594,
+          "output": 44,
+          "reasoning": 9,
+          "cache": {
+            "read": 28672,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cec91819d001RofCtOpi3bUgbW",
+        "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "id": "prt_cec9185370013ZU8zxzEW6WlJA",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91819d001RofCtOpi3bUgbW"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Planning CLI scripts**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0045691009f0d4e60169b564bd81848197a47d2b5b9292332e",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773495485751,
+            "end": 1773495486139
+          },
+          "id": "prt_cec9185370023FpOJX8gVAiH5A",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91819d001RofCtOpi3bUgbW"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/cli/package.json"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/cli/package.json</path>\n<type>file</type>\n<content>1: {\n2:   \"name\": \"@dayhaysoos/nimbus\",\n3:   \"version\": \"0.1.0\",\n4:   \"description\": \"CLI for Nimbus checkpoint deployment and job tracking on Cloudflare.\",\n5:   \"type\": \"module\",\n6:   \"bin\": {\n7:     \"nimbus\": \"./dist/index.js\"\n8:   },\n9:   \"scripts\": {\n10:     \"build\": \"tsc\",\n11:     \"dev\": \"tsx src/index.ts\",\n12:     \"test\": \"tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js\",\n13:     \"prepublishOnly\": \"npm run build\"\n14:   },\n15:   \"dependencies\": {\n16:     \"@clack/prompts\": \"^0.9.1\",\n17:     \"dotenv\": \"^17.2.3\"\n18:   },\n19:   \"devDependencies\": {\n20:     \"@types/node\": \"^22.10.0\",\n21:     \"tsx\": \"^4.19.0\",\n22:     \"typescript\": \"^5.7.3\"\n23:   },\n24:   \"engines\": {\n25:     \"node\": \">=20.0.0\"\n26:   },\n27:   \"files\": [\n28:     \"dist\"\n29:   ],\n30:   \"keywords\": [\n31:     \"cli\",\n32:     \"checkpoint-deploy\",\n33:     \"entire-checkpoint\",\n34:     \"cloudflare\"\n35:   ],\n36:   \"repository\": {\n37:     \"type\": \"git\",\n38:     \"url\": \"https://github.com/dayhaysoos/nimbus.git\",\n39:     \"directory\": \"packages/cli\"\n40:   },\n41:   \"homepage\": \"https://github.com/dayhaysoos/nimbus#readme\",\n42:   \"bugs\": {\n43:     \"url\": \"https://github.com/dayhaysoos/nimbus/issues\"\n44:   },\n45:   \"license\": \"MIT\",\n46:   \"author\": \"Nick DeJesus\"\n47: }\n\n(End of file - total 47 lines)\n</content>",
+            "title": "packages/cli/package.json",
+            "metadata": {
+              "preview": "{\n  \"name\": \"@dayhaysoos/nimbus\",\n  \"version\": \"0.1.0\",\n  \"description\": \"CLI for Nimbus checkpoint deployment and job tracking on Cloudflare.\",\n  \"type\": \"module\",\n  \"bin\": {\n    \"nimbus\": \"./dist/index.js\"\n  },\n  \"scripts\": {\n    \"build\": \"tsc\",\n    \"dev\": \"tsx src/index.ts\",\n    \"test\": \"tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js\",\n    \"prepublishOnly\": \"npm run build\"\n  },\n  \"dependencies\": {\n    \"@clack/prompts\": \"^0.9.1\",\n    \"dotenv\": \"^17.2.3\"\n  },\n  \"devDependencies\": {\n    \"@types/node\": \"^22.10.0\",",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773495486265,
+              "end": 1773495486269
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0045691009f0d4e60169b564bdf5a081978eedf0a09f79878f"
+            }
+          },
+          "id": "prt_cec9186bc00117vTzhrXyVYaJV",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91819d001RofCtOpi3bUgbW"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "cost": 0.0067991,
+          "tokens": {
+            "total": 29310,
+            "input": 594,
+            "output": 44,
+            "reasoning": 9,
+            "cache": {
+              "read": 28672,
+              "write": 0
+            }
+          },
+          "id": "prt_cec91876b001dES5eO01AiQn11",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91819d001RofCtOpi3bUgbW"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773495486421,
+          "completed": 1773495493401
+        },
+        "parentID": "msg_cec9102080017VZ13A6swVsuA2",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0074732,
+        "tokens": {
+          "total": 29885,
+          "input": 632,
+          "output": 69,
+          "reasoning": 21,
+          "cache": {
+            "read": 29184,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "id": "prt_cec918ac5001rIWKqL9yoof70b",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Running CLI tests**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0c04e46c49cac8f40169b564bf532c819a974d1a81aebcd5dc",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773495487492,
+            "end": 1773495488045
+          },
+          "id": "prt_cec918c040010PmEVcck5H41z6",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_OE0WYDRQWRtofZ172EHQIcAz",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "pnpm test",
+              "workdir": "/Users/nickdejesus/Code/nimbus/packages/cli",
+              "description": "Runs CLI package test suite"
+            },
+            "output": "\n> @dayhaysoos/nimbus@0.1.0 test /Users/nickdejesus/Code/nimbus/packages/cli\n> tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js\n\nPASS checkpoint-resolver\nPASS checkpoint-env\nPASS checkpoint-git\nPASS checkpoint-archive\nPASS checkpoint-deploy-request\nPASS checkpoint-api\nPASS workspace-api\nPASS checkpoint-command\nPASS args-parsing\nPASS review-policy\nPASS entire-intent-context\n│\n│  Preflight checks:\n│\n│  - workspace_ready: ok\n│\n◆  Preflight passed (preflight-only mode)\n│\n│  Preflight checks:\n│\n│  - workspace_ready: ok\n│\n│  Toolchain: npm@10.8.2 (packageManager)\n│\n◆  Preflight passed (preflight-only mode)\n│\n│  Preflight checks:\n│\n│  - workspace_ready: ok\n│\n│  Toolchain: pnpm@9.15.0 (packageManager)\n│\n▲  Workspace ws_abc12345 has no checkpoint ID; proceeding without Entire checkpoint intent context.\n│\n◆  Preflight passed\n│\n│  Deployment queued: dep_abc123\n│\n│  Status: succeeded\n│\n◆  Live URL: https://example.dev\n│\n│  Preflight checks:\n│\n│  - workspace_ready: ok\nPASS workspace-deploy-command\n\u001b[?25l│\n◇  Commit/checkpoint validation failed\n\u001b[?25h\u001b[?25l│\n◇  Commit/checkpoint validation failed\n\u001b[?25h\u001b[?25l│\n◇  Resolved checkpoint fba364e3d99d from eeeeeeeeeeee\n\u001b[?25h\u001b[?25l│\n◇  Entire session metadata is readable\n\u001b[?25h│\n◆  Review preflight passed\n│\n│  Commit: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n│\n│  Checkpoint: fba364e3d99d\n│\n│  Session IDs: sess_123\n│\n│  Intent context lines: 1\n\u001b[?25l│\n◇  Resolved checkpoint ddfa7c25a183 from ffffffffffff\n\u001b[?25h\u001b[?25l│\n◇  Entire session metadata validation failed\n\u001b[?25h\u001b[?25l│\n◇  Checkpoint resolution failed\n\u001b[?25h\u001b[?25l│\n◇  Resolved checkpoint 8a513f56ed70 from bbbbbbbbbbbb\n\u001b[?25h\u001b[?25l│\n◇  Workspace created: ws_compound\n\u001b[?25h\u001b[?25l│\n◇  Deployment succeeded: dep_compound\n\u001b[?25h\u001b[?25l│\n◇  Review queued: rev_compound\n\u001b[?25h│\n●  Streaming review events for rev_compound\n\u001b[?25l│\n◇  Resolved checkpoint 8a513f56ed70 from dddddddddddd\n\u001b[?25h\u001b[?25l│\n◇  Workspace created: ws_longpatch\n\u001b[?25h\u001b[?25l│\n◇  Deployment succeeded: dep_longpatch\n\u001b[?25h\u001b[?25l│\n◇  Review queued: rev_longpatch\n\u001b[?25h│\n●  Streaming review events for rev_longpatch\n[terminal] status=succeeded\nReport URL: https://worker.example.com/reviews/rev_longpatch\n\u001b[?25l│\n◇  Resolved checkpoint 8a513f56ed70 from cccccccccccc\n\u001b[?25h\u001b[?25l│\n◇  Workspace created: ws_faildeploy\n\u001b[?25h\u001b[?25l│\n◇  Workspace deploy failed\n\u001b[?25h│\n◆  Review queued: rev_abcd1234\n│\n│  Status: queued\n│\n│  Result URL: /api/reviews/rev_abcd1234\n│\n│  Events URL: /api/reviews/rev_abcd1234/events\n│\n●  Review rev_abcd1234\n\n  Status:          succeeded\n  Workspace ID:    ws_abc12345\n  Deployment ID:   dep_abcd1234\n  Target:          workspace_deployment\n  Mode:            report_only\n  Recommendation:  approve\n  Risk Level:      low\n  Findings:        0\n  Created At:      2026-03-11T00:00:00.000Z\n  Updated At:      2026-03-11T00:01:00.000Z\n\n  Intent:          Assess deployment readiness.\n  Provenance:      Review generated for deployment dep_abcd1234.\n\n## Review Summary\n\n- Recommendation: approve\n- Risk level: low\n- Findings: 0\n│\n●  Streaming review events for rev_abcd1234\n│\n◆  Exported markdown review to /var/folders/gr/00djkpxs7ngdwdnbx719gjg80000gn/T/nimbus-review-XMtbZ7/review.md\n│\n◆  Exported json review to /var/folders/gr/00djkpxs7ngdwdnbx719gjg80000gn/T/nimbus-review-XMtbZ7/review.json\nPASS review-command\nPASS checkpoint-options\nAll tests passed (14)\n",
+            "title": "Runs CLI package test suite",
+            "metadata": {
+              "output": "\n> @dayhaysoos/nimbus@0.1.0 test /Users/nickdejesus/Code/nimbus/packages/cli\n> tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js\n\nPASS checkpoint-resolver\nPASS checkpoint-env\nPASS checkpoint-git\nPASS checkpoint-archive\nPASS checkpoint-deploy-request\nPASS checkpoint-api\nPASS workspace-api\nPASS checkpoint-command\nPASS args-parsing\nPASS review-policy\nPASS entire-intent-context\n│\n│  Preflight checks:\n│\n│  - workspace_ready: ok\n│\n◆  Preflight passed (preflight-only mode)\n│\n│  Preflight checks:\n│\n│  - workspace_ready: ok\n│\n│  Toolchain: npm@10.8.2 (packageManager)\n│\n◆  Preflight passed (preflight-only mode)\n│\n│  Preflight checks:\n│\n│  - workspace_ready: ok\n│\n│  Toolchain: pnpm@9.15.0 (packageManager)\n│\n▲  Workspace ws_abc12345 has no checkpoint ID; proceeding without Entire checkpoint intent context.\n│\n◆  Preflight passed\n│\n│  Deployment queued: dep_abc123\n│\n│  Status: succeeded\n│\n◆  Live URL: https://example.dev\n│\n│  Preflight checks:\n│\n│  - workspace_ready: ok\nPASS workspace-deploy-command\n\u001b[?25l│\n◇  Commit/checkpoint validation failed\n\u001b[?25h\u001b[?25l│\n◇  Commit/checkpoint validation failed\n\u001b[?25h\u001b[?25l│\n◇  Resolved checkpoint fba364e3d99d from eeeeeeeeeeee\n\u001b[?25h\u001b[?25l│\n◇  Entire session metadata is readable\n\u001b[?25h│\n◆  Review preflight passed\n│\n│  Commit: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee\n│\n│  Checkpoint: fba364e3d99d\n│\n│  Session IDs: sess_123\n│\n│  Intent context lines: 1\n\u001b[?25l│\n◇  Resolved checkpoint ddfa7c25a183 from ffffffffffff\n\u001b[?25h\u001b[?25l│\n◇  Entire session metadata validation failed\n\u001b[?25h\u001b[?25l│\n◇  Checkpoint resolution failed\n\u001b[?25h\u001b[?25l│\n◇  Resolved checkpoint 8a513f56ed70 from bbbbbbbbbbbb\n\u001b[?25h\u001b[?25l│\n◇  Workspace created: ws_compound\n\u001b[?25h\u001b[?25l│\n◇  Deployment succeeded: dep_compound\n\u001b[?25h\u001b[?25l│\n◇  Review queued: rev_compound\n\u001b[?25h│\n●  Streaming review events for rev_compound\n\u001b[?25l│\n◇  Resolved checkpoint 8a513f56ed70 from dddddddddddd\n\u001b[?25h\u001b[?25l│\n◇  Workspace created: ws_longpatch\n\u001b[?25h\u001b[?25l│\n◇  Deployment succeeded: dep_longpatch\n\u001b[?25h\u001b[?25l│\n◇  Review queued: rev_longpatch\n\u001b[?25h│\n●  Streaming review events for rev_longpatch\n[terminal] status=succeeded\nReport URL: https://worker.example.com/reviews/rev_longpatch\n\u001b[?25l│\n◇  Resolved checkpoint 8a513f56ed70 from cccccccccccc\n\u001b[?25h\u001b[?25l│\n◇  Workspace created: ws_faildeploy\n\u001b[?25h\u001b[?25l│\n◇  Workspace deploy failed\n\u001b[?25h│\n◆  Review queued: rev_abcd1234\n│\n│  Status: queued\n│\n│  Result URL: /api/reviews/rev_abcd1234\n│\n│  Events URL: /api/reviews/rev_abcd1234/events\n│\n●  Review rev_abcd1234\n\n  Status:          succeeded\n  Workspace ID:    ws_abc12345\n  Deployment ID:   dep_abcd1234\n  Target:          workspace_deployment\n  Mode:            report_only\n  Recommendation:  approve\n  Risk Level:      low\n  Findings:        0\n  Created At:      2026-03-11T00:00:00.000Z\n  Updated At:      2026-03-11T00:01:00.000Z\n\n  Intent:          Assess deployment readiness.\n  Provenance:      Review generated for deployment dep_abcd1234.\n\n## Review Summary\n\n- Recommendation: approve\n- Risk level: low\n- Findings: 0\n│\n●  Streaming review events for rev_abcd1234\n│\n◆  Exported markdown review to /var/folders/gr/00djkpxs7ngdwdnbx719gjg80000gn/T/nimbus-review-XMtbZ7/review.md\n│\n◆  Exported json review to /var/folders/gr/00djkpxs7ngdwdnbx719gjg80000gn/T/nimbus-review-XMtbZ7/review.json\nPASS review-command\nPASS checkpoint-options\nAll tests passed (14)\n",
+              "exit": 0,
+              "description": "Runs CLI package test suite",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773495489871,
+              "end": 1773495493281
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0c04e46c49cac8f40169b564bfe800819abe4e50e297151a72"
+            }
+          },
+          "id": "prt_cec918e2e001735YVh6YogMrBx",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "cost": 0.0074732,
+          "tokens": {
+            "total": 29885,
+            "input": 632,
+            "output": 69,
+            "reasoning": 21,
+            "cache": {
+              "read": 29184,
+              "write": 0
+            }
+          },
+          "id": "prt_cec91a2a200169sh71TTbYzjHi",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773495493403,
+          "completed": 1773495514554
+        },
+        "parentID": "msg_cec9102080017VZ13A6swVsuA2",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.04041205,
+        "tokens": {
+          "total": 32313,
+          "input": 1371,
+          "output": 1246,
+          "reasoning": 1098,
+          "cache": {
+            "read": 29696,
+            "write": 0
+          }
+        },
+        "finish": "stop",
+        "id": "msg_cec91a31b001d9Bsxn45fg4xgM",
+        "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "id": "prt_cec91a676001jdC9BqhjCi3Djn",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91a31b001d9Bsxn45fg4xgM"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Confirming no bugs found**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_07b1655a45c1a2960169b564c60ed48194a7832c1f7424595b",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773495494263,
+            "end": 1773495512808
+          },
+          "id": "prt_cec91a6770010j4kDoF1xDIAol",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91a31b001d9Bsxn45fg4xgM"
+        },
+        {
+          "type": "text",
+          "text": "I reviewed all uncommitted changes (`git diff`, `git diff --cached`, `git status --short`) and read the full modified files, including new `packages/cli/src/commands/review/preflight.ts`.\n\n- No definite bugs found in the changed code paths.\n- Test coverage for the new behavior looks solid, and `pnpm test` passes in `packages/cli` (including the new preflight tests).\n- Notable behavior change (appears intentional): `nimbus review create` now defaults to commit mode (`HEAD`) when no `--workspace/--deployment` are provided (`packages/cli/src/index.ts:411`). This aligns with the updated help text and examples.",
+          "time": {
+            "start": 1773495514327,
+            "end": 1773495514327
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "msg_07b1655a45c1a2960169b564d887e88194ad7fcc8a7dbcba2a"
+            }
+          },
+          "id": "prt_cec91eeeb001DpqYT1Ns2hMu9H",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91a31b001d9Bsxn45fg4xgM"
+        },
+        {
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "018b127dafb2501a73c731a807c8df34c33ef904",
+          "cost": 0.04041205,
+          "tokens": {
+            "total": 32313,
+            "input": 1371,
+            "output": 1246,
+            "reasoning": 1098,
+            "cache": {
+              "read": 29696,
+              "write": 0
+            }
+          },
+          "id": "prt_cec91f520001jboRsX2YOE11Wj",
+          "sessionID": "ses_3136efdfaffeBTZRAKNQngZHKx",
+          "messageID": "msg_cec91a31b001d9Bsxn45fg4xgM"
+        }
+      ]
+    }
+  ]
+}
