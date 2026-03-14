@@ -1,0 +1,22 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "eb25520e9945",
+  "strategy": "manual-commit",
+  "branch": "prompt-output-structure",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/api/system.ts",
+    "packages/worker/src/index.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/eb/25520e9945/0/metadata.json",
+      "transcript": "/eb/25520e9945/0/full.jsonl",
+      "context": "",
+      "content_hash": "/eb/25520e9945/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
