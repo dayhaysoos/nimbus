@@ -42,6 +42,25 @@ function statusMessage(review: ReviewResponse): string | null {
   return null;
 }
 
+function cochangeStatusMessage(review: ReviewResponse): string | null {
+  const coChange = review.provenance?.coChange;
+  if (!coChange) {
+    return null;
+  }
+  if (coChange.coChangeSkipped) {
+    const reason = coChange.coChangeSkipReason === 'missing_github_token'
+      ? 'missing GitHub token'
+      : coChange.coChangeSkipReason === 'rate_limited'
+        ? 'GitHub API rate limited'
+        : 'GitHub API unavailable';
+    return `Co-change context was skipped (${reason}). This review ran with baseline context only. Set REVIEW_CONTEXT_GITHUB_TOKEN to improve review quality.`;
+  }
+  if (coChange.coChangeAvailable) {
+    return `Co-change context included ${coChange.relatedFileCount} related file${coChange.relatedFileCount === 1 ? '' : 's'}.`;
+  }
+  return 'Co-change lookup ran successfully and found no related files.';
+}
+
 function normalizeMarkdownSummary(markdown: string | null): string {
   if (!markdown?.trim()) {
     return '';
@@ -263,6 +282,7 @@ export function ReportPage(): JSX.Element {
   }
 
   const statusBanner = statusMessage(review);
+  const cochangeBanner = cochangeStatusMessage(review);
   const markdownUnavailable = normalizedMarkdown.length === 0;
 
   return (
@@ -320,6 +340,13 @@ export function ReportPage(): JSX.Element {
         <section className="card status-card">
           <h2>Review status</h2>
           <p>{statusBanner}</p>
+        </section>
+      )}
+
+      {cochangeBanner && (
+        <section className="card status-card">
+          <h2>Co-change context</h2>
+          <p>{cochangeBanner}</p>
         </section>
       )}
 

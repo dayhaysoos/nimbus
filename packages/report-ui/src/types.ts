@@ -46,6 +46,14 @@ export interface ReviewResponse {
   furtherPassesLowYield?: boolean;
   findings: ReviewFinding[];
   evidence: ReviewEvidence[];
+  provenance?: {
+    coChange?: {
+      coChangeSkipped: boolean;
+      coChangeSkipReason: string | null;
+      coChangeAvailable: boolean;
+      relatedFileCount: number;
+    };
+  };
   markdownSummary: string | null;
   error?: {
     code: string;

@@ -126,4 +126,38 @@ describe('ReportPage', () => {
     expect(screen.getByRole('button', { name: 'Copy full markdown' })).toBeDisabled();
     expect(screen.getByRole('button', { name: 'Download markdown' })).toBeDisabled();
   });
+
+  it('shows co-change advisory when lookup is skipped', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            provenance: {
+              coChange: {
+                coChangeSkipped: true,
+                coChangeSkipReason: 'missing_github_token',
+                coChangeAvailable: false,
+                relatedFileCount: 0,
+              },
+            },
+          },
+        }),
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Co-change context');
+    expect(screen.getByText(/baseline context only/i)).toBeInTheDocument();
+    expect(screen.getByText(/REVIEW_CONTEXT_GITHUB_TOKEN/)).toBeInTheDocument();
+  });
 });
