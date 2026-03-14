@@ -21,6 +21,18 @@ interface LastCheckpointOnBranch {
   commitSha: string;
   subject: string;
   commitsAgo: number;
+  checkpointId?: string;
+  context?: EntireIntentContext;
+}
+
+export interface ReviewEntireContextResolution {
+  context: EntireIntentContext;
+  contextResolution: 'direct' | 'branch_fallback';
+  originalCheckpointId: string;
+  resolvedCheckpointId: string;
+  resolvedCommitSha: string;
+  resolvedCommitSubject: string;
+  commitsAgo: number;
 }
 
 let resolveCommitForTests: ((commitish: string) => CommitResolution) | null = null;
@@ -104,6 +116,9 @@ function findLastCheckpointOnBranch(commitSha: string, cwd = process.cwd()): Las
   }
 
   const currentIndex = commits.findIndex((entry) => entry.sha === commitSha);
+  if (currentIndex < 0) {
+    return null;
+  }
   const startIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
   for (let index = startIndex; index < commits.length; index += 1) {
     const trailers = parseCommitTrailers(commits[index].message);
@@ -153,6 +168,9 @@ async function findLastCommitWithValidCheckpointContext(
   }
 
   const currentIndex = commits.findIndex((entry) => entry.sha === commitSha);
+  if (currentIndex < 0) {
+    return null;
+  }
   const startIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
   const contextResolver = resolveEntireContextForTests ?? resolveEntireIntentContextForCommit;
 
@@ -172,6 +190,69 @@ async function findLastCommitWithValidCheckpointContext(
         commitSha: commits[index].sha,
         subject: commitSubject(commits[index].message),
         commitsAgo,
+      };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (!shouldMapEntireContextErrorToHistoryDiagnostic(message)) {
+        throw error;
+      }
+      continue;
+    }
+  }
+
+  return null;
+}
+
+async function resolveBranchFallbackContext(
+  commitSha: string,
+  options: {
+    summarizeSession?: 'auto' | 'always' | 'never';
+    intentTokenBudget?: number;
+  },
+  cwd = process.cwd()
+): Promise<LastCheckpointOnBranch | null> {
+  const fromResolver = resolveLastValidContextOnBranchForTests
+    ? await resolveLastValidContextOnBranchForTests(commitSha, cwd, options)
+    : null;
+  if (fromResolver) {
+    if (fromResolver.checkpointId && fromResolver.context) {
+      return fromResolver;
+    }
+    return null;
+  }
+
+  const git = new GitRepo(cwd);
+  const ref = git.getCurrentBranchRef() ?? 'HEAD';
+  const commits = git.listCommits(ref);
+  if (commits.length === 0) {
+    return null;
+  }
+
+  const currentIndex = commits.findIndex((entry) => entry.sha === commitSha);
+  if (currentIndex < 0) {
+    return null;
+  }
+  const startIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
+  const contextResolver = resolveEntireContextForTests ?? resolveEntireIntentContextForCommit;
+
+  for (let index = startIndex; index < commits.length; index += 1) {
+    const trailers = parseCommitTrailers(commits[index].message);
+    if (!trailers.checkpointId) {
+      continue;
+    }
+    try {
+      const context = await contextResolver(commits[index].sha, cwd, {
+        checkpointId: trailers.checkpointId,
+        summarizeSession: options.summarizeSession ?? 'auto',
+        tokenBudget: options.intentTokenBudget,
+      });
+      const commitsAgo = currentIndex >= 0 ? index - currentIndex : index;
+      return {
+        commitSha: commits[index].sha,
+        subject: commitSubject(commits[index].message),
+        commitsAgo,
+        checkpointId: trailers.checkpointId,
+        context,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -249,20 +330,42 @@ export async function validateReviewEntireIntentContext(
     intentTokenBudget?: number;
   },
   cwd = process.cwd()
-): Promise<EntireIntentContext> {
+): Promise<ReviewEntireContextResolution> {
   const contextResolver = resolveEntireContextForTests ?? resolveEntireIntentContextForCommit;
   try {
-    return await contextResolver(input.commitSha, cwd, {
+    const context = await contextResolver(input.commitSha, cwd, {
       checkpointId: input.checkpointId,
       summarizeSession: options?.summarizeSession ?? 'auto',
       tokenBudget: options?.intentTokenBudget,
     });
+    return {
+      context,
+      contextResolution: 'direct',
+      originalCheckpointId: input.checkpointId,
+      resolvedCheckpointId: input.checkpointId,
+      resolvedCommitSha: input.commitSha,
+      resolvedCommitSubject: '(current commit)',
+      commitsAgo: 0,
+    };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (!shouldMapEntireContextErrorToHistoryDiagnostic(message)) {
       throw error;
     }
-    throw new Error(await buildMissingEntireContextMessage(input.commitSha, options ?? {}, cwd));
+
+    const fallback = await resolveBranchFallbackContext(input.commitSha, options ?? {}, cwd);
+    if (!fallback || !fallback.checkpointId || !fallback.context) {
+      throw new Error(await buildMissingEntireContextMessage(input.commitSha, options ?? {}, cwd));
+    }
+    return {
+      context: fallback.context,
+      contextResolution: 'branch_fallback',
+      originalCheckpointId: input.checkpointId,
+      resolvedCheckpointId: fallback.checkpointId,
+      resolvedCommitSha: fallback.commitSha,
+      resolvedCommitSubject: fallback.subject,
+      commitsAgo: fallback.commitsAgo,
+    };
   }
 }
 
@@ -312,7 +415,7 @@ export async function reviewPreflightCommand(
 ): Promise<void> {
   const spinner = p.spinner();
   let resolved: ReviewCommitValidationResult;
-  let context: EntireIntentContext;
+  let contextResolution: ReviewEntireContextResolution;
 
   spinner.start('Resolving commit and checkpoint...');
   try {
@@ -326,7 +429,7 @@ export async function reviewPreflightCommand(
 
   spinner.start('Validating Entire session metadata...');
   try {
-    context = await validateReviewEntireIntentContext(
+    contextResolution = await validateReviewEntireIntentContext(
       {
         commitSha: resolved.commitSha,
         checkpointId: resolved.checkpointId,
@@ -337,7 +440,13 @@ export async function reviewPreflightCommand(
       },
       process.cwd()
     );
-    spinner.stop('Entire session metadata is readable');
+    if (contextResolution.contextResolution === 'branch_fallback') {
+      spinner.stop(
+        `Entire session metadata resolved via branch fallback (${contextResolution.resolvedCheckpointId} from ${contextResolution.resolvedCommitSha.slice(0, 12)})`
+      );
+    } else {
+      spinner.stop('Entire session metadata is readable');
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Entire session metadata validation failed');
@@ -354,9 +463,16 @@ export async function reviewPreflightCommand(
     }
     p.log.success('Review preflight passed');
     p.log.message(`Commit: ${resolved.commitSha}`);
-    p.log.message(`Checkpoint: ${resolved.checkpointId}`);
-    p.log.message(`Session IDs: ${context.sessionIds.length > 0 ? context.sessionIds.join(', ') : '(none)'}`);
-    p.log.message(`Intent context lines: ${context.intentSessionContext.length}`);
+    p.log.message(`Checkpoint: ${contextResolution.resolvedCheckpointId}`);
+    if (contextResolution.contextResolution === 'branch_fallback') {
+      p.log.warning(
+        `Context fallback: using checkpoint ${contextResolution.resolvedCheckpointId} from ${contextResolution.resolvedCommitSha.slice(0, 7)} (${contextResolution.commitsAgo} commits ago)`
+      );
+    }
+    p.log.message(
+      `Session IDs: ${contextResolution.context.sessionIds.length > 0 ? contextResolution.context.sessionIds.join(', ') : '(none)'}`
+    );
+    p.log.message(`Intent context lines: ${contextResolution.context.intentSessionContext.length}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Co-change token readiness check failed');

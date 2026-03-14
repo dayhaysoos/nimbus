@@ -617,6 +617,13 @@ export interface ReviewProvenanceSummary {
     coChangeAvailable: boolean;
     relatedFileCount: number;
   };
+  contextResolution?: {
+    contextResolution: 'direct' | 'branch_fallback';
+    originalCheckpointId: string;
+    resolvedCheckpointId: string;
+    resolvedCommitSha: string;
+    resolvedCommitMessage: string | null;
+  };
   outputSchemaVersion?: 'v2';
   passArchitecture?: 'single';
   validation?: {

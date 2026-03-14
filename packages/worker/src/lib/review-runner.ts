@@ -15,7 +15,7 @@ import {
   createReviewContextBlobReference,
   generateReviewContextId,
   getReviewRun,
-  getReviewCochangeCache,
+  getReviewCochangeCacheBatch,
   getReviewRunRequestPayload,
   getWorkspace,
   getWorkspaceArtifactById,
@@ -25,7 +25,7 @@ import {
   getWorkspaceTask,
   listWorkspaceDeploymentEvents,
   replaceReviewFindings,
-  upsertReviewCochangeCache,
+  upsertReviewCochangeCacheBatch,
   updateReviewRunStatus,
 } from './db.js';
 import {
@@ -43,11 +43,13 @@ class QueueRetryError extends Error {
 
 class ReviewContextAssemblyError extends Error {
   code: string;
+  details: string | null;
 
-  constructor(code: string, message: string) {
+  constructor(code: string, message: string, details: string | null = null) {
     super(message);
     this.name = 'ReviewContextAssemblyError';
     this.code = code;
+    this.details = details;
   }
 }
 
@@ -147,6 +149,11 @@ function buildReviewMarkdown(report: ReviewReport): string {
   }
   if (report.provenance.sessionIds.length > 0) {
     provenanceLines.push(`Sessions: ${report.provenance.sessionIds.join(', ')}`);
+  }
+  if (report.provenance.contextResolution?.contextResolution === 'branch_fallback') {
+    provenanceLines.push(
+      `Context resolution: branch fallback from checkpoint ${report.provenance.contextResolution.originalCheckpointId} to ${report.provenance.contextResolution.resolvedCheckpointId} (${report.provenance.contextResolution.resolvedCommitSha.slice(0, 12)}).`
+    );
   }
   if (report.provenance.coChange) {
     if (report.provenance.coChange.coChangeSkipped) {
@@ -573,6 +580,7 @@ function buildGitHubHeaders(githubToken: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': '2022-11-28',
+    'User-Agent': 'nimbus-worker/1.0',
   };
   headers.Authorization = githubToken.toLowerCase().startsWith('bearer ') ? githubToken : `Bearer ${githubToken}`;
   return headers;
@@ -587,9 +595,11 @@ async function fetchGitHubJson(url: string, githubToken: string): Promise<Record
     const rateLimited =
       response.status === 429 ||
       (response.status === 403 && (response.headers.get('x-ratelimit-remaining') ?? '').trim() === '0');
+    const responseBody = redactReviewText(await response.text());
     throw new ReviewContextAssemblyError(
       'review_context_github_api_error',
-      `GitHub API request failed (${response.status}) for ${url}${rateLimited ? ' [rate_limited]' : ''}`
+      `GitHub API request failed (${response.status}) for ${url}${rateLimited ? ' [rate_limited]' : ''}`,
+      responseBody
     );
   }
 
@@ -606,9 +616,11 @@ async function fetchGitHubArray(url: string, githubToken: string): Promise<unkno
     const rateLimited =
       response.status === 429 ||
       (response.status === 403 && (response.headers.get('x-ratelimit-remaining') ?? '').trim() === '0');
+    const responseBody = redactReviewText(await response.text());
     throw new ReviewContextAssemblyError(
       'review_context_github_api_error',
-      `GitHub API request failed (${response.status}) for ${url}${rateLimited ? ' [rate_limited]' : ''}`
+      `GitHub API request failed (${response.status}) for ${url}${rateLimited ? ' [rate_limited]' : ''}`,
+      responseBody
     );
   }
 
@@ -941,11 +953,14 @@ async function assembleReviewContextBootstrap(
       const relatedFrequency = new Map<string, { frequency: number; sessionIds: string[] }>();
       const entriesByChangedPath = new Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>();
       const changedPathsMissingCache: string[] = [];
+      const cachedRows = await getReviewCochangeCacheBatch(env.DB, {
+        repo: repoSlug,
+        filePaths: changedPaths,
+      });
+      const cacheByPath = new Map(cachedRows.map((row) => [row.filePath, row]));
+
       for (const changedPath of changedPaths) {
-        const cached = await getReviewCochangeCache(env.DB, {
-          filePath: changedPath,
-          repo: repoSlug,
-        });
+        const cached = cacheByPath.get(changedPath);
         const entries = cached?.cochange;
         const cachedLookbackSessions = cached?.lookbackSessions ?? null;
         if (entries && cachedLookbackSessions === COCHANGE_LOOKBACK_SESSIONS) {
@@ -958,10 +973,17 @@ async function assembleReviewContextBootstrap(
       if (changedPathsMissingCache.length > 0) {
         const fetched = await fetchCochangeFromCheckpointBranch(repoSlug, changedPathsMissingCache, COCHANGE_LOOKBACK_SESSIONS, githubToken);
         sessionsScanned += fetched.sessionsScanned;
+        const cacheUpserts: Array<{
+          filePath: string;
+          repo: string;
+          branch: string;
+          cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>;
+          lookbackSessions: number;
+        }> = [];
         for (const changedPath of changedPathsMissingCache) {
           const entries = fetched.relatedByChangedPath[changedPath] ?? [];
           entriesByChangedPath.set(changedPath, entries);
-          await upsertReviewCochangeCache(env.DB, {
+          cacheUpserts.push({
             filePath: changedPath,
             repo: repoSlug,
             branch: 'entire/checkpoints/v1',
@@ -969,6 +991,7 @@ async function assembleReviewContextBootstrap(
             lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
           });
         }
+        await upsertReviewCochangeCacheBatch(env.DB, cacheUpserts);
       }
 
       for (const changedPath of changedPaths) {
@@ -1034,6 +1057,8 @@ async function assembleReviewContextBootstrap(
           reason,
           repo: repoSlug,
           lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+          githubResponseBody:
+            error instanceof ReviewContextAssemblyError ? error.details : redactReviewText(error instanceof Error ? error.message : String(error)),
         },
       });
       if (error instanceof ReviewContextAssemblyError) {
@@ -1459,6 +1484,30 @@ async function buildWorkspaceDeploymentReport(
     typeof requestProvenance.transcriptUrl === 'string' && requestProvenance.transcriptUrl.trim()
       ? requestProvenance.transcriptUrl.trim()
       : null;
+  const contextResolutionMode =
+    requestProvenance.contextResolution === 'branch_fallback' || requestProvenance.contextResolution === 'direct'
+      ? requestProvenance.contextResolution
+      : 'direct';
+  const contextResolutionOriginalCheckpointId =
+    typeof requestProvenance.contextResolutionOriginalCheckpointId === 'string' &&
+    requestProvenance.contextResolutionOriginalCheckpointId.trim()
+      ? requestProvenance.contextResolutionOriginalCheckpointId.trim()
+      : null;
+  const contextResolutionResolvedCheckpointId =
+    typeof requestProvenance.contextResolutionResolvedCheckpointId === 'string' &&
+    requestProvenance.contextResolutionResolvedCheckpointId.trim()
+      ? requestProvenance.contextResolutionResolvedCheckpointId.trim()
+      : null;
+  const contextResolutionResolvedCommitSha =
+    typeof requestProvenance.contextResolutionResolvedCommitSha === 'string' &&
+    requestProvenance.contextResolutionResolvedCommitSha.trim()
+      ? requestProvenance.contextResolutionResolvedCommitSha.trim()
+      : null;
+  const contextResolutionResolvedCommitMessage =
+    typeof requestProvenance.contextResolutionResolvedCommitMessage === 'string' &&
+    requestProvenance.contextResolutionResolvedCommitMessage.trim()
+      ? requestProvenance.contextResolutionResolvedCommitMessage.trim()
+      : null;
 
   const report: ReviewReport = {
     summary,
@@ -1488,6 +1537,19 @@ async function buildWorkspaceDeploymentReport(
             coChangeAvailable: reviewContext.retrieval.coChange.coChangeAvailable,
             relatedFileCount: reviewContext.retrieval.relatedFiles.length,
           },
+          contextResolution:
+            contextResolutionMode === 'branch_fallback' &&
+            contextResolutionOriginalCheckpointId &&
+            contextResolutionResolvedCheckpointId &&
+            contextResolutionResolvedCommitSha
+              ? {
+                  contextResolution: 'branch_fallback',
+                  originalCheckpointId: contextResolutionOriginalCheckpointId,
+                  resolvedCheckpointId: contextResolutionResolvedCheckpointId,
+                  resolvedCommitSha: contextResolutionResolvedCommitSha,
+                  resolvedCommitMessage: contextResolutionResolvedCommitMessage,
+                }
+              : undefined,
           outputSchemaVersion: 'v2',
           passArchitecture: 'single',
           validation: agentAnalysis?.validation,

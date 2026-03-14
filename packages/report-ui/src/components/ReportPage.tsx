@@ -61,6 +61,17 @@ function cochangeStatusMessage(review: ReviewResponse): string | null {
   return 'Co-change lookup ran successfully and found no related files.';
 }
 
+function contextResolutionMessage(review: ReviewResponse): string | null {
+  const contextResolution = review.provenance?.contextResolution;
+  if (!contextResolution || contextResolution.contextResolution !== 'branch_fallback') {
+    return null;
+  }
+  const commitLabel = contextResolution.resolvedCommitMessage?.trim()
+    ? `${contextResolution.resolvedCommitSha.slice(0, 7)} (${contextResolution.resolvedCommitMessage.trim()})`
+    : contextResolution.resolvedCommitSha.slice(0, 7);
+  return `Session context used branch fallback: checkpoint ${contextResolution.originalCheckpointId} had no readable context, so this review used checkpoint ${contextResolution.resolvedCheckpointId} from commit ${commitLabel}.`;
+}
+
 function normalizeMarkdownSummary(markdown: string | null): string {
   if (!markdown?.trim()) {
     return '';
@@ -283,6 +294,7 @@ export function ReportPage(): JSX.Element {
 
   const statusBanner = statusMessage(review);
   const cochangeBanner = cochangeStatusMessage(review);
+  const contextResolutionBanner = contextResolutionMessage(review);
   const markdownUnavailable = normalizedMarkdown.length === 0;
 
   return (
@@ -347,6 +359,13 @@ export function ReportPage(): JSX.Element {
         <section className="card status-card">
           <h2>Co-change context</h2>
           <p>{cochangeBanner}</p>
+        </section>
+      )}
+
+      {contextResolutionBanner && (
+        <section className="card status-card">
+          <h2>Context resolution</h2>
+          <p>{contextResolutionBanner}</p>
         </section>
       )}
 

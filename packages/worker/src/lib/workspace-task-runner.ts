@@ -14,6 +14,7 @@ import { loadRuntimeFlags } from './flags.js';
 const WORKSPACE_ROOT = '/workspace';
 const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
 const MAX_COMMAND_TIMEOUT_MS = 15 * 60_000;
+const AGENT_PROVIDER_TIMEOUT_MS = 120_000;
 
 interface SandboxClient {
   exec(
@@ -75,6 +76,10 @@ class PolicyError extends Error {
     super(message);
     this.name = 'PolicyError';
   }
+}
+
+function isWorkerToWorkerFetchRestriction(status: number, responseBody: string): boolean {
+  return status === 404 && /error\s*code\s*:\s*1042/i.test(responseBody);
 }
 
 function shellQuote(value: string): string {
@@ -241,23 +246,57 @@ class CloudflareAgentSdkProvider implements AgentProvider {
     step: number;
     history: AgentHistoryEntry[];
   }): Promise<AgentAction> {
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
-      },
-      body: JSON.stringify({
-        mode: 'workspace_task',
-        prompt: input.prompt,
-        model: input.model,
-        maxSteps: input.maxSteps,
-        step: input.step,
-        history: input.history,
-      }),
+    const controller = new AbortController();
+    let timedOut = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<Response>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort('agent_provider_timeout');
+        reject(new Error('agent_provider_timeout'));
+      }, AGENT_PROVIDER_TIMEOUT_MS);
     });
+    let response: Response;
+    try {
+      response = await Promise.race([
+        fetch(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            mode: 'workspace_task',
+            prompt: input.prompt,
+            model: input.model,
+            maxSteps: input.maxSteps,
+            step: input.step,
+            history: input.history,
+          }),
+          signal: controller.signal,
+        }),
+        timeoutPromise,
+      ]);
+    } catch (error) {
+      if (timedOut || (error instanceof Error && error.name === 'AbortError')) {
+        throw new QueueRetryError(
+          `Cloudflare Agent SDK request timed out after ${Math.floor(AGENT_PROVIDER_TIMEOUT_MS / 1000)} seconds`
+        );
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    }
 
     if (!response.ok) {
+      const providerErrorBody = await response.text();
+      if (isWorkerToWorkerFetchRestriction(response.status, providerErrorBody)) {
+        throw new Error(
+          'Cloudflare Agent SDK request blocked by Worker-to-Worker fetch restriction (error code 1042). Enable \'global_fetch_strictly_public\' compatibility flag on this worker or use a service binding.'
+        );
+      }
       if (response.status >= 500 || response.status === 429) {
         throw new QueueRetryError(`Cloudflare Agent SDK request failed with status ${response.status}`);
       }

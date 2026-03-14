@@ -11,6 +11,7 @@ import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../wo
 import { formatEvent } from './events.js';
 import {
   setReviewPreflightCommitResolverForTests,
+  type ReviewEntireContextResolution,
   validateReviewCochangeTokenReadiness,
   validateReviewCommitCheckpoint,
   validateReviewEntireIntentContext,
@@ -186,6 +187,7 @@ export async function createReviewFromCommitCommand(
   let commitDiffPatchSha256 = '';
   let commitDiffPatchTruncated = false;
   let commitDiffPatchOriginalChars = 0;
+  let entireContextResolution: ReviewEntireContextResolution | null = null;
 
   try {
     spinner.start('Resolving checkpoint...');
@@ -207,7 +209,7 @@ export async function createReviewFromCommitCommand(
 
     spinner.start('Validating Entire session metadata...');
     try {
-      await validateReviewEntireIntentContext(
+      entireContextResolution = await validateReviewEntireIntentContext(
         {
           commitSha,
           checkpointId,
@@ -217,7 +219,13 @@ export async function createReviewFromCommitCommand(
         },
         process.cwd()
       );
-      spinner.stop('Entire session metadata is readable');
+      if (entireContextResolution.contextResolution === 'branch_fallback') {
+        spinner.stop(
+          `Entire session metadata resolved via branch fallback (${entireContextResolution.resolvedCheckpointId} from ${entireContextResolution.resolvedCommitSha.slice(0, 12)})`
+        );
+      } else {
+        spinner.stop('Entire session metadata is readable');
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Entire session metadata validation failed');
@@ -267,6 +275,7 @@ export async function createReviewFromCommitCommand(
           warning: (text) => spinner.message(text),
           error: (text) => spinner.message(text),
         },
+        entireIntentContextOverride: entireContextResolution ?? undefined,
       });
       if (!deployment) {
         throw new Error('Workspace deploy returned no deployment result.');
@@ -302,12 +311,20 @@ export async function createReviewFromCommitCommand(
           },
           model: options?.model,
           provenance: {
-            note: `Review with Entire checkpoint intent context (${checkpointId}).`,
+            note: `Review with Entire checkpoint intent context (${entireContextResolution?.resolvedCheckpointId ?? checkpointId}).`,
             commitSha,
             commitDiffPatch,
             commitDiffPatchSha256,
             commitDiffPatchTruncated,
             commitDiffPatchOriginalChars,
+            contextResolution: entireContextResolution?.contextResolution ?? 'direct',
+            contextResolutionOriginalCheckpointId: entireContextResolution?.originalCheckpointId ?? checkpointId,
+            contextResolutionResolvedCheckpointId: entireContextResolution?.resolvedCheckpointId ?? checkpointId,
+            contextResolutionResolvedCommitSha: entireContextResolution?.resolvedCommitSha ?? commitSha,
+            contextResolutionResolvedCommitMessage:
+              entireContextResolution?.contextResolution === 'branch_fallback'
+                ? entireContextResolution.resolvedCommitSubject
+                : undefined,
           },
         }
       );

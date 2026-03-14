@@ -1,0 +1,203 @@
+import { strict as assert } from 'assert';
+import { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from './agent.js';
+
+export async function runAgentTests(): Promise<void> {
+  {
+    const originalFetch = globalThis.fetch;
+    let capturedBody = '';
+    let capturedReferer = '';
+    let capturedTitle = '';
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      capturedBody = typeof init?.body === 'string' ? init.body : '';
+      const headers = new Headers(init?.headers);
+      capturedReferer = headers.get('HTTP-Referer') ?? '';
+      capturedTitle = headers.get('X-Title') ?? '';
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  findings: [],
+                  summary: 'Model produced strict V2 output.',
+                  furtherPassesLowYield: false,
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const action = await nextAgentActionWithInference(
+      {
+      mode: 'workspace_task',
+      prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+      model: 'anthropic/claude-sonnet-4-5',
+      history: [],
+    },
+      {
+        OPENROUTER_API_KEY: 'test-key',
+        DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5',
+        OPENROUTER_HTTP_REFERER: 'https://example-review-worker.workers.dev',
+        OPENROUTER_X_TITLE: 'Nimbus Review',
+      }
+    );
+
+    try {
+      assert.equal(action.type, 'final');
+      const parsed = JSON.parse(action.summary) as Record<string, unknown>;
+      assert.equal(Array.isArray(parsed.findings), true);
+      assert.equal(parsed.summary, 'Model produced strict V2 output.');
+      assert.equal(parsed.furtherPassesLowYield, false);
+
+      const requestBody = JSON.parse(capturedBody) as Record<string, unknown>;
+      assert.equal(requestBody.model, 'anthropic/claude-sonnet-4-5');
+      assert.equal(Array.isArray(requestBody.messages), true);
+      assert.equal(capturedReferer, 'https://example-review-worker.workers.dev');
+      assert.equal(capturedTitle, 'Nimbus Review');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      throw error;
+    }) as typeof fetch;
+
+    try {
+      await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+          model: 'anthropic/claude-sonnet-4-5',
+          history: [],
+        },
+        { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }
+      );
+      assert.fail('Expected openrouter_request_timeout error');
+    } catch (error) {
+      assert.equal(error instanceof AgentEndpointError, true);
+      const typed = error as AgentEndpointError;
+      assert.equal(typed.code, 'openrouter_request_timeout');
+      assert.equal(typed.status, 504);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content:
+                  'Analysis complete. Returning JSON:\n{"findings":[],"summary":"Recovered from mixed prose output.","furtherPassesLowYield":true}',
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    try {
+      const action = await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+          model: 'anthropic/claude-sonnet-4-5',
+          history: [],
+        },
+        { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }
+      );
+      assert.equal(action.type, 'final');
+      const parsed = JSON.parse(action.summary) as Record<string, unknown>;
+      assert.equal(parsed.summary, 'Recovered from mixed prose output.');
+      assert.equal(parsed.furtherPassesLowYield, true);
+      assert.equal(Array.isArray(parsed.findings), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  findings: [],
+                  summary: { riskLevel: 'low' },
+                  furtherPassesLowYield: 'false',
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    try {
+      await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+          model: 'anthropic/claude-sonnet-4-5',
+          history: [],
+        },
+        { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }
+      );
+      assert.fail('Expected invalid_model_output error');
+    } catch (error) {
+      assert.equal(error instanceof AgentEndpointError, true);
+      const typed = error as AgentEndpointError;
+      assert.equal(typed.code, 'invalid_model_output');
+      assert.equal(typed.status, 422);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const action = await nextAgentActionWithInference({
+      mode: 'workspace_task',
+      prompt: 'General coding task prompt',
+      history: [],
+    }, { OPENROUTER_API_KEY: 'test-key' });
+    assert.equal(action.type, 'tool');
+    assert.equal(action.tool, 'list_files');
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+    try {
+      const content = await callOpenRouter({
+        apiKey: 'test-key',
+        model: 'anthropic/claude-sonnet-4-5',
+        prompt: 'test prompt',
+      });
+      assert.equal(content, 'ok');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+}

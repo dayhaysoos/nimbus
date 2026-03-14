@@ -1,4 +1,4 @@
-import type { Env } from '../types.js';
+import type { Env, ReviewRunStatus } from '../types.js';
 import {
   ReviewIdempotencyConflictError,
   appendReviewEvent,
@@ -20,9 +20,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token',
 };
 
-const REVIEW_STREAM_POLL_INTERVAL_MS = 50;
+// Keep review SSE polling at 1s to stay within Cloudflare per-invocation API request
+// limits. Sub-second polling (50ms) can exhaust subrequests on reviews lasting ~25s+.
+const REVIEW_STREAM_POLL_INTERVAL_MS = 1000;
 const REVIEW_STREAM_HEARTBEAT_INTERVAL_MS = 1000;
 const REVIEW_TERMINAL_EVENT_GRACE_MS = 1000;
+const REVIEW_STREAM_STATUS_REFRESH_POLLS = 5;
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -151,6 +154,30 @@ function buildReviewRequestPayload(input: {
     typeof input.provenance.commitDiffPatchOriginalChars === 'number' && Number.isFinite(input.provenance.commitDiffPatchOriginalChars)
       ? Math.max(0, Math.floor(input.provenance.commitDiffPatchOriginalChars))
       : undefined;
+  const contextResolution =
+    input.provenance.contextResolution === 'branch_fallback' || input.provenance.contextResolution === 'direct'
+      ? input.provenance.contextResolution
+      : undefined;
+  const contextResolutionOriginalCheckpointId =
+    typeof input.provenance.contextResolutionOriginalCheckpointId === 'string' &&
+    input.provenance.contextResolutionOriginalCheckpointId.trim()
+      ? input.provenance.contextResolutionOriginalCheckpointId.trim()
+      : undefined;
+  const contextResolutionResolvedCheckpointId =
+    typeof input.provenance.contextResolutionResolvedCheckpointId === 'string' &&
+    input.provenance.contextResolutionResolvedCheckpointId.trim()
+      ? input.provenance.contextResolutionResolvedCheckpointId.trim()
+      : undefined;
+  const contextResolutionResolvedCommitSha =
+    typeof input.provenance.contextResolutionResolvedCommitSha === 'string' &&
+    input.provenance.contextResolutionResolvedCommitSha.trim()
+      ? input.provenance.contextResolutionResolvedCommitSha.trim()
+      : undefined;
+  const contextResolutionResolvedCommitMessage =
+    typeof input.provenance.contextResolutionResolvedCommitMessage === 'string' &&
+    input.provenance.contextResolutionResolvedCommitMessage.trim()
+      ? input.provenance.contextResolutionResolvedCommitMessage.trim()
+      : undefined;
   const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
 
   const normalized = {
@@ -186,6 +213,11 @@ function buildReviewRequestPayload(input: {
       ...(commitDiffPatchSha256 ? { commitDiffPatchSha256 } : {}),
       ...(commitDiffPatchTruncated ? { commitDiffPatchTruncated } : {}),
       ...(typeof commitDiffPatchOriginalChars === 'number' ? { commitDiffPatchOriginalChars } : {}),
+      ...(contextResolution ? { contextResolution } : {}),
+      ...(contextResolutionOriginalCheckpointId ? { contextResolutionOriginalCheckpointId } : {}),
+      ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),
+      ...(contextResolutionResolvedCommitSha ? { contextResolutionResolvedCommitSha } : {}),
+      ...(contextResolutionResolvedCommitMessage ? { contextResolutionResolvedCommitMessage } : {}),
     },
     ...(model ? { model } : {}),
   };
@@ -306,6 +338,33 @@ function hasExtendedReviewIdempotencyInputs(input: {
     typeof provenance.commitDiffPatchOriginalChars === 'number' &&
     Number.isFinite(provenance.commitDiffPatchOriginalChars) &&
     provenance.commitDiffPatchOriginalChars > 0
+  ) {
+    return true;
+  }
+  if (provenance.contextResolution === 'branch_fallback' || provenance.contextResolution === 'direct') {
+    return true;
+  }
+  if (
+    typeof provenance.contextResolutionOriginalCheckpointId === 'string' &&
+    provenance.contextResolutionOriginalCheckpointId.trim()
+  ) {
+    return true;
+  }
+  if (
+    typeof provenance.contextResolutionResolvedCheckpointId === 'string' &&
+    provenance.contextResolutionResolvedCheckpointId.trim()
+  ) {
+    return true;
+  }
+  if (
+    typeof provenance.contextResolutionResolvedCommitSha === 'string' &&
+    provenance.contextResolutionResolvedCommitSha.trim()
+  ) {
+    return true;
+  }
+  if (
+    typeof provenance.contextResolutionResolvedCommitMessage === 'string' &&
+    provenance.contextResolutionResolvedCommitMessage.trim()
   ) {
     return true;
   }
@@ -633,9 +692,23 @@ export async function handleGetReviewEvents(reviewId: string, request: Request, 
           let lastHeartbeatAt = Date.now();
           let sawTerminalEvent = false;
           let terminalGraceDeadline: number | null = null;
+          let pollCount = 0;
 
           const isTerminalEventType = (eventType: string): boolean => {
             return eventType === 'review_succeeded' || eventType === 'review_failed' || eventType === 'review_cancelled';
+          };
+
+          const statusFromTerminalEventType = (eventType: string): ReviewRunStatus | null => {
+            if (eventType === 'review_succeeded') {
+              return 'succeeded';
+            }
+            if (eventType === 'review_failed') {
+              return 'failed';
+            }
+            if (eventType === 'review_cancelled') {
+              return 'cancelled';
+            }
+            return null;
           };
 
           const write = (chunk: string): void => {
@@ -648,6 +721,7 @@ export async function handleGetReviewEvents(reviewId: string, request: Request, 
               cursor = item.seq;
               if (isTerminalEventType(item.eventType)) {
                 sawTerminalEvent = true;
+                currentStatus = statusFromTerminalEventType(item.eventType) ?? currentStatus;
               }
               write(
                 formatSseDataWithId(item.seq, {
@@ -672,21 +746,24 @@ export async function handleGetReviewEvents(reviewId: string, request: Request, 
 
           while (currentStatus === 'queued' || currentStatus === 'running') {
             await sleep(REVIEW_STREAM_POLL_INTERVAL_MS);
+            pollCount += 1;
             await writePersistedEvents();
 
-            const latest = await getReviewRun(env.DB, reviewId);
-            if (!latest) {
-              write(
-                formatSseData({
-                  type: 'error',
-                  reviewId,
-                  message: 'Review not found during event stream',
-                })
-              );
-              break;
+            if (pollCount % REVIEW_STREAM_STATUS_REFRESH_POLLS === 0) {
+              const latest = await getReviewRun(env.DB, reviewId);
+              if (!latest) {
+                write(
+                  formatSseData({
+                    type: 'error',
+                    reviewId,
+                    message: 'Review not found during event stream',
+                  })
+                );
+                break;
+              }
+              currentStatus = latest.status;
             }
 
-            currentStatus = latest.status;
             if (currentStatus !== 'queued' && currentStatus !== 'running' && terminalGraceDeadline === null) {
               terminalGraceDeadline = Date.now() + REVIEW_TERMINAL_EVENT_GRACE_MS;
             }

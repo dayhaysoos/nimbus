@@ -3216,6 +3216,62 @@ export async function getReviewCochangeCache(
   };
 }
 
+export async function getReviewCochangeCacheBatch(
+  db: D1Database,
+  input: {
+    repo: string;
+    filePaths: string[];
+  }
+): Promise<Array<{ filePath: string; cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>; lastUpdated: string; lookbackSessions: number }>> {
+  const READ_CHUNK_SIZE = 200;
+  const uniquePaths = Array.from(new Set(input.filePaths.map((value) => value.trim()).filter(Boolean)));
+  if (uniquePaths.length === 0) {
+    return [];
+  }
+
+  const output: Array<{ filePath: string; cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>; lastUpdated: string; lookbackSessions: number }> = [];
+
+  for (let index = 0; index < uniquePaths.length; index += READ_CHUNK_SIZE) {
+    const chunk = uniquePaths.slice(index, index + READ_CHUNK_SIZE);
+    const placeholders = chunk.map(() => '?').join(', ');
+    const records = await db
+      .prepare(
+        `SELECT file_path, cochange_json, last_updated, lookback_sessions
+         FROM review_cochange_cache
+         WHERE repo = ? AND file_path IN (${placeholders})`
+      )
+      .bind(input.repo, ...chunk)
+      .all<{ file_path: string; cochange_json: string; last_updated: string; lookback_sessions: number }>();
+
+    const rows = Array.isArray(records.results) ? records.results : [];
+    output.push(
+      ...rows.map((record) => {
+        let cochange: Array<{ path: string; frequency: number; sessionIds: string[] }> = [];
+        try {
+          const parsed = JSON.parse(record.cochange_json) as unknown;
+          if (Array.isArray(parsed)) {
+            cochange = parsed.filter((item): item is { path: string; frequency: number; sessionIds: string[] } => {
+              const entry = item as Record<string, unknown>;
+              return typeof entry.path === 'string' && typeof entry.frequency === 'number' && Array.isArray(entry.sessionIds);
+            });
+          }
+        } catch {
+          cochange = [];
+        }
+
+        return {
+          filePath: record.file_path,
+          cochange,
+          lastUpdated: record.last_updated,
+          lookbackSessions: Number(record.lookback_sessions),
+        };
+      })
+    );
+  }
+
+  return output;
+}
+
 export async function upsertReviewCochangeCache(
   db: D1Database,
   input: {
@@ -3247,6 +3303,52 @@ export async function upsertReviewCochangeCache(
       lastUpdated
     )
     .run();
+}
+
+export async function upsertReviewCochangeCacheBatch(
+  db: D1Database,
+  input: Array<{
+    filePath: string;
+    repo: string;
+    branch: string;
+    cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>;
+    lookbackSessions: number;
+    lastUpdated?: string;
+  }>
+): Promise<void> {
+  const WRITE_CHUNK_SIZE = 100;
+  if (input.length === 0) {
+    return;
+  }
+
+  for (let index = 0; index < input.length; index += WRITE_CHUNK_SIZE) {
+    const chunk = input.slice(index, index + WRITE_CHUNK_SIZE);
+    const valuesSql = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
+    const bindings: Array<string | number> = [];
+    for (const entry of chunk) {
+      bindings.push(
+        entry.filePath,
+        entry.repo,
+        entry.branch,
+        JSON.stringify(entry.cochange),
+        entry.lookbackSessions,
+        entry.lastUpdated ?? new Date().toISOString()
+      );
+    }
+
+    await db
+      .prepare(
+        `INSERT INTO review_cochange_cache (file_path, repo, branch, cochange_json, lookback_sessions, last_updated)
+         VALUES ${valuesSql}
+         ON CONFLICT(file_path, repo) DO UPDATE SET
+           branch = excluded.branch,
+           cochange_json = excluded.cochange_json,
+           lookback_sessions = excluded.lookback_sessions,
+           last_updated = excluded.last_updated`
+      )
+      .bind(...bindings)
+      .run();
+  }
 }
 
 export async function getLatestSuccessfulWorkspaceDeployment(

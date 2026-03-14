@@ -22,6 +22,7 @@ const PROMPT_CHANGED_FILES_MAX_BYTES = 80_000;
 const PROMPT_RELATED_FILES_MAX_BYTES = 36_000;
 const PROMPT_CONVENTION_FILES_MAX_BYTES = 20_000;
 const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
+const REVIEW_PROVIDER_TIMEOUT_MS = 120_000;
 const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
 
 interface SandboxClient {
@@ -277,6 +278,10 @@ function sanitizeErrorMessage(input: string): string {
   return redactReviewText(input) ?? '';
 }
 
+function isWorkerToWorkerFetchRestriction(status: number, responseBody: string): boolean {
+  return status === 404 && /error\s*code\s*:\s*1042/i.test(responseBody);
+}
+
 function redactReviewText(value: string | null): string | null {
   if (!value) {
     return null;
@@ -389,6 +394,8 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     'Critical field typing requirements:',
     '- summary must be a plain JSON string value (not an object, array, number, or nested structure).',
     '- furtherPassesLowYield must be exactly true or false (JSON boolean only; do not use strings like "true"/"false" and do not use null).',
+    '- Do not return summary as an object (for example with riskLevel/recommendation).',
+    '- Do not return summaryText or any alternate summary field; only return summary.',
     '',
     'Phase 2 constraints:',
     '- passType must be set explicitly on every finding and be "single" in this phase.',
@@ -671,27 +678,65 @@ class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
     step: number;
     history: ReviewAgentHistoryEntry[];
   }): Promise<ReviewAgentAction> {
-    const response = await fetch(this.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
-      },
-      body: JSON.stringify({
-        mode: 'workspace_task',
-        prompt: input.prompt,
-        model: input.model,
-        maxSteps: input.maxSteps,
-        step: input.step,
-        history: input.history,
-      }),
+    const controller = new AbortController();
+    let timedOut = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+    const timeoutPromise = new Promise<Response>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        timedOut = true;
+        controller.abort('review_provider_timeout');
+        reject(new Error('review_provider_timeout'));
+      }, REVIEW_PROVIDER_TIMEOUT_MS);
     });
+    let response: Response;
+    try {
+      response = await Promise.race([
+        fetch(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+          },
+          body: JSON.stringify({
+            mode: 'workspace_task',
+            prompt: input.prompt,
+            model: input.model,
+            maxSteps: input.maxSteps,
+            step: input.step,
+            history: input.history,
+          }),
+          signal: controller.signal,
+        }),
+        timeoutPromise,
+      ]);
+    } catch (error) {
+      if (timedOut || (error instanceof Error && error.name === 'AbortError')) {
+        throw new Error(
+          `Review analysis provider request timed out after ${Math.floor(REVIEW_PROVIDER_TIMEOUT_MS / 1000)} seconds`
+        );
+      }
+      throw error;
+    } finally {
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    }
 
     if (!response.ok) {
-      if (response.status >= 500 || response.status === 429) {
-        throw new Error(`Review analysis provider temporarily unavailable (status ${response.status})`);
+      const providerErrorBody = redactReviewText(await response.text()) ?? '';
+      if (isWorkerToWorkerFetchRestriction(response.status, providerErrorBody)) {
+        throw new Error(
+          `Review analysis provider request blocked by Cloudflare Worker-to-Worker fetch restriction (error code 1042). Enable the 'global_fetch_strictly_public' compatibility flag on this worker or switch to a service binding.${providerErrorBody ? ` Provider response: ${providerErrorBody}` : ''}`
+        );
       }
-      throw new Error(`Review analysis provider request failed with status ${response.status}`);
+      if (response.status >= 500 || response.status === 429) {
+        throw new Error(
+          `Review analysis provider temporarily unavailable (status ${response.status})${providerErrorBody ? `: ${providerErrorBody}` : ''}`
+        );
+      }
+      throw new Error(
+        `Review analysis provider request failed with status ${response.status}${providerErrorBody ? `: ${providerErrorBody}` : ''}`
+      );
     }
 
     const parsed = (await response.json()) as unknown;
@@ -883,6 +928,16 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     readOptionalString(env.AGENT_MODEL) ??
     DEFAULT_REVIEW_MODEL;
   const authToken = (env.AGENT_SDK_AUTH_TOKEN ?? '').trim() || null;
+  let endpointHost: string | null = null;
+  let endpointPath: string | null = null;
+  try {
+    const parsedEndpoint = new URL(endpoint);
+    endpointHost = parsedEndpoint.host;
+    endpointPath = parsedEndpoint.pathname;
+  } catch {
+    endpointHost = null;
+    endpointPath = null;
+  }
   const maxSteps = parseIntegerString(env.REVIEW_AGENT_MAX_STEPS, DEFAULT_REVIEW_AGENT_MAX_STEPS, 1, 12);
   const maxFileBytes = parseIntegerString(env.REVIEW_AGENT_MAX_FILE_BYTES, DEFAULT_REVIEW_MAX_FILE_BYTES, 1_024, 200_000);
   if (!env.WORKSPACE_ARTIFACTS && !env.SOURCE_BUNDLES) {
@@ -932,6 +987,14 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     let fallbackApplied = false;
     let fallbackReason: string | null = null;
     for (let step = 1; step <= maxSteps; step += 1) {
+      if (input.onLifecycleEvent) {
+        await input.onLifecycleEvent('review_analysis_provider_request_started', {
+          step,
+          endpointHost,
+          endpointPath,
+          hasAuthToken: Boolean(authToken),
+        });
+      }
       const action = await provider.next({
         prompt,
         model,

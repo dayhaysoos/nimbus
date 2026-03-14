@@ -274,6 +274,11 @@ export async function createWorkspaceDeployment(
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
+      contextResolution?: 'direct' | 'branch_fallback';
+      contextResolutionOriginalCheckpointId?: string;
+      contextResolutionResolvedCheckpointId?: string;
+      contextResolutionResolvedCommitSha?: string;
+      contextResolutionResolvedCommitMessage?: string;
     };
   }
 ): Promise<WorkspaceDeploymentCreateResponse> {
@@ -352,6 +357,11 @@ export async function createReview(
       commitDiffPatchSha256?: string;
       commitDiffPatchTruncated?: boolean;
       commitDiffPatchOriginalChars?: number;
+      contextResolution?: 'direct' | 'branch_fallback';
+      contextResolutionOriginalCheckpointId?: string;
+      contextResolutionResolvedCheckpointId?: string;
+      contextResolutionResolvedCommitSha?: string;
+      contextResolutionResolvedCommitMessage?: string;
     };
   }
 ): Promise<ReviewCreateResponse> {

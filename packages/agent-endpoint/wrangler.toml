@@ -1,0 +1,12 @@
+name = "nimbus-agent-endpoint"
+main = "src/index.ts"
+compatibility_date = "2025-01-21"
+workers_dev = true
+
+# Required secret:
+# - OPENROUTER_API_KEY
+# - AGENT_SDK_AUTH_TOKEN
+[vars]
+DEFAULT_MODEL = "anthropic/claude-sonnet-4-5"
+OPENROUTER_HTTP_REFERER = "https://nimbus-worker.ndejesus1227.workers.dev"
+OPENROUTER_X_TITLE = "Nimbus Review"

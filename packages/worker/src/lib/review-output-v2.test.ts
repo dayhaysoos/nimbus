@@ -148,4 +148,29 @@ export function runReviewOutputV2Tests(): void {
     assert.equal(result.dedupedExactCount, 1);
     assert.equal(result.value.findings[0].locations[0]?.filePath, 'src/auth.ts');
   }
+
+  {
+    const payload = {
+      findings: [],
+      summary: { riskLevel: 'low', recommendation: 'approve' },
+      summaryText: 'No actionable findings from legacy payload.',
+    };
+
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, false);
+    assert.equal(result.errors.some((error) => error.path === '$.summary'), true);
+    assert.equal(result.errors.some((error) => error.path === '$.furtherPassesLowYield'), true);
+  }
+
+  {
+    const payload = {
+      findings: [],
+      summary: 'No actionable findings.',
+      furtherPassesLowYield: 'false',
+    };
+
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, false);
+    assert.equal(result.errors.some((error) => error.path === '$.furtherPassesLowYield'), true);
+  }
 }

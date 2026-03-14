@@ -47,6 +47,13 @@ export interface ReviewResponse {
   findings: ReviewFinding[];
   evidence: ReviewEvidence[];
   provenance?: {
+    contextResolution?: {
+      contextResolution: 'direct' | 'branch_fallback';
+      originalCheckpointId: string;
+      resolvedCheckpointId: string;
+      resolvedCommitSha: string;
+      resolvedCommitMessage: string | null;
+    };
     coChange?: {
       coChangeSkipped: boolean;
       coChangeSkipReason: string | null;

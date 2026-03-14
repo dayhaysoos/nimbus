@@ -10,6 +10,7 @@ import {
 import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import type { WorkspaceDeploymentResponse } from '../../lib/types.js';
+import type { ReviewEntireContextResolution } from '../review/preflight.js';
 
 function buildIdempotencyKey(workspaceId: string): string {
   const seed = `${workspaceId}:${Date.now()}:${Math.random()}`;
@@ -118,6 +119,7 @@ export async function workspaceDeployCommand(
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
     reporter?: WorkspaceDeployReporter;
+    entireIntentContextOverride?: ReviewEntireContextResolution;
   }
 ): Promise<WorkspaceDeploymentResponse | null> {
   const reporter = options?.reporter ?? DEFAULT_REPORTER;
@@ -205,8 +207,11 @@ export async function workspaceDeployCommand(
   }
 
   const workspace = await getWorkspace(workerUrl, workspaceId);
+  const contextOverride = options?.entireIntentContextOverride;
   let entireIntentContext;
-  if (!workspace.checkpointId) {
+  if (contextOverride) {
+    entireIntentContext = contextOverride.context;
+  } else if (!workspace.checkpointId) {
     reporter.warning(
       `Workspace ${workspaceId} has no checkpoint ID; proceeding without Entire checkpoint intent context.`
     );
@@ -263,6 +268,11 @@ export async function workspaceDeployCommand(
       transcriptUrl: entireIntentContext?.transcriptUrl ?? null,
       intentSessionContext: entireIntentContext?.intentSessionContext ?? [],
       repo: repositorySlug,
+      contextResolution: contextOverride?.contextResolution,
+      contextResolutionOriginalCheckpointId: contextOverride?.originalCheckpointId,
+      contextResolutionResolvedCheckpointId: contextOverride?.resolvedCheckpointId,
+      contextResolutionResolvedCommitSha: contextOverride?.resolvedCommitSha,
+      contextResolutionResolvedCommitMessage: contextOverride?.resolvedCommitSubject,
     },
   });
 

@@ -1,7 +1,7 @@
 name = "nimbus-worker"
 main = "src/index.ts"
 compatibility_date = "2025-01-21"
-compatibility_flags = ["nodejs_compat"]
+compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 
 # Enable workers.dev access
 workers_dev = true
