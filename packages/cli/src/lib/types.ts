@@ -224,6 +224,11 @@ export interface DeployReadinessResponse {
   checks: DeployReadinessCheck[];
 }
 
+export interface ReviewReadinessResponse {
+  ok: boolean;
+  checks: DeployReadinessCheck[];
+}
+
 export type ReviewRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ReviewConfidence = 'high' | 'medium' | 'low';

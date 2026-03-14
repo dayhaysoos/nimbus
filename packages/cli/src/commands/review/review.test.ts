@@ -11,6 +11,14 @@ import {
 import { reviewEventsCommand } from './events.js';
 import { showReviewCommand } from './show.js';
 import { exportReviewCommand } from './export.js';
+import {
+  reviewPreflightCommand,
+  setReviewPreflightCommitResolverForTests,
+  setReviewPreflightContextResolverForTests,
+  setReviewPreflightLastCheckpointResolverForTests,
+  setReviewPreflightLastValidContextResolverForTests,
+  setReviewPreflightTokenReadinessResolverForTests,
+} from './preflight.js';
 
 function createReviewResponseBody() {
   return {
@@ -64,9 +72,145 @@ function createReviewResponseBody() {
 export async function runReviewCommandTests(): Promise<void> {
   const originalFetch = globalThis.fetch;
   const originalWorkerUrl = process.env.NIMBUS_WORKER_URL;
+  const originalReviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN;
   process.env.NIMBUS_WORKER_URL = 'https://worker.example.com';
 
   try {
+    setReviewPreflightTokenReadinessResolverForTests(async () => true);
+    {
+      setReviewPreflightCommitResolverForTests(() => ({
+        commitSha: '1'.repeat(40),
+        checkpointId: null,
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightLastCheckpointResolverForTests(() => ({
+        commitSha: 'abc1234def567890123456789012345678901234',
+        subject: 'feat: working checkpoint commit',
+        commitsAgo: 3,
+      }));
+      await assert.rejects(
+        () => reviewPreflightCommand('HEAD'),
+        /This commit has no Entire-Checkpoint trailer\. The last commit on this branch with valid checkpoint context was abc1234 \('feat: working checkpoint commit'\) 3 commits ago\./
+      );
+      setReviewPreflightCommitResolverForTests(null);
+      setReviewPreflightLastCheckpointResolverForTests(null);
+    }
+
+    {
+      setReviewPreflightCommitResolverForTests(() => ({
+        commitSha: '2'.repeat(40),
+        checkpointId: null,
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightLastCheckpointResolverForTests(() => null);
+      await assert.rejects(
+        () => reviewPreflightCommand('HEAD'),
+        /This branch has no Entire session history\. Make sure Entire capture is active before committing \(`entire status` to verify\)\./
+      );
+      setReviewPreflightCommitResolverForTests(null);
+      setReviewPreflightLastCheckpointResolverForTests(null);
+    }
+
+    {
+      setReviewPreflightCommitResolverForTests(() => ({
+        commitSha: 'e'.repeat(40),
+        checkpointId: 'fba364e3d99d',
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (fba364e3d99d).',
+        sessionIds: ['sess_123'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      await reviewPreflightCommand('HEAD');
+      setReviewPreflightCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+    }
+
+    {
+      setReviewPreflightCommitResolverForTests(() => ({
+        commitSha: '6'.repeat(40),
+        checkpointId: 'fba364e3d99d',
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (fba364e3d99d).',
+        sessionIds: ['sess_123'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      setReviewPreflightTokenReadinessResolverForTests(async () => false);
+      await assert.rejects(
+        () => reviewPreflightCommand('HEAD'),
+        /Review preflight failed: co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local \.env/
+      );
+      setReviewPreflightCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewPreflightTokenReadinessResolverForTests(async () => true);
+    }
+
+    {
+      setReviewPreflightCommitResolverForTests(() => ({
+        commitSha: 'f'.repeat(40),
+        checkpointId: 'ddfa7c25a183',
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightContextResolverForTests(async () => {
+        throw new Error('Checkpoint ddfa7c25a183 had no readable session metadata');
+      });
+      setReviewPreflightLastValidContextResolverForTests(async () => ({
+        commitSha: 'abc1234def567890123456789012345678901234',
+        subject: 'feat: working checkpoint commit',
+        commitsAgo: 3,
+      }));
+      await assert.rejects(
+        () => reviewPreflightCommand('HEAD'),
+        /Review preflight failed: This commit has no Entire session context\. The last commit on this branch with valid checkpoint context was abc1234 \('feat: working checkpoint commit'\) 3 commits ago\./
+      );
+      setReviewPreflightCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewPreflightLastValidContextResolverForTests(null);
+    }
+
+    {
+      setReviewPreflightCommitResolverForTests(() => ({
+        commitSha: '7'.repeat(40),
+        checkpointId: 'ddfa7c25a183',
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightContextResolverForTests(async () => {
+        throw new Error('Checkpoint ddfa7c25a183 had no readable session metadata');
+      });
+      setReviewPreflightLastValidContextResolverForTests(async () => null);
+      await assert.rejects(
+        () => reviewPreflightCommand('HEAD'),
+        /Review preflight failed: This branch has no Entire session history\. Make sure Entire capture is active before committing \(`entire status` to verify\)\./
+      );
+      setReviewPreflightCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewPreflightLastValidContextResolverForTests(null);
+    }
+
+    {
+      setReviewPreflightCommitResolverForTests(() => ({
+        commitSha: '3'.repeat(40),
+        checkpointId: 'ddfa7c25a183',
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightContextResolverForTests(async () => {
+        throw new Error(
+          'Entire session context exceeds token budget (1800 > 1200). Increase --intent-token-budget or use --summarize-session auto|always.'
+        );
+      });
+      await assert.rejects(
+        () => reviewPreflightCommand('HEAD'),
+        /Review preflight failed: Entire session context exceeds token budget \(1800 > 1200\)/
+      );
+      setReviewPreflightCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+    }
+
     {
       let fetchCount = 0;
       globalThis.fetch = (async (): Promise<Response> => {
@@ -90,6 +234,39 @@ export async function runReviewCommandTests(): Promise<void> {
 
     {
       const sequence: string[] = [];
+      setReviewCommitResolverForTests(() => ({
+        commitSha: '9'.repeat(40),
+        checkpointId: 'ddfa7c25a183',
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightContextResolverForTests(async () => {
+        throw new Error('Checkpoint ddfa7c25a183 had no readable session metadata');
+      });
+      setReviewPreflightLastValidContextResolverForTests(async () => ({
+        commitSha: 'abc1234def567890123456789012345678901234',
+        subject: 'feat: working checkpoint commit',
+        commitsAgo: 3,
+      }));
+      setReviewCreateFlowForTests({
+        createWorkspace: async () => {
+          sequence.push('workspace.create');
+          throw new Error('should not be called');
+        },
+      });
+
+      await assert.rejects(
+        () => createReviewFromCommitCommand({ commitish: 'HEAD' }),
+        /Review flow failed at checkpoint resolution: This commit has no Entire session context\. The last commit on this branch with valid checkpoint context was abc1234 \('feat: working checkpoint commit'\) 3 commits ago\./
+      );
+      assert.deepEqual(sequence, []);
+      setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewPreflightLastValidContextResolverForTests(null);
+      setReviewCreateFlowForTests(null);
+    }
+
+    {
+      const sequence: string[] = [];
       const eventLines: string[] = [];
       let deployIdempotencyKey: string | undefined;
       let reviewIdempotencyKey: string | undefined;
@@ -100,6 +277,12 @@ export async function runReviewCommandTests(): Promise<void> {
         eventLines.push(args.map((value) => String(value)).join(' '));
       };
       try {
+        setReviewPreflightContextResolverForTests(async () => ({
+          note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+          sessionIds: ['sess_compound'],
+          transcriptUrl: null,
+          intentSessionContext: ['Constraint: Keep scope narrow.'],
+        }));
         setReviewCommitResolverForTests(() => ({
           commitSha: 'b'.repeat(40),
           checkpointId: '8a513f56ed70',
@@ -214,6 +397,7 @@ export async function runReviewCommandTests(): Promise<void> {
       } finally {
         console.log = originalConsoleLog;
         setReviewCommitResolverForTests(null);
+        setReviewPreflightContextResolverForTests(null);
         setReviewCreateFlowForTests(null);
       }
     }
@@ -221,6 +405,12 @@ export async function runReviewCommandTests(): Promise<void> {
     {
       let capturedProvenance: Record<string, unknown> | null = null;
       const longPatch = `diff --git a/large.txt b/large.txt\n@@ -1 +1 @@\n-${'a'.repeat(140000)}\n+${'b'.repeat(140000)}\n`;
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_longpatch'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
       setReviewCommitResolverForTests(() => ({
         commitSha: 'd'.repeat(40),
         checkpointId: '8a513f56ed70',
@@ -300,10 +490,17 @@ export async function runReviewCommandTests(): Promise<void> {
       assert.equal(capturedProvenance?.['commitDiffPatchTruncated'], true);
       assert.equal(capturedProvenance?.['commitDiffPatchOriginalChars'], longPatch.length);
       setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
       setReviewCreateFlowForTests(null);
     }
 
     {
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_faildeploy'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
       setReviewCommitResolverForTests(() => ({
         commitSha: 'c'.repeat(40),
         checkpointId: '8a513f56ed70',
@@ -358,11 +555,13 @@ export async function runReviewCommandTests(): Promise<void> {
       );
       assert.deepEqual(sequence, ['workspace.create', 'workspace.deploy']);
       setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
       setReviewCreateFlowForTests(null);
     }
 
     {
       const requests: Array<{ url: string; init?: RequestInit }> = [];
+      process.env.REVIEW_CONTEXT_GITHUB_TOKEN = 'ghp_test_local_token';
       globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {
         requests.push({ url: String(input), init });
         return new Response(
@@ -387,6 +586,10 @@ export async function runReviewCommandTests(): Promise<void> {
       assert.equal(requests.length, 1);
       assert.equal(requests[0].url.endsWith('/api/reviews'), true);
       assert.equal((requests[0].init?.headers as Record<string, string>)['Idempotency-Key'], 'idem-review-1');
+      assert.equal(
+        (requests[0].init?.headers as Record<string, string>)['X-Review-Github-Token'],
+        'ghp_test_local_token'
+      );
       const requestBody = JSON.parse(String(requests[0].init?.body ?? '{}')) as {
         model?: string;
         policy?: {
@@ -407,6 +610,23 @@ export async function runReviewCommandTests(): Promise<void> {
       assert.equal(requestBody.policy?.includeProvenance, false);
       assert.equal(requestBody.policy?.includeValidationEvidence, false);
       assert.equal(requestBody.provenance, undefined);
+    }
+
+    {
+      let fetchCount = 0;
+      process.env.REVIEW_CONTEXT_GITHUB_TOKEN = '';
+      setReviewPreflightTokenReadinessResolverForTests(async () => false);
+      globalThis.fetch = (async (): Promise<Response> => {
+        fetchCount += 1;
+        throw new Error('fetch should not be called when token readiness fails');
+      }) as typeof fetch;
+
+      await assert.rejects(
+        () => createReviewCommand('ws_abc12345', 'dep_abcd1234', { idempotencyKey: 'idem-review-token-missing' }),
+        /co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local \.env/
+      );
+      assert.equal(fetchCount, 0);
+      setReviewPreflightTokenReadinessResolverForTests(async () => true);
     }
 
     {
@@ -489,7 +709,13 @@ export async function runReviewCommandTests(): Promise<void> {
   } finally {
     setReviewCommitResolverForTests(null);
     setReviewCreateFlowForTests(null);
+    setReviewPreflightCommitResolverForTests(null);
+    setReviewPreflightContextResolverForTests(null);
+    setReviewPreflightLastCheckpointResolverForTests(null);
+    setReviewPreflightLastValidContextResolverForTests(null);
+    setReviewPreflightTokenReadinessResolverForTests(null);
     globalThis.fetch = originalFetch;
     process.env.NIMBUS_WORKER_URL = originalWorkerUrl;
+    process.env.REVIEW_CONTEXT_GITHUB_TOKEN = originalReviewGithubToken;
   }
 }

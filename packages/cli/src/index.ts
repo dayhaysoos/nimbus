@@ -33,6 +33,7 @@ import { createReviewCommand, createReviewFromCommitCommand } from './commands/r
 import { reviewEventsCommand } from './commands/review/events.js';
 import { showReviewCommand } from './commands/review/show.js';
 import { exportReviewCommand } from './commands/review/export.js';
+import { reviewPreflightCommand } from './commands/review/preflight.js';
 import { parseArgs } from './lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
 
@@ -110,8 +111,10 @@ Commands:
                         Create workspace+deployment+review and block until review completion
   review create --workspace <id> --deployment <id>
                        Create a report-only review run for an existing deployment
+  review preflight [commit-ish]
+                       Validate Entire checkpoint/session metadata for review create
   review show <review-id>
-                      Show review status and summary
+                       Show review status and summary
   review events <review-id>
                       Stream review lifecycle events
   review export <review-id>
@@ -178,6 +181,8 @@ Examples:
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
   nimbus review create --commit HEAD --model sonnet-4.5
+  nimbus review preflight
+  nimbus review preflight HEAD~2
   nimbus review show rev_abcd1234
   nimbus review events rev_abcd1234
   nimbus review export rev_abcd1234 --format markdown --out review.md
@@ -397,13 +402,19 @@ async function main(): Promise<void> {
           const maxFindings = parseReviewMaxFindings(flags['max-findings']);
           const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;
           const hasWorkspaceInputs = Boolean(workspaceId || deploymentId);
+          const unexpectedPositional = positional[1];
+
+          if (typeof unexpectedPositional === 'string' && unexpectedPositional.trim()) {
+            p.log.error('Usage error: review create does not accept positional arguments. Use --commit or --workspace/--deployment flags.');
+            process.exit(1);
+          }
 
           if (commitModeRequested && hasWorkspaceInputs) {
             p.log.error('Usage error: --commit cannot be combined with --workspace/--deployment. Choose one review create mode.');
             process.exit(1);
           }
 
-          if (commitModeRequested) {
+          if (commitModeRequested || (!workspaceId && !deploymentId)) {
             await createReviewFromCommitCommand({
               commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',
               projectRoot,
@@ -420,7 +431,6 @@ async function main(): Promise<void> {
 
           if (!workspaceId || !deploymentId) {
             p.log.error('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id>');
-            p.log.message('Tip: use --commit (defaults to HEAD) for one-command workspace+deploy+review flow.');
             process.exit(1);
           }
 
@@ -443,6 +453,24 @@ async function main(): Promise<void> {
           }
 
           await showReviewCommand(reviewId);
+          break;
+        }
+
+        if (reviewAction === 'preflight') {
+          const commitishArg = positional[1];
+          await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {
+            summarizeSession: (() => {
+              const summarizeSessionFlag = flags['summarize-session'];
+              if (typeof summarizeSessionFlag !== 'string') {
+                return undefined;
+              }
+              if (summarizeSessionFlag === 'auto' || summarizeSessionFlag === 'always' || summarizeSessionFlag === 'never') {
+                return summarizeSessionFlag;
+              }
+              throw new Error('Invalid --summarize-session value. Use auto, always, or never.');
+            })(),
+            intentTokenBudget: parsePositiveIntegerFlag(flags['intent-token-budget']),
+          });
           break;
         }
 
@@ -476,7 +504,7 @@ async function main(): Promise<void> {
           break;
         }
 
-        p.log.error('Unknown review command. Use: create, show, events, export');
+        p.log.error('Unknown review command. Use: create, preflight, show, events, export');
         process.exit(1);
       }
 

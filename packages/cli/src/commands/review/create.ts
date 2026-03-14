@@ -8,9 +8,13 @@ import {
 } from '../../lib/api.js';
 import { workspaceDeployCommand } from '../workspace/deploy.js';
 import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../workspace/create.js';
-import { GitRepo } from '../../lib/checkpoint/git.js';
-import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';
 import { formatEvent } from './events.js';
+import {
+  setReviewPreflightCommitResolverForTests,
+  validateReviewCochangeTokenReadiness,
+  validateReviewCommitCheckpoint,
+  validateReviewEntireIntentContext,
+} from './preflight.js';
 import type {
   WorkspaceDeploymentResponse,
   WorkspaceResponse,
@@ -40,6 +44,8 @@ export async function createReviewCommand(
     throw new Error('NIMBUS_WORKER_URL environment variable is required');
   }
 
+  await validateReviewCochangeTokenReadiness();
+
   const response = await createReview(workerUrl, options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId, deploymentId), {
     target: {
       type: 'workspace_deployment',
@@ -68,7 +74,6 @@ interface CommitResolution {
   commitDiffPatch: string;
 }
 
-let resolveReviewCommitContextForTests: ((commitish: string) => CommitResolution) | null = null;
 let createWorkspaceForCommitFlow: (source: {
   commitSha: string;
   checkpointId: string | null;
@@ -85,7 +90,7 @@ let streamReviewEventsForCommitFlow: typeof streamReviewEvents = streamReviewEve
 let getReviewForCommitFlow: typeof getReview = getReview;
 
 export function setReviewCommitResolverForTests(resolver: ((commitish: string) => CommitResolution) | null): void {
-  resolveReviewCommitContextForTests = resolver;
+  setReviewPreflightCommitResolverForTests(resolver);
 }
 
 export function setReviewCreateFlowForTests(
@@ -106,20 +111,6 @@ export function setReviewCreateFlowForTests(
   createReviewForCommitFlow = overrides?.createReview ?? createReview;
   streamReviewEventsForCommitFlow = overrides?.streamReviewEvents ?? streamReviewEvents;
   getReviewForCommitFlow = overrides?.getReview ?? getReview;
-}
-
-function resolveReviewCommitContext(commitish: string): CommitResolution {
-  if (resolveReviewCommitContextForTests) {
-    return resolveReviewCommitContextForTests(commitish);
-  }
-  const git = new GitRepo(process.cwd());
-  const commitSha = git.resolveCommitSha(commitish);
-  const trailers = parseCommitTrailers(git.getCommitMessage(commitSha));
-  return {
-    commitSha,
-    checkpointId: trailers.checkpointId,
-    commitDiffPatch: git.getCommitPatch(commitSha),
-  };
 }
 
 function buildWorkspaceIdempotencyKey(commitSha: string): string {
@@ -199,28 +190,51 @@ export async function createReviewFromCommitCommand(
   try {
     spinner.start('Resolving checkpoint...');
     try {
-      const resolved = resolveReviewCommitContext(commitish);
-      commitSha = resolved.commitSha;
-      checkpointId = resolved.checkpointId ?? '';
-      const normalizedPatch = normalizeCommitDiffPatch(resolved.commitDiffPatch);
+      const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd());
+      commitSha = resolvedCommit.commitSha;
+      checkpointId = resolvedCommit.checkpointId;
+      const normalizedPatch = normalizeCommitDiffPatch(resolvedCommit.commitDiffPatch);
       commitDiffPatch = normalizedPatch.patch;
       commitDiffPatchSha256 = normalizedPatch.sha256;
       commitDiffPatchTruncated = normalizedPatch.truncated;
       commitDiffPatchOriginalChars = normalizedPatch.originalChars;
-      if (!checkpointId) {
-        throw new Error(
-          `Commit ${commitSha.slice(0, 12)} does not include an Entire-Checkpoint trailer. Review creation requires Entire checkpoint context.`
-        );
-      }
-      if (!commitDiffPatch.trim()) {
-        throw new Error(
-          `Commit ${commitSha.slice(0, 12)} has no diff patch content. Review creation requires meaningful diff context.`
-        );
-      }
       spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Checkpoint resolution failed');
+      throw new Error(`Review flow failed at checkpoint resolution: ${message}`);
+    }
+
+    spinner.start('Validating Entire session metadata...');
+    try {
+      await validateReviewEntireIntentContext(
+        {
+          commitSha,
+          checkpointId,
+        },
+        {
+          summarizeSession: 'auto',
+        },
+        process.cwd()
+      );
+      spinner.stop('Entire session metadata is readable');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      spinner.stop('Entire session metadata validation failed');
+      throw new Error(`Review flow failed at checkpoint resolution: ${message}`);
+    }
+
+    spinner.start('Checking co-change token readiness...');
+    try {
+      const readiness = await validateReviewCochangeTokenReadiness();
+      if (readiness === 'legacy_unknown') {
+        spinner.stop('Co-change token readiness unknown on legacy worker (continuing)');
+      } else {
+        spinner.stop('Co-change token readiness confirmed');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      spinner.stop('Co-change token readiness check failed');
       throw new Error(`Review flow failed at checkpoint resolution: ${message}`);
     }
 
