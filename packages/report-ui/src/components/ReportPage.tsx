@@ -9,7 +9,10 @@ import {
   buildFixPrompt,
   dateTimeLabel,
   findingCount,
+  parseGetReviewResponse,
   recommendationLabel,
+  reviewFailureGuidance,
+  statusNarrative,
 } from '../lib/review';
 import type { GetReviewResponse, ReviewFinding, ReviewResponse } from '../types';
 
@@ -25,25 +28,8 @@ function copyButton(onClick: () => void, label: string, disabled = false): JSX.E
   );
 }
 
-function statusMessage(review: ReviewResponse): string | null {
-  if (review.status === 'queued') {
-    return 'Review is queued and has not started yet.';
-  }
-  if (review.status === 'running') {
-    return 'Review is currently running.';
-  }
-  if (review.status === 'failed') {
-    return review.error?.message ?? 'Review failed before a full report was generated.';
-  }
-  if (review.status === 'cancelled') {
-    return 'Review was cancelled before completion.';
-  }
-
-  return null;
-}
-
 function cochangeStatusMessage(review: ReviewResponse): string | null {
-  const coChange = review.provenance?.coChange;
+  const coChange = review.provenance.coChange;
   if (!coChange) {
     return null;
   }
@@ -62,7 +48,7 @@ function cochangeStatusMessage(review: ReviewResponse): string | null {
 }
 
 function contextResolutionMessage(review: ReviewResponse): string | null {
-  const contextResolution = review.provenance?.contextResolution;
+  const contextResolution = review.provenance.contextResolution;
   if (!contextResolution || contextResolution.contextResolution !== 'branch_fallback') {
     return null;
   }
@@ -172,6 +158,7 @@ export function ReportPage(): JSX.Element {
   const [review, setReview] = useState<ReviewResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [refreshCycle, setRefreshCycle] = useState(0);
 
   useEffect(() => {
     if (!reviewId) {
@@ -181,7 +168,10 @@ export function ReportPage(): JSX.Element {
     }
 
     let cancelled = false;
-    setState('loading');
+    const backgroundRefresh = state === 'loaded' && refreshCycle > 0;
+    if (!backgroundRefresh) {
+      setState('loading');
+    }
 
     fetch(`${API_BASE}/api/reviews/${encodeURIComponent(reviewId)}`)
       .then(async (response) => {
@@ -191,14 +181,12 @@ export function ReportPage(): JSX.Element {
           throw new Error(message);
         }
 
-        const data = (await response.json()) as GetReviewResponse;
-        if (!data.review) {
-          throw new Error('No review payload in response.');
-        }
+        const data = parseGetReviewResponse((await response.json()) as GetReviewResponse);
 
         if (!cancelled) {
           setReview(data.review);
           setState('loaded');
+          setErrorMessage('');
         }
       })
       .catch((error) => {
@@ -211,7 +199,24 @@ export function ReportPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [reviewId]);
+  }, [reviewId, refreshCycle]);
+
+  useEffect(() => {
+    if (state !== 'loaded' || !review) {
+      return;
+    }
+    if (review.status !== 'queued' && review.status !== 'running') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setRefreshCycle((value) => value + 1);
+    }, 3000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [review, state]);
 
   useEffect(() => {
     if (!toastMessage) {
@@ -292,9 +297,16 @@ export function ReportPage(): JSX.Element {
     );
   }
 
-  const statusBanner = statusMessage(review);
+  const status = statusNarrative(review);
+  const failureGuidance = reviewFailureGuidance(review);
   const cochangeBanner = cochangeStatusMessage(review);
   const contextResolutionBanner = contextResolutionMessage(review);
+  const provenanceAdvisories = review.provenance.advisories ?? [];
+  const modelSummary = review.summaryText?.trim() || null;
+  const modelSignal =
+    typeof review.furtherPassesLowYield === 'boolean'
+      ? review.furtherPassesLowYield
+      : review.provenance.furtherPassesLowYield?.value;
   const markdownUnavailable = normalizedMarkdown.length === 0;
 
   return (
@@ -348,10 +360,21 @@ export function ReportPage(): JSX.Element {
         </div>
       </section>
 
-      {statusBanner && (
+      <section className="card status-card">
+        <h2>{status.title}</h2>
+        <p>{status.detail}</p>
+      </section>
+
+      {failureGuidance && (
         <section className="card status-card">
-          <h2>Review status</h2>
-          <p>{statusBanner}</p>
+          <h2>Failure guidance</h2>
+          <p>{failureGuidance.headline}</p>
+          <p>{failureGuidance.details}</p>
+          <ul>
+            {failureGuidance.actions.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
         </section>
       )}
 
@@ -364,10 +387,58 @@ export function ReportPage(): JSX.Element {
 
       {contextResolutionBanner && (
         <section className="card status-card">
-          <h2>Context resolution</h2>
+          <h2>Context fallback used</h2>
           <p>{contextResolutionBanner}</p>
+          {review.provenance.contextResolution && (
+            <dl className="summary-grid">
+              <div>
+                <dt>Original checkpoint</dt>
+                <dd>{review.provenance.contextResolution.originalCheckpointId}</dd>
+              </div>
+              <div>
+                <dt>Resolved checkpoint</dt>
+                <dd>{review.provenance.contextResolution.resolvedCheckpointId}</dd>
+              </div>
+              <div>
+                <dt>Resolved commit</dt>
+                <dd>{review.provenance.contextResolution.resolvedCommitSha.slice(0, 12)}</dd>
+              </div>
+            </dl>
+          )}
         </section>
       )}
+
+      {provenanceAdvisories.length > 0 && (
+        <section className="card status-card">
+          <h2>Advisories</h2>
+          <ul>
+            {provenanceAdvisories.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
+      )}
+
+      <section className="section-block">
+        <h2>Model output</h2>
+        <article className="card">
+          <dl className="summary-grid">
+            <div>
+              <dt>Output schema</dt>
+              <dd>{review.provenance.outputSchemaVersion ?? 'unknown'}</dd>
+            </div>
+            <div>
+              <dt>Pass architecture</dt>
+              <dd>{review.provenance.passArchitecture ?? 'unknown'}</dd>
+            </div>
+            <div>
+              <dt>Further passes low yield</dt>
+              <dd>{typeof modelSignal === 'boolean' ? (modelSignal ? 'yes' : 'no') : 'unknown'}</dd>
+            </div>
+          </dl>
+          <p>{modelSummary ?? 'Model summary not available yet.'}</p>
+        </article>
+      </section>
 
       <section className="section-block">
         <h2>Findings</h2>
