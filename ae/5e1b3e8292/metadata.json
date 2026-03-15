@@ -3,7 +3,7 @@
   "checkpoint_id": "ae5e1b3e8292",
   "strategy": "manual-commit",
   "branch": "chore/report-ui-review-flow-alignment",
-  "checkpoints_count": 4,
+  "checkpoints_count": 5,
   "files_touched": [
     "packages/worker/src/api/reviews.test.ts",
     "packages/worker/src/api/reviews.ts",
@@ -48,13 +48,20 @@
       "context": "/ae/5e1b3e8292/3/context.md",
       "content_hash": "/ae/5e1b3e8292/3/content_hash.txt",
       "prompt": "/ae/5e1b3e8292/3/prompt.txt"
+    },
+    {
+      "metadata": "/ae/5e1b3e8292/4/metadata.json",
+      "transcript": "/ae/5e1b3e8292/4/full.jsonl",
+      "context": "/ae/5e1b3e8292/4/context.md",
+      "content_hash": "/ae/5e1b3e8292/4/content_hash.txt",
+      "prompt": "/ae/5e1b3e8292/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 314766,
+    "input_tokens": 387268,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1561344,
-    "output_tokens": 18111,
-    "api_call_count": 36
+    "cache_read_tokens": 1955968,
+    "output_tokens": 22922,
+    "api_call_count": 46
   }
 }
