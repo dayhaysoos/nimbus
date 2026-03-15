@@ -1,0 +1,45 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "dd72bbbbe0d5",
+  "strategy": "manual-commit",
+  "branch": "feat/beta-onboarding-hosted-auth",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/agent-endpoint/src/index.test.ts",
+    "packages/agent-endpoint/src/index.ts",
+    "packages/agent-endpoint/src/lib/agent.test.ts",
+    "packages/agent-endpoint/src/lib/agent.ts",
+    "packages/cli/src/lib/api.openrouter.test.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/run-tests.ts",
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/auth.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-dispatch.ts",
+    "packages/worker/src/lib/review-queue.test.ts",
+    "packages/worker/src/lib/review-queue.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/review-queue-dispatch.test.ts",
+    "packages/worker/src/review-runner-do.test.ts",
+    "packages/worker/src/review-runner-do.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/dd/72bbbbe0d5/0/metadata.json",
+      "transcript": "/dd/72bbbbe0d5/0/full.jsonl",
+      "context": "/dd/72bbbbe0d5/0/context.md",
+      "content_hash": "/dd/72bbbbe0d5/0/content_hash.txt",
+      "prompt": "/dd/72bbbbe0d5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1028136,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10914944,
+    "output_tokens": 21581,
+    "api_call_count": 64
+  }
+}

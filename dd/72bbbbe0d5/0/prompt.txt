@@ -1,0 +1,554 @@
+Implement beta onboarding changes as three vertical slices. Each slice must be 
+independently deployable and testable end-to-end. STOP after each slice and wait 
+for confirmation before starting the next one.
+
+Run relevant test suites after each slice, all three suites after the final slice.
+
+Migration notes:
+- Do not rename existing migration files
+- Confirm `0012` is the next valid migration number in this branch before creating 
+  the file
+- All ALTER TABLE statements must guard against duplicate column addition — check 
+  if column exists before adding (D1/SQLite errors on duplicate ADD COLUMN)
+
+---
+
+## Slice 1 — Default worker URL + API key access gate
+
+**CLI changes:**
+- In `packages/cli/src/lib/api.ts`, update `getWorkerUrl()`:
+  - Default to `https://nimbus-worker.ndejesus1227.workers.dev` when 
+    `NIMBUS_WORKER_URL` is not set
+  - Remove hard-fail on missing worker URL
+- Read `NIMBUS_API_KEY` from local env
+- Send as `X-Nimbus-Api-Key` header on all requests
+- If `NIMBUS_API_KEY` not set AND worker URL exactly matches 
+  `https://nimbus-worker.ndejesus1227.workers.dev` (full origin match, 
+  not substring):
+  - Print to stderr once per command invocation (not per request):
+    "NIMBUS_API_KEY is required to use the hosted Nimbus worker. 
+    Set it in your env or .env file."
+  - Non-fatal, continue execution
+  - No warning when using a custom self-hosted URL
+
+**Worker auth middleware:**
+- Add `NIMBUS_HOSTED` worker env var (truthy only when value is exactly 
+  the string `"true"`)
+- Implement a typed `AuthContext` attached in the request dispatch layer 
+  and passed explicitly to handlers — do not use global mutable state:
+```typescript
+  interface AuthContext {
+    accountId: string;
+    isAdmin: boolean;
+    isAuthenticated: boolean;
+    isHostedMode: boolean;
+  }
+```
+- Route auth policy:
+  - Auth middleware runs on all `/api/*` routes EXCEPT this explicit 
+    public allowlist:
+    - `/api/system/deploy-readiness`
+    - `/api/system/review-readiness`
+  - `/api/jobs*` routes (including `/api/jobs/:id/events`) are 
+    explicitly public — excluded from auth middleware entirely
+  - SSE endpoints (`/api/reviews/:id/events`) ARE protected — auth 
+    middleware runs on these
+- Self-hosted mode (`NIMBUS_HOSTED` != `"true"`):
+  - Skip auth entirely
+  - `isAuthenticated: false`, `isHostedMode: false`
+  - All existing behavior unchanged
+- Hosted mode (`NIMBUS_HOSTED=true`):
+  - Read `X-Nimbus-Api-Key` header
+  - Hash incoming key with SHA-256 and perform exact equality lookup on `key_hash`
+  - No raw key operations beyond initial hashing
+  - Look up hash in `nimbus_api_keys` table
+  - Missing or invalid key → 401:
+```json
+    { "error": "API key required", "code": "unauthorized" }
+```
+  - Valid key → populate `AuthContext`, update `last_used_at` as 
+    best-effort (do not fail the request if this update fails)
+
+**D1 schema — migration `0012_account_ownership.sql`:**
+- Migration must be additive and safe for existing deployed DBs
+- Do not recreate tables
+- Guard all ALTER TABLE statements against duplicate column addition
+```sql
+CREATE TABLE IF NOT EXISTS nimbus_api_keys (
+  key_hash TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  label TEXT,
+  is_admin INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  last_used_at TEXT
+);
+
+-- Guard these with existence checks before executing
+ALTER TABLE workspaces ADD COLUMN account_id TEXT;
+ALTER TABLE review_runs ADD COLUMN account_id TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_workspaces_account 
+  ON workspaces(account_id);
+CREATE INDEX IF NOT EXISTS idx_review_runs_account 
+  ON review_runs(account_id);
+```
+
+**API key format:**
+- Opaque strings with prefix: `nmb_live_<random>`
+- Worker stores SHA-256 hash only, never raw key
+- `is_admin` column is INTEGER (0/1)
+
+**Required tests:**
+- Hosted mode, missing key → 401 with correct JSON shape
+- Hosted mode, invalid key → 401
+- Hosted mode, valid key → 200 on protected non-ownership-gated 
+  endpoints (Slice 1 only; ownership enforcement comes in Slice 3)
+- Self-hosted mode, no key → still works
+- `/api/jobs*` routes are accessible without auth in hosted mode
+- `/api/reviews/:id/events` SSE endpoint requires auth in hosted mode
+- CLI warning prints to stderr once when key missing and using exact 
+  default URL
+- CLI warning does not print when using custom worker URL
+
+**Validation:**
+- Deploy worker + CLI
+- Run `nimbus review create` with `NIMBUS_API_KEY` set → succeeds
+- Run without key against hosted URL → clear 401
+
+**Test suites:**
+- `pnpm --filter @dayhaysoos/nimbus-worker test`
+- `pnpm --filter @dayhaysoos/nimbus test`
+
+Commit message: `feat: default hosted worker URL and NIMBUS_API_KEY access gate`
+
+⛔ STOP HERE. Report results and wait for confirmation before starting Slice 2.
+
+---
+
+## Slice 2 — Per-request OpenRouter key pass-through
+
+**CLI changes** (`packages/cli/src/lib/api.ts`):
+- Read `OPENROUTER_API_KEY` from local env
+- Send as `X-Openrouter-Api-Key` header on review-related routes only 
+  (`/api/reviews*`) — do not send on all requests to minimize accidental 
+  exposure surface
+
+**Worker changes** (`packages/worker/src/lib/review-analysis.ts`):
+- Read `X-Openrouter-Api-Key` from incoming request
+- Forward it to agent endpoint as `X-Openrouter-Api-Key` header
+- Never log or persist this header value anywhere
+- Explicitly redact from any error path that might include request headers
+- In hosted mode only (`NIMBUS_HOSTED=true`): reject non-HTTPS requests 
+  with 400 — allow HTTP in self-hosted/local dev mode
+
+**Agent endpoint changes** (`packages/agent-endpoint/src/index.ts` and 
+`packages/agent-endpoint/src/lib/agent.ts`):
+- Read `X-Openrouter-Api-Key` from incoming request header
+- Priority order: request header → `OPENROUTER_API_KEY` worker secret → 
+  hard-fail with clear structured error
+- Never write key value to events, provenance, logs, or error messages
+
+**Required tests:**
+- Request header key overrides worker secret
+- Fallback to worker secret works when no header present
+- Neither present → clear structured failure
+- `X-Openrouter-Api-Key` is never written to events or provenance 
+  (explicit test)
+- Explicit redaction test: error messages involving request headers do 
+  not leak key value
+- `X-Openrouter-Api-Key` is only sent on `/api/reviews*` routes, not 
+  on other routes
+- Hosted mode rejects non-HTTPS with 400
+- Self-hosted mode allows HTTP
+
+**Validation:**
+- Deploy all three packages
+- Remove `OPENROUTER_API_KEY` from worker secret
+- Run `nimbus review create` with `OPENROUTER_API_KEY` in local env only 
+  → review completes successfully using per-request key
+
+**Test suites:**
+- `pnpm --filter @dayhaysoos/nimbus-worker test`
+- `pnpm --filter @dayhaysoos/nimbus-agent-endpoint test`
+- `pnpm --filter @dayhaysoos/nimbus test`
+
+Commit message: `feat: per-request OpenRouter key pass-through`
+
+⛔ STOP HERE. Report results and wait for confirmation before starting Slice 3.
+
+---
+
+## Slice 3 — Account ownership enforcement on all resource endpoints
+
+**Worker ownership enforcement:**
+- On workspace create: set `account_id` from `AuthContext.accountId`
+- On review create: set `account_id` from `AuthContext.accountId`
+- On all read endpoints (`/api/reviews/:id`, `/api/workspaces/:id`, 
+  events, artifacts):
+  - Non-admin key in hosted mode:
+    `WHERE account_id = <authContext.accountId>` → return 404 if not 
+    found or wrong account (never 403)
+  - Admin key in hosted mode: no account filter, can access all rows 
+    including `account_id IS NULL` rows
+  - Self-hosted mode: no filter, unchanged access
+
+**Null account_id behavior (existing data):**
+- Hosted mode + non-admin key → 404
+- Hosted mode + admin key → 200
+- Self-hosted mode → accessible as before
+
+**Required tests:**
+- Hosted mode, valid key, resource owned by same account → 200
+- Hosted mode, valid key, resource owned by different account → 404
+- Hosted mode, valid key, resource with null account_id → 404
+- Hosted mode, admin key, resource with null account_id → 200
+- Hosted mode, admin key, resource owned by any account → 200
+- Self-hosted mode, no key → full access unchanged
+- Workspace create in hosted mode sets account_id correctly
+- Review create in hosted mode sets account_id correctly
+
+**Validation:**
+- Deploy worker
+- Manually insert two API key rows with different account_ids into 
+  `nimbus_api_keys`
+- Confirm each key can only see its own reviews and workspaces
+
+**Test suites (all three):**
+- `pnpm --filter @dayhaysoos/nimbus-worker test`
+- `pnpm --filter @dayhaysoos/nimbus test`
+- `pnpm --filter @dayhaysoos/nimbus-agent-endpoint test`
+
+Commit message: `feat: account ownership enforcement on all resource endpoints`
+
+⛔ STOP HERE. Report results and wait for confirmation before merging.
+
+---
+
+## Definition of done:
+- All three slice commits pushed to branch
+- PR description includes:
+  - migration notes for `0012_account_ownership.sql`
+  - manual provisioning steps for inserting rows into `nimbus_api_keys` 
+    (including how to hash a key with SHA-256 for insertion)
+  - confirmation that `NIMBUS_HOSTED=true` must be set on the deployed 
+    worker to enable hosted mode
+
+## Cross-cutting constraints (all slices):
+- Never log or persist any key material to D1, R2, events, logs, or 
+  error messages: `NIMBUS_API_KEY`, `OPENROUTER_API_KEY`, 
+  `REVIEW_CONTEXT_GITHUB_TOKEN`
+- `AuthContext` attached in request dispatch layer, passed explicitly 
+  to handlers, no global mutable state
+- All schema migrations must be additive and safe for existing deployed 
+  DBs — do not recreate tables
+- Do not rename existing migration files
+
+---
+
+Since the commit was created, I can use nimbus to review the work you just did right? It’ll have an Entire checkpoint?
+
+---
+
+We’re in the package that nimbus is built in, so for future reference this is the command I have to run:
+
+pnpm --filter @dayhaysoos/nimbus dev -- review create
+
+Sharing so you’d keep this in mind when I ask about how to run things
+
+---
+
+so I got this response back:
+
+│■  Review flow failed at checkpoint resolution: This commit has no Entire-Checkpoint trailer. The last commit on this branch with valid checkpoint context was fef6d24 ('feat: move review execution handoff to durable object
+runner') 3 commits ago.
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @dayhaysoos/nimbus@0.1.0 dev: `tsx src/index.ts "--" "review" “create”`
+Exit status 1
+nickdejesus@MacBook-Pro-6 nimbus % git status
+On branch feat/beta-onboarding-hosted-auth
+nothing to commit, working tree clean
+
+This is an expected, intentional part of the design, but isn’t that commit the work that was done on a previous PR that was merged? How come I don’t have an Entire Checkpoint for the last commit you just did?
+
+---
+
+trying to troubleshoot entire CLI..how come I can’t run entire clean —dry-run?
+
+ickdejesus@MacBook-Pro-6 nimbus % entire versionEntire CLI 0.4.9 (14b1c440)
+Go version: go1.26.0
+OS/Arch: darwin/arm64
+nickdejesus@MacBook-Pro-6 nimbus % entire clean --dry-run
+Usage:
+  entire
+  entire [command]
+
+
+Available Commands:
+  clean                  Clean up orphaned Entire data
+  disable                Disable Entire in current project
+  doctor                 Fix stuck sessions
+  enable                 Enable Entire in current project
+  explain                Explain a session, commit, or checkpoint
+  help                   Help about any command
+  reset                  Reset the shadow branch and session state for current HEAD
+  resume                 Switch to a branch and resume its session
+  rewind                 Browse checkpoints and rewind your session
+  status                 Show Entire status
+  version                Show build information
+
+
+Use "entire [command] --help" for more information about a command.
+
+
+Error: Invalid usage: unknown flag: --dry-run
+nickdejesus@MacBook-Pro-6 nimbus %
+
+---
+
+Honestly, I’m trying to figure out why the last commit we just did doesn’t have an entire session associated with it. It’s been enabled this whole time
+
+---
+
+This isn’t good. How can we ensure that YOUR commits track with Entire? IS there any way to go back and repair this? Maybe revert the last commit but keep the changes unstaged so we can capture? (Would this ruin the history?) just answer, don’t do anything
+
+---
+
+I need YOU to have the ability to make these entire checkpoints though, not just me. Is that possible in your terminal environment?
+
+---
+
+hmm okay well go ahead and do the soft reset, stage and prep the command for me to make the commit and we’ll see from here
+
+---
+
+looks like it worked:
+
+No stuck sessions found.nickdejesus@MacBook-Pro-6 nimbus % git commit -m "feat: default hosted worker URL and NIMBUS_API_KEY access gate”
+
+
+[feat/beta-onboarding-hosted-auth 31eb8e4] feat: default hosted worker URL and NIMBUS_API_KEY access gate
+ 15 files changed, 727 insertions(+), 86 deletions(-)
+ create mode 100644 packages/cli/src/lib/api.auth.test.ts
+ create mode 100644 packages/worker/migrations/0012_account_ownership.sql
+ create mode 100644 packages/worker/src/auth.test.ts
+ create mode 100644 packages/worker/src/lib/auth.ts
+nickdejesus@MacBook-Pro-6 nimbus % git show -s --format=%B HEAD
+
+
+feat: default hosted worker URL and NIMBUS_API_KEY access gate
+
+
+Entire-Checkpoint: 3cef55468ff7
+
+---
+
+what was the commit hash of the last commit?
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+You seem to have gotten stuck, what happened? Just answer the question
+
+---
+
+So let me get this straight, if there were no actionable tasks, it hangs?
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+I did NOT ask you to start slice 2 omg. Dont’ do anything for now. just wait for me
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+I just pivoted and commited some other work to this same branch. What was the commit we did before the last one?
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Fix the issues you found from the branch review
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Add a short comment to `packages/worker/migrations/0012_account_ownership.sql` explaining the intentional null account_id behavior so future reviewers don’t 
+treat it as a bug.
+
+
+The comment should explain:
+- Rows with null account_id are legacy rows created before the ownership model
+- In hosted mode, non-admin keys cannot access null account_id rows (returns 404) — this is intentional
+- A backfill is required to assign ownership to existing data when migrating active deployments
+
+
+Add the comment directly in the SQL file above the ALTER TABLE statements. 
+No other changes.
+
+---
+
+Moving forward, I want you to fix the bugs that come up from the reviewer (unless there’s a reason not to like the one you just called out). I also want you to let me know if the fixes are getting less and less significant. Once we hit a point where code review is giving back dimishing returns, let me know. Only respond with confirm if you understand.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+commit the changes and push
+
+---
+
+so I believe we just finished 1/3 slices for this leg of work right? What were the other two slices?
+
+---
+
+Before implementing Slice 2, answer these questions without changing anything:
+
+1. **What is the current path of the OpenRouter API key from worker to agent endpoint?**
+   Trace exactly how the worker currently sends the request to the agent endpoint — 
+   what headers are included, where the key comes from, and where in the code this 
+   happens.
+
+
+2. **Does the CLI currently send any headers to the worker for review-related requests?**
+   Specifically, is there anything already in place for forwarding API keys or auth 
+   headers on `/api/reviews*` routes, or is this entirely new?
+
+
+3. **How does the agent endpoint currently read and use the OpenRouter key?**
+   Where in `packages/agent-endpoint/src/lib/agent.ts` and `src/index.ts` is the 
+   key read and used? Is it purely from env at startup, or is there any per-request 
+   reading already?
+
+
+4. **What does the worker currently do with request headers when forwarding to the 
+   agent endpoint?** Does it pass through any incoming headers, or does it construct 
+   the outbound request headers from scratch?
+
+
+5. **For the HTTPS enforcement requirement in hosted mode** — how is the incoming 
+   request's protocol currently detectable in the worker? Is there a reliable way 
+   to check `request.url` or a Cloudflare header like `CF-Visitor` to determine 
+   if the request came in over HTTPS?
+
+
+Do not change anything. Just report.
+
+---
+
+Implement Slice 2 — Per-request OpenRouter key pass-through.
+
+## What to build
+
+
+**CLI (`packages/cli/src/lib/api.ts`):**
+- Read `OPENROUTER_API_KEY` from local env
+- Send it as `X-Openrouter-Api-Key` header ONLY on requests to `/api/reviews*` routes
+- Do not send it on any other routes — scope it to `createReview` and related 
+  review API calls only, following the same pattern as `X-Review-Github-Token`
+
+
+**Worker (`packages/worker/src/lib/review-analysis.ts`):**
+- Accept `openrouterApiKey` as an optional parameter in the provider/analysis 
+  call chain that reaches `CloudflareAgentSdkReviewProvider.next`
+- When building outbound headers to agent endpoint, include 
+  `X-Openrouter-Api-Key: <value>` when the key is present
+- Never log or persist this header value — explicitly redact it from any error 
+  message or diagnostic that might include request headers or provider call details
+- In hosted mode (`env.NIMBUS_HOSTED === 'true'`): if the incoming review request 
+  came in over non-HTTPS (check `new URL(request.url).protocol !== 'https:'`), 
+  reject with 400 before forwarding. Allow HTTP in self-hosted/local dev mode.
+- Thread the key from the incoming review request header 
+  (`X-Openrouter-Api-Key`) through to the provider call. The key is available 
+  on the incoming request to `handleCreateReview` and needs to be passed through 
+  the queue payload → DO → runner → analysis call chain, following the same 
+  pattern already established for `cochangeGithubToken`.
+
+
+**Agent endpoint (`packages/agent-endpoint/src/index.ts` and 
+`packages/agent-endpoint/src/lib/agent.ts`):**
+- Read `X-Openrouter-Api-Key` from the incoming request header in `index.ts`
+- Pass it into the agent/call chain alongside the existing env key
+- Priority order in `agent.ts`: request header key → `env.OPENROUTER_API_KEY` 
+  worker secret → hard-fail with existing `missing_openrouter_api_key` error
+- Never write the key value to any response body, error message, log, or 
+  diagnostic output — treat it as a secret at every point after reading it
+
+
+## Required tests
+
+
+**CLI:**
+- `createReview` includes `X-Openrouter-Api-Key` header when 
+  `OPENROUTER_API_KEY` is set in env
+- `X-Openrouter-Api-Key` is NOT sent on non-review routes (e.g. workspace create)
+
+
+**Worker:**
+- Outbound agent endpoint request includes `X-Openrouter-Api-Key` when key 
+  is present in incoming review request
+- Hosted mode rejects non-HTTPS review requests with 400
+- Self-hosted mode allows HTTP requests
+- Key value does not appear in any error event payload or diagnostic log
+
+
+**Agent endpoint:**
+- Request header key is used when present (overrides env secret)
+- Env secret is used as fallback when no request header key present
+- Neither present → structured `missing_openrouter_api_key` failure
+- Key value does not appear in any error response body or log output
+
+
+## Important constraints
+- Follow the exact same threading pattern already used for `cochangeGithubToken` 
+  — it goes through queue payload → DO → runner options → analysis call. 
+  Do the same for `openrouterApiKey`.
+- Never persist the key to D1, R2, events, or any storage layer
+- Commit when all tests pass with message: 
+  `feat: per-request OpenRouter key pass-through`
+
+
+⛔ STOP after commit and report results before starting Slice 3.
+
+---
+
+Just to check, do we have an Entire Checkpoint for the commit you just made?
+
+---
+
+is it because I let you do the commit and I should ahve done it?
+
+---
+
+Can you do a soft reset on the last commit and then give me the commands to repeat the same commit message you did?
