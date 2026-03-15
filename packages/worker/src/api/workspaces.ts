@@ -12,6 +12,7 @@ import {
   generateWorkspaceOperationId,
   generateWorkspaceId,
   getWorkspace,
+  getWorkspaceAccountId,
   getWorkspaceArtifactById,
   getWorkspaceOperation,
   listWorkspaceArtifacts,
@@ -22,6 +23,7 @@ import {
   updateWorkspaceOperationStatus,
   WorkspaceIdempotencyConflictError,
 } from '../lib/db.js';
+import { canAccessAccount } from '../lib/authz.js';
 
 const WORKSPACE_ROOT = '/workspace';
 const BUNDLE_BASE64_PATH = '/tmp/workspace-source.tar.gz.base64';
@@ -239,6 +241,17 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
+}
+
+async function requireWorkspaceAccess(env: Env, workspaceId: string, authContext?: AuthContext): Promise<Response | null> {
+  if (!authContext) {
+    return null;
+  }
+  const accountId = await getWorkspaceAccountId(env.DB, workspaceId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Workspace not found' }, 404);
+  }
+  return null;
 }
 
 function buildWorkspaceCreateFallback(input: {
@@ -1462,9 +1475,15 @@ async function handleCreateWorkspaceOperation(
   request: Request,
   env: Env,
   type: WorkspaceOperationType,
+  authContext?: AuthContext,
   ctx?: ExecutionContext
 ): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await resolveWorkspaceOr404(env, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -1525,7 +1544,7 @@ async function handleCreateWorkspaceOperation(
   }
 }
 
-export async function handleCreateWorkspace(request: Request, env: Env, _authContext?: AuthContext): Promise<Response> {
+export async function handleCreateWorkspace(request: Request, env: Env, authContext?: AuthContext): Promise<Response> {
   if (!env.SOURCE_BUNDLES) {
     return jsonResponse({ error: 'SOURCE_BUNDLES R2 binding is not configured' }, 500);
   }
@@ -1572,6 +1591,7 @@ export async function handleCreateWorkspace(request: Request, env: Env, _authCon
       sourceBundleSha256: parsed.bundleSha256,
       sourceBundleBytes: parsed.bundleBytes,
       sandboxId,
+      accountId: authContext?.isHostedMode ? authContext.accountId : null,
     });
     workspaceCreated = true;
 
@@ -1683,8 +1703,13 @@ export async function handleCreateWorkspace(request: Request, env: Env, _authCon
   }
 }
 
-export async function handleGetWorkspace(workspaceId: string, env: Env, _authContext?: AuthContext): Promise<Response> {
+export async function handleGetWorkspace(workspaceId: string, env: Env, authContext?: AuthContext): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await getWorkspace(env.DB, workspaceId);
 
     if (!workspace) {
@@ -1702,9 +1727,14 @@ export async function handleListWorkspaceFiles(
   workspaceId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await resolveWorkspaceOr404(env, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -1760,9 +1790,14 @@ export async function handleGetWorkspaceFile(
   workspaceId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await resolveWorkspaceOr404(env, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -1824,9 +1859,14 @@ export async function handleGetWorkspaceDiff(
   workspaceId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await resolveWorkspaceOr404(env, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -1912,9 +1952,9 @@ export async function handleCreateWorkspaceZipExport(
   request: Request,
   env: Env,
   ctx?: ExecutionContext,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
-  return handleCreateWorkspaceOperation(workspaceId, request, env, 'export_zip', ctx);
+  return handleCreateWorkspaceOperation(workspaceId, request, env, 'export_zip', authContext, ctx);
 }
 
 export async function handleCreateWorkspacePatchExport(
@@ -1922,9 +1962,9 @@ export async function handleCreateWorkspacePatchExport(
   request: Request,
   env: Env,
   ctx?: ExecutionContext,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
-  return handleCreateWorkspaceOperation(workspaceId, request, env, 'export_patch', ctx);
+  return handleCreateWorkspaceOperation(workspaceId, request, env, 'export_patch', authContext, ctx);
 }
 
 export async function handleCreateWorkspaceGithubFork(
@@ -1932,18 +1972,23 @@ export async function handleCreateWorkspaceGithubFork(
   request: Request,
   env: Env,
   ctx?: ExecutionContext,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
-  return handleCreateWorkspaceOperation(workspaceId, request, env, 'fork_github', ctx);
+  return handleCreateWorkspaceOperation(workspaceId, request, env, 'fork_github', authContext, ctx);
 }
 
 export async function handleGetWorkspaceOperation(
   workspaceId: string,
   operationId: string,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await resolveWorkspaceOr404(env, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -1964,9 +2009,14 @@ export async function handleGetWorkspaceOperation(
 export async function handleListWorkspaceArtifacts(
   workspaceId: string,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await resolveWorkspaceOr404(env, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -2016,9 +2066,14 @@ export async function handleDownloadWorkspaceArtifact(
   artifactId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await resolveWorkspaceOr404(env, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -2095,9 +2150,14 @@ export async function handleGetWorkspaceEvents(
   workspaceId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await getWorkspace(env.DB, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -2117,7 +2177,7 @@ export async function handleGetWorkspaceEvents(
   }
 }
 
-export async function handleResetWorkspace(workspaceId: string, env: Env, _authContext?: AuthContext): Promise<Response> {
+export async function handleResetWorkspace(workspaceId: string, env: Env, authContext?: AuthContext): Promise<Response> {
   if (!env.SOURCE_BUNDLES) {
     return jsonResponse({ error: 'SOURCE_BUNDLES R2 binding is not configured' }, 500);
   }
@@ -2127,6 +2187,11 @@ export async function handleResetWorkspace(workspaceId: string, env: Env, _authC
   let baselineReady = true;
 
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await getWorkspace(env.DB, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -2231,8 +2296,13 @@ export async function handleResetWorkspace(workspaceId: string, env: Env, _authC
   }
 }
 
-export async function handleDeleteWorkspace(workspaceId: string, env: Env, _authContext?: AuthContext): Promise<Response> {
+export async function handleDeleteWorkspace(workspaceId: string, env: Env, authContext?: AuthContext): Promise<Response> {
   try {
+    const accessResponse = await requireWorkspaceAccess(env, workspaceId, authContext);
+    if (accessResponse) {
+      return accessResponse;
+    }
+
     const workspace = await getWorkspace(env.DB, workspaceId);
     if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);

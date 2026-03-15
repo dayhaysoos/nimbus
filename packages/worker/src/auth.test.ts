@@ -14,7 +14,10 @@ interface PreparedStatement {
 function createWorkerTestEnv(options?: {
   hosted?: boolean;
   keyHash?: string;
+  keyAccountId?: string;
+  keyIsAdmin?: boolean;
   workspaceExists?: boolean;
+  workspaceAccountId?: string | null;
   jobExists?: boolean;
 }) {
   const env = {
@@ -28,8 +31,8 @@ function createWorkerTestEnv(options?: {
                 async first<T>() {
                   if (typeof keyHash === 'string' && keyHash === options?.keyHash) {
                     return {
-                      account_id: 'acct_123',
-                      is_admin: 0,
+                      account_id: options?.keyAccountId ?? 'acct_123',
+                      is_admin: options?.keyIsAdmin ? 1 : 0,
                     } as T;
                   }
                   return null;
@@ -57,6 +60,27 @@ function createWorkerTestEnv(options?: {
                 },
                 async run() {
                   return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (sql.includes('SELECT account_id FROM workspaces WHERE id = ?')) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  if (options?.workspaceExists === false) {
+                    return null;
+                  }
+                  return { account_id: options?.workspaceAccountId ?? 'acct_123' } as T;
+                },
+                async all<T>() {
+                  return { results: [] as T[] };
+                },
+                async run() {
+                  return { success: true, meta: { changes: 0 } };
                 },
               };
             },
@@ -268,6 +292,45 @@ export async function runAuthMiddlewareTests(): Promise<void> {
   }
 
   {
+    const env = createWorkerTestEnv({
+      hosted: true,
+      keyHash: validKeyHash,
+      keyAccountId: 'acct_123',
+      workspaceAccountId: 'acct_999',
+    });
+    const authResult = await authenticateRequest(
+      new Request('https://example.com/api/workspaces/ws_abc12345', {
+        headers: { 'X-Nimbus-Api-Key': validKey },
+      }),
+      env as never
+    );
+    assert.equal('authContext' in authResult, true);
+    const response = await handleGetWorkspace('ws_abc12345', env as never, (authResult as { authContext: AuthContext }).authContext);
+    assert.equal(response.status, 404);
+  }
+
+  {
+    const adminKey = 'nmb_live_admin123';
+    const adminKeyHash = await sha256Hex(adminKey);
+    const env = createWorkerTestEnv({
+      hosted: true,
+      keyHash: adminKeyHash,
+      keyAccountId: 'acct_admin',
+      keyIsAdmin: true,
+      workspaceAccountId: null,
+    });
+    const authResult = await authenticateRequest(
+      new Request('https://example.com/api/workspaces/ws_abc12345', {
+        headers: { 'X-Nimbus-Api-Key': adminKey },
+      }),
+      env as never
+    );
+    assert.equal('authContext' in authResult, true);
+    const response = await handleGetWorkspace('ws_abc12345', env as never, (authResult as { authContext: AuthContext }).authContext);
+    assert.equal(response.status, 200);
+  }
+
+  {
     const env = createWorkerTestEnv({ hosted: false });
     const authResult = await authenticateRequest(new Request('https://example.com/api/workspaces/ws_abc12345'), env as never);
     assert.equal('authContext' in authResult, true);
@@ -278,10 +341,14 @@ export async function runAuthMiddlewareTests(): Promise<void> {
   {
     const env = createWorkerTestEnv({ hosted: true, keyHash: validKeyHash });
     const listResult = await authenticateRequest(new Request('https://example.com/api/jobs'), env as never);
-    assert.equal('authContext' in listResult, true);
+    assert.equal('response' in listResult, true);
+    const listResponse = (listResult as { response: Response }).response;
+    assert.equal(listResponse.status, 401);
 
     const eventsResult = await authenticateRequest(new Request('https://example.com/api/jobs/job_abc12345/events'), env as never);
-    assert.equal('authContext' in eventsResult, true);
+    assert.equal('response' in eventsResult, true);
+    const eventsResponse = (eventsResult as { response: Response }).response;
+    assert.equal(eventsResponse.status, 401);
   }
 
   {

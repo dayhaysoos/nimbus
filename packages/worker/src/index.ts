@@ -272,19 +272,19 @@ export default {
 
     // Route: GET /api/jobs - List all jobs
     if (url.pathname === '/api/jobs' && request.method === 'GET') {
-      return handleListJobs(env);
+      return handleListJobs(env, authContext);
     }
 
     // Route: GET /api/jobs/:id - Get job by ID
     const jobMatch = url.pathname.match(/^\/api\/jobs\/([a-z0-9_]+)$/);
     if (jobMatch && request.method === 'GET') {
-      return handleGetJob(jobMatch[1], env);
+      return handleGetJob(jobMatch[1], env, authContext);
     }
 
     // Route: GET /api/jobs/:id/events - Event stream placeholder
     const jobEventsMatch = url.pathname.match(/^\/api\/jobs\/([a-z0-9_]+)\/events$/);
     if (jobEventsMatch && request.method === 'GET') {
-      return handleGetJobEvents(jobEventsMatch[1], request, env);
+      return handleGetJobEvents(jobEventsMatch[1], request, env, authContext);
     }
 
     // Route: GET /health

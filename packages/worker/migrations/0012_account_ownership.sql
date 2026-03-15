@@ -10,6 +10,11 @@ CREATE TABLE IF NOT EXISTS nimbus_api_keys (
   last_used_at TEXT
 );
 
+-- NOTE: Existing rows may have NULL account_id because they were created before
+-- the account ownership model existed. In hosted mode, non-admin API keys must
+-- NOT access NULL account_id rows and will receive 404 by design. For active
+-- deployments, run a backfill to assign account_id on legacy rows before
+-- enforcing hosted ownership for existing data.
 ALTER TABLE workspaces ADD COLUMN IF NOT EXISTS account_id TEXT;
 ALTER TABLE review_runs ADD COLUMN IF NOT EXISTS account_id TEXT;
 

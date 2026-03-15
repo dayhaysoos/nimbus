@@ -5,7 +5,9 @@ import {
   createReviewRun,
   generateReviewRunId,
   getReviewRun,
+  getReviewRunAccountId,
   getReviewRunByIdempotency,
+  getWorkspaceAccountId,
   getWorkspace,
   getWorkspaceDeployment,
   hasReviewEvent,
@@ -13,6 +15,7 @@ import {
   updateReviewRunStatus,
 } from '../lib/db.js';
 import { createReviewQueueMessage } from '../lib/review-queue.js';
+import { canAccessAccount } from '../lib/authz.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -120,6 +123,22 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
+}
+
+async function requireWorkspaceAccess(env: Env, workspaceId: string, authContext: AuthContext): Promise<Response | null> {
+  const accountId = await getWorkspaceAccountId(env.DB, workspaceId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Workspace not found' }, 404);
+  }
+  return null;
+}
+
+async function requireReviewAccess(env: Env, reviewId: string, authContext: AuthContext): Promise<Response | null> {
+  const accountId = await getReviewRunAccountId(env.DB, reviewId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Review not found' }, 404);
+  }
+  return null;
 }
 
 function formatSseData(payload: unknown): string {
@@ -572,8 +591,11 @@ export async function handleCreateReview(
   request: Request,
   env: Env,
   _ctx?: ExecutionContext,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
   try {
     if (!env.REVIEWS_QUEUE || !env.ReviewRunner) {
       return jsonResponse(
@@ -619,6 +641,11 @@ export async function handleCreateReview(
     const deploymentId = typeof target.deploymentId === 'string' ? target.deploymentId.trim() : '';
     if (!workspaceId || !deploymentId) {
       return jsonResponse({ error: 'target.workspaceId and target.deploymentId are required' }, 400);
+    }
+
+    const workspaceAccessResponse = await requireWorkspaceAccess(env, workspaceId, effectiveAuthContext);
+    if (workspaceAccessResponse) {
+      return workspaceAccessResponse;
     }
 
     const mode = typeof payload.mode === 'string' && payload.mode.trim() ? payload.mode.trim() : 'report_only';
@@ -725,6 +752,11 @@ export async function handleCreateReview(
       return jsonResponse({ error: 'Workspace not found' }, 404);
     }
 
+    const workspaceAccountId = await getWorkspaceAccountId(env.DB, workspaceId);
+    if (workspaceAccountId === undefined) {
+      return jsonResponse({ error: 'Workspace not found' }, 404);
+    }
+
     const deployment = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
     if (!deployment) {
       return jsonResponse({ error: 'Deployment not found' }, 404);
@@ -749,6 +781,7 @@ export async function handleCreateReview(
       requestPayload: sanitizedRequestPayload,
       requestPayloadSha256,
       requestPayloadSha256Aliases,
+      accountId: workspaceAccountId,
       provenance: {
         promptSummary: `Review deployment ${deploymentId} for workspace ${workspaceId}`,
       },
@@ -814,7 +847,15 @@ export async function handleCreateReview(
   }
 }
 
-export async function handleGetReview(reviewId: string, env: Env, _authContext?: AuthContext): Promise<Response> {
+export async function handleGetReview(reviewId: string, env: Env, authContext?: AuthContext): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+  const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
+  if (reviewAccessResponse) {
+    return reviewAccessResponse;
+  }
+
   let review = await getReviewRun(env.DB, reviewId);
   if (!review) {
     return jsonResponse({ error: 'Review not found' }, 404);
@@ -833,9 +874,17 @@ export async function handleGetReviewEvents(
   reviewId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
   try {
+    const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
+    if (reviewAccessResponse) {
+      return reviewAccessResponse;
+    }
+
     const review = await getReviewRun(env.DB, reviewId);
     if (!review) {
       return jsonResponse({ error: 'Review not found' }, 404);

@@ -1,11 +1,32 @@
 import { getJob, listJobEvents } from '../lib/db.js';
-import type { Env } from '../types.js';
+import type { AuthContext, Env } from '../types.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Nimbus-Api-Key',
 };
+
+function denyHostedNonAdmin(authContext: AuthContext): Response | null {
+  if (authContext.isHostedMode && !authContext.isAdmin) {
+    return new Response(JSON.stringify({ error: 'Not found' }), {
+      status: 404,
+      headers: { 'Content-Type': 'application/json', ...corsHeaders },
+    });
+  }
+  return null;
+}
+
+function resolveAuthContext(authContext?: AuthContext): AuthContext {
+  return (
+    authContext ?? {
+      accountId: 'self-hosted',
+      isAdmin: true,
+      isAuthenticated: false,
+      isHostedMode: false,
+    }
+  );
+}
 
 function formatSseData(payload: unknown): string {
   return `data: ${JSON.stringify(payload)}\n\n`;
@@ -46,8 +67,18 @@ function resolveFromSequence(request: Request): number {
 /**
  * Handle GET /api/jobs/:id/events - lightweight snapshot stream
  */
-export async function handleGetJobEvents(jobId: string, request: Request, env: Env): Promise<Response> {
+export async function handleGetJobEvents(
+  jobId: string,
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
   try {
+    const denied = denyHostedNonAdmin(resolveAuthContext(authContext));
+    if (denied) {
+      return denied;
+    }
+
     const job = await getJob(env.DB, jobId);
 
     if (!job) {

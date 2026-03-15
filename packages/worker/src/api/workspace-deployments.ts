@@ -4,6 +4,7 @@ import {
   appendWorkspaceDeploymentEvent,
   createWorkspaceDeployment,
   generateWorkspaceDeploymentId,
+  getWorkspaceAccountId,
   getWorkspace,
   getWorkspaceDeployment,
   hasWorkspaceDeploymentEvent,
@@ -11,6 +12,7 @@ import {
   updateWorkspaceDeploymentSummary,
   WorkspaceDeploymentIdempotencyConflictError,
 } from '../lib/db.js';
+import { canAccessAccount } from '../lib/authz.js';
 import { createWorkspaceDeploymentQueueMessage } from '../lib/workspace-deployment-queue.js';
 import {
   cancelWorkspaceDeployment,
@@ -207,7 +209,12 @@ async function sha256Hex(input: string): Promise<string> {
     .join('');
 }
 
-async function ensureWorkspaceReady(env: Env, workspaceId: string): Promise<Response | null> {
+async function ensureWorkspaceReady(env: Env, workspaceId: string, authContext: AuthContext): Promise<Response | null> {
+  const accountId = await getWorkspaceAccountId(env.DB, workspaceId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Workspace not found' }, 404);
+  }
+
   const workspace = await getWorkspace(env.DB, workspaceId);
   if (!workspace || workspace.status === 'deleted') {
     return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -229,7 +236,12 @@ async function ensureWorkspaceReady(env: Env, workspaceId: string): Promise<Resp
   return null;
 }
 
-async function ensureWorkspaceExists(env: Env, workspaceId: string): Promise<Response | null> {
+async function ensureWorkspaceExists(env: Env, workspaceId: string, authContext: AuthContext): Promise<Response | null> {
+  const accountId = await getWorkspaceAccountId(env.DB, workspaceId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Workspace not found' }, 404);
+  }
+
   const workspace = await getWorkspace(env.DB, workspaceId);
   if (!workspace || workspace.status === 'deleted') {
     return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -256,7 +268,7 @@ export async function handleCreateWorkspaceDeployment(
   request: Request,
   env: Env,
   ctx?: ExecutionContext,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
     const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
@@ -268,7 +280,10 @@ export async function handleCreateWorkspaceDeployment(
       return enabled;
     }
 
-    const workspaceCheck = await ensureWorkspaceReady(env, workspaceId);
+    const effectiveAuthContext =
+      authContext ??
+      ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+    const workspaceCheck = await ensureWorkspaceReady(env, workspaceId, effectiveAuthContext);
     if (workspaceCheck) {
       return workspaceCheck;
     }
@@ -710,14 +725,17 @@ export async function handleWorkspaceDeploymentPreflight(
   workspaceId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
   const enabled = await ensureWorkspaceDeployEnabled(env);
   if (enabled) {
     return enabled;
   }
 
-  const workspaceCheck = await ensureWorkspaceReady(env, workspaceId);
+  const workspaceCheck = await ensureWorkspaceReady(env, workspaceId, effectiveAuthContext);
   if (workspaceCheck) {
     return workspaceCheck;
   }
@@ -874,9 +892,12 @@ export async function handleGetWorkspaceDeployment(
   workspaceId: string,
   deploymentId: string,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
-  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId, effectiveAuthContext);
   if (workspaceMissing) {
     return workspaceMissing;
   }
@@ -897,9 +918,12 @@ export async function handleGetWorkspaceDeploymentEvents(
   deploymentId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
-  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId, effectiveAuthContext);
   if (workspaceMissing) {
     return workspaceMissing;
   }
@@ -924,12 +948,15 @@ export async function handleCancelWorkspaceDeployment(
   deploymentId: string,
   env: Env,
   ctx?: ExecutionContext,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
   const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
   const useDeployQueue = Boolean(env.WORKSPACE_DEPLOYS_QUEUE) && !forceInlineDeploys;
 
-  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
+  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId, effectiveAuthContext);
   if (workspaceMissing) {
     return workspaceMissing;
   }

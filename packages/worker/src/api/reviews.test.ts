@@ -98,6 +98,18 @@ function createReviewApiEnv(options?: {
           };
         }
 
+        if (/SELECT account_id FROM workspaces WHERE id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return { account_id: 'acct_123' } as T;
+                },
+              };
+            },
+          };
+        }
+
         if (/SELECT \* FROM workspace_deployments WHERE id = \? AND workspace_id = \?/i.test(sql)) {
           return {
             bind() {
@@ -192,7 +204,8 @@ function createReviewApiEnv(options?: {
                     idempotency_key: values[5],
                     request_payload_json: values[6],
                     request_payload_sha256: values[7],
-                    provenance_json: values[8],
+                    account_id: values[8],
+                    provenance_json: values[9],
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,

@@ -4,6 +4,7 @@ import {
   appendWorkspaceTaskEvent,
   createWorkspaceTask,
   generateWorkspaceTaskId,
+  getWorkspaceAccountId,
   getWorkspace,
   getWorkspaceTask,
   hasWorkspaceTaskEvent,
@@ -11,6 +12,7 @@ import {
   requestWorkspaceTaskCancel,
   WorkspaceTaskIdempotencyConflictError,
 } from '../lib/db.js';
+import { canAccessAccount } from '../lib/authz.js';
 import { createWorkspaceTaskQueueMessage } from '../lib/workspace-task-queue.js';
 import { processWorkspaceTask } from '../lib/workspace-task-runner.js';
 
@@ -81,8 +83,16 @@ async function sha256Hex(input: string): Promise<string> {
 
 async function resolveWorkspaceOrReady(
   env: Env,
-  workspaceId: string
+  workspaceId: string,
+  authContext?: AuthContext
 ): Promise<{ workspace: Awaited<ReturnType<typeof getWorkspace>> | null; response?: Response }> {
+  if (authContext) {
+    const accountId = await getWorkspaceAccountId(env.DB, workspaceId);
+    if (!canAccessAccount(authContext, accountId)) {
+      return { workspace: null, response: jsonResponse({ error: 'Workspace not found' }, 404) };
+    }
+  }
+
   const workspace = await getWorkspace(env.DB, workspaceId);
   if (!workspace) {
     return { workspace: null, response: jsonResponse({ error: 'Workspace not found' }, 404) };
@@ -107,7 +117,13 @@ async function resolveWorkspaceOrReady(
   return { workspace };
 }
 
-async function ensureWorkspaceExists(env: Env, workspaceId: string): Promise<Response | null> {
+async function ensureWorkspaceExistsWithAuth(env: Env, workspaceId: string, authContext?: AuthContext): Promise<Response | null> {
+  if (authContext) {
+    const accountId = await getWorkspaceAccountId(env.DB, workspaceId);
+    if (!canAccessAccount(authContext, accountId)) {
+      return jsonResponse({ error: 'Workspace not found' }, 404);
+    }
+  }
   const workspace = await getWorkspace(env.DB, workspaceId);
   if (!workspace) {
     return jsonResponse({ error: 'Workspace not found' }, 404);
@@ -179,7 +195,7 @@ export async function handleCreateWorkspaceTask(
   request: Request,
   env: Env,
   ctx?: ExecutionContext,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
   try {
     const enabledResponse = await ensureWorkspaceAgentRuntimeEnabled(env);
@@ -187,7 +203,7 @@ export async function handleCreateWorkspaceTask(
       return enabledResponse;
     }
 
-    const workspaceCheck = await resolveWorkspaceOrReady(env, workspaceId);
+    const workspaceCheck = await resolveWorkspaceOrReady(env, workspaceId, authContext);
     if (workspaceCheck.response) {
       return workspaceCheck.response;
     }
@@ -343,9 +359,9 @@ export async function handleGetWorkspaceTask(
   workspaceId: string,
   taskId: string,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
-  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
+  const workspaceMissing = await ensureWorkspaceExistsWithAuth(env, workspaceId, authContext);
   if (workspaceMissing) {
     return workspaceMissing;
   }
@@ -363,9 +379,9 @@ export async function handleGetWorkspaceTaskEvents(
   taskId: string,
   request: Request,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
-  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
+  const workspaceMissing = await ensureWorkspaceExistsWithAuth(env, workspaceId, authContext);
   if (workspaceMissing) {
     return workspaceMissing;
   }
@@ -389,9 +405,9 @@ export async function handleCancelWorkspaceTask(
   workspaceId: string,
   taskId: string,
   env: Env,
-  _authContext?: AuthContext
+  authContext?: AuthContext
 ): Promise<Response> {
-  const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
+  const workspaceMissing = await ensureWorkspaceExistsWithAuth(env, workspaceId, authContext);
   if (workspaceMissing) {
     return workspaceMissing;
   }

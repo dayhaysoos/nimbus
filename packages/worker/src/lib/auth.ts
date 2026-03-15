@@ -49,9 +49,6 @@ function isPublicApiPath(pathname: string): boolean {
   if (!pathname.startsWith('/api/')) {
     return true;
   }
-  if (pathname.startsWith('/api/jobs')) {
-    return true;
-  }
   return pathname === '/api/system/deploy-readiness' || pathname === '/api/system/review-readiness';
 }
 

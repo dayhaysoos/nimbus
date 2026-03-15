@@ -93,6 +93,7 @@ export interface CreateWorkspaceInput {
   sourceBundleSha256: string;
   sourceBundleBytes: number;
   sandboxId: string;
+  accountId?: string | null;
 }
 
 export interface CreateWorkspaceOperationInput {
@@ -160,6 +161,7 @@ export interface CreateReviewRunInput {
   requestPayloadSha256: string;
   requestPayloadSha256Aliases?: string[];
   provenance?: Record<string, unknown>;
+  accountId?: string | null;
 }
 
 export interface WorkspaceTaskEventRecord {
@@ -1180,9 +1182,10 @@ export async function createWorkspace(
          source_bundle_sha256,
          source_bundle_bytes,
          sandbox_id,
-         baseline_ready
+         baseline_ready,
+         account_id
        )
-       VALUES (?, 'creating', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+       VALUES (?, 'creating', ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?)
        RETURNING *`
     )
     .bind(
@@ -1195,7 +1198,8 @@ export async function createWorkspace(
       input.sourceBundleKey,
       input.sourceBundleSha256,
       input.sourceBundleBytes,
-      input.sandboxId
+      input.sandboxId,
+      input.accountId ?? null
     )
     .first<WorkspaceRecord>();
 
@@ -1217,6 +1221,17 @@ export async function getWorkspace(db: D1Database, id: string): Promise<Workspac
   }
 
   return toWorkspaceResponse(result);
+}
+
+export async function getWorkspaceAccountId(db: D1Database, id: string): Promise<string | null | undefined> {
+  const result = await db
+    .prepare('SELECT account_id FROM workspaces WHERE id = ?')
+    .bind(id)
+    .first<{ account_id: string | null }>();
+  if (!result) {
+    return undefined;
+  }
+  return result.account_id;
 }
 
 /**
@@ -2764,11 +2779,12 @@ export async function createReviewRun(
          idempotency_key,
          request_payload_json,
          request_payload_sha256,
+         account_id,
          provenance_json,
          created_at,
          updated_at
-       )
-       VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?)
+        )
+       VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -2780,6 +2796,7 @@ export async function createReviewRun(
       input.idempotencyKey,
       JSON.stringify(sanitizedRequestPayload),
       input.requestPayloadSha256,
+      input.accountId ?? null,
       JSON.stringify(sanitizedProvenance),
       now,
       now
@@ -2858,6 +2875,17 @@ export async function getReviewRun(db: D1Database, reviewId: string): Promise<Re
   }
 
   return toReviewRunResponse(record);
+}
+
+export async function getReviewRunAccountId(db: D1Database, reviewId: string): Promise<string | null | undefined> {
+  const result = await db
+    .prepare('SELECT account_id FROM review_runs WHERE id = ?')
+    .bind(reviewId)
+    .first<{ account_id: string | null }>();
+  if (!result) {
+    return undefined;
+  }
+  return result.account_id;
 }
 
 export async function getReviewRunByIdempotency(
