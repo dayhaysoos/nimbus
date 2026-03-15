@@ -58,6 +58,7 @@ export interface Env {
   REVIEW_MODEL?: string;
   AGENT_SDK_URL?: string;
   AGENT_SDK_AUTH_TOKEN?: string;
+  AGENT_ENDPOINT?: Fetcher;
   REVIEW_AGENT_MAX_STEPS?: string;
   REVIEW_AGENT_MAX_FILE_BYTES?: string;
   REVIEW_CONTEXT_REPO?: string;
@@ -640,6 +641,7 @@ export interface ReviewProvenanceSummary {
     source: 'model-self-assessment';
     reliability: 'weak-signal-phase2';
   };
+  advisories?: string[];
 }
 
 export interface ReviewReport {

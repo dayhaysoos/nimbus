@@ -64,6 +64,9 @@ const REVIEW_SEVERITY_RANK: Record<ReviewFindingSeverityV2, number> = {
 const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
 const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
 const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
+const LARGE_DIFF_ADVISORY_THRESHOLD = 30;
+const DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
+const REVIEW_STALE_GRACE_MS = 60 * 1000;
 
 interface ReviewRunExecutionOptions {
   cochangeGithubToken?: string | null;
@@ -82,7 +85,19 @@ function uniqueStrings(values: string[]): string[] {
 }
 
 function parseBoolean(value: unknown, fallback: boolean): boolean {
-  return typeof value === 'boolean' ? value : fallback;
+  if (typeof value === 'boolean') {
+    return value;
+  }
+  if (typeof value === 'string') {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'true') {
+      return true;
+    }
+    if (normalized === 'false') {
+      return false;
+    }
+  }
+  return fallback;
 }
 
 function parsePositiveInteger(value: unknown, fallback: number, max: number): number {
@@ -90,6 +105,25 @@ function parsePositiveInteger(value: unknown, fallback: number, max: number): nu
     return fallback;
   }
   return Math.max(1, Math.min(max, Math.floor(value)));
+}
+
+function parseTimeoutMs(value: string | undefined, fallback: number): number {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function toTimestampMs(value: string | null): number | null {
+  if (typeof value !== 'string' || !value.trim()) {
+    return null;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
 }
 
 function redactReviewText(value: string | null): string | null {
@@ -107,6 +141,11 @@ function redactReviewText(value: string | null): string | null {
 
 function transientReviewFailure(message: string): boolean {
   return /(d1|database is locked|sqlite_busy|temporarily unavailable|connection reset)/i.test(message);
+}
+
+function isCochangeCacheError(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return /(d1_error|sqlite|sql variables|database|too many sql variables)/i.test(message);
 }
 
 function statusFromEventType(eventType: string, payload: Record<string, unknown>): 'passed' | 'failed' | 'warning' | 'info' {
@@ -165,6 +204,9 @@ function buildReviewMarkdown(report: ReviewReport): string {
     } else {
       provenanceLines.push('Co-change lookup ran successfully and found no related files.');
     }
+  }
+  if (Array.isArray(report.provenance.advisories) && report.provenance.advisories.length > 0) {
+    provenanceLines.push(...report.provenance.advisories);
   }
 
   const findingLines =
@@ -628,9 +670,15 @@ async function fetchGitHubArray(url: string, githubToken: string): Promise<unkno
   return Array.isArray(data) ? data : [];
 }
 
-function classifyCochangeSkipReason(error: unknown): string {
+function classifyCochangeSkipReason(error: unknown): 'rate_limited' | 'github_api_error' | 'cache_error' {
+  if (error instanceof ReviewContextAssemblyError && error.code === 'review_context_cache_error') {
+    return 'cache_error';
+  }
   if (error instanceof ReviewContextAssemblyError && /\[rate_limited\]/.test(error.message)) {
     return 'rate_limited';
+  }
+  if (isCochangeCacheError(error)) {
+    return 'cache_error';
   }
   return 'github_api_error';
 }
@@ -1050,6 +1098,8 @@ async function assembleReviewContextBootstrap(
       });
     } catch (error) {
       const reason = classifyCochangeSkipReason(error);
+      const sanitizedErrorDetails = redactReviewText(error instanceof Error ? error.message : String(error));
+      const cacheErrorDetails = isCochangeCacheError(error) ? sanitizedErrorDetails : null;
       await appendReviewEvent(env.DB, {
         reviewId: review.id,
         eventType: 'review_context_cochange_failed',
@@ -1057,12 +1107,18 @@ async function assembleReviewContextBootstrap(
           reason,
           repo: repoSlug,
           lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
-          githubResponseBody:
-            error instanceof ReviewContextAssemblyError ? error.details : redactReviewText(error instanceof Error ? error.message : String(error)),
+          githubResponseBody: error instanceof ReviewContextAssemblyError ? error.details : sanitizedErrorDetails,
         },
       });
       if (error instanceof ReviewContextAssemblyError) {
         throw error;
+      }
+      if (reason === 'cache_error') {
+        throw new ReviewContextAssemblyError(
+          'review_context_cache_error',
+          'Co-change context cache read/write failed (cache_error).',
+          cacheErrorDetails
+        );
       }
       throw new ReviewContextAssemblyError(
         'review_context_github_api_error',
@@ -1294,6 +1350,13 @@ async function buildWorkspaceDeploymentReport(
   const includeProvenance = parseBoolean(reviewPolicy.includeProvenance, true);
   const includeValidationEvidence = parseBoolean(reviewPolicy.includeValidationEvidence, true);
   const includeMarkdownSummary = parseBoolean(reviewFormat.includeMarkdownSummary, true);
+  const changedFileCount = reviewContext.retrieval.coChange.filesConsidered;
+  const advisories =
+    changedFileCount > LARGE_DIFF_ADVISORY_THRESHOLD
+      ? [
+          `Large diff detected (${changedFileCount} files). Consider smaller, focused commits for higher quality reviews.`,
+        ]
+      : [];
 
   const baseGoal =
     typeof provenanceTask?.prompt === 'string' && provenanceTask.prompt.trim()
@@ -1561,6 +1624,7 @@ async function buildWorkspaceDeploymentReport(
                   reliability: 'weak-signal-phase2' as const,
                 }
               : undefined,
+          advisories: advisories.length > 0 ? advisories : undefined,
         }
       : {
           sessionIds: [],
@@ -1633,6 +1697,55 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
   if (!claimed) {
     const existing = await getReviewRun(env.DB, reviewId);
     if (existing?.status === 'running') {
+      const attemptTimeoutMs = parseTimeoutMs(env.ATTEMPT_TIMEOUT_MS, DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS);
+      const staleThresholdMs = attemptTimeoutMs + REVIEW_STALE_GRACE_MS;
+      const startedAtMs = toTimestampMs(existing.startedAt) ?? toTimestampMs(existing.updatedAt) ?? toTimestampMs(existing.createdAt);
+      const staleForMs = startedAtMs === null ? null : Date.now() - startedAtMs;
+      const isStale = typeof staleForMs === 'number' && staleForMs >= staleThresholdMs;
+      if (isStale) {
+        const staleForSeconds = Math.floor(staleForMs / 1000);
+        const message = `Review execution stalled in running state for ${staleForSeconds}s (timeout threshold ${Math.floor(staleThresholdMs / 1000)}s).`;
+        const attemptCount = existing.attemptCount ?? 0;
+        if ((options?.allowRetryScheduling ?? true) && attemptCount <= REVIEW_MAX_RETRIES) {
+          await replaceReviewFindings(env.DB, reviewId, []);
+          await updateReviewRunStatus(env.DB, reviewId, 'queued', {
+            report: null,
+            markdownSummary: null,
+            startedAt: null,
+            finishedAt: null,
+            errorCode: 'retry_scheduled',
+            errorMessage: message,
+          });
+          await appendReviewEvent(env.DB, {
+            reviewId,
+            eventType: 'review_retry_scheduled',
+            payload: {
+              attemptCount,
+              maxRetries: REVIEW_MAX_RETRIES,
+              reason: 'stale_running_timeout',
+              staleForSeconds,
+            },
+          });
+          throw new QueueRetryError('Review stale-running recovery requested');
+        }
+
+        await replaceReviewFindings(env.DB, reviewId, []);
+        await updateReviewRunStatus(env.DB, reviewId, 'failed', {
+          report: null,
+          markdownSummary: null,
+          errorCode: 'review_execution_timeout',
+          errorMessage: message,
+        });
+        await appendReviewEvent(env.DB, {
+          reviewId,
+          eventType: 'review_failed',
+          payload: {
+            code: 'review_execution_timeout',
+            message,
+          },
+        });
+        return;
+      }
       throw new QueueRetryError('Review run is already running; defer redelivery');
     }
     return;

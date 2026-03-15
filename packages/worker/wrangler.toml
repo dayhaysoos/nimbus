@@ -86,6 +86,10 @@ queue = "nimbus-reviews"
 max_batch_size = 5
 max_batch_timeout = 3
 
+[[services]]
+binding = "AGENT_ENDPOINT"
+service = "nimbus-agent-endpoint"
+
 # Sandbox container configuration
 # Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)
 [[containers]]
