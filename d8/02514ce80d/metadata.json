@@ -1,0 +1,20 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "d802514ce80d",
+  "strategy": "manual-commit",
+  "branch": "chore/report-ui-review-flow-alignment",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/lib/db.review.test.ts",
+    "packages/worker/src/lib/db.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d8/02514ce80d/0/metadata.json",
+      "transcript": "/d8/02514ce80d/0/full.jsonl",
+      "context": "",
+      "content_hash": "/d8/02514ce80d/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
