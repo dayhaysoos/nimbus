@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "3cef55468ff7",
+  "strategy": "manual-commit",
+  "branch": "feat/beta-onboarding-hosted-auth",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.auth.test.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/run-tests.ts",
+    "packages/worker/migrations/0012_account_ownership.sql",
+    "packages/worker/src/api/checkpoint-jobs.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/api/workspace-tasks.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/auth.test.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/auth.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3c/ef55468ff7/0/metadata.json",
+      "transcript": "/3c/ef55468ff7/0/full.jsonl",
+      "context": "/3c/ef55468ff7/0/context.md",
+      "content_hash": "/3c/ef55468ff7/0/content_hash.txt",
+      "prompt": "/3c/ef55468ff7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 489920,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5538432,
+    "output_tokens": 28719,
+    "api_call_count": 73
+  }
+}
