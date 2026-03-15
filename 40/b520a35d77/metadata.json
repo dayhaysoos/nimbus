@@ -1,0 +1,23 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "40b520a35d77",
+  "strategy": "manual-commit",
+  "branch": "chore/report-ui-review-flow-alignment",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/40/b520a35d77/0/metadata.json",
+      "transcript": "/40/b520a35d77/0/full.jsonl",
+      "context": "",
+      "content_hash": "/40/b520a35d77/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
