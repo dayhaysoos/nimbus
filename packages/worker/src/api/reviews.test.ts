@@ -20,6 +20,7 @@ function createReviewApiEnv(options?: {
   reviewAttemptCount?: number;
   existingRequestPayloadSha256?: string;
   workerReviewGithubToken?: string;
+  workspaceAccountId?: string | null;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -28,6 +29,7 @@ function createReviewApiEnv(options?: {
     eventTypes: Set<string>;
     reviewStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
     createdRequestPayload: Record<string, unknown> | null;
+    createdReviewAccountId: string | null;
     queuedMessages: Array<Record<string, unknown>>;
   };
 } {
@@ -39,6 +41,7 @@ function createReviewApiEnv(options?: {
     reviewStatusReads: 0,
     reviewEventReads: 0,
     createdRequestPayload: null as Record<string, unknown> | null,
+    createdReviewAccountId: null as string | null,
     queuedMessages: [] as Array<Record<string, unknown>>,
   };
 
@@ -106,7 +109,10 @@ function createReviewApiEnv(options?: {
             bind() {
               return {
                 async first<T>() {
-                  return { account_id: 'acct_123' } as T;
+                  return {
+                    account_id:
+                      options && 'workspaceAccountId' in options ? (options.workspaceAccountId ?? null) : 'acct_123',
+                  } as T;
                 },
               };
             },
@@ -197,6 +203,7 @@ function createReviewApiEnv(options?: {
                   } catch {
                     state.createdRequestPayload = null;
                   }
+                  state.createdReviewAccountId = typeof values[8] === 'string' ? values[8] : null;
                   return {
                     id: values[0],
                     workspace_id: values[1],
@@ -603,7 +610,30 @@ export async function runReviewApiTests(): Promise<void> {
     assert.equal(response.status, 202);
     assert.equal(state.queuedMessages.length, 1);
     assert.equal(state.queuedMessages[0]?.openrouterApiKey, 'or_user_token_123');
+    assert.equal(state.createdReviewAccountId, 'acct_123');
     assert.equal(JSON.stringify(state.createdRequestPayload ?? {}).includes('or_user_token_123'), false);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ workspaceAccountId: 'acct_workspace_owner' });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'idem-review-account-source',
+      },
+    });
+    const response = await handleCreateReview(
+      request,
+      env as never,
+      ctx,
+      { accountId: 'acct_admin_requester', isAdmin: true, isAuthenticated: true, isHostedMode: true }
+    );
+    assert.equal(response.status, 202);
+    assert.equal(state.createdReviewAccountId, 'acct_workspace_owner');
   }
 
   {

@@ -280,9 +280,9 @@ export async function handleCreateWorkspaceDeployment(
       return enabled;
     }
 
-    const effectiveAuthContext =
-      authContext ??
-      ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+  const effectiveAuthContext =
+    authContext ??
+      ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
     const workspaceCheck = await ensureWorkspaceReady(env, workspaceId, effectiveAuthContext);
     if (workspaceCheck) {
       return workspaceCheck;
@@ -729,7 +729,7 @@ export async function handleWorkspaceDeploymentPreflight(
 ): Promise<Response> {
   const effectiveAuthContext =
     authContext ??
-    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   const enabled = await ensureWorkspaceDeployEnabled(env);
   if (enabled) {
     return enabled;
@@ -896,7 +896,7 @@ export async function handleGetWorkspaceDeployment(
 ): Promise<Response> {
   const effectiveAuthContext =
     authContext ??
-    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId, effectiveAuthContext);
   if (workspaceMissing) {
     return workspaceMissing;
@@ -922,7 +922,7 @@ export async function handleGetWorkspaceDeploymentEvents(
 ): Promise<Response> {
   const effectiveAuthContext =
     authContext ??
-    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId, effectiveAuthContext);
   if (workspaceMissing) {
     return workspaceMissing;
@@ -952,7 +952,7 @@ export async function handleCancelWorkspaceDeployment(
 ): Promise<Response> {
   const effectiveAuthContext =
     authContext ??
-    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
   const useDeployQueue = Boolean(env.WORKSPACE_DEPLOYS_QUEUE) && !forceInlineDeploys;
 

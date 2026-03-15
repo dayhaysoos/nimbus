@@ -12,6 +12,7 @@ import {
 
 export async function runReviewDbTests(): Promise<void> {
   {
+    let insertValues: unknown[] = [];
     const db = {
       prepare(sql: string) {
         if (/SELECT review_id, request_payload_sha256, expires_at/i.test(sql)) {
@@ -41,6 +42,7 @@ export async function runReviewDbTests(): Promise<void> {
         if (/INSERT INTO review_runs/i.test(sql)) {
           return {
             bind(...values: unknown[]) {
+              insertValues = values;
               return {
                 async first<T>() {
                   return {
@@ -53,7 +55,8 @@ export async function runReviewDbTests(): Promise<void> {
                     idempotency_key: values[5],
                     request_payload_json: values[6],
                     request_payload_sha256: values[7],
-                    provenance_json: values[8],
+                    account_id: values[8],
+                    provenance_json: values[9],
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,
@@ -185,9 +188,11 @@ export async function runReviewDbTests(): Promise<void> {
       idempotencyKey: 'idem-review',
       requestPayload: {},
       requestPayloadSha256: 'hash',
+      accountId: 'acct_workspace_owner',
     });
     assert.equal(created.reused, false);
     assert.equal(created.review.id, 'rev_abcd1234');
+    assert.equal(insertValues[8], 'acct_workspace_owner');
 
     const review = await getReviewRun(db, 'rev_abcd1234');
     assert.ok(review);

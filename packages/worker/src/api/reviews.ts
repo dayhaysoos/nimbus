@@ -603,7 +603,7 @@ export async function handleCreateReview(
 ): Promise<Response> {
   const effectiveAuthContext =
     authContext ??
-    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   try {
     if (!env.REVIEWS_QUEUE || !env.ReviewRunner) {
       return jsonResponse(
@@ -803,6 +803,8 @@ export async function handleCreateReview(
       requestPayload: sanitizedRequestPayload,
       requestPayloadSha256,
       requestPayloadSha256Aliases,
+      // Keep review ownership aligned to the workspace owner so admin-triggered
+      // reviews stay visible to the owning account in hosted mode.
       accountId: workspaceAccountId,
       provenance: {
         promptSummary: `Review deployment ${deploymentId} for workspace ${workspaceId}`,
@@ -887,7 +889,7 @@ export async function handleGetReview(
 ): Promise<Response> {
   const effectiveAuthContext =
     authContext ??
-    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
   if (reviewAccessResponse) {
     return reviewAccessResponse;
@@ -915,7 +917,7 @@ export async function handleGetReviewEvents(
 ): Promise<Response> {
   const effectiveAuthContext =
     authContext ??
-    ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   try {
     const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
     if (reviewAccessResponse) {

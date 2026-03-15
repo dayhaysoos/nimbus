@@ -21,7 +21,7 @@ function resolveAuthContext(authContext?: AuthContext): AuthContext {
   return (
     authContext ?? {
       accountId: 'self-hosted',
-      isAdmin: true,
+      isAdmin: false,
       isAuthenticated: false,
       isHostedMode: false,
     }

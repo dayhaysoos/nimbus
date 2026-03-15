@@ -27,11 +27,13 @@ import {
 export async function runWorkspaceDbTests(): Promise<void> {
   {
     const sqlStatements: string[] = [];
+    let boundValues: unknown[] = [];
     const db = {
       prepare(sql: string) {
         sqlStatements.push(sql);
         return {
           bind(...values: unknown[]) {
+            boundValues = values;
             return {
               async first<T>() {
                 return {
@@ -81,6 +83,60 @@ export async function runWorkspaceDbTests(): Promise<void> {
     assert.equal(created.baselineReady, false);
     assert.equal(created.eventsUrl, '/api/workspaces/ws_abc12345/events');
     assert.ok(sqlStatements.some((sql) => /INSERT INTO workspaces/i.test(sql)));
+    assert.equal(boundValues[10], null);
+  }
+
+  {
+    let boundValues: unknown[] = [];
+    const db = {
+      prepare() {
+        return {
+          bind(...values: unknown[]) {
+            boundValues = values;
+            return {
+              async first<T>() {
+                return {
+                  id: values[0],
+                  status: 'creating',
+                  source_type: values[1],
+                  checkpoint_id: values[2],
+                  commit_sha: values[3],
+                  source_ref: values[4],
+                  source_project_root: values[5],
+                  source_bundle_key: values[6],
+                  source_bundle_sha256: values[7],
+                  source_bundle_bytes: values[8],
+                  sandbox_id: values[9],
+                  baseline_ready: 0,
+                  error_code: null,
+                  error_message: null,
+                  last_event_seq: 0,
+                  created_at: '2026-03-07T00:00:00.000Z',
+                  updated_at: '2026-03-07T00:00:00.000Z',
+                  deleted_at: null,
+                } as T;
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await createWorkspace(db, {
+      id: 'ws_hosted123',
+      sourceType: 'checkpoint',
+      checkpointId: '8a513f56ed70',
+      commitSha: 'a'.repeat(40),
+      sourceRef: 'main',
+      sourceProjectRoot: 'apps/web',
+      sourceBundleKey: 'workspaces/ws_hosted123/source/a.tar.gz',
+      sourceBundleSha256: 'f'.repeat(64),
+      sourceBundleBytes: 2048,
+      sandboxId: 'workspace-ws_hosted123',
+      accountId: 'acct_hosted_123',
+    });
+
+    assert.equal(boundValues[10], 'acct_hosted_123');
   }
 
   {

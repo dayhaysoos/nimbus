@@ -1,5 +1,6 @@
 import { strict as assert } from 'assert';
 import { handleGetWorkspace } from './api/workspaces.js';
+import { handleGetReview } from './api/reviews.js';
 import { authenticateRequest } from './lib/auth.js';
 import type { AuthContext } from './types.js';
 
@@ -18,6 +19,8 @@ function createWorkerTestEnv(options?: {
   keyIsAdmin?: boolean;
   workspaceExists?: boolean;
   workspaceAccountId?: string | null;
+  reviewExists?: boolean;
+  reviewAccountId?: string | null;
   jobExists?: boolean;
 }) {
   const env = {
@@ -74,7 +77,10 @@ function createWorkerTestEnv(options?: {
                   if (options?.workspaceExists === false) {
                     return null;
                   }
-                  return { account_id: options?.workspaceAccountId ?? 'acct_123' } as T;
+                  return {
+                    account_id:
+                      options && 'workspaceAccountId' in options ? (options.workspaceAccountId ?? null) : 'acct_123',
+                  } as T;
                 },
                 async all<T>() {
                   return { results: [] as T[] };
@@ -120,6 +126,71 @@ function createWorkerTestEnv(options?: {
                     created_at: '2026-03-15T00:00:00.000Z',
                     updated_at: '2026-03-15T00:00:00.000Z',
                     deleted_at: null,
+                  } as T;
+                },
+                async all<T>() {
+                  return { results: [] as T[] };
+                },
+                async run() {
+                  return { success: true, meta: { changes: 0 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (sql.includes('SELECT account_id FROM review_runs WHERE id = ?')) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  if (options?.reviewExists === false) {
+                    return null;
+                  }
+                  return {
+                    account_id: options && 'reviewAccountId' in options ? (options.reviewAccountId ?? null) : 'acct_123',
+                  } as T;
+                },
+                async all<T>() {
+                  return { results: [] as T[] };
+                },
+                async run() {
+                  return { success: true, meta: { changes: 0 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (sql.includes('SELECT * FROM review_runs WHERE id = ?')) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  if (options?.reviewExists === false) {
+                    return null;
+                  }
+                  return {
+                    id: 'rev_abc12345',
+                    workspace_id: 'ws_abc12345',
+                    deployment_id: 'dep_abcd1234',
+                    target_type: 'workspace_deployment',
+                    mode: 'report_only',
+                    status: 'queued',
+                    idempotency_key: 'idem-review',
+                    request_payload_json: '{}',
+                    request_payload_sha256: 'hash',
+                    provenance_json: '{}',
+                    last_event_seq: 1,
+                    attempt_count: 0,
+                    started_at: null,
+                    finished_at: null,
+                    report_json: null,
+                    markdown_summary: null,
+                    error_code: null,
+                    error_message: null,
+                    created_at: '2026-03-15T00:00:00.000Z',
+                    updated_at: '2026-03-15T00:00:00.000Z',
                   } as T;
                 },
                 async all<T>() {
@@ -292,6 +363,19 @@ export async function runAuthMiddlewareTests(): Promise<void> {
   }
 
   {
+    const env = createWorkerTestEnv({ hosted: true, keyHash: validKeyHash, keyAccountId: 'acct_123', workspaceAccountId: null });
+    const authResult = await authenticateRequest(
+      new Request('https://example.com/api/workspaces/ws_abc12345', {
+        headers: { 'X-Nimbus-Api-Key': validKey },
+      }),
+      env as never
+    );
+    assert.equal('authContext' in authResult, true);
+    const response = await handleGetWorkspace('ws_abc12345', env as never, (authResult as { authContext: AuthContext }).authContext);
+    assert.equal(response.status, 404);
+  }
+
+  {
     const env = createWorkerTestEnv({
       hosted: true,
       keyHash: validKeyHash,
@@ -328,6 +412,63 @@ export async function runAuthMiddlewareTests(): Promise<void> {
     assert.equal('authContext' in authResult, true);
     const response = await handleGetWorkspace('ws_abc12345', env as never, (authResult as { authContext: AuthContext }).authContext);
     assert.equal(response.status, 200);
+  }
+
+  {
+    const adminKey = 'nmb_live_admin456';
+    const adminKeyHash = await sha256Hex(adminKey);
+    const env = createWorkerTestEnv({
+      hosted: true,
+      keyHash: adminKeyHash,
+      keyAccountId: 'acct_admin',
+      keyIsAdmin: true,
+      workspaceAccountId: 'acct_other',
+    });
+    const authResult = await authenticateRequest(
+      new Request('https://example.com/api/workspaces/ws_abc12345', {
+        headers: { 'X-Nimbus-Api-Key': adminKey },
+      }),
+      env as never
+    );
+    assert.equal('authContext' in authResult, true);
+    const response = await handleGetWorkspace('ws_abc12345', env as never, (authResult as { authContext: AuthContext }).authContext);
+    assert.equal(response.status, 200);
+  }
+
+  {
+    const env = createWorkerTestEnv({ hosted: true, keyHash: validKeyHash, keyAccountId: 'acct_123', reviewAccountId: 'acct_123' });
+    const authResult = await authenticateRequest(
+      new Request('https://example.com/api/reviews/rev_abc12345', {
+        headers: { 'X-Nimbus-Api-Key': validKey },
+      }),
+      env as never
+    );
+    assert.equal('authContext' in authResult, true);
+    const response = await handleGetReview(
+      'rev_abc12345',
+      new Request('https://example.com/api/reviews/rev_abc12345'),
+      env as never,
+      (authResult as { authContext: AuthContext }).authContext
+    );
+    assert.equal(response.status, 200);
+  }
+
+  {
+    const env = createWorkerTestEnv({ hosted: true, keyHash: validKeyHash, keyAccountId: 'acct_123', reviewAccountId: 'acct_999' });
+    const authResult = await authenticateRequest(
+      new Request('https://example.com/api/reviews/rev_abc12345', {
+        headers: { 'X-Nimbus-Api-Key': validKey },
+      }),
+      env as never
+    );
+    assert.equal('authContext' in authResult, true);
+    const response = await handleGetReview(
+      'rev_abc12345',
+      new Request('https://example.com/api/reviews/rev_abc12345'),
+      env as never,
+      (authResult as { authContext: AuthContext }).authContext
+    );
+    assert.equal(response.status, 404);
   }
 
   {
