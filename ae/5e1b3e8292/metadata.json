@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "ae5e1b3e8292",
+  "strategy": "manual-commit",
+  "branch": "chore/report-ui-review-flow-alignment",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/api/system.test.ts",
+    "packages/worker/src/api/system.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/review-dispatch.ts",
+    "packages/worker/src/lib/review-queue.test.ts",
+    "packages/worker/src/lib/review-queue.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/review-queue-dispatch.test.ts",
+    "packages/worker/src/review-runner-do.test.ts",
+    "packages/worker/src/review-runner-do.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ae/5e1b3e8292/0/metadata.json",
+      "transcript": "/ae/5e1b3e8292/0/full.jsonl",
+      "context": "/ae/5e1b3e8292/0/context.md",
+      "content_hash": "/ae/5e1b3e8292/0/content_hash.txt",
+      "prompt": "/ae/5e1b3e8292/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 70930,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 394752,
+    "output_tokens": 4610,
+    "api_call_count": 10
+  }
+}

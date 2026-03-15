@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "ae5e1b3e8292",
+  "session_id": "ses_30fef58f6ffdBqhg0VJkRStHwn",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-15T05:58:20.82433Z",
+  "branch": "chore/report-ui-review-flow-alignment",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/api/system.test.ts",
+    "packages/worker/src/api/system.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/review-dispatch.ts",
+    "packages/worker/src/lib/review-queue.test.ts",
+    "packages/worker/src/lib/review-queue.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/src/review-queue-dispatch.test.ts",
+    "packages/worker/src/review-runner-do.test.ts",
+    "packages/worker/src/review-runner-do.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "bf67cbd0f647",
+  "token_usage": {
+    "input_tokens": 70930,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 394752,
+    "output_tokens": 4610,
+    "api_call_count": 10
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-15T05:58:20.557375Z",
+    "agent_lines": 523,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 523,
+    "agent_percentage": 100
+  }
+}
