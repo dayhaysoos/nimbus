@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "18d6fd8b349e",
+  "strategy": "manual-commit",
+  "branch": "feat/beta-onboarding-hosted-auth",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/migrations/0012_account_ownership.sql",
+    "packages/worker/src/api/job-events.ts",
+    "packages/worker/src/api/jobs.ts",
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/api/workspace-tasks.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/auth.test.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/auth.ts",
+    "packages/worker/src/lib/authz.ts",
+    "packages/worker/src/lib/db.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/18/d6fd8b349e/0/metadata.json",
+      "transcript": "/18/d6fd8b349e/0/full.jsonl",
+      "context": "/18/d6fd8b349e/0/context.md",
+      "content_hash": "/18/d6fd8b349e/0/content_hash.txt",
+      "prompt": "/18/d6fd8b349e/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 218154,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 332416,
+    "output_tokens": 4475,
+    "api_call_count": 8
+  }
+}
