@@ -57,7 +57,8 @@ function readWorkerReviewGithubToken(env: Env): string | null {
 async function recoverStaleRunningReviewIfNeeded(
   env: Env,
   reviewId: string,
-  review: { status: ReviewRunStatus; startedAt: string | null; updatedAt: string; createdAt: string; attemptCount: number }
+  review: { status: ReviewRunStatus; startedAt: string | null; updatedAt: string; createdAt: string; attemptCount: number },
+  openrouterApiKey?: string | null
 ): Promise<void> {
   if (review.status !== 'running') {
     return;
@@ -94,7 +95,7 @@ async function recoverStaleRunningReviewIfNeeded(
         staleForSeconds: Math.floor(staleForMs / 1000),
       },
     });
-    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, workerGithubToken));
+    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, workerGithubToken, openrouterApiKey));
     return;
   }
 
@@ -732,7 +733,17 @@ export async function handleCreateReview(
         const alreadyEnqueued = await hasReviewEvent(env.DB, created.review.id, 'review_enqueued');
         const shouldReenqueueRecoveredReview =
           created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
+        const requiresOpenrouterRetryKey = created.review.error?.code === 'missing_openrouter_api_key';
         if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
+          if (shouldReenqueueRecoveredReview && requiresOpenrouterRetryKey && !openrouterApiKey) {
+            return jsonResponse(
+              {
+                error: 'OpenRouter API key required for retry',
+                code: 'missing_openrouter_api_key',
+              },
+              409
+            );
+          }
           await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken, openrouterApiKey));
 
           await appendReviewEvent(env.DB, {
@@ -814,7 +825,17 @@ export async function handleCreateReview(
       const alreadyEnqueued = await hasReviewEvent(env.DB, created.review.id, 'review_enqueued');
       const shouldReenqueueRecoveredReview =
         created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
+      const requiresOpenrouterRetryKey = created.review.error?.code === 'missing_openrouter_api_key';
       if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
+        if (shouldReenqueueRecoveredReview && requiresOpenrouterRetryKey && !openrouterApiKey) {
+          return jsonResponse(
+            {
+              error: 'OpenRouter API key required for retry',
+              code: 'missing_openrouter_api_key',
+            },
+            409
+          );
+        }
         await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken, openrouterApiKey));
 
         await appendReviewEvent(env.DB, {
@@ -858,7 +879,12 @@ export async function handleCreateReview(
   }
 }
 
-export async function handleGetReview(reviewId: string, env: Env, authContext?: AuthContext): Promise<Response> {
+export async function handleGetReview(
+  reviewId: string,
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
   const effectiveAuthContext =
     authContext ??
     ({ accountId: 'self-hosted', isAdmin: true, isAuthenticated: false, isHostedMode: false } as const);
@@ -872,7 +898,7 @@ export async function handleGetReview(reviewId: string, env: Env, authContext?: 
     return jsonResponse({ error: 'Review not found' }, 404);
   }
 
-  await recoverStaleRunningReviewIfNeeded(env, reviewId, review);
+  await recoverStaleRunningReviewIfNeeded(env, reviewId, review, readOpenrouterApiKeyHeader(request));
   review = await getReviewRun(env.DB, reviewId);
   if (!review) {
     return jsonResponse({ error: 'Review not found' }, 404);
@@ -980,7 +1006,7 @@ export async function handleGetReviewEvents(
                 );
                 break;
               }
-              await recoverStaleRunningReviewIfNeeded(env, reviewId, latest);
+              await recoverStaleRunningReviewIfNeeded(env, reviewId, latest, readOpenrouterApiKeyHeader(request));
               const refreshed = await getReviewRun(env.DB, reviewId);
               currentStatus = refreshed?.status ?? latest.status;
             }

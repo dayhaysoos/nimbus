@@ -307,7 +307,7 @@ function createReviewApiEnv(options?: {
                     report_json: null,
                     markdown_summary: null,
                     error_code: options?.reviewErrorCode ?? null,
-                    error_message: null,
+                    error_message: options?.reviewErrorCode ? 'simulated review error' : null,
                     created_at: '2026-03-11T00:00:00.000Z',
                     updated_at: '2026-03-11T00:00:00.000Z',
                   } as T;
@@ -785,13 +785,17 @@ export async function runReviewApiTests(): Promise<void> {
       reused: true,
       reviewExists: true,
       existingEventTypes: ['review_enqueued'],
-      reviewErrorCode: 'retry_scheduled',
+      reviewErrorCode: 'missing_openrouter_api_key',
       reviewAttemptCount: 1,
     });
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
       body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-4b' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'idem-review-4b',
+        'X-Openrouter-Api-Key': 'or_user_retry_key',
+      },
     });
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 200);
@@ -799,9 +803,30 @@ export async function runReviewApiTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createReviewApiEnv({
+      reused: true,
+      reviewExists: true,
+      existingEventTypes: ['review_enqueued'],
+      reviewErrorCode: 'missing_openrouter_api_key',
+      reviewAttemptCount: 1,
+    });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-4b-no-openrouter' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.error, 'OpenRouter API key required for retry');
+    assert.equal(body.code, 'missing_openrouter_api_key');
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
     const { env, state } = createReviewApiEnv({ reviewExists: true });
     state.reviewStatus = 'succeeded';
-    const response = await handleGetReview('rev_abcd1234', env as never);
+    const response = await handleGetReview('rev_abcd1234', new Request('https://example.com/api/reviews/rev_abcd1234'), env as never);
     assert.equal(response.status, 200);
   }
 
@@ -809,7 +834,7 @@ export async function runReviewApiTests(): Promise<void> {
     const { env, state } = createReviewApiEnv({ reviewExists: true, workerReviewGithubToken: '' });
     state.reviewStatus = 'running';
     (env as { ATTEMPT_TIMEOUT_MS?: string }).ATTEMPT_TIMEOUT_MS = '1';
-    const response = await handleGetReview('rev_abcd1234', env as never);
+    const response = await handleGetReview('rev_abcd1234', new Request('https://example.com/api/reviews/rev_abcd1234'), env as never);
     assert.equal(response.status, 200);
     assert.equal(state.queueSendCount, 0);
   }
@@ -855,7 +880,7 @@ export async function runReviewApiTests(): Promise<void> {
 
   {
     const { env } = createReviewApiEnv();
-    const response = await handleGetReview('rev_missing', env as never);
+    const response = await handleGetReview('rev_missing', new Request('https://example.com/api/reviews/rev_missing'), env as never);
     assert.equal(response.status, 404);
   }
 }

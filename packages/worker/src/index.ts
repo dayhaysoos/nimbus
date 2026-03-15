@@ -103,7 +103,7 @@ export default {
     // Route: GET /api/reviews/:id - Get review run
     const reviewMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)$/);
     if (reviewMatch && request.method === 'GET') {
-      return handleGetReview(reviewMatch[1], env, authContext);
+      return handleGetReview(reviewMatch[1], request, env, authContext);
     }
 
     // Route: GET /api/workspaces/:id/events - List workspace events
