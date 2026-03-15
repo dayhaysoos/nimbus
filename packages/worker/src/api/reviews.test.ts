@@ -28,6 +28,7 @@ function createReviewApiEnv(options?: {
     eventTypes: Set<string>;
     reviewStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
     createdRequestPayload: Record<string, unknown> | null;
+    queuedMessages: Array<Record<string, unknown>>;
   };
 } {
   const state = {
@@ -38,13 +39,15 @@ function createReviewApiEnv(options?: {
     reviewStatusReads: 0,
     reviewEventReads: 0,
     createdRequestPayload: null as Record<string, unknown> | null,
+    queuedMessages: [] as Array<Record<string, unknown>>,
   };
 
   const env = {
     REVIEW_CONTEXT_GITHUB_TOKEN: options?.workerReviewGithubToken ?? 'ghp_worker_default_token_abcdefghijklmnopqrstuvwxyz',
     REVIEWS_QUEUE: {
-      async send() {
+      async send(message: unknown) {
         state.queueSendCount += 1;
+        state.queuedMessages.push((message as Record<string, unknown>) ?? {});
       },
     },
     ReviewRunner: {
@@ -385,6 +388,39 @@ export async function runReviewApiTests(): Promise<void> {
 
   {
     const { env } = createReviewApiEnv();
+    const request = new Request('http://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-http-hosted' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx, {
+      accountId: 'acct_123',
+      isAdmin: false,
+      isAuthenticated: true,
+      isHostedMode: true,
+    });
+    assert.equal(response.status, 400);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv();
+    const request = new Request('http://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-http-self-hosted' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx, {
+      accountId: 'self-hosted',
+      isAdmin: true,
+      isAuthenticated: false,
+      isHostedMode: false,
+    });
+    assert.equal(response.status, 202);
+    assert.equal(state.queueSendCount, 1);
+  }
+
+  {
+    const { env } = createReviewApiEnv();
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
       body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
@@ -548,6 +584,26 @@ export async function runReviewApiTests(): Promise<void> {
     assert.equal(waitUntilCount, 0);
     assert.equal(JSON.stringify(state.createdRequestPayload ?? {}).includes('ghp_user_token_123'), false);
     assert.equal((state.createdRequestPayload as Record<string, unknown> | null)?.['review_context_github_token'], undefined);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ workerReviewGithubToken: 'ghp_worker_token_abc' });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+      }),
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'idem-review-openrouter-header',
+        'X-Openrouter-Api-Key': 'or_user_token_123',
+      },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    assert.equal(state.queuedMessages.length, 1);
+    assert.equal(state.queuedMessages[0]?.openrouterApiKey, 'or_user_token_123');
+    assert.equal(JSON.stringify(state.createdRequestPayload ?? {}).includes('or_user_token_123'), false);
   }
 
   {

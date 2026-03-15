@@ -5,9 +5,14 @@ export interface ReviewQueueMessage {
   reviewId: string;
   queuedAt: string;
   cochangeGithubToken?: string;
+  openrouterApiKey?: string;
 }
 
-export function createReviewQueueMessage(reviewId: string, cochangeGithubToken?: string | null): ReviewQueueMessage {
+export function createReviewQueueMessage(
+  reviewId: string,
+  cochangeGithubToken?: string | null,
+  openrouterApiKey?: string | null
+): ReviewQueueMessage {
   const message: ReviewQueueMessage = {
     type: 'review_requested',
     reviewId,
@@ -15,6 +20,9 @@ export function createReviewQueueMessage(reviewId: string, cochangeGithubToken?:
   };
   if (typeof cochangeGithubToken === 'string' && cochangeGithubToken.trim()) {
     message.cochangeGithubToken = cochangeGithubToken.trim();
+  }
+  if (typeof openrouterApiKey === 'string' && openrouterApiKey.trim()) {
+    message.openrouterApiKey = openrouterApiKey.trim();
   }
   return message;
 }
@@ -37,6 +45,9 @@ export function parseReviewQueueMessage(payload: unknown): ReviewQueueMessage {
   if (record.cochangeGithubToken !== undefined && (typeof record.cochangeGithubToken !== 'string' || !record.cochangeGithubToken.trim())) {
     throw new Error('Invalid review queue payload cochangeGithubToken');
   }
+  if (record.openrouterApiKey !== undefined && (typeof record.openrouterApiKey !== 'string' || !record.openrouterApiKey.trim())) {
+    throw new Error('Invalid review queue payload openrouterApiKey');
+  }
 
   const parsed: ReviewQueueMessage = {
     type: 'review_requested',
@@ -45,6 +56,9 @@ export function parseReviewQueueMessage(payload: unknown): ReviewQueueMessage {
   };
   if (typeof record.cochangeGithubToken === 'string' && record.cochangeGithubToken.trim()) {
     parsed.cochangeGithubToken = record.cochangeGithubToken.trim();
+  }
+  if (typeof record.openrouterApiKey === 'string' && record.openrouterApiKey.trim()) {
+    parsed.openrouterApiKey = record.openrouterApiKey.trim();
   }
   return parsed;
 }

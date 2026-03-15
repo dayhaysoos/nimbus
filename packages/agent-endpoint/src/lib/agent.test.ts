@@ -64,6 +64,98 @@ export async function runAgentTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
+    let capturedAuthHeader = '';
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const headers = new Headers(init?.headers);
+      capturedAuthHeader = headers.get('Authorization') ?? '';
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ findings: [], summary: 'ok', furtherPassesLowYield: true }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    try {
+      await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+          model: 'anthropic/claude-sonnet-4-5',
+          history: [],
+        },
+        { OPENROUTER_API_KEY: 'env-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' },
+        { openrouterApiKey: 'request-key' }
+      );
+      assert.equal(capturedAuthHeader, 'Bearer request-key');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    let capturedAuthHeader = '';
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const headers = new Headers(init?.headers);
+      capturedAuthHeader = headers.get('Authorization') ?? '';
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({ findings: [], summary: 'ok', furtherPassesLowYield: true }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    try {
+      await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+          model: 'anthropic/claude-sonnet-4-5',
+          history: [],
+        },
+        { OPENROUTER_API_KEY: 'env-fallback-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }
+      );
+      assert.equal(capturedAuthHeader, 'Bearer env-fallback-key');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    try {
+      await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+          model: 'anthropic/claude-sonnet-4-5',
+          history: [],
+        },
+        { DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }
+      );
+      assert.fail('Expected missing_openrouter_api_key error');
+    } catch (error) {
+      assert.equal(error instanceof AgentEndpointError, true);
+      const typed = error as AgentEndpointError;
+      assert.equal(typed.code, 'missing_openrouter_api_key');
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (): Promise<Response> => {
       const error = new Error('aborted');
       error.name = 'AbortError';

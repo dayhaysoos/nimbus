@@ -116,6 +116,7 @@ interface ReviewAgentPromptInput {
   rootListing: unknown;
   diffSnapshot: unknown;
   onLifecycleEvent?: (eventType: string, payload: Record<string, unknown>) => Promise<void> | void;
+  openrouterApiKey?: string | null;
 }
 
 interface ReviewToolContext {
@@ -274,8 +275,13 @@ function isGenericProviderCompletionSummary(summary: string): boolean {
   return /completed by .*agent endpoint/i.test(summary.trim());
 }
 
-function sanitizeErrorMessage(input: string): string {
-  return redactReviewText(input) ?? '';
+function sanitizeErrorMessage(input: string, options?: { openrouterApiKey?: string | null }): string {
+  let sanitized = redactReviewText(input) ?? '';
+  const openrouterApiKey = options?.openrouterApiKey?.trim();
+  if (openrouterApiKey) {
+    sanitized = sanitized.split(openrouterApiKey).join('[REDACTED_OPENROUTER_API_KEY]');
+  }
+  return sanitized;
 }
 
 function isWorkerToWorkerFetchRestriction(status: number, responseBody: string): boolean {
@@ -680,7 +686,8 @@ class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
   constructor(
     private readonly endpoint: string,
     private readonly authToken: string | null,
-    private readonly serviceBinding: Fetcher | null
+    private readonly serviceBinding: Fetcher | null,
+    private readonly openrouterApiKey: string | null
   ) {}
 
   async next(input: {
@@ -709,6 +716,7 @@ class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
         headers: {
           'Content-Type': 'application/json',
           ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+          ...(this.openrouterApiKey ? { 'X-Openrouter-Api-Key': this.openrouterApiKey } : {}),
         },
         body: JSON.stringify({
           mode: 'workspace_task',
@@ -978,7 +986,12 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       });
     }
 
-    const provider = new CloudflareAgentSdkReviewProvider(endpoint, authToken, env.AGENT_ENDPOINT ?? null);
+    const provider = new CloudflareAgentSdkReviewProvider(
+      endpoint,
+      authToken,
+      env.AGENT_ENDPOINT ?? null,
+      readOptionalString(input.openrouterApiKey)
+    );
     const policy: ReviewCommandPolicy = {
       commandAllow: [],
       commandDeny: ['git ', 'rm ', 'npm ', 'pnpm ', 'yarn ', 'bun ', 'mkdir ', 'mv ', 'cp ', 'touch '],
@@ -1000,12 +1013,13 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     for (let step = 1; step <= maxSteps; step += 1) {
       if (input.onLifecycleEvent) {
         await input.onLifecycleEvent('review_analysis_provider_request_started', {
-          step,
-          endpointHost,
-          endpointPath,
-          hasAuthToken: Boolean(authToken),
-        });
-      }
+            step,
+            endpointHost,
+            endpointPath,
+            hasAuthToken: Boolean(authToken),
+            hasOpenrouterApiKey: Boolean(readOptionalString(input.openrouterApiKey)),
+          });
+        }
       const action = await provider.next({
         prompt,
         model,
@@ -1192,7 +1206,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
   }
 }
 
-export function formatReviewAnalysisError(error: unknown): string {
+export function formatReviewAnalysisError(error: unknown, options?: { openrouterApiKey?: string | null }): string {
   const message = error instanceof Error ? error.message : String(error);
-  return sanitizeErrorMessage(message);
+  return sanitizeErrorMessage(message, options);
 }

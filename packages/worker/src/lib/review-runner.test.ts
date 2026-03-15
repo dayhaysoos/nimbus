@@ -829,6 +829,88 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
+    let capturedOpenrouterHeader: string | null = null;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const headers = new Headers(init?.headers);
+      capturedOpenrouterHeader = headers.get('X-Openrouter-Api-Key');
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    try {
+      const { env } = createReviewRunnerEnv({ envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' } });
+      await processReviewRun(env as never, 'rev_abcd1234', { openrouterApiKey: 'or_request_key_123' });
+      assert.equal(capturedOpenrouterHeader, 'or_request_key_123');
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    const openrouterKey = 'or_sensitive_key_abc';
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(`provider failed: X-Openrouter-Api-Key: ${openrouterKey}`, { status: 500 });
+    }) as typeof fetch;
+
+    try {
+      const { env, state } = createReviewRunnerEnv({ envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' } });
+      await assert.rejects(
+        () => processReviewRun(env as never, 'rev_abcd1234', { openrouterApiKey: openrouterKey }),
+        /retry requested/
+      );
+      assert.equal(state.status, 'queued');
+      assert.equal(JSON.stringify(state.events).includes(openrouterKey), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       if (url.includes('api.github.com/repos/') && /\/commits\?sha=/i.test(url)) {

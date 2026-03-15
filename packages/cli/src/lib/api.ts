@@ -33,6 +33,11 @@ function readNimbusApiKey(): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function readOpenrouterApiKey(): string | null {
+  const value = process.env.OPENROUTER_API_KEY;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 function usesHostedWorker(workerUrl: string): boolean {
   try {
     return new URL(workerUrl).origin === DEFAULT_WORKER_ORIGIN;
@@ -77,6 +82,27 @@ async function workerFetch(workerUrl: string, url: string, init?: RequestInit): 
     ...init,
     headers,
   });
+}
+
+function withReviewHeaders(baseHeaders?: RequestInit['headers']): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (baseHeaders instanceof Headers) {
+    baseHeaders.forEach((value, key) => {
+      headers[key] = value;
+    });
+  } else if (Array.isArray(baseHeaders)) {
+    for (const [key, value] of baseHeaders) {
+      headers[key] = value;
+    }
+  } else if (baseHeaders) {
+    Object.assign(headers, baseHeaders as Record<string, string>);
+  }
+
+  const openrouterApiKey = readOpenrouterApiKey();
+  if (openrouterApiKey) {
+    headers['X-Openrouter-Api-Key'] = openrouterApiKey;
+  }
+  return headers;
 }
 
 /**
@@ -441,11 +467,11 @@ export async function createReview(
       : null;
   const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews`, {
     method: 'POST',
-    headers: {
+    headers: withReviewHeaders({
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
       ...(reviewGithubToken ? { 'X-Review-Github-Token': reviewGithubToken } : {}),
-    },
+    }),
     body: JSON.stringify(payload),
   });
 
@@ -458,7 +484,9 @@ export async function createReview(
 }
 
 export async function getReview(workerUrl: string, reviewId: string): Promise<ReviewGetResponse> {
-  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/${reviewId}`);
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/${reviewId}`, {
+    headers: withReviewHeaders(),
+  });
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Worker error (${response.status}): ${errorText}`);
@@ -518,9 +546,9 @@ export async function streamReviewEvents(
   onEvent: (event: ReviewEventEnvelope) => void | Promise<void>
 ): Promise<void> {
   const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/${reviewId}/events`, {
-    headers: {
+    headers: withReviewHeaders({
       Accept: 'text/event-stream',
-    },
+    }),
   });
 
   if (!response.ok) {

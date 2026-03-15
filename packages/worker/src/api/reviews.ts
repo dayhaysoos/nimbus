@@ -20,7 +20,7 @@ import { canAccessAccount } from '../lib/authz.js';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Nimbus-Api-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',
 };
 
 // Keep review SSE polling at 1s to stay within Cloudflare per-invocation API request
@@ -268,6 +268,11 @@ function readReviewGithubTokenHeader(request: Request): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function readOpenrouterApiKeyHeader(request: Request): string | null {
+  const value = request.headers.get('X-Openrouter-Api-Key');
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
 function stripSensitiveTokenFields(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => stripSensitiveTokenFields(item));
@@ -281,6 +286,8 @@ function stripSensitiveTokenFields(value: unknown): unknown {
     if (
       normalizedKey === 'x-review-github-token' ||
       normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'x-openrouter-api-key' ||
+      normalizedKey === 'openrouter_api_key' ||
       normalizedKey === 'authorization'
     ) {
       return result;
@@ -611,7 +618,11 @@ export async function handleCreateReview(
     if (!idempotencyKey) {
       return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);
     }
+    if (effectiveAuthContext.isHostedMode && new URL(request.url).protocol !== 'https:') {
+      return jsonResponse({ error: 'Hosted review requests must use HTTPS' }, 400);
+    }
     const reviewGithubToken = readReviewGithubTokenHeader(request);
+    const openrouterApiKey = readOpenrouterApiKeyHeader(request);
     const workerGithubToken = readWorkerReviewGithubToken(env);
 
     const payloadRaw = await request.text();
@@ -722,7 +733,7 @@ export async function handleCreateReview(
         const shouldReenqueueRecoveredReview =
           created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
         if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken));
+          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken, openrouterApiKey));
 
           await appendReviewEvent(env.DB, {
             reviewId: created.review.id,
@@ -804,7 +815,7 @@ export async function handleCreateReview(
       const shouldReenqueueRecoveredReview =
         created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
       if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-        await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken));
+        await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken, openrouterApiKey));
 
         await appendReviewEvent(env.DB, {
           reviewId: created.review.id,

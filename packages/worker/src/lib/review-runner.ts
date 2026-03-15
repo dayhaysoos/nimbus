@@ -70,6 +70,7 @@ const REVIEW_STALE_GRACE_MS = 60 * 1000;
 
 interface ReviewRunExecutionOptions {
   cochangeGithubToken?: string | null;
+  openrouterApiKey?: string | null;
   allowRetryScheduling?: boolean;
 }
 function asRecord(value: unknown): Record<string, unknown> {
@@ -1402,7 +1403,8 @@ async function buildWorkspaceDeploymentReport(
   env: Env,
   review: ReviewRunResponse,
   payload: Record<string, unknown>,
-  reviewContext: ReviewContext
+  reviewContext: ReviewContext,
+  options?: ReviewRunExecutionOptions
 ): Promise<ReviewReport> {
   const deployment = await getWorkspaceDeployment(env.DB, review.workspaceId, review.deploymentId);
   if (!deployment) {
@@ -1548,6 +1550,7 @@ async function buildWorkspaceDeploymentReport(
           payload: eventPayload,
         });
       },
+      openrouterApiKey: readOptionalString(options?.openrouterApiKey),
     });
 
     if (!agentAnalysis) {
@@ -1725,7 +1728,8 @@ async function executeReviewRun(
   env: Env,
   review: ReviewRunResponse,
   payload: Record<string, unknown>,
-  reviewContext: ReviewContext
+  reviewContext: ReviewContext,
+  options?: ReviewRunExecutionOptions
 ): Promise<ReviewReport> {
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
@@ -1757,7 +1761,7 @@ async function executeReviewRun(
     throw new Error(`Unsupported review target type: ${targetType}`);
   }
 
-  const report = await buildWorkspaceDeploymentReport(env, review, payload, reviewContext);
+  const report = await buildWorkspaceDeploymentReport(env, review, payload, reviewContext, options);
   for (const finding of report.findings) {
     await appendReviewEvent(env.DB, {
       reviewId: review.id,
@@ -1858,7 +1862,7 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
     }
 
     const reviewContext = await assembleReviewContextBootstrap(env, review, payload, options);
-    const report = await executeReviewRun(env, review, payload, reviewContext);
+    const report = await executeReviewRun(env, review, payload, reviewContext, options);
     await appendReviewEvent(env.DB, {
       reviewId,
       eventType: 'review_finalize_started',
@@ -1896,7 +1900,9 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
       },
     });
   } catch (error) {
-    const message = formatReviewAnalysisError(error);
+    const message = formatReviewAnalysisError(error, {
+      openrouterApiKey: readOptionalString(options?.openrouterApiKey),
+    });
     const latest = await getReviewRun(env.DB, reviewId);
     const attemptCount = latest?.attemptCount ?? review?.attemptCount ?? 0;
 
