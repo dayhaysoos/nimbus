@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "3ae1df25512c",
+  "session_id": "ses_30c26ccffffeT9cie41SpeF8v2",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-15T23:37:09.884277Z",
+  "branch": "feat/beta-onboarding-hosted-auth",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/index.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "eeed06c4c794",
+  "token_usage": {
+    "input_tokens": 80019,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 324224,
+    "output_tokens": 7314,
+    "api_call_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-15T23:37:09.540823Z",
+    "agent_lines": 63,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 63,
+    "agent_percentage": 100
+  }
+}

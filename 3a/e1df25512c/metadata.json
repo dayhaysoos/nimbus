@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "3ae1df25512c",
+  "strategy": "manual-commit",
+  "branch": "feat/beta-onboarding-hosted-auth",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/src/api/reviews.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/index.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/3a/e1df25512c/0/metadata.json",
+      "transcript": "/3a/e1df25512c/0/full.jsonl",
+      "context": "/3a/e1df25512c/0/context.md",
+      "content_hash": "/3a/e1df25512c/0/content_hash.txt",
+      "prompt": "/3a/e1df25512c/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 80019,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 324224,
+    "output_tokens": 7314,
+    "api_call_count": 7
+  }
+}
