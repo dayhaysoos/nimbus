@@ -4,8 +4,10 @@ import {
   appendReviewEvent,
   claimReviewRunForExecution,
   createReviewRun,
+  getReviewCochangeCacheBatch,
   getReviewRun,
   listReviewEvents,
+  upsertReviewCochangeCacheBatch,
 } from './db.js';
 
 export async function runReviewDbTests(): Promise<void> {
@@ -530,5 +532,65 @@ export async function runReviewDbTests(): Promise<void> {
     assert.equal(claimed, true);
     assert.equal(statements.some((sql) => /error_code = NULL/i.test(sql)), true);
     assert.equal(statements.some((sql) => /error_message = NULL/i.test(sql)), true);
+  }
+
+  {
+    const allCalls: Array<Array<unknown>> = [];
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind(...values: unknown[]) {
+            return {
+              async all<T>() {
+                allCalls.push([sql, ...values]);
+                return { results: [] } as unknown as T;
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await getReviewCochangeCacheBatch(db, {
+      repo: 'dayhaysoos/nimbus',
+      filePaths: Array.from({ length: 45 }, (_value, index) => `src/file-${index}.ts`),
+    });
+
+    assert.equal(allCalls.length, 3);
+    const bindCounts = allCalls.map((call) => call.length - 1);
+    assert.deepEqual(bindCounts, [21, 21, 6]);
+  }
+
+  {
+    const runCalls: Array<Array<unknown>> = [];
+    const db = {
+      prepare(sql: string) {
+        return {
+          bind(...values: unknown[]) {
+            return {
+              async run() {
+                runCalls.push([sql, ...values]);
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await upsertReviewCochangeCacheBatch(
+      db,
+      Array.from({ length: 41 }, (_value, index) => ({
+        filePath: `src/file-${index}.ts`,
+        repo: 'dayhaysoos/nimbus',
+        branch: 'entire/checkpoints/v1',
+        cochange: [],
+        lookbackSessions: 5,
+      }))
+    );
+
+    assert.equal(runCalls.length, 3);
+    const bindCounts = runCalls.map((call) => call.length - 1);
+    assert.deepEqual(bindCounts, [120, 120, 6]);
   }
 }
