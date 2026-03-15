@@ -17,11 +17,73 @@ import type {
   ReviewReadinessResponse,
 } from './types.js';
 
+const DEFAULT_WORKER_URL = 'https://nimbus-worker.ndejesus1227.workers.dev';
+const DEFAULT_WORKER_ORIGIN = new URL(DEFAULT_WORKER_URL).origin;
+const MISSING_API_KEY_WARNING =
+  'NIMBUS_API_KEY is required to use the hosted Nimbus worker. Set it in your env or .env file.';
+
+let hasWarnedMissingHostedApiKey = false;
+
+export function __resetApiClientStateForTests(): void {
+  hasWarnedMissingHostedApiKey = false;
+}
+
+function readNimbusApiKey(): string | null {
+  const value = process.env.NIMBUS_API_KEY;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function usesHostedWorker(workerUrl: string): boolean {
+  try {
+    return new URL(workerUrl).origin === DEFAULT_WORKER_ORIGIN;
+  } catch {
+    return false;
+  }
+}
+
+function maybeWarnMissingApiKey(workerUrl: string, apiKey: string | null): void {
+  if (apiKey || hasWarnedMissingHostedApiKey || !usesHostedWorker(workerUrl)) {
+    return;
+  }
+  hasWarnedMissingHostedApiKey = true;
+  process.stderr.write(`${MISSING_API_KEY_WARNING}\n`);
+}
+
+function withAuthHeaders(workerUrl: string, headers?: RequestInit['headers']): Record<string, string> {
+  const requestHeaders: Record<string, string> = {};
+  if (headers instanceof Headers) {
+    headers.forEach((value, key) => {
+      requestHeaders[key] = value;
+    });
+  } else if (Array.isArray(headers)) {
+    for (const [key, value] of headers) {
+      requestHeaders[key] = value;
+    }
+  } else if (headers) {
+    Object.assign(requestHeaders, headers as Record<string, string>);
+  }
+
+  const apiKey = readNimbusApiKey();
+  if (apiKey) {
+    requestHeaders['X-Nimbus-Api-Key'] = apiKey;
+  }
+  maybeWarnMissingApiKey(workerUrl, apiKey);
+  return requestHeaders;
+}
+
+async function workerFetch(workerUrl: string, url: string, init?: RequestInit): Promise<Response> {
+  const headers = withAuthHeaders(workerUrl, init?.headers);
+  return fetch(url, {
+    ...init,
+    headers,
+  });
+}
+
 /**
  * Get the worker URL from environment
  */
-export function getWorkerUrl(): string | undefined {
-  return process.env.NIMBUS_WORKER_URL;
+export function getWorkerUrl(): string {
+  return process.env.NIMBUS_WORKER_URL || DEFAULT_WORKER_URL;
 }
 
 /**
@@ -31,7 +93,7 @@ export async function createCheckpointJob(
   workerUrl: string,
   formData: FormData
 ): Promise<CheckpointJobCreateResponse> {
-  const response = await fetch(`${workerUrl}/api/checkpoint/jobs`, {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/checkpoint/jobs`, {
     method: 'POST',
     body: formData,
   });
@@ -48,7 +110,7 @@ export async function createCheckpointJob(
  * Get job by ID
  */
 export async function getJob(workerUrl: string, jobId: string): Promise<JobResponse> {
-  const response = await fetch(`${workerUrl}/api/jobs/${jobId}`);
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/jobs/${jobId}`);
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -65,7 +127,7 @@ export async function getJob(workerUrl: string, jobId: string): Promise<JobRespo
  * List all jobs
  */
 export async function listJobs(workerUrl: string): Promise<JobsListResponse> {
-  const response = await fetch(`${workerUrl}/api/jobs`);
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/jobs`);
 
   if (!response.ok) {
     const errorText = await response.text();
@@ -82,7 +144,7 @@ export async function createWorkspace(
   workerUrl: string,
   formData: FormData
 ): Promise<WorkspaceCreateResponse> {
-  const response = await fetch(`${workerUrl}/api/workspaces`, {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces`, {
     method: 'POST',
     body: formData,
   });
@@ -99,7 +161,7 @@ export async function createWorkspace(
  * Get workspace by ID
  */
 export async function getWorkspace(workerUrl: string, workspaceId: string): Promise<WorkspaceResponse> {
-  const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}`);
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}`);
 
   if (!response.ok) {
     if (response.status === 404) {
@@ -116,7 +178,7 @@ export async function getWorkspace(workerUrl: string, workspaceId: string): Prom
  * Delete workspace by ID
  */
 export async function deleteWorkspace(workerUrl: string, workspaceId: string): Promise<{ status: string }> {
-  const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}`, {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}`, {
     method: 'DELETE',
   });
 
@@ -144,7 +206,7 @@ export async function listWorkspaceFiles(
     url.searchParams.set('path', path);
   }
 
-  const response = await fetch(url.toString());
+  const response = await workerFetch(workerUrl, url.toString());
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Worker error (${response.status}): ${errorText}`);
@@ -168,7 +230,7 @@ export async function getWorkspaceFile(
     url.searchParams.set('max_bytes', String(Math.floor(maxBytes)));
   }
 
-  const response = await fetch(url.toString());
+  const response = await workerFetch(workerUrl, url.toString());
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Worker error (${response.status}): ${errorText}`);
@@ -196,7 +258,7 @@ export async function getWorkspaceDiff(
     url.searchParams.set('max_bytes', String(Math.floor(options.maxBytes)));
   }
 
-  const response = await fetch(url.toString());
+  const response = await workerFetch(workerUrl, url.toString());
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Worker error (${response.status}): ${errorText}`);
@@ -223,7 +285,7 @@ export async function preflightWorkspaceDeployment(
     };
   }
 ): Promise<WorkspaceDeploymentPreflightResponse> {
-  const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}/deploy/preflight`, {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/deploy/preflight`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -282,7 +344,7 @@ export async function createWorkspaceDeployment(
     };
   }
 ): Promise<WorkspaceDeploymentCreateResponse> {
-  const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}/deploy`, {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/deploy`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -304,7 +366,7 @@ export async function getWorkspaceDeployment(
   workspaceId: string,
   deploymentId: string
 ): Promise<WorkspaceDeploymentGetResponse> {
-  const response = await fetch(`${workerUrl}/api/workspaces/${workspaceId}/deployments/${deploymentId}`);
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/deployments/${deploymentId}`);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Worker error (${response.status}): ${errorText}`);
@@ -313,7 +375,7 @@ export async function getWorkspaceDeployment(
 }
 
 export async function getDeployReadiness(workerUrl: string): Promise<DeployReadinessResponse> {
-  const response = await fetch(`${workerUrl}/api/system/deploy-readiness`);
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/system/deploy-readiness`);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Worker error (${response.status}): ${errorText}`);
@@ -322,7 +384,7 @@ export async function getDeployReadiness(workerUrl: string): Promise<DeployReadi
 }
 
 export async function getReviewReadiness(workerUrl: string): Promise<ReviewReadinessResponse> {
-  const response = await fetch(`${workerUrl}/api/system/review-readiness`);
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/system/review-readiness`);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Worker error (${response.status}): ${errorText}`);
@@ -369,7 +431,7 @@ export async function createReview(
     typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
       ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
       : null;
-  const response = await fetch(`${workerUrl}/api/reviews`, {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -388,7 +450,7 @@ export async function createReview(
 }
 
 export async function getReview(workerUrl: string, reviewId: string): Promise<ReviewGetResponse> {
-  const response = await fetch(`${workerUrl}/api/reviews/${reviewId}`);
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/${reviewId}`);
   if (!response.ok) {
     const errorText = await response.text();
     throw new Error(`Worker error (${response.status}): ${errorText}`);
@@ -447,7 +509,7 @@ export async function streamReviewEvents(
   reviewId: string,
   onEvent: (event: ReviewEventEnvelope) => void | Promise<void>
 ): Promise<void> {
-  const response = await fetch(`${workerUrl}/api/reviews/${reviewId}/events`, {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/${reviewId}/events`, {
     headers: {
       Accept: 'text/event-stream',
     },

@@ -65,6 +65,14 @@ export interface Env {
   REVIEW_CONTEXT_REPO?: string;
   REVIEW_CONTEXT_GITHUB_TOKEN?: string;
   REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET?: string;
+  NIMBUS_HOSTED?: string;
+}
+
+export interface AuthContext {
+  accountId: string;
+  isAdmin: boolean;
+  isAuthenticated: boolean;
+  isHostedMode: boolean;
 }
 
 // Job status type

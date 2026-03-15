@@ -1,4 +1,4 @@
-import type { Env } from '../types.js';
+import type { AuthContext, Env } from '../types.js';
 import { loadRuntimeFlags } from '../lib/flags.js';
 import {
   appendWorkspaceTaskEvent,
@@ -17,7 +17,7 @@ import { processWorkspaceTask } from '../lib/workspace-task-runner.js';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Nimbus-Api-Key',
 };
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -178,7 +178,8 @@ export async function handleCreateWorkspaceTask(
   workspaceId: string,
   request: Request,
   env: Env,
-  ctx?: ExecutionContext
+  ctx?: ExecutionContext,
+  _authContext?: AuthContext
 ): Promise<Response> {
   try {
     const enabledResponse = await ensureWorkspaceAgentRuntimeEnabled(env);
@@ -341,7 +342,8 @@ export async function handleCreateWorkspaceTask(
 export async function handleGetWorkspaceTask(
   workspaceId: string,
   taskId: string,
-  env: Env
+  env: Env,
+  _authContext?: AuthContext
 ): Promise<Response> {
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
   if (workspaceMissing) {
@@ -360,7 +362,8 @@ export async function handleGetWorkspaceTaskEvents(
   workspaceId: string,
   taskId: string,
   request: Request,
-  env: Env
+  env: Env,
+  _authContext?: AuthContext
 ): Promise<Response> {
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
   if (workspaceMissing) {
@@ -385,7 +388,8 @@ export async function handleGetWorkspaceTaskEvents(
 export async function handleCancelWorkspaceTask(
   workspaceId: string,
   taskId: string,
-  env: Env
+  env: Env,
+  _authContext?: AuthContext
 ): Promise<Response> {
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
   if (workspaceMissing) {

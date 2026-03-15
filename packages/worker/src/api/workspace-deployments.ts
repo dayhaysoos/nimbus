@@ -1,4 +1,4 @@
-import type { Env } from '../types.js';
+import type { AuthContext, Env } from '../types.js';
 import { loadRuntimeFlags } from '../lib/flags.js';
 import {
   appendWorkspaceDeploymentEvent,
@@ -27,7 +27,7 @@ import {
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Nimbus-Api-Key',
 };
 
 const PROVIDER_PRECHECK_LEASE_MS = 30_000;
@@ -255,7 +255,8 @@ export async function handleCreateWorkspaceDeployment(
   workspaceId: string,
   request: Request,
   env: Env,
-  ctx?: ExecutionContext
+  ctx?: ExecutionContext,
+  _authContext?: AuthContext
 ): Promise<Response> {
   try {
     const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
@@ -708,7 +709,8 @@ export async function handleCreateWorkspaceDeployment(
 export async function handleWorkspaceDeploymentPreflight(
   workspaceId: string,
   request: Request,
-  env: Env
+  env: Env,
+  _authContext?: AuthContext
 ): Promise<Response> {
   const enabled = await ensureWorkspaceDeployEnabled(env);
   if (enabled) {
@@ -871,7 +873,8 @@ export async function handleWorkspaceDeploymentPreflight(
 export async function handleGetWorkspaceDeployment(
   workspaceId: string,
   deploymentId: string,
-  env: Env
+  env: Env,
+  _authContext?: AuthContext
 ): Promise<Response> {
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
   if (workspaceMissing) {
@@ -893,7 +896,8 @@ export async function handleGetWorkspaceDeploymentEvents(
   workspaceId: string,
   deploymentId: string,
   request: Request,
-  env: Env
+  env: Env,
+  _authContext?: AuthContext
 ): Promise<Response> {
   const workspaceMissing = await ensureWorkspaceExists(env, workspaceId);
   if (workspaceMissing) {
@@ -919,7 +923,8 @@ export async function handleCancelWorkspaceDeployment(
   workspaceId: string,
   deploymentId: string,
   env: Env,
-  ctx?: ExecutionContext
+  ctx?: ExecutionContext,
+  _authContext?: AuthContext
 ): Promise<Response> {
   const forceInlineDeploys = parseEnvBoolean(env.WORKSPACE_DEPLOY_FORCE_INLINE, false);
   const useDeployQueue = Boolean(env.WORKSPACE_DEPLOYS_QUEUE) && !forceInlineDeploys;

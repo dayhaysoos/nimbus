@@ -1,4 +1,4 @@
-import type { Env, ReviewRunStatus } from '../types.js';
+import type { AuthContext, Env, ReviewRunStatus } from '../types.js';
 import {
   ReviewIdempotencyConflictError,
   appendReviewEvent,
@@ -17,7 +17,7 @@ import { createReviewQueueMessage } from '../lib/review-queue.js';
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Nimbus-Api-Key',
 };
 
 // Keep review SSE polling at 1s to stay within Cloudflare per-invocation API request
@@ -475,7 +475,12 @@ async function sha256Hex(input: string): Promise<string> {
     .join('');
 }
 
-export async function handleCreateReview(request: Request, env: Env, _ctx?: ExecutionContext): Promise<Response> {
+export async function handleCreateReview(
+  request: Request,
+  env: Env,
+  _ctx?: ExecutionContext,
+  _authContext?: AuthContext
+): Promise<Response> {
   try {
     if (!env.REVIEWS_QUEUE || !env.ReviewRunner) {
       return jsonResponse(
@@ -714,7 +719,7 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
   }
 }
 
-export async function handleGetReview(reviewId: string, env: Env): Promise<Response> {
+export async function handleGetReview(reviewId: string, env: Env, _authContext?: AuthContext): Promise<Response> {
   let review = await getReviewRun(env.DB, reviewId);
   if (!review) {
     return jsonResponse({ error: 'Review not found' }, 404);
@@ -729,7 +734,12 @@ export async function handleGetReview(reviewId: string, env: Env): Promise<Respo
   return jsonResponse({ review });
 }
 
-export async function handleGetReviewEvents(reviewId: string, request: Request, env: Env): Promise<Response> {
+export async function handleGetReviewEvents(
+  reviewId: string,
+  request: Request,
+  env: Env,
+  _authContext?: AuthContext
+): Promise<Response> {
   try {
     const review = await getReviewRun(env.DB, reviewId);
     if (!review) {

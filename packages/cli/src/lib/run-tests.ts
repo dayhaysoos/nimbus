@@ -5,6 +5,7 @@ import { runCheckpointGitTests } from './checkpoint/git.test.js';
 import { runCheckpointArchiveTests } from './checkpoint/archive.test.js';
 import { runCheckpointDeployRequestTests } from './checkpoint/deploy-request.test.js';
 import { runCheckpointApiTests } from './api.checkpoint.test.js';
+import { runApiAuthTests } from './api.auth.test.js';
 import { runWorkspaceApiTests } from './api.workspace.test.js';
 import { runCheckpointCommandTests } from '../commands/deploy/checkpoint.test.js';
 import { runArgsParsingTests } from './args.test.js';
@@ -25,6 +26,7 @@ const TEST_CASES: TestCase[] = [
   { name: 'checkpoint-archive', run: runCheckpointArchiveTests },
   { name: 'checkpoint-deploy-request', run: runCheckpointDeployRequestTests },
   { name: 'checkpoint-api', run: runCheckpointApiTests },
+  { name: 'api-auth', run: runApiAuthTests },
   { name: 'workspace-api', run: runWorkspaceApiTests },
   { name: 'checkpoint-command', run: runCheckpointCommandTests },
   { name: 'args-parsing', run: runArgsParsingTests },
