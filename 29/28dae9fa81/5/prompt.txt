@@ -1,0 +1,139 @@
+We need to add local-first checkpoint and co-change resolution to Nimbus. Currently all checkpoint context and co-change lookups go through the GitHub API against the 
+remote `entire/checkpoints/v1` branch. This creates friction because you have to 
+push before you can run a review — the data already exists locally after a commit 
+but before a push.
+
+
+The goal: resolve checkpoint context and co-change data from the local git repo 
+first, only falling back to the GitHub API when local data is unavailable.
+
+
+Before implementing anything, answer these questions:
+
+
+1. **Where does checkpoint context resolution currently happen?** Trace the exact 
+   code path from `review create` through to where the `entire/checkpoints/v1` 
+   branch is queried for checkpoint metadata. Which files and functions are involved?
+
+
+2. **Where does co-change lookup currently happen?** Trace the path from context 
+   assembly through to the GitHub API calls that fetch session metadata from 
+   `entire/checkpoints/v1`. Which files and functions are involved?
+
+
+3. **Does the CLI currently have any local git access?** Is there any existing 
+   code that reads from the local git repo directly (e.g. using `simple-git`, 
+   `isomorphic-git`, or shelling out to `git`)? Or is all git interaction done 
+   via GitHub API?
+
+
+4. **Where does the CLI hand off to the worker?** At what point does the local 
+   CLI stop and the remote worker take over? Specifically — does checkpoint 
+   resolution happen in the CLI before the worker is called, or does the worker 
+   do it after receiving the request?
+
+
+5. **What data would need to travel from CLI to worker** if the CLI resolved 
+   checkpoint context locally and passed it in the request? What shape would 
+   that payload need to be?
+
+
+Do not change anything. Just report.
+
+---
+
+Add local co-change resolution to the CLI so reviews work before pushing to remote.
+
+Background: checkpoint context resolution already uses local git refs via 
+`git show <ref>:<path>` in `packages/cli/src/lib/entire/context.ts`. Co-change 
+lookup is the only remaining piece that requires a remote GitHub API call — it 
+currently happens worker-side in `fetchCochangeFromCheckpointBranch`. The goal 
+is to resolve co-change locally in the CLI and pass it to the worker so the 
+GitHub API call is not needed for local dev workflows.
+
+
+## What to build
+
+
+**CLI — local co-change resolver**
+
+
+Add `resolveCochangeFromLocalGit(...)` in 
+`packages/cli/src/lib/entire/context.ts`:
+
+
+- Use the same `git show <ref>:<path>` pattern already used in that file
+- Discover available `entire/checkpoints/v1` local refs via 
+  `listAvailableEntireCheckpointsRefs(…)`
+- For each recent checkpoint session (default lookback: 5 sessions, 
+  same as worker default):
+  - Read `metadata.json` from the session folder
+  - Extract `files_touched` array (confirmed field name from prior investigation)
+- Given a set of changed file paths, find sessions that touched any of 
+  those files, collect co-touched files, rank by frequency, return top N 
+  (default 20, same as worker default)
+- Return shape matching worker's existing co-change format:
+```typescript
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Before we merge the local co-change work, I want to verify it actually works end to end against real local data — not mocked test fixtures.
+
+
+Do the following without changing any code:
+
+
+1. **Inspect what `resolveCochangeFromLocalGit` would actually return** for the 
+   current HEAD commit in this repo. Call it directly (via a small throwaway 
+   script or debug log) with the actual changed paths from HEAD's diff and 
+   `cwd = process.cwd()`. Report:
+   - Which `entire/checkpoints/v1` ref it resolved
+   - How many sessions it scanned
+   - What `relatedByChangedPath` it returned — actual file paths and frequencies
+   - Whether it returned null or a valid result
+
+
+2. **Confirm the local ref exists** — run `git show-ref | grep entire/checkpoints` 
+   and report what refs are present locally.
+
+
+3. **Trace what would happen on `review create --commit HEAD`** — would local 
+   co-change fire, or would it fall back to GitHub API? Why?
+
+
+4. **If local co-change would return null or empty**, explain exactly why — is it 
+   because no local ref exists, because no sessions scanned, or because no 
+   changed paths matched any session's `files_touched`?
+
+
+Do not change anything. Just report real data from the actual repo state.
+
+---
+
+Give me the commit command (with a good commit message) for commiting and pushing this
+
+---
+
+uhh shouldn’tit be git add . 
+
+And thent he commit message?
