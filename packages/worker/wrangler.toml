@@ -98,8 +98,15 @@ image = "./Dockerfile"
 instance_type = "standard-2"
 
 [durable_objects]
-bindings = [{ name = "Sandbox", class_name = "Sandbox" }]
+bindings = [
+  { name = "Sandbox", class_name = "Sandbox" },
+  { name = "ReviewRunner", class_name = "ReviewRunner" }
+]
 
 [[migrations]]
 tag = "v1"
 new_sqlite_classes = ["Sandbox"]
+
+[[migrations]]
+tag = "v2"
+new_sqlite_classes = ["ReviewRunner"]

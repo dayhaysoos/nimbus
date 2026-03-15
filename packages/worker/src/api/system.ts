@@ -102,7 +102,19 @@ export async function handleGetDeployReadiness(env: Env): Promise<Response> {
 
 export async function handleGetReviewReadiness(env: Env): Promise<Response> {
   const hasWorkerGithubToken = typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim().length > 0;
+  const hasReviewsQueue = Boolean(env.REVIEWS_QUEUE);
+  const hasReviewRunner = Boolean(env.ReviewRunner);
   const checks = [
+    {
+      code: 'queue_binding_reviews',
+      ok: hasReviewsQueue,
+      details: hasReviewsQueue ? 'binding detected' : 'REVIEWS_QUEUE binding missing',
+    },
+    {
+      code: 'durable_object_binding_review_runner',
+      ok: hasReviewRunner,
+      details: hasReviewRunner ? 'binding detected' : 'ReviewRunner durable object binding missing',
+    },
     {
       code: 'review_context_github_token_configured',
       ok: hasWorkerGithubToken,

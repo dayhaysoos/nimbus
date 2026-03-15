@@ -42,12 +42,13 @@ import {
   shouldRetryWorkspaceDeploymentError,
 } from './lib/workspace-deployment-runner.js';
 import { parseReviewQueueMessage } from './lib/review-queue.js';
-import { processReviewRun, shouldRetryReviewError } from './lib/review-runner.js';
+import { ReviewRunner } from './review-runner-do.js';
+import { handleReviewQueueDispatch } from './lib/review-dispatch.js';
 import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';
 import type { Env } from './types.js';
 
-// Re-export Sandbox for Durable Object binding
-export { Sandbox };
+// Re-export Durable Objects for bindings
+export { Sandbox, ReviewRunner };
 
 // CORS headers for local development
 const corsHeaders = {
@@ -77,7 +78,7 @@ export default {
 
     // Route: POST /api/reviews - Create review run
     if (url.pathname === '/api/reviews' && request.method === 'POST') {
-      return handleCreateReview(request, env, ctx);
+      return handleCreateReview(request, env);
     }
 
     // Route: GET /api/reviews/:id/events - Review event stream
@@ -344,15 +345,7 @@ export default {
           continue;
         }
 
-        try {
-          await processReviewRun(env, payload.reviewId);
-        } catch (error) {
-          const details = error instanceof Error ? error.message : String(error);
-          console.error(`[review-queue] message handling failed: ${details}`);
-          if (shouldRetryReviewError(error)) {
-            message.retry();
-          }
-        }
+        await handleReviewQueueDispatch(env, payload, message);
         continue;
       }
 

@@ -3,6 +3,7 @@ import type { Sandbox } from '@cloudflare/sandbox';
 // Environment bindings
 export interface Env {
   Sandbox: DurableObjectNamespace<Sandbox>;
+  ReviewRunner?: DurableObjectNamespace;
   DB: D1Database;
   SOURCE_BUNDLES?: R2Bucket;
   WORKSPACE_ARTIFACTS?: R2Bucket;

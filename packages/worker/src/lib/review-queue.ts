@@ -4,14 +4,19 @@ export interface ReviewQueueMessage {
   type: 'review_requested';
   reviewId: string;
   queuedAt: string;
+  cochangeGithubToken?: string;
 }
 
-export function createReviewQueueMessage(reviewId: string): ReviewQueueMessage {
-  return {
+export function createReviewQueueMessage(reviewId: string, cochangeGithubToken?: string | null): ReviewQueueMessage {
+  const message: ReviewQueueMessage = {
     type: 'review_requested',
     reviewId,
     queuedAt: new Date().toISOString(),
   };
+  if (typeof cochangeGithubToken === 'string' && cochangeGithubToken.trim()) {
+    message.cochangeGithubToken = cochangeGithubToken.trim();
+  }
+  return message;
 }
 
 export function parseReviewQueueMessage(payload: unknown): ReviewQueueMessage {
@@ -29,10 +34,17 @@ export function parseReviewQueueMessage(payload: unknown): ReviewQueueMessage {
   if (typeof record.queuedAt !== 'string' || Number.isNaN(Date.parse(record.queuedAt))) {
     throw new Error('Invalid review queue payload queuedAt');
   }
+  if (record.cochangeGithubToken !== undefined && (typeof record.cochangeGithubToken !== 'string' || !record.cochangeGithubToken.trim())) {
+    throw new Error('Invalid review queue payload cochangeGithubToken');
+  }
 
-  return {
+  const parsed: ReviewQueueMessage = {
     type: 'review_requested',
     reviewId: record.reviewId,
     queuedAt: record.queuedAt,
   };
+  if (typeof record.cochangeGithubToken === 'string' && record.cochangeGithubToken.trim()) {
+    parsed.cochangeGithubToken = record.cochangeGithubToken.trim();
+  }
+  return parsed;
 }

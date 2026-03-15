@@ -13,7 +13,6 @@ import {
   updateReviewRunStatus,
 } from '../lib/db.js';
 import { createReviewQueueMessage } from '../lib/review-queue.js';
-import { runReviewInlineWithRetries } from '../lib/review-runner.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -46,6 +45,12 @@ function parseMaxRetryCount(value: string | undefined, fallbackAttempts: number)
   return Math.max(0, attempts - 1);
 }
 
+function readWorkerReviewGithubToken(env: Env): string | null {
+  return typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+    ? env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+    : null;
+}
+
 async function recoverStaleRunningReviewIfNeeded(
   env: Env,
   reviewId: string,
@@ -66,7 +71,8 @@ async function recoverStaleRunningReviewIfNeeded(
   }
 
   const maxRetries = parseMaxRetryCount(env.MAX_ATTEMPTS, 3);
-  if (review.attemptCount <= maxRetries) {
+  const workerGithubToken = readWorkerReviewGithubToken(env);
+  if (review.attemptCount <= maxRetries && env.REVIEWS_QUEUE && workerGithubToken) {
     await updateReviewRunStatus(env.DB, reviewId, 'queued', {
       report: null,
       markdownSummary: null,
@@ -85,13 +91,14 @@ async function recoverStaleRunningReviewIfNeeded(
         staleForSeconds: Math.floor(staleForMs / 1000),
       },
     });
-    if (env.REVIEWS_QUEUE) {
-      await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId));
-    }
+    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, workerGithubToken));
     return;
   }
 
-  const message = `Review execution timed out after ${Math.floor(staleForMs / 1000)}s in running state.`;
+  const missingTokenSuffix = !workerGithubToken
+    ? ' Automatic stale-run retry requires REVIEW_CONTEXT_GITHUB_TOKEN and cannot reuse per-request header tokens.'
+    : '';
+  const message = `Review execution timed out after ${Math.floor(staleForMs / 1000)}s in running state.${missingTokenSuffix}`;
   await updateReviewRunStatus(env.DB, reviewId, 'failed', {
     report: null,
     markdownSummary: null,
@@ -468,9 +475,9 @@ async function sha256Hex(input: string): Promise<string> {
     .join('');
 }
 
-export async function handleCreateReview(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+export async function handleCreateReview(request: Request, env: Env, _ctx?: ExecutionContext): Promise<Response> {
   try {
-    if (!env.REVIEWS_QUEUE && !ctx) {
+    if (!env.REVIEWS_QUEUE || !env.ReviewRunner) {
       return jsonResponse(
         {
           error: 'Review runner is unavailable',
@@ -485,9 +492,7 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);
     }
     const reviewGithubToken = readReviewGithubTokenHeader(request);
-    const workerGithubToken = typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-      ? env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-      : null;
+    const workerGithubToken = readWorkerReviewGithubToken(env);
     if (!reviewGithubToken && !workerGithubToken) {
       return jsonResponse(
         { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
@@ -590,32 +595,13 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
         const shouldReenqueueRecoveredReview =
           created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
         if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-          if (env.REVIEWS_QUEUE && workerGithubToken) {
-            await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
-          } else if (reviewGithubToken && ctx) {
-            ctx.waitUntil(
-              runReviewInlineWithRetries(env, created.review.id, 4, {
-                cochangeGithubToken: reviewGithubToken,
-              })
-            );
-          } else if (env.REVIEWS_QUEUE) {
-            await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
-          } else if (ctx) {
-            ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
-          }
+          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken));
 
           await appendReviewEvent(env.DB, {
             reviewId: created.review.id,
             eventType: 'review_enqueued',
             payload: {
-              mode:
-                env.REVIEWS_QUEUE && workerGithubToken
-                  ? 'queue'
-                  : reviewGithubToken && ctx
-                    ? 'inline'
-                    : env.REVIEWS_QUEUE
-                      ? 'queue'
-                      : 'inline',
+              mode: 'queue',
               reused: created.reused,
               recovered: shouldReenqueueRecoveredReview,
             },
@@ -685,32 +671,13 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       const shouldReenqueueRecoveredReview =
         created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
       if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-        if (env.REVIEWS_QUEUE && workerGithubToken) {
-          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
-        } else if (reviewGithubToken && ctx) {
-          ctx.waitUntil(
-            runReviewInlineWithRetries(env, created.review.id, 4, {
-              cochangeGithubToken: reviewGithubToken,
-            })
-          );
-        } else if (env.REVIEWS_QUEUE) {
-          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
-        } else if (ctx) {
-          ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
-        }
+        await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken));
 
         await appendReviewEvent(env.DB, {
           reviewId: created.review.id,
           eventType: 'review_enqueued',
           payload: {
-            mode:
-              env.REVIEWS_QUEUE && workerGithubToken
-                ? 'queue'
-                : reviewGithubToken && ctx
-                  ? 'inline'
-                  : env.REVIEWS_QUEUE
-                    ? 'queue'
-                    : 'inline',
+            mode: 'queue',
             reused: created.reused,
             recovered: shouldReenqueueRecoveredReview,
           },
