@@ -770,6 +770,28 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
         report?.provenance && report.provenance.reviewContextStats && typeof report.provenance.reviewContextStats === 'object'
           ? report.provenance.reviewContextStats
           : undefined,
+      coChange:
+        report?.provenance && report.provenance.coChange && typeof report.provenance.coChange === 'object'
+          ? report.provenance.coChange
+          : undefined,
+      contextResolution:
+        report?.provenance && report.provenance.contextResolution && typeof report.provenance.contextResolution === 'object'
+          ? report.provenance.contextResolution
+          : undefined,
+      outputSchemaVersion: report?.provenance?.outputSchemaVersion,
+      passArchitecture: report?.provenance?.passArchitecture,
+      validation:
+        report?.provenance && report.provenance.validation && typeof report.provenance.validation === 'object'
+          ? report.provenance.validation
+          : undefined,
+      furtherPassesLowYield:
+        report?.provenance && report.provenance.furtherPassesLowYield && typeof report.provenance.furtherPassesLowYield === 'object'
+          ? report.provenance.furtherPassesLowYield
+          : undefined,
+      advisories:
+        report?.provenance && Array.isArray(report.provenance.advisories)
+          ? report.provenance.advisories.filter((item): item is string => typeof item === 'string')
+          : undefined,
     },
     markdownSummary: record.markdown_summary,
   };
@@ -3223,7 +3245,11 @@ export async function getReviewCochangeCacheBatch(
     filePaths: string[];
   }
 ): Promise<Array<{ filePath: string; cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>; lastUpdated: string; lookbackSessions: number }>> {
-  const READ_CHUNK_SIZE = 200;
+  const READ_CHUNK_SIZE = 20;
+  const isBindLimitError = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error);
+    return /too many sql variables|sqlite_error/i.test(message);
+  };
   const uniquePaths = Array.from(new Set(input.filePaths.map((value) => value.trim()).filter(Boolean)));
   if (uniquePaths.length === 0) {
     return [];
@@ -3231,19 +3257,32 @@ export async function getReviewCochangeCacheBatch(
 
   const output: Array<{ filePath: string; cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>; lastUpdated: string; lookbackSessions: number }> = [];
 
+  const queryChunk = async (chunk: string[]): Promise<Array<{ file_path: string; cochange_json: string; last_updated: string; lookback_sessions: number }>> => {
+    const placeholders = chunk.map(() => '?').join(', ');
+    try {
+      const records = await db
+        .prepare(
+          `SELECT file_path, cochange_json, last_updated, lookback_sessions
+           FROM review_cochange_cache
+           WHERE repo = ? AND file_path IN (${placeholders})`
+        )
+        .bind(input.repo, ...chunk)
+        .all<{ file_path: string; cochange_json: string; last_updated: string; lookback_sessions: number }>();
+      return Array.isArray(records.results) ? records.results : [];
+    } catch (error) {
+      if (chunk.length > 1 && isBindLimitError(error)) {
+        const midpoint = Math.ceil(chunk.length / 2);
+        const left = await queryChunk(chunk.slice(0, midpoint));
+        const right = await queryChunk(chunk.slice(midpoint));
+        return [...left, ...right];
+      }
+      throw error;
+    }
+  };
+
   for (let index = 0; index < uniquePaths.length; index += READ_CHUNK_SIZE) {
     const chunk = uniquePaths.slice(index, index + READ_CHUNK_SIZE);
-    const placeholders = chunk.map(() => '?').join(', ');
-    const records = await db
-      .prepare(
-        `SELECT file_path, cochange_json, last_updated, lookback_sessions
-         FROM review_cochange_cache
-         WHERE repo = ? AND file_path IN (${placeholders})`
-      )
-      .bind(input.repo, ...chunk)
-      .all<{ file_path: string; cochange_json: string; last_updated: string; lookback_sessions: number }>();
-
-    const rows = Array.isArray(records.results) ? records.results : [];
+    const rows = await queryChunk(chunk);
     output.push(
       ...rows.map((record) => {
         let cochange: Array<{ path: string; frequency: number; sessionIds: string[] }> = [];
@@ -3316,13 +3355,25 @@ export async function upsertReviewCochangeCacheBatch(
     lastUpdated?: string;
   }>
 ): Promise<void> {
-  const WRITE_CHUNK_SIZE = 100;
+  const WRITE_CHUNK_SIZE = 20;
+  const isBindLimitError = (error: unknown): boolean => {
+    const message = error instanceof Error ? error.message : String(error);
+    return /too many sql variables|sqlite_error/i.test(message);
+  };
   if (input.length === 0) {
     return;
   }
 
-  for (let index = 0; index < input.length; index += WRITE_CHUNK_SIZE) {
-    const chunk = input.slice(index, index + WRITE_CHUNK_SIZE);
+  const executeChunk = async (
+    chunk: Array<{
+      filePath: string;
+      repo: string;
+      branch: string;
+      cochange: Array<{ path: string; frequency: number; sessionIds: string[] }>;
+      lookbackSessions: number;
+      lastUpdated?: string;
+    }>
+  ): Promise<void> => {
     const valuesSql = chunk.map(() => '(?, ?, ?, ?, ?, ?)').join(', ');
     const bindings: Array<string | number> = [];
     for (const entry of chunk) {
@@ -3336,18 +3387,33 @@ export async function upsertReviewCochangeCacheBatch(
       );
     }
 
-    await db
-      .prepare(
-        `INSERT INTO review_cochange_cache (file_path, repo, branch, cochange_json, lookback_sessions, last_updated)
-         VALUES ${valuesSql}
-         ON CONFLICT(file_path, repo) DO UPDATE SET
-           branch = excluded.branch,
-           cochange_json = excluded.cochange_json,
-           lookback_sessions = excluded.lookback_sessions,
-           last_updated = excluded.last_updated`
-      )
-      .bind(...bindings)
-      .run();
+    try {
+      await db
+        .prepare(
+          `INSERT INTO review_cochange_cache (file_path, repo, branch, cochange_json, lookback_sessions, last_updated)
+           VALUES ${valuesSql}
+           ON CONFLICT(file_path, repo) DO UPDATE SET
+             branch = excluded.branch,
+             cochange_json = excluded.cochange_json,
+             lookback_sessions = excluded.lookback_sessions,
+             last_updated = excluded.last_updated`
+        )
+        .bind(...bindings)
+        .run();
+    } catch (error) {
+      if (chunk.length > 1 && isBindLimitError(error)) {
+        const midpoint = Math.ceil(chunk.length / 2);
+        await executeChunk(chunk.slice(0, midpoint));
+        await executeChunk(chunk.slice(midpoint));
+        return;
+      }
+      throw error;
+    }
+  };
+
+  for (let index = 0; index < input.length; index += WRITE_CHUNK_SIZE) {
+    const chunk = input.slice(index, index + WRITE_CHUNK_SIZE);
+    await executeChunk(chunk);
   }
 }
 

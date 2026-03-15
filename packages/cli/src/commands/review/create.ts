@@ -75,6 +75,46 @@ interface CommitResolution {
   commitDiffPatch: string;
 }
 
+function formatReviewExecutionFailure(
+  status: string,
+  finalReview: { error?: { code: string; message: string } },
+  lastFailureEvent: Record<string, unknown> | null
+): string {
+  const details: string[] = [];
+
+  if (finalReview.error?.code && finalReview.error?.message) {
+    details.push(`${finalReview.error.code}: ${finalReview.error.message}`);
+  }
+
+  if (lastFailureEvent) {
+    const eventType = typeof lastFailureEvent.type === 'string' ? lastFailureEvent.type : null;
+    const reason = typeof lastFailureEvent.reason === 'string' ? lastFailureEvent.reason : null;
+    const githubResponseBody =
+      typeof lastFailureEvent.githubResponseBody === 'string' ? lastFailureEvent.githubResponseBody : null;
+    const code = typeof lastFailureEvent.code === 'string' ? lastFailureEvent.code : null;
+    const message = typeof lastFailureEvent.message === 'string' ? lastFailureEvent.message : null;
+
+    if (eventType) {
+      details.push(`event=${eventType}`);
+    }
+    if (reason) {
+      details.push(`reason=${reason}`);
+    }
+    if (code && message) {
+      details.push(`${code}: ${message}`);
+    }
+    if (githubResponseBody) {
+      details.push(`details=${githubResponseBody}`);
+    }
+  }
+
+  if (details.length === 0) {
+    return `Review flow failed at review execution: review ended with status ${status}`;
+  }
+
+  return `Review flow failed at review execution: review ended with status ${status} (${details.join(' | ')})`;
+}
+
 let createWorkspaceForCommitFlow: (source: {
   commitSha: string;
   checkpointId: string | null;
@@ -339,10 +379,18 @@ export async function createReviewFromCommitCommand(
 
     p.log.info(`Streaming review events for ${reviewId}`);
     let terminalStatus: string | null = null;
+    let lastFailureEvent: Record<string, unknown> | null = null;
     await streamReviewEventsForCommitFlow(workerUrl, reviewId, async (event) => {
       const line = formatEvent(event);
       if (line) {
         console.log(line);
+      }
+      if (
+        event.data.type === 'review_context_cochange_failed' ||
+        event.data.type === 'review_context_assembly_failed' ||
+        event.data.type === 'review_failed'
+      ) {
+        lastFailureEvent = event.data;
       }
       if (event.data.type === 'terminal' && typeof event.data.status === 'string') {
         terminalStatus = event.data.status;
@@ -352,7 +400,7 @@ export async function createReviewFromCommitCommand(
     const final = await getReviewForCommitFlow(workerUrl, reviewId);
     const status = typeof terminalStatus === 'string' ? terminalStatus : final.review.status;
     if (status !== 'succeeded') {
-      throw new Error(`Review flow failed at review execution: review ended with status ${status}`);
+      throw new Error(formatReviewExecutionFailure(status, final.review, lastFailureEvent));
     }
 
     console.log(`Report URL: ${reviewResultUrl}`);

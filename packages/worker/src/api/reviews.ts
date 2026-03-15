@@ -10,9 +10,9 @@ import {
   getWorkspaceDeployment,
   hasReviewEvent,
   listReviewEvents,
+  updateReviewRunStatus,
 } from '../lib/db.js';
 import { createReviewQueueMessage } from '../lib/review-queue.js';
-import { runReviewInlineWithRetries } from '../lib/review-runner.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -26,6 +26,94 @@ const REVIEW_STREAM_POLL_INTERVAL_MS = 1000;
 const REVIEW_STREAM_HEARTBEAT_INTERVAL_MS = 1000;
 const REVIEW_TERMINAL_EVENT_GRACE_MS = 1000;
 const REVIEW_STREAM_STATUS_REFRESH_POLLS = 5;
+const REVIEW_STALE_RUNNING_GRACE_MS = 60_000;
+
+function parseTimeoutMs(value: string | undefined, fallback: number): number {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseMaxRetryCount(value: string | undefined, fallbackAttempts: number): number {
+  const parsedAttempts = Number.parseInt(value ?? '', 10);
+  const attempts = Number.isFinite(parsedAttempts) && parsedAttempts > 0 ? parsedAttempts : fallbackAttempts;
+  return Math.max(0, attempts - 1);
+}
+
+function readWorkerReviewGithubToken(env: Env): string | null {
+  return typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+    ? env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+    : null;
+}
+
+async function recoverStaleRunningReviewIfNeeded(
+  env: Env,
+  reviewId: string,
+  review: { status: ReviewRunStatus; startedAt: string | null; updatedAt: string; createdAt: string; attemptCount: number }
+): Promise<void> {
+  if (review.status !== 'running') {
+    return;
+  }
+  const attemptTimeoutMs = parseTimeoutMs(env.ATTEMPT_TIMEOUT_MS, 600_000);
+  const staleThresholdMs = attemptTimeoutMs + REVIEW_STALE_RUNNING_GRACE_MS;
+  const startedMs = Date.parse(review.startedAt ?? review.updatedAt ?? review.createdAt);
+  if (!Number.isFinite(startedMs)) {
+    return;
+  }
+  const staleForMs = Date.now() - startedMs;
+  if (staleForMs < staleThresholdMs) {
+    return;
+  }
+
+  const maxRetries = parseMaxRetryCount(env.MAX_ATTEMPTS, 3);
+  const workerGithubToken = readWorkerReviewGithubToken(env);
+  if (review.attemptCount <= maxRetries && env.REVIEWS_QUEUE && workerGithubToken) {
+    await updateReviewRunStatus(env.DB, reviewId, 'queued', {
+      report: null,
+      markdownSummary: null,
+      startedAt: null,
+      finishedAt: null,
+      errorCode: 'retry_scheduled',
+      errorMessage: `Review execution stalled in running state for ${Math.floor(staleForMs / 1000)}s.`,
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_retry_scheduled',
+      payload: {
+        attemptCount: review.attemptCount,
+        maxRetries,
+        reason: 'stale_running_timeout',
+        staleForSeconds: Math.floor(staleForMs / 1000),
+      },
+    });
+    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, workerGithubToken));
+    return;
+  }
+
+  const missingTokenSuffix = !workerGithubToken
+    ? ' Automatic stale-run retry requires REVIEW_CONTEXT_GITHUB_TOKEN and cannot reuse per-request header tokens.'
+    : '';
+  const message = `Review execution timed out after ${Math.floor(staleForMs / 1000)}s in running state.${missingTokenSuffix}`;
+  await updateReviewRunStatus(env.DB, reviewId, 'failed', {
+    report: null,
+    markdownSummary: null,
+    errorCode: 'review_execution_timeout',
+    errorMessage: message,
+  });
+  await appendReviewEvent(env.DB, {
+    reviewId,
+    eventType: 'review_failed',
+    payload: {
+      code: 'review_execution_timeout',
+      message,
+    },
+  });
+}
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -387,9 +475,9 @@ async function sha256Hex(input: string): Promise<string> {
     .join('');
 }
 
-export async function handleCreateReview(request: Request, env: Env, ctx?: ExecutionContext): Promise<Response> {
+export async function handleCreateReview(request: Request, env: Env, _ctx?: ExecutionContext): Promise<Response> {
   try {
-    if (!env.REVIEWS_QUEUE && !ctx) {
+    if (!env.REVIEWS_QUEUE || !env.ReviewRunner) {
       return jsonResponse(
         {
           error: 'Review runner is unavailable',
@@ -404,9 +492,7 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);
     }
     const reviewGithubToken = readReviewGithubTokenHeader(request);
-    const workerGithubToken = typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-      ? env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-      : null;
+    const workerGithubToken = readWorkerReviewGithubToken(env);
     if (!reviewGithubToken && !workerGithubToken) {
       return jsonResponse(
         { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
@@ -509,32 +595,13 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
         const shouldReenqueueRecoveredReview =
           created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
         if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-          if (env.REVIEWS_QUEUE && workerGithubToken) {
-            await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
-          } else if (reviewGithubToken && ctx) {
-            ctx.waitUntil(
-              runReviewInlineWithRetries(env, created.review.id, 4, {
-                cochangeGithubToken: reviewGithubToken,
-              })
-            );
-          } else if (env.REVIEWS_QUEUE) {
-            await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
-          } else if (ctx) {
-            ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
-          }
+          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken));
 
           await appendReviewEvent(env.DB, {
             reviewId: created.review.id,
             eventType: 'review_enqueued',
             payload: {
-              mode:
-                env.REVIEWS_QUEUE && workerGithubToken
-                  ? 'queue'
-                  : reviewGithubToken && ctx
-                    ? 'inline'
-                    : env.REVIEWS_QUEUE
-                      ? 'queue'
-                      : 'inline',
+              mode: 'queue',
               reused: created.reused,
               recovered: shouldReenqueueRecoveredReview,
             },
@@ -604,32 +671,13 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
       const shouldReenqueueRecoveredReview =
         created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
       if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-        if (env.REVIEWS_QUEUE && workerGithubToken) {
-          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
-        } else if (reviewGithubToken && ctx) {
-          ctx.waitUntil(
-            runReviewInlineWithRetries(env, created.review.id, 4, {
-              cochangeGithubToken: reviewGithubToken,
-            })
-          );
-        } else if (env.REVIEWS_QUEUE) {
-          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id));
-        } else if (ctx) {
-          ctx.waitUntil(runReviewInlineWithRetries(env, created.review.id));
-        }
+        await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken));
 
         await appendReviewEvent(env.DB, {
           reviewId: created.review.id,
           eventType: 'review_enqueued',
           payload: {
-            mode:
-              env.REVIEWS_QUEUE && workerGithubToken
-                ? 'queue'
-                : reviewGithubToken && ctx
-                  ? 'inline'
-                  : env.REVIEWS_QUEUE
-                    ? 'queue'
-                    : 'inline',
+            mode: 'queue',
             reused: created.reused,
             recovered: shouldReenqueueRecoveredReview,
           },
@@ -667,7 +715,13 @@ export async function handleCreateReview(request: Request, env: Env, ctx?: Execu
 }
 
 export async function handleGetReview(reviewId: string, env: Env): Promise<Response> {
-  const review = await getReviewRun(env.DB, reviewId);
+  let review = await getReviewRun(env.DB, reviewId);
+  if (!review) {
+    return jsonResponse({ error: 'Review not found' }, 404);
+  }
+
+  await recoverStaleRunningReviewIfNeeded(env, reviewId, review);
+  review = await getReviewRun(env.DB, reviewId);
   if (!review) {
     return jsonResponse({ error: 'Review not found' }, 404);
   }
@@ -761,7 +815,9 @@ export async function handleGetReviewEvents(reviewId: string, request: Request, 
                 );
                 break;
               }
-              currentStatus = latest.status;
+              await recoverStaleRunningReviewIfNeeded(env, reviewId, latest);
+              const refreshed = await getReviewRun(env.DB, reviewId);
+              currentStatus = refreshed?.status ?? latest.status;
             }
 
             if (currentStatus !== 'queued' && currentStatus !== 'running' && terminalGraceDeadline === null) {

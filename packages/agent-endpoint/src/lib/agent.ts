@@ -149,38 +149,34 @@ export async function callOpenRouter(input: {
   httpReferer?: string;
   xTitle?: string;
 }): Promise<string> {
-  const controller = new AbortController();
-  let timedOut = false;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  const timeoutPromise = new Promise<Response>((_, reject) => {
-    timeoutId = setTimeout(() => {
-      timedOut = true;
-      controller.abort('openrouter_timeout');
-      reject(new Error('openrouter_timeout'));
-    }, 90_000);
-  });
   let response: Response;
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
   try {
-    response = await Promise.race([
-      fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${input.apiKey}`,
-          ...(input.httpReferer ? { 'HTTP-Referer': input.httpReferer } : {}),
-          ...(input.xTitle ? { 'X-Title': input.xTitle } : {}),
-        },
-        body: JSON.stringify({
-          model: input.model,
-          response_format: { type: 'json_object' },
-          messages: [{ role: 'user', content: input.prompt }],
-        }),
-        signal: controller.signal,
+    const signal =
+      typeof AbortSignal.timeout === 'function'
+        ? AbortSignal.timeout(90_000)
+        : (() => {
+            const controller = new AbortController();
+            timeoutId = setTimeout(() => controller.abort('openrouter_timeout'), 90_000);
+            return controller.signal;
+          })();
+    response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${input.apiKey}`,
+        ...(input.httpReferer ? { 'HTTP-Referer': input.httpReferer } : {}),
+        ...(input.xTitle ? { 'X-Title': input.xTitle } : {}),
+      },
+      body: JSON.stringify({
+        model: input.model,
+        response_format: { type: 'json_object' },
+        messages: [{ role: 'user', content: input.prompt }],
       }),
-      timeoutPromise,
-    ]);
+      signal,
+    });
   } catch (error) {
-    if (timedOut || (error instanceof Error && error.name === 'AbortError')) {
+    if (error instanceof Error && (error.name === 'AbortError' || /timeout|timed out|aborted/i.test(error.message))) {
       throw new AgentEndpointError('openrouter_request_timeout', 504, {
         message: 'OpenRouter request timed out after 90 seconds',
       });

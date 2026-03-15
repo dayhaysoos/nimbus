@@ -47,6 +47,18 @@ function createReviewApiEnv(options?: {
         state.queueSendCount += 1;
       },
     },
+    ReviewRunner: {
+      idFromName(name: string) {
+        return `do-${name}`;
+      },
+      get() {
+        return {
+          async fetch() {
+            return new Response(JSON.stringify({ accepted: true }), { status: 202 });
+          },
+        };
+      },
+    },
     DB: {
       prepare(sql: string) {
         if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
@@ -348,6 +360,18 @@ export async function runReviewApiTests(): Promise<void> {
 
   {
     const { env } = createReviewApiEnv();
+    delete (env as { ReviewRunner?: unknown }).ReviewRunner;
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-missing-runner' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 503);
+  }
+
+  {
+    const { env } = createReviewApiEnv();
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
       body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
@@ -478,8 +502,8 @@ export async function runReviewApiTests(): Promise<void> {
     });
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 202);
-    assert.equal(state.queueSendCount, 0);
-    assert.equal(waitUntilCount, 1);
+    assert.equal(state.queueSendCount, 1);
+    assert.equal(waitUntilCount, 0);
     assert.equal(JSON.stringify(state.createdRequestPayload ?? {}).includes('ghp_user_token_123'), false);
     assert.equal((state.createdRequestPayload as Record<string, unknown> | null)?.['review_context_github_token'], undefined);
   }
@@ -657,6 +681,15 @@ export async function runReviewApiTests(): Promise<void> {
     state.reviewStatus = 'succeeded';
     const response = await handleGetReview('rev_abcd1234', env as never);
     assert.equal(response.status, 200);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ reviewExists: true, workerReviewGithubToken: '' });
+    state.reviewStatus = 'running';
+    (env as { ATTEMPT_TIMEOUT_MS?: string }).ATTEMPT_TIMEOUT_MS = '1';
+    const response = await handleGetReview('rev_abcd1234', env as never);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 0);
   }
 
   {

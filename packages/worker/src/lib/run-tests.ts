@@ -18,10 +18,13 @@ import { runWorkspaceDeploymentRunnerTests } from './workspace-deployment-runner
 import { runWorkspaceToolchainTests } from './workspace-toolchain.test.js';
 import { runWorkspaceDeployProviderTests } from './workspace-deploy-provider.test.js';
 import { runReviewQueueTests } from './review-queue.test.js';
+import { runReviewQueueDispatchTests } from '../review-queue-dispatch.test.js';
 import { runReviewRunnerTests } from './review-runner.test.js';
+import { runReviewRunnerDurableObjectTests } from '../review-runner-do.test.js';
 import { runReviewDbTests } from './db.review.test.js';
 import { runReviewOutputV2Tests } from './review-output-v2.test.js';
 import { runReviewApiTests } from '../api/reviews.test.js';
+import { runSystemApiTests } from '../api/system.test.js';
 
 type TestCase = {
   name: string;
@@ -46,10 +49,13 @@ const TEST_CASES: TestCase[] = [
   { name: 'workspace-toolchain', run: runWorkspaceToolchainTests },
   { name: 'workspace-deploy-provider', run: runWorkspaceDeployProviderTests },
   { name: 'review-queue', run: runReviewQueueTests },
+  { name: 'review-queue-dispatch', run: runReviewQueueDispatchTests },
+  { name: 'review-runner-do', run: runReviewRunnerDurableObjectTests },
   { name: 'review-db', run: runReviewDbTests },
   { name: 'review-output-v2', run: runReviewOutputV2Tests },
   { name: 'review-runner', run: runReviewRunnerTests },
   { name: 'review-api', run: runReviewApiTests },
+  { name: 'system-api', run: runSystemApiTests },
   { name: 'job-events-api', run: runJobEventsApiTests },
   { name: 'checkpoint-db', run: runCheckpointDbTests },
   { name: 'checkpoint-jobs-api', run: runCheckpointJobsApiTests },

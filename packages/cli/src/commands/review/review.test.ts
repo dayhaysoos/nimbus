@@ -535,6 +535,110 @@ export async function runReviewCommandTests(): Promise<void> {
     }
 
     {
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_failed'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      setReviewPreflightTokenReadinessResolverForTests(async () => true);
+      setReviewCommitResolverForTests(() => ({
+        commitSha: 'e'.repeat(40),
+        checkpointId: '8a513f56ed70',
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewCreateFlowForTests({
+        resolveWorkspaceSource: () => ({
+          commitSha: 'e'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          sourceRef: null,
+          projectRoot: '.',
+        }),
+        createWorkspace: async () => ({
+          workspace: {
+            id: 'ws_failed',
+            status: 'ready',
+            sourceType: 'checkpoint',
+            checkpointId: '8a513f56ed70',
+            commitSha: 'e'.repeat(40),
+            sourceRef: null,
+            sourceProjectRoot: '.',
+            sourceBundleKey: 'bundle',
+            sourceBundleSha256: 'f'.repeat(64),
+            sourceBundleBytes: 123,
+            sandboxId: 'workspace-ws_failed',
+            baselineReady: true,
+            errorCode: null,
+            errorMessage: null,
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:00.000Z',
+            deletedAt: null,
+            eventsUrl: '/api/workspaces/ws_failed/events',
+          },
+        }),
+        deployWorkspace: async () => ({
+          id: 'dep_failed',
+          workspaceId: 'ws_failed',
+          status: 'succeeded',
+          provider: 'simulated',
+          idempotencyKey: 'idem-deploy',
+          maxRetries: 2,
+          attemptCount: 1,
+          sourceSnapshotSha256: null,
+          sourceBundleKey: 'bundle',
+          deployedUrl: 'https://example.dev',
+          providerDeploymentId: null,
+          cancelRequestedAt: null,
+          startedAt: '2026-03-11T00:00:00.000Z',
+          finishedAt: '2026-03-11T00:00:30.000Z',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          updatedAt: '2026-03-11T00:00:30.000Z',
+          provenance: {},
+          toolchain: null,
+          dependencyCacheKey: null,
+          dependencyCacheHit: false,
+          remediations: [],
+        }),
+        createReview: async () => ({
+          reviewId: 'rev_failed',
+          status: 'queued',
+          eventsUrl: '/api/reviews/rev_failed/events',
+          resultUrl: '/reviews/rev_failed',
+        }),
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({
+            id: '1',
+            data: {
+              type: 'review_context_cochange_failed',
+              reason: 'cache_error',
+              githubResponseBody: 'D1_ERROR: too many SQL variables',
+            },
+          });
+          await onEvent({ id: '2', data: { type: 'terminal', status: 'failed' } });
+        },
+        getReview: async () => ({
+          review: {
+            ...createReviewResponseBody().review,
+            status: 'failed',
+            error: {
+              code: 'review_context_cache_error',
+              message: 'Co-change context cache read/write failed (cache_error).',
+            },
+          },
+        }) as unknown as { review: any },
+      });
+
+      await assert.rejects(
+        () => createReviewFromCommitCommand({ commitish: 'HEAD' }),
+        /review_context_cache_error: Co-change context cache read\/write failed \(cache_error\).*event=review_context_cochange_failed.*reason=cache_error.*details=D1_ERROR: too many SQL variables/
+      );
+      setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewPreflightTokenReadinessResolverForTests(async () => true);
+      setReviewCreateFlowForTests(null);
+    }
+
+    {
       let capturedProvenance: Record<string, unknown> | null = null;
       const longPatch = `diff --git a/large.txt b/large.txt\n@@ -1 +1 @@\n-${'a'.repeat(140000)}\n+${'b'.repeat(140000)}\n`;
       setReviewPreflightContextResolverForTests(async () => ({

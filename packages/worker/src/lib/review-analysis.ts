@@ -282,6 +282,17 @@ function isWorkerToWorkerFetchRestriction(status: number, responseBody: string):
   return status === 404 && /error\s*code\s*:\s*1042/i.test(responseBody);
 }
 
+function isTimeoutLikeError(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+  if (error.name === 'AbortError') {
+    return true;
+  }
+  const message = error.message.toLowerCase();
+  return message.includes('timeout') || message.includes('timed out') || message.includes('aborted');
+}
+
 function redactReviewText(value: string | null): string | null {
   if (!value) {
     return null;
@@ -668,7 +679,8 @@ async function executeReviewTool(
 class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
   constructor(
     private readonly endpoint: string,
-    private readonly authToken: string | null
+    private readonly authToken: string | null,
+    private readonly serviceBinding: Fetcher | null
   ) {}
 
   async next(input: {
@@ -678,39 +690,38 @@ class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
     step: number;
     history: ReviewAgentHistoryEntry[];
   }): Promise<ReviewAgentAction> {
-    const controller = new AbortController();
-    let timedOut = false;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    const timeoutPromise = new Promise<Response>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        timedOut = true;
-        controller.abort('review_provider_timeout');
-        reject(new Error('review_provider_timeout'));
-      }, REVIEW_PROVIDER_TIMEOUT_MS);
-    });
     let response: Response;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
     try {
-      response = await Promise.race([
-        fetch(this.endpoint, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
-          },
-          body: JSON.stringify({
-            mode: 'workspace_task',
-            prompt: input.prompt,
-            model: input.model,
-            maxSteps: input.maxSteps,
-            step: input.step,
-            history: input.history,
-          }),
-          signal: controller.signal,
+      const requestFetch = this.serviceBinding
+        ? this.serviceBinding.fetch.bind(this.serviceBinding)
+        : fetch;
+      const signal =
+        typeof AbortSignal.timeout === 'function'
+          ? AbortSignal.timeout(REVIEW_PROVIDER_TIMEOUT_MS)
+          : (() => {
+              const controller = new AbortController();
+              timeoutId = setTimeout(() => controller.abort('review_provider_timeout'), REVIEW_PROVIDER_TIMEOUT_MS);
+              return controller.signal;
+            })();
+      response = await requestFetch(this.endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+        },
+        body: JSON.stringify({
+          mode: 'workspace_task',
+          prompt: input.prompt,
+          model: input.model,
+          maxSteps: input.maxSteps,
+          step: input.step,
+          history: input.history,
         }),
-        timeoutPromise,
-      ]);
+        signal,
+      });
     } catch (error) {
-      if (timedOut || (error instanceof Error && error.name === 'AbortError')) {
+      if (isTimeoutLikeError(error)) {
         throw new Error(
           `Review analysis provider request timed out after ${Math.floor(REVIEW_PROVIDER_TIMEOUT_MS / 1000)} seconds`
         );
@@ -967,7 +978,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       });
     }
 
-    const provider = new CloudflareAgentSdkReviewProvider(endpoint, authToken);
+    const provider = new CloudflareAgentSdkReviewProvider(endpoint, authToken, env.AGENT_ENDPOINT ?? null);
     const policy: ReviewCommandPolicy = {
       commandAllow: [],
       commandDeny: ['git ', 'rm ', 'npm ', 'pnpm ', 'yarn ', 'bun ', 'mkdir ', 'mv ', 'cp ', 'touch '],

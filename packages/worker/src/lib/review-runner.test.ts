@@ -7,6 +7,7 @@ function createReviewRunnerEnv(options?: {
   deploymentEvents?: Array<{ seq: number; event_type: string; payload_json: string; created_at: string }>;
   failReviewFindingsInsertOnce?: boolean;
   failReviewEventTypeOnce?: string;
+  failCochangeCacheWriteOnce?: boolean;
   envOverrides?: Record<string, unknown>;
   workspaceRecord?: Record<string, unknown> | null;
   workspaceTaskRecord?: Record<string, unknown> | null;
@@ -23,6 +24,8 @@ function createReviewRunnerEnv(options?: {
     events: Array<{ eventType: string; payload: unknown }>;
     reportJson: string | null;
     markdownSummary: string | null;
+    startedAt: string | null;
+    updatedAt: string;
     findingInsertFailuresRemaining: number;
     errorCode: string | null;
     failedEventTypes: Set<string>;
@@ -34,10 +37,13 @@ function createReviewRunnerEnv(options?: {
     events: [] as Array<{ eventType: string; payload: unknown }>,
     reportJson: null as string | null,
     markdownSummary: null as string | null,
+    startedAt: null as string | null,
+    updatedAt: '2026-03-11T00:00:00.000Z',
     findingInsertFailuresRemaining: options?.failReviewFindingsInsertOnce ? 1 : 0,
     errorCode: null as string | null,
     failedEventTypes: new Set<string>(),
   };
+  let cochangeCacheWriteFailuresRemaining = options?.failCochangeCacheWriteOnce ? 1 : 0;
 
   const payload = {
     target: {
@@ -81,6 +87,8 @@ function createReviewRunnerEnv(options?: {
                   }
                   state.status = 'running';
                   state.attemptCount += 1;
+                  state.startedAt = '2026-03-11T00:00:00.000Z';
+                  state.updatedAt = '2026-03-11T00:00:00.000Z';
                   return { success: true, meta: { changes: 1 } };
                 },
               };
@@ -106,14 +114,14 @@ function createReviewRunnerEnv(options?: {
                     provenance_json: JSON.stringify(payload.provenance),
                     last_event_seq: state.events.length,
                     attempt_count: state.attemptCount,
-                    started_at: null,
+                    started_at: state.startedAt,
                     finished_at: null,
                     report_json: state.reportJson,
                     markdown_summary: state.markdownSummary,
                     error_code: state.errorCode,
                     error_message: null,
                     created_at: '2026-03-11T00:00:00.000Z',
-                    updated_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: state.updatedAt,
                   } as T;
                 },
               };
@@ -357,6 +365,22 @@ function createReviewRunnerEnv(options?: {
           };
         }
 
+        if (/INSERT INTO review_cochange_cache/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  if (cochangeCacheWriteFailuresRemaining > 0) {
+                    cochangeCacheWriteFailuresRemaining -= 1;
+                    throw new Error('D1_ERROR: too many SQL variables at offset 457: SQLITE_ERROR');
+                  }
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
         if (/INSERT INTO review_context_blobs/i.test(sql)) {
           return {
             bind(id: string, _reviewId: string, _workspaceId: string, _deploymentId: string, r2Key: string) {
@@ -403,6 +427,10 @@ function createReviewRunnerEnv(options?: {
               return {
                 async run() {
                   state.status = status;
+                  state.updatedAt = _updatedAt;
+                  if (status === 'queued') {
+                    state.startedAt = null;
+                  }
                   state.errorCode = values.find(
                     (value) =>
                       typeof value === 'string' &&
@@ -416,7 +444,9 @@ function createReviewRunnerEnv(options?: {
                         value === 'review_context_diff_missing' ||
                         value === 'review_context_changed_files_missing' ||
                         value === 'review_context_github_token_missing' ||
-                        value === 'review_context_github_api_error')
+                        value === 'review_context_github_api_error' ||
+                        value === 'review_context_cache_error' ||
+                        value === 'review_execution_timeout')
                     ) as string | null;
                   const reportValue = values.find((value) => typeof value === 'string' && String(value).includes('findingCounts'));
                   if (typeof reportValue === 'string') {
@@ -574,6 +604,26 @@ export async function runReviewRunnerTests(): Promise<void> {
     await processReviewRun(env as never, 'rev_abcd1234');
     const report = JSON.parse(state.reportJson ?? '{}') as { provenance: { promptSummary: string | null } };
     assert.equal(report.provenance.promptSummary, 'Review generated in report_only mode for deployment dep_abcd1234.');
+  }
+
+  {
+    const largePatch = Array.from({ length: 31 }, (_value, index) => {
+      const file = `src/feature-${index + 1}.ts`;
+      return `diff --git a/${file} b/${file}\nindex 1111111..2222222 100644\n--- a/${file}\n+++ b/${file}\n@@ -1 +1 @@\n-a\n+b\n`;
+    }).join('');
+    const { env, state } = createReviewRunnerEnv({
+      deploymentRequestProvenance: {
+        commitDiffPatch: largePatch,
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    const report = JSON.parse(state.reportJson ?? '{}') as { provenance?: { advisories?: string[] } };
+    assert.equal(Array.isArray(report.provenance?.advisories), true);
+    assert.equal(
+      report.provenance?.advisories?.some((item) => item.includes('Large diff detected (31 files). Consider smaller, focused commits')),
+      true
+    );
   }
 
   {
@@ -858,6 +908,30 @@ export async function runReviewRunnerTests(): Promise<void> {
     assert.equal(state.errorCode, 'retry_scheduled');
     assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), true);
     setReviewAnalysisSandboxResolverForTests(null);
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv();
+    env.ATTEMPT_TIMEOUT_MS = '1000';
+    state.status = 'running';
+    state.startedAt = new Date(Date.now() - 120_000).toISOString();
+    state.updatedAt = state.startedAt;
+    await assert.rejects(() => processReviewRun(env as never, 'rev_abcd1234'), /stale-running recovery requested/);
+    assert.equal(state.status, 'queued');
+    assert.equal(state.errorCode, 'retry_scheduled');
+    const retryEvent = state.events.find((event) => event.eventType === 'review_retry_scheduled');
+    assert.equal((retryEvent?.payload as { reason?: string } | undefined)?.reason, 'stale_running_timeout');
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv();
+    env.ATTEMPT_TIMEOUT_MS = '1000';
+    state.status = 'running';
+    state.startedAt = new Date(Date.now() - 120_000).toISOString();
+    state.updatedAt = state.startedAt;
+    await processReviewRun(env as never, 'rev_abcd1234', { allowRetryScheduling: false });
+    assert.equal(state.status, 'failed');
+    assert.equal(state.errorCode, 'review_execution_timeout');
   }
 
   {
@@ -1783,6 +1857,54 @@ export async function runReviewRunnerTests(): Promise<void> {
       const serialized = JSON.stringify(secondCallBody ?? {});
       assert.equal(serialized.includes('git status'), true);
       assert.equal(serialized.includes('run_command is disabled in review mode'), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (input: RequestInfo | URL): Promise<Response> => {
+      const url = String(input);
+      if (url.includes('api.github.com/repos/') && /\/commits\?sha=/i.test(url)) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        failCochangeCacheWriteOnce: true,
+        deploymentRequestProvenance: {
+          commitDiffPatch:
+            'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'failed');
+      assert.equal(state.errorCode, 'review_context_cache_error');
+      const failed = state.events.find((event) => event.eventType === 'review_context_cochange_failed');
+      assert.equal((failed?.payload as { reason?: string } | undefined)?.reason, 'cache_error');
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
