@@ -472,6 +472,35 @@ export async function runReviewApiTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createReviewApiEnv({ workerReviewGithubToken: '' });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        provenance: {
+          localCochange: {
+            source: 'local_git',
+            checkpointsRef: 'refs/remotes/origin/entire/checkpoints/v1',
+            lookbackSessions: 5,
+            topN: 20,
+            sessionsScanned: 2,
+            relatedByChangedPath: {
+              'src/app.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+            },
+          },
+        },
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-local-cochange' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    const createdProvenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
+    const localCochange = createdProvenance.localCochange as Record<string, unknown>;
+    assert.equal(localCochange.source, 'local_git');
+    assert.equal(localCochange.lookbackSessions, 5);
+  }
+
+  {
     const { env, state } = createReviewApiEnv();
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
@@ -621,6 +650,30 @@ export async function runReviewApiTests(): Promise<void> {
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 409);
     assert.equal(state.createdRequestPayload, null);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reused: true,
+      reviewExists: true,
+      existingRequestPayloadSha256: 'f004b542a0ca344c9a93ab94447edbb0ec52d21236f442491bac726f7430c745',
+    });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+        provenance: {
+          localCochange: {
+            source: 'invalid_source',
+            relatedByChangedPath: {},
+          },
+        },
+      }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-legacy' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 1);
   }
 
   {

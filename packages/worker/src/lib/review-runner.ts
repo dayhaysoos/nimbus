@@ -618,6 +618,68 @@ function parseTouchedFilesFromMetadata(record: Record<string, unknown>): string[
   return [];
 }
 
+function parseLocalCochangeFromProvenance(value: unknown): {
+  source: 'local_git';
+  checkpointsRef: string;
+  lookbackSessions: number;
+  topN: number;
+  sessionsScanned: number;
+  relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
+} | null {
+  const record = asRecord(value);
+  const source = readOptionalString(record.source);
+  if (source !== 'local_git') {
+    return null;
+  }
+
+  const checkpointsRef = readOptionalString(record.checkpointsRef) ?? 'entire/checkpoints/v1';
+  const lookbackSessions = readOptionalNumber(record.lookbackSessions);
+  const topN = readOptionalNumber(record.topN);
+  const sessionsScanned = readOptionalNumber(record.sessionsScanned);
+  const relatedByChangedPathRaw = asRecord(record.relatedByChangedPath);
+
+  const relatedByChangedPath = Object.entries(relatedByChangedPathRaw).reduce<
+    Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>
+  >((acc, [changedPath, entries]) => {
+    const key = changedPath.trim();
+    if (!key || !Array.isArray(entries)) {
+      return acc;
+    }
+
+    const normalized = entries
+      .flatMap((entry) => {
+        const item = asRecord(entry);
+        const path = readOptionalString(item.path);
+        const frequency = readOptionalNumber(item.frequency);
+        const sessionIds = uniqueStrings(parseStringArray(item.sessionIds));
+        if (!path || frequency === null || frequency <= 0) {
+          return [];
+        }
+        return [
+          {
+            path,
+            frequency: Math.max(1, Math.floor(frequency)),
+            sessionIds,
+          },
+        ];
+      })
+      .sort((left, right) => right.frequency - left.frequency)
+      .slice(0, Math.max(1, Math.min(100, Math.floor(topN ?? 20))));
+
+    acc[key] = normalized;
+    return acc;
+  }, {});
+
+  return {
+    source: 'local_git',
+    checkpointsRef,
+    lookbackSessions: Math.max(1, Math.min(50, Math.floor(lookbackSessions ?? 5))),
+    topN: Math.max(1, Math.min(100, Math.floor(topN ?? 20))),
+    sessionsScanned: Math.max(0, Math.floor(sessionsScanned ?? 0)),
+    relatedByChangedPath,
+  };
+}
+
 function buildGitHubHeaders(githubToken: string): Record<string, string> {
   const headers: Record<string, string> = {
     Accept: 'application/vnd.github+json',
@@ -980,26 +1042,44 @@ async function assembleReviewContextBootstrap(
   let coChangeSkipped = false;
   let coChangeSkipReason: string | null = null;
   let coChangeAvailable = false;
+  let coChangeSource: 'entire/checkpoints/v1' | 'local_git' = 'entire/checkpoints/v1';
+  let coChangeLookbackSessions = COCHANGE_LOOKBACK_SESSIONS;
+  let coChangeTopN = COCHANGE_TOP_N;
+  const localCochange = parseLocalCochangeFromProvenance(requestProvenance.localCochange);
   const githubToken = readOptionalString(options?.cochangeGithubToken) ?? readOptionalString(env.REVIEW_CONTEXT_GITHUB_TOKEN);
 
-  if (!githubToken) {
-    throw new ReviewContextAssemblyError(
-      'review_context_github_token_missing',
-      'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env'
-    );
-  } else {
-    try {
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_context_cochange_lookup_started',
-        payload: {
-          repo: repoSlug,
-          lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
-        },
-      });
+  try {
+    const effectiveLookback = localCochange?.lookbackSessions ?? COCHANGE_LOOKBACK_SESSIONS;
+    const effectiveTopN = localCochange?.topN ?? COCHANGE_TOP_N;
+    coChangeLookbackSessions = effectiveLookback;
+    coChangeTopN = effectiveTopN;
+    await appendReviewEvent(env.DB, {
+      reviewId: review.id,
+      eventType: 'review_context_cochange_lookup_started',
+      payload: {
+        repo: repoSlug,
+        lookbackSessions: effectiveLookback,
+        source: localCochange ? 'local_git' : 'github_api',
+      },
+    });
 
-      const relatedFrequency = new Map<string, { frequency: number; sessionIds: string[] }>();
-      const entriesByChangedPath = new Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>();
+    const relatedFrequency = new Map<string, { frequency: number; sessionIds: string[] }>();
+    const entriesByChangedPath = new Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>();
+
+    if (localCochange) {
+      coChangeSource = 'local_git';
+      sessionsScanned = localCochange.sessionsScanned;
+      for (const changedPath of changedPaths) {
+        entriesByChangedPath.set(changedPath, localCochange.relatedByChangedPath[changedPath] ?? []);
+      }
+    } else {
+      if (!githubToken) {
+        throw new ReviewContextAssemblyError(
+          'review_context_github_token_missing',
+          'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env'
+        );
+      }
+
       const changedPathsMissingCache: string[] = [];
       const cachedRows = await getReviewCochangeCacheBatch(env.DB, {
         repo: repoSlug,
@@ -1041,90 +1121,92 @@ async function assembleReviewContextBootstrap(
         }
         await upsertReviewCochangeCacheBatch(env.DB, cacheUpserts);
       }
+    }
 
-      for (const changedPath of changedPaths) {
-        const entries = entriesByChangedPath.get(changedPath) ?? [];
-        for (const entry of entries) {
-          const existing = relatedFrequency.get(entry.path) ?? { frequency: 0, sessionIds: [] };
-          existing.frequency += entry.frequency;
-          existing.sessionIds = Array.from(new Set([...existing.sessionIds, ...entry.sessionIds]));
-          relatedFrequency.set(entry.path, existing);
+    for (const changedPath of changedPaths) {
+      const entries = entriesByChangedPath.get(changedPath) ?? [];
+      for (const entry of entries) {
+        const existing = relatedFrequency.get(entry.path) ?? { frequency: 0, sessionIds: [] };
+        existing.frequency += entry.frequency;
+        existing.sessionIds = Array.from(new Set([...existing.sessionIds, ...entry.sessionIds]));
+        relatedFrequency.set(entry.path, existing);
+      }
+    }
+
+    const changedPathSet = new Set(changedPaths);
+    const rankedRelated = Array.from(relatedFrequency.entries())
+      .map(([path, value]) => ({ path, ...value }))
+      .filter((item) => !changedPathSet.has(item.path))
+      .sort((left, right) => right.frequency - left.frequency)
+      .slice(0, effectiveTopN);
+
+    const relatedReads = rankedRelated.length
+      ? await readWorkspaceFilesFromSourceBundle(env, {
+          sourceBundleKey: deploymentSourceBundleKey,
+          sandboxId: `review-context-${review.id}-related`,
+          paths: rankedRelated.map((item) => item.path),
+        })
+      : [];
+    const readByPath = new Map(relatedReads.map((item) => [item.path, item]));
+    relatedFiles = rankedRelated
+      .flatMap((item) => {
+        const read = readByPath.get(item.path);
+        if (!read || read.content === null || read.error) {
+          return [];
         }
-      }
-
-      const changedPathSet = new Set(changedPaths);
-      const rankedRelated = Array.from(relatedFrequency.entries())
-        .map(([path, value]) => ({ path, ...value }))
-        .filter((item) => !changedPathSet.has(item.path))
-        .sort((left, right) => right.frequency - left.frequency)
-        .slice(0, COCHANGE_TOP_N);
-
-      const relatedReads = rankedRelated.length
-        ? await readWorkspaceFilesFromSourceBundle(env, {
-            sourceBundleKey: deploymentSourceBundleKey,
-            sandboxId: `review-context-${review.id}-related`,
-            paths: rankedRelated.map((item) => item.path),
-          })
-        : [];
-      const readByPath = new Map(relatedReads.map((item) => [item.path, item]));
-      relatedFiles = rankedRelated
-        .flatMap((item) => {
-          const read = readByPath.get(item.path);
-          if (!read || read.content === null || read.error) {
-            return [];
-          }
-          return [
-            {
-              path: item.path,
-              content: read.content,
-              byteSize: read.bytes,
-              source: 'related' as const,
-              score: item.frequency,
-              coChangeFrequency: item.frequency,
-              supportingSessionIds: item.sessionIds,
-            },
-          ];
-        });
-      coChangeAvailable = relatedFiles.length > 0;
-
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_context_cochange_lookup_completed',
-        payload: {
-          repo: repoSlug,
-          relatedFileCount: relatedFiles.length,
-          topN: COCHANGE_TOP_N,
-        },
+        return [
+          {
+            path: item.path,
+            content: read.content,
+            byteSize: read.bytes,
+            source: 'related' as const,
+            score: item.frequency,
+            coChangeFrequency: item.frequency,
+            supportingSessionIds: item.sessionIds,
+          },
+        ];
       });
-    } catch (error) {
-      const reason = classifyCochangeSkipReason(error);
-      const sanitizedErrorDetails = redactReviewText(error instanceof Error ? error.message : String(error));
-      const cacheErrorDetails = isCochangeCacheError(error) ? sanitizedErrorDetails : null;
-      await appendReviewEvent(env.DB, {
-        reviewId: review.id,
-        eventType: 'review_context_cochange_failed',
-        payload: {
-          reason,
-          repo: repoSlug,
-          lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
-          githubResponseBody: error instanceof ReviewContextAssemblyError ? error.details : sanitizedErrorDetails,
-        },
-      });
-      if (error instanceof ReviewContextAssemblyError) {
-        throw error;
-      }
-      if (reason === 'cache_error') {
-        throw new ReviewContextAssemblyError(
-          'review_context_cache_error',
-          'Co-change context cache read/write failed (cache_error).',
-          cacheErrorDetails
-        );
-      }
+    coChangeAvailable = relatedFiles.length > 0;
+
+    await appendReviewEvent(env.DB, {
+      reviewId: review.id,
+      eventType: 'review_context_cochange_lookup_completed',
+      payload: {
+        repo: repoSlug,
+        relatedFileCount: relatedFiles.length,
+        topN: effectiveTopN,
+        source: localCochange ? 'local_git' : 'github_api',
+      },
+    });
+  } catch (error) {
+    const reason = classifyCochangeSkipReason(error);
+    const sanitizedErrorDetails = redactReviewText(error instanceof Error ? error.message : String(error));
+    const cacheErrorDetails = isCochangeCacheError(error) ? sanitizedErrorDetails : null;
+    await appendReviewEvent(env.DB, {
+      reviewId: review.id,
+      eventType: 'review_context_cochange_failed',
+      payload: {
+        reason,
+        repo: repoSlug,
+        lookbackSessions: localCochange?.lookbackSessions ?? COCHANGE_LOOKBACK_SESSIONS,
+        source: localCochange ? 'local_git' : 'github_api',
+        githubResponseBody: error instanceof ReviewContextAssemblyError ? error.details : sanitizedErrorDetails,
+      },
+    });
+    if (error instanceof ReviewContextAssemblyError) {
+      throw error;
+    }
+    if (reason === 'cache_error') {
       throw new ReviewContextAssemblyError(
-        'review_context_github_api_error',
-        `Co-change context retrieval failed (${reason}).`
+        'review_context_cache_error',
+        'Co-change context cache read/write failed (cache_error).',
+        cacheErrorDetails
       );
     }
+    throw new ReviewContextAssemblyError(
+      'review_context_github_api_error',
+      `Co-change context retrieval failed (${reason}).`
+    );
   }
 
   const assembledAt = new Date().toISOString();
@@ -1152,11 +1234,11 @@ async function assembleReviewContextBootstrap(
       relatedFiles,
       conventionFiles,
       coChange: {
-        source: 'entire/checkpoints/v1',
-        lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+        source: coChangeSource,
+        lookbackSessions: coChangeLookbackSessions,
         sessionsScanned,
         filesConsidered: changedPaths.length,
-        topN: COCHANGE_TOP_N,
+        topN: coChangeTopN,
         coChangeSkipped,
         coChangeSkipReason,
         coChangeAvailable,

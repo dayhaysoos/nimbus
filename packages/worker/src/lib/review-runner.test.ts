@@ -1752,6 +1752,99 @@ export async function runReviewRunnerTests(): Promise<void> {
   }
 
   {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    const { env, state } = createReviewRunnerEnv({
+      envOverrides: {
+        REVIEW_CONTEXT_GITHUB_TOKEN: undefined,
+      },
+      deploymentRequestProvenance: {
+        commitDiffPatch:
+          'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        localCochange: {
+          source: 'local_git',
+          checkpointsRef: 'refs/remotes/origin/entire/checkpoints/v1',
+          lookbackSessions: 5,
+          topN: 20,
+          sessionsScanned: 2,
+          relatedByChangedPath: {
+            'src/feature.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+          },
+        },
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    const completed = state.events.find((event) => event.eventType === 'review_context_cochange_lookup_completed');
+    assert.equal((completed?.payload as { source?: string } | undefined)?.source, 'local_git');
+    setReviewAnalysisSandboxResolverForTests(null);
+  }
+
+  {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    const { env, state } = createReviewRunnerEnv({
+      failCochangeCacheWriteOnce: true,
+      envOverrides: {
+        REVIEW_CONTEXT_GITHUB_TOKEN: undefined,
+      },
+      deploymentRequestProvenance: {
+        commitDiffPatch:
+          'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        localCochange: {
+          source: 'local_git',
+          checkpointsRef: 'refs/remotes/origin/entire/checkpoints/v1',
+          lookbackSessions: 5,
+          topN: 20,
+          sessionsScanned: 2,
+          relatedByChangedPath: {
+            'src/feature.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+          },
+        },
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    setReviewAnalysisSandboxResolverForTests(null);
+  }
+
+  {
     const originalFetch = globalThis.fetch;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {

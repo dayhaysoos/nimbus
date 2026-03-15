@@ -156,6 +156,94 @@ function isSeverityThreshold(value: unknown): value is 'low' | 'medium' | 'high'
   return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
 }
 
+function normalizeLocalCochange(value: unknown): {
+  source: 'local_git';
+  checkpointsRef: string;
+  lookbackSessions: number;
+  topN: number;
+  sessionsScanned: number;
+  relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
+} | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const source = typeof value.source === 'string' && value.source.trim() ? value.source.trim() : null;
+  if (source !== 'local_git') {
+    return null;
+  }
+  const checkpointsRef =
+    typeof value.checkpointsRef === 'string' && value.checkpointsRef.trim()
+      ? value.checkpointsRef.trim().slice(0, 256)
+      : 'entire/checkpoints/v1';
+  const lookbackSessions =
+    typeof value.lookbackSessions === 'number' && Number.isFinite(value.lookbackSessions)
+      ? Math.max(1, Math.min(50, Math.floor(value.lookbackSessions)))
+      : 5;
+  const topN =
+    typeof value.topN === 'number' && Number.isFinite(value.topN)
+      ? Math.max(1, Math.min(100, Math.floor(value.topN)))
+      : 20;
+  const sessionsScanned =
+    typeof value.sessionsScanned === 'number' && Number.isFinite(value.sessionsScanned)
+      ? Math.max(0, Math.min(200, Math.floor(value.sessionsScanned)))
+      : 0;
+
+  const relatedByChangedPathRaw = isRecord(value.relatedByChangedPath) ? value.relatedByChangedPath : null;
+  if (!relatedByChangedPathRaw) {
+    return null;
+  }
+
+  const relatedByChangedPath = Object.entries(relatedByChangedPathRaw)
+    .slice(0, 400)
+    .reduce<Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>>((acc, [changedPath, entries]) => {
+      const key = changedPath.trim();
+      if (!key || !Array.isArray(entries)) {
+        return acc;
+      }
+      const normalizedEntries = entries
+        .slice(0, 400)
+        .flatMap((entry) => {
+          if (!isRecord(entry)) {
+            return [];
+          }
+          const path = typeof entry.path === 'string' ? entry.path.trim() : '';
+          const frequency =
+            typeof entry.frequency === 'number' && Number.isFinite(entry.frequency)
+              ? Math.max(0, Math.floor(entry.frequency))
+              : 0;
+          const sessionIds = Array.isArray(entry.sessionIds)
+            ? Array.from(
+                new Set(
+                  entry.sessionIds
+                    .filter((item): item is string => typeof item === 'string')
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .slice(0, 40)
+                )
+              )
+            : [];
+          if (!path || frequency <= 0) {
+            return [];
+          }
+          return [{ path, frequency, sessionIds }];
+        })
+        .sort((left, right) => right.frequency - left.frequency)
+        .slice(0, topN);
+      acc[key] = normalizedEntries;
+      return acc;
+    }, {});
+
+  return {
+    source: 'local_git',
+    checkpointsRef,
+    lookbackSessions,
+    topN,
+    sessionsScanned,
+    relatedByChangedPath,
+  };
+}
+
 function readReviewGithubTokenHeader(request: Request): string | null {
   const value = request.headers.get('X-Review-Github-Token');
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -266,6 +354,7 @@ function buildReviewRequestPayload(input: {
     input.provenance.contextResolutionResolvedCommitMessage.trim()
       ? input.provenance.contextResolutionResolvedCommitMessage.trim()
       : undefined;
+  const localCochange = normalizeLocalCochange(input.provenance.localCochange);
   const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
 
   const normalized = {
@@ -306,6 +395,7 @@ function buildReviewRequestPayload(input: {
       ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),
       ...(contextResolutionResolvedCommitSha ? { contextResolutionResolvedCommitSha } : {}),
       ...(contextResolutionResolvedCommitMessage ? { contextResolutionResolvedCommitMessage } : {}),
+      ...(localCochange ? { localCochange } : {}),
     },
     ...(model ? { model } : {}),
   };
@@ -465,6 +555,9 @@ function hasExtendedReviewIdempotencyInputs(input: {
   ) {
     return true;
   }
+  if (normalizeLocalCochange(provenance.localCochange)) {
+    return true;
+  }
   return false;
 }
 
@@ -498,12 +591,6 @@ export async function handleCreateReview(
     }
     const reviewGithubToken = readReviewGithubTokenHeader(request);
     const workerGithubToken = readWorkerReviewGithubToken(env);
-    if (!reviewGithubToken && !workerGithubToken) {
-      return jsonResponse(
-        { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
-        400
-      );
-    }
 
     const payloadRaw = await request.text();
     const payload = payloadRaw.trim() ? (JSON.parse(payloadRaw) as unknown) : {};
@@ -573,6 +660,14 @@ export async function handleCreateReview(
       provenance,
       model,
     });
+    const requestProvenance: Record<string, unknown> = isRecord(requestPayload.provenance) ? requestPayload.provenance : {};
+    const hasLocalCochange = isRecord(requestProvenance.localCochange);
+    if (!reviewGithubToken && !workerGithubToken && !hasLocalCochange) {
+      return jsonResponse(
+        { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
+        400
+      );
+    }
     const sanitizedRequestPayload = stripSensitiveTokenFields(requestPayload) as Record<string, unknown>;
 
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));

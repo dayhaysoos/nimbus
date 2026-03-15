@@ -12,6 +12,21 @@ export interface EntireIntentContextOptions {
   tokenBudget?: number;
 }
 
+export interface EntireCochangeEntry {
+  path: string;
+  frequency: number;
+  sessionIds: string[];
+}
+
+export interface EntireLocalCochangeResolution {
+  source: 'local_git';
+  checkpointsRef: string;
+  lookbackSessions: number;
+  topN: number;
+  sessionsScanned: number;
+  relatedByChangedPath: Record<string, EntireCochangeEntry[]>;
+}
+
 interface CheckpointSessionContext {
   sessionId: string;
   contextMarkdown: string;
@@ -51,6 +66,64 @@ function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function parseTouchedFilesFromSessionMetadata(value: unknown): string[] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return [];
+  }
+
+  const record = value as Record<string, unknown>;
+  const candidates = [
+    record.touchedFiles,
+    record.touched_files,
+    record.files_touched,
+    record.changedFiles,
+    record.changed_files,
+    record.files,
+  ];
+  for (const candidate of candidates) {
+    if (!Array.isArray(candidate)) {
+      continue;
+    }
+    const parsed = candidate
+      .flatMap((entry) => {
+        if (typeof entry === 'string') {
+          return [entry.trim()];
+        }
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+          return [];
+        }
+        const item = entry as Record<string, unknown>;
+        const path = readOptionalString(item.path);
+        return path ? [path] : [];
+      })
+      .filter(Boolean);
+    if (parsed.length > 0) {
+      return parsed;
+    }
+  }
+
+  return [];
+}
+
+function parseChangedPathsFromDiff(patch: string): string[] {
+  const paths = new Set<string>();
+  for (const line of patch.split('\n')) {
+    if (!line.startsWith('+++ ')) {
+      continue;
+    }
+    const raw = line.slice(4).trim();
+    if (!raw || raw === '/dev/null') {
+      continue;
+    }
+    const normalized = raw.replace(/^b\//, '').replace(/^\.\//, '').trim();
+    if (!normalized || normalized === '/dev/null') {
+      continue;
+    }
+    paths.add(normalized);
+  }
+  return Array.from(paths);
+}
+
 export function selectEntireCheckpointsRef(refExists: (ref: string) => boolean): string | null {
   for (const ref of ENTIRE_CHECKPOINTS_REF_PREFERENCE) {
     if (refExists(ref)) {
@@ -80,6 +153,146 @@ function listAvailableEntireCheckpointsRefs(git: GitRepo): string[] {
       return false;
     }
   });
+}
+
+export function resolveCochangeFromLocalGit(
+  changedPathsInput: string[] | string,
+  cwd = process.cwd(),
+  options?: {
+    lookbackSessions?: number;
+    topN?: number;
+  }
+): EntireLocalCochangeResolution | null {
+  const lookbackSessions = Math.max(1, Math.min(50, Math.floor(options?.lookbackSessions ?? 5)));
+  const topN = Math.max(1, Math.min(100, Math.floor(options?.topN ?? 20)));
+
+  const changedPaths = Array.from(
+    new Set(
+      (Array.isArray(changedPathsInput) ? changedPathsInput : parseChangedPathsFromDiff(changedPathsInput))
+        .map((path) => path.trim())
+        .filter(Boolean)
+    )
+  );
+
+  if (changedPaths.length === 0) {
+    return {
+      source: 'local_git',
+      checkpointsRef: 'entire/checkpoints/v1',
+      lookbackSessions,
+      topN,
+      sessionsScanned: 0,
+      relatedByChangedPath: {},
+    };
+  }
+
+  const git = new GitRepo(cwd);
+  const checkpointsRef = resolveEntireCheckpointsRef(git);
+  if (!checkpointsRef) {
+    return null;
+  }
+
+  const commits = git.listCommits(checkpointsRef).slice(0, Math.max(lookbackSessions * 4, lookbackSessions));
+  const sessionRecords: Array<{ sessionId: string; touchedFiles: Set<string> }> = [];
+
+  for (const commit of commits) {
+    if (sessionRecords.length >= lookbackSessions) {
+      break;
+    }
+    let changedFilesOutput = '';
+    try {
+      changedFilesOutput = git.run(['show', '--name-only', '--format=', commit.sha]);
+    } catch {
+      continue;
+    }
+    const metadataPaths = changedFilesOutput
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter((path) => path.endsWith('/metadata.json'))
+      .slice(0, 3);
+
+    for (const metadataPath of metadataPaths) {
+      if (sessionRecords.length >= lookbackSessions) {
+        break;
+      }
+      let metadataRaw = '';
+      try {
+        metadataRaw = git.run(['show', `${commit.sha}:${metadataPath}`]);
+      } catch {
+        continue;
+      }
+
+      let metadata: Record<string, unknown>;
+      try {
+        metadata = readJsonObject(metadataRaw);
+      } catch {
+        continue;
+      }
+
+      const touchedFiles = parseTouchedFilesFromSessionMetadata(metadata);
+      if (touchedFiles.length === 0) {
+        continue;
+      }
+
+      const metadataSessionId = readOptionalString(metadata.session_id);
+      const sessionId = metadataSessionId && isValidEntireSessionId(metadataSessionId) ? metadataSessionId : commit.sha;
+      sessionRecords.push({
+        sessionId,
+        touchedFiles: new Set(touchedFiles),
+      });
+    }
+  }
+
+  if (sessionRecords.length === 0) {
+    return null;
+  }
+
+  const frequencyByChangedPath = new Map<string, Map<string, { count: number; sessions: Set<string> }>>();
+  for (const changedPath of changedPaths) {
+    frequencyByChangedPath.set(changedPath, new Map());
+  }
+
+  for (const session of sessionRecords) {
+    for (const changedPath of changedPaths) {
+      if (!session.touchedFiles.has(changedPath)) {
+        continue;
+      }
+      const frequency = frequencyByChangedPath.get(changedPath);
+      if (!frequency) {
+        continue;
+      }
+      for (const touchedPath of session.touchedFiles) {
+        if (touchedPath === changedPath) {
+          continue;
+        }
+        const next = frequency.get(touchedPath) ?? { count: 0, sessions: new Set<string>() };
+        next.count += 1;
+        next.sessions.add(session.sessionId);
+        frequency.set(touchedPath, next);
+      }
+    }
+  }
+
+  const relatedByChangedPath: Record<string, EntireCochangeEntry[]> = {};
+  for (const changedPath of changedPaths) {
+    const frequency = frequencyByChangedPath.get(changedPath) ?? new Map<string, { count: number; sessions: Set<string> }>();
+    relatedByChangedPath[changedPath] = Array.from(frequency.entries())
+      .map(([path, value]) => ({
+        path,
+        frequency: value.count,
+        sessionIds: Array.from(value.sessions),
+      }))
+      .sort((left, right) => right.frequency - left.frequency)
+      .slice(0, topN);
+  }
+
+  return {
+    source: 'local_git',
+    checkpointsRef,
+    lookbackSessions,
+    topN,
+    sessionsScanned: sessionRecords.length,
+    relatedByChangedPath,
+  };
 }
 
 function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, checkpointsRef: string): CheckpointSessionContext[] {

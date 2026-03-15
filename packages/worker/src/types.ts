@@ -581,7 +581,7 @@ export interface ReviewContext {
     relatedFiles: ReviewContextRelatedFile[];
     conventionFiles: ReviewContextFile[];
     coChange: {
-      source: 'entire/checkpoints/v1';
+      source: 'entire/checkpoints/v1' | 'local_git';
       lookbackSessions: number;
       sessionsScanned: number;
       filesConsidered: number;

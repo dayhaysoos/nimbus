@@ -424,6 +424,14 @@ export async function createReview(
       contextResolutionResolvedCheckpointId?: string;
       contextResolutionResolvedCommitSha?: string;
       contextResolutionResolvedCommitMessage?: string;
+      localCochange?: {
+        source: 'local_git';
+        checkpointsRef?: string;
+        lookbackSessions: number;
+        topN: number;
+        sessionsScanned: number;
+        relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
+      };
     };
   }
 ): Promise<ReviewCreateResponse> {
