@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "83107b1c65c7",
+  "session_id": "ses_310974b8cffea1uj8aHzzse6ZL",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-15T03:12:21.827029Z",
+  "branch": "chore/report-ui-review-flow-alignment",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/agent-endpoint/src/lib/agent.ts",
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "ed8d3eb4be07",
+  "token_usage": {
+    "input_tokens": 187259,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1346944,
+    "output_tokens": 7882,
+    "api_call_count": 19
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-15T03:12:21.278815Z",
+    "agent_lines": 525,
+    "human_added": 29,
+    "human_modified": 7,
+    "human_removed": 0,
+    "total_committed": 561,
+    "agent_percentage": 93.58288770053476
+  }
+}

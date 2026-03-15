@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "83107b1c65c7",
+  "strategy": "manual-commit",
+  "branch": "chore/report-ui-review-flow-alignment",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/agent-endpoint/src/lib/agent.ts",
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/review.test.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/83/107b1c65c7/0/metadata.json",
+      "transcript": "/83/107b1c65c7/0/full.jsonl",
+      "context": "/83/107b1c65c7/0/context.md",
+      "content_hash": "/83/107b1c65c7/0/content_hash.txt",
+      "prompt": "/83/107b1c65c7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 187259,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1346944,
+    "output_tokens": 7882,
+    "api_call_count": 19
+  }
+}
