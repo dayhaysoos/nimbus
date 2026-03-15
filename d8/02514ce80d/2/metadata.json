@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "d802514ce80d",
+  "session_id": "ses_31131b2b5ffew4mR2BW65yUBG7",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-15T03:19:44.079046Z",
+  "branch": "chore/report-ui-review-flow-alignment",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/worker/src/lib/db.review.test.ts",
+    "packages/worker/src/lib/db.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "d347ca2b2167",
+  "checkpoint_transcript_start": 283,
+  "transcript_lines_at_start": 283,
+  "initial_attribution": {
+    "calculated_at": "2026-03-15T03:19:44.078652Z",
+    "agent_lines": 155,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 155,
+    "agent_percentage": 100
+  }
+}
