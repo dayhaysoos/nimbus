@@ -3,7 +3,7 @@
   "checkpoint_id": "18d6fd8b349e",
   "strategy": "manual-commit",
   "branch": "feat/beta-onboarding-hosted-auth",
-  "checkpoints_count": 3,
+  "checkpoints_count": 4,
   "files_touched": [
     "packages/worker/migrations/0012_account_ownership.sql",
     "packages/worker/src/api/job-events.ts",
@@ -40,13 +40,20 @@
       "context": "/18/d6fd8b349e/2/context.md",
       "content_hash": "/18/d6fd8b349e/2/content_hash.txt",
       "prompt": "/18/d6fd8b349e/2/prompt.txt"
+    },
+    {
+      "metadata": "/18/d6fd8b349e/3/metadata.json",
+      "transcript": "/18/d6fd8b349e/3/full.jsonl",
+      "context": "/18/d6fd8b349e/3/context.md",
+      "content_hash": "/18/d6fd8b349e/3/content_hash.txt",
+      "prompt": "/18/d6fd8b349e/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 405645,
+    "input_tokens": 523688,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1480192,
-    "output_tokens": 17056,
-    "api_call_count": 36
+    "cache_read_tokens": 1989120,
+    "output_tokens": 22170,
+    "api_call_count": 45
   }
 }

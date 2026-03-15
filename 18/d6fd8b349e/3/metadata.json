@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "18d6fd8b349e",
+  "session_id": "ses_30c636ebbffdm9Qdta8albPIpG",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-15T22:51:47.814999Z",
+  "branch": "feat/beta-onboarding-hosted-auth",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/worker/migrations/0012_account_ownership.sql",
+    "packages/worker/src/api/job-events.ts",
+    "packages/worker/src/api/jobs.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/api/workspace-deployments.ts",
+    "packages/worker/src/api/workspace-tasks.ts",
+    "packages/worker/src/api/workspaces.ts",
+    "packages/worker/src/auth.test.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/auth.ts",
+    "packages/worker/src/lib/authz.ts",
+    "packages/worker/src/lib/db.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "18f634013611",
+  "token_usage": {
+    "input_tokens": 118043,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 508928,
+    "output_tokens": 5114,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-15T22:51:47.419605Z",
+    "agent_lines": 399,
+    "human_added": 14,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 413,
+    "agent_percentage": 96.61016949152543
+  }
+}
