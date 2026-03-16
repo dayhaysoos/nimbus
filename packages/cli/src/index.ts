@@ -36,6 +36,7 @@ import { exportReviewCommand } from './commands/review/export.js';
 import { reviewPreflightCommand } from './commands/review/preflight.js';
 import { parseArgs } from './lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
+import { provisionAdminKeyCommand } from './commands/admin/provision-key.js';
 
 const VERSION = '0.1.0';
 
@@ -118,7 +119,8 @@ Commands:
   review events <review-id>
                       Stream review lifecycle events
   review export <review-id>
-                      Export a review as markdown or json
+                       Export a review as markdown or json
+  admin provision-key  Provision a hosted API key (admin only)
   list               List all past jobs
   watch <job-id>     Watch a job's progress
 
@@ -153,6 +155,9 @@ Options:
                       Review finding floor (low|medium|high|critical)
   --max-findings <n>  Maximum findings to include in report
   --model <name>      Review analysis model override for this run
+  --label <string>    Label for admin API key provisioning
+  --account-id <id>   Account ID for admin API key provisioning
+  --admin             Provision an admin-scoped API key
   --no-provenance     Suppress provenance summary in report output
   --no-validation-evidence
                       Suppress validation/deploy evidence in report output
@@ -186,6 +191,7 @@ Examples:
   nimbus review show rev_abcd1234
   nimbus review events rev_abcd1234
   nimbus review export rev_abcd1234 --format markdown --out review.md
+  nimbus admin provision-key --label "Beta User Key"
   nimbus doctor
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
   nimbus list
@@ -416,6 +422,9 @@ async function main(): Promise<void> {
           }
 
           if (commitModeRequested || (!workspaceId && !deploymentId)) {
+            if (!commitModeRequested && !workspaceId && !deploymentId) {
+              p.log.message('No review target flags provided; defaulting to `nimbus review create --commit HEAD`.');
+            }
             await createReviewFromCommitCommand({
               commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',
               projectRoot,
@@ -506,6 +515,26 @@ async function main(): Promise<void> {
         }
 
         p.log.error('Unknown review command. Use: create, preflight, show, events, export');
+        process.exit(1);
+      }
+
+      case 'admin': {
+        const adminAction = positional[0];
+        if (adminAction === 'provision-key') {
+          const labelFlag = flags.label;
+          const accountIdFlag = flags['account-id'];
+          const label = typeof labelFlag === 'string' ? labelFlag : '';
+          const accountId = typeof accountIdFlag === 'string' ? accountIdFlag : undefined;
+
+          await provisionAdminKeyCommand({
+            label,
+            accountId,
+            isAdmin: Boolean(flags.admin),
+          });
+          break;
+        }
+
+        p.log.error('Unknown admin command. Use: provision-key');
         process.exit(1);
       }
 

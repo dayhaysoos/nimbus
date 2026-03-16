@@ -7,6 +7,7 @@ compatibility_flags = ["nodejs_compat", "global_fetch_strictly_public"]
 workers_dev = true
 
 [vars]
+NIMBUS_HOSTED = "true"
 # V2 runtime defaults (can be overridden in D1 runtime_flags)
 V2_ENABLED = "false"
 V2_CODE_BROWSER_ENABLED = "false"

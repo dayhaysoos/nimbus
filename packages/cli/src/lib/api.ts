@@ -15,6 +15,7 @@ import type {
   WorkspaceDeploymentPreflightResponse,
   DeployReadinessResponse,
   ReviewReadinessResponse,
+  AdminApiKeyCreateResponse,
 } from './types.js';
 
 const DEFAULT_WORKER_URL = 'https://nimbus-worker.ndejesus1227.workers.dev';
@@ -481,6 +482,30 @@ export async function createReview(
   }
 
   return response.json() as Promise<ReviewCreateResponse>;
+}
+
+export async function createAdminApiKey(
+  workerUrl: string,
+  payload: {
+    label: string;
+    accountId?: string;
+    isAdmin?: boolean;
+  }
+): Promise<AdminApiKeyCreateResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/admin/keys`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<AdminApiKeyCreateResponse>;
 }
 
 export async function getReview(workerUrl: string, reviewId: string): Promise<ReviewGetResponse> {

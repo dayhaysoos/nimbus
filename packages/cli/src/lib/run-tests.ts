@@ -14,6 +14,7 @@ import { runReviewPolicyTests } from './review-policy.test.js';
 import { runEntireIntentContextTests } from './entire/context.test.js';
 import { runWorkspaceDeployCommandTests } from '../commands/workspace/deploy.test.js';
 import { runReviewCommandTests } from '../commands/review/review.test.js';
+import { runAdminProvisionKeyCommandTests } from '../commands/admin/provision-key.test.js';
 
 type TestCase = {
   name: string;
@@ -36,6 +37,7 @@ const TEST_CASES: TestCase[] = [
   { name: 'entire-intent-context', run: runEntireIntentContextTests },
   { name: 'workspace-deploy-command', run: runWorkspaceDeployCommandTests },
   { name: 'review-command', run: runReviewCommandTests },
+  { name: 'admin-provision-key-command', run: runAdminProvisionKeyCommandTests },
   { name: 'checkpoint-options', run: runCheckpointOptionsTests },
 ];
 
