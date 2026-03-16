@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "1999445fc8e4",
+  "strategy": "manual-commit",
+  "branch": "beta-onboarding",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "docs/development.md",
+    "docs/getting-started.md",
+    "package.json",
+    "packages/cli/src/commands/admin/provision-key.test.ts",
+    "packages/cli/src/commands/admin/provision-key.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/run-tests.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/src/api/admin.test.ts",
+    "packages/worker/src/api/admin.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/wrangler.toml",
+    "scripts/rotate-admin-key.sh"
+  ],
+  "sessions": [
+    {
+      "metadata": "/19/99445fc8e4/0/metadata.json",
+      "transcript": "/19/99445fc8e4/0/full.jsonl",
+      "context": "/19/99445fc8e4/0/context.md",
+      "content_hash": "/19/99445fc8e4/0/content_hash.txt",
+      "prompt": "/19/99445fc8e4/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9674,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 18816,
+    "output_tokens": 282,
+    "api_call_count": 3
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "1999445fc8e4",
+  "session_id": "ses_30923b961ffeNT0MbjVtd2LiNf",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-16T14:47:41.856528Z",
+  "branch": "beta-onboarding",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "README.md",
+    "docs/development.md",
+    "docs/getting-started.md",
+    "package.json",
+    "packages/cli/src/commands/admin/provision-key.test.ts",
+    "packages/cli/src/commands/admin/provision-key.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/run-tests.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/src/api/admin.test.ts",
+    "packages/worker/src/api/admin.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/run-tests.ts",
+    "packages/worker/wrangler.toml",
+    "scripts/rotate-admin-key.sh"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "9ff4c281466c",
+  "token_usage": {
+    "input_tokens": 9674,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 18816,
+    "output_tokens": 282,
+    "api_call_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-16T14:47:41.818752Z",
+    "agent_lines": 939,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 939,
+    "agent_percentage": 100
+  }
+}

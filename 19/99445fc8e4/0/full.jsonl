@@ -1,0 +1,400 @@
+{
+  "info": {
+    "id": "ses_30923b961ffeNT0MbjVtd2LiNf",
+    "slug": "nimble-knight",
+    "projectID": "e636a08f504c17bb94725f03ccc30ead67d304f9",
+    "directory": "/Users/nickdejesus/Code/nimbus",
+    "title": "Nimbus Hosted flag update in wrangler.toml",
+    "version": "1.2.27",
+    "summary": {
+      "additions": 1,
+      "deletions": 1,
+      "files": 1
+    },
+    "time": {
+      "created": 1773668157086,
+      "updated": 1773668164417
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1773668157138
+        },
+        "summary": {
+          "diffs": [
+            {
+              "file": "packages/worker/wrangler.toml",
+              "before": "name = \"nimbus-worker\"\nmain = \"src/index.ts\"\ncompatibility_date = \"2025-01-21\"\ncompatibility_flags = [\"nodejs_compat\", \"global_fetch_strictly_public\"]\n\n# Enable workers.dev access\nworkers_dev = true\n\n[vars]\nNIMBUS_HOSTED = \"false\"\n# V2 runtime defaults (can be overridden in D1 runtime_flags)\nV2_ENABLED = \"false\"\nV2_CODE_BROWSER_ENABLED = \"false\"\nMAX_ATTEMPTS = \"3\"\nATTEMPT_TIMEOUT_MS = \"600000\"\nTOTAL_TIMEOUT_MS = \"1800000\"\nIDEMPOTENCY_TTL_HOURS = \"24\"\nMAX_REPAIR_CYCLES = \"2\"\nLINT_BLOCKING = \"false\"\nTEST_BLOCKING = \"true\"\nSAFE_INSTALL_IGNORE_SCRIPTS = \"true\"\nAUTO_INSTALL_SCRIPTS_FALLBACK = \"true\"\nRAW_RETENTION_DAYS = \"30\"\nSUMMARY_RETENTION_DAYS = \"180\"\nWORKSPACE_AGENT_RUNTIME_ENABLED = \"false\"\nWORKSPACE_AGENT_MAX_RETRIES = \"2\"\nWORKSPACE_AGENT_MAX_STEPS = \"24\"\nWORKSPACE_AGENT_TIMEOUT_MS = \"900000\"\nWORKSPACE_AGENT_ALLOW_SCRIPTED_PROVIDER = \"false\"\nWORKSPACE_DEPLOY_ENABLED = \"false\"\nWORKSPACE_DEPLOY_PROVIDER = \"simulated\"\nWORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED = \"false\"\nWORKSPACE_DEPLOY_PREVIEW_DOMAIN = \"preview.nimbus.local\"\nWORKSPACE_DEPLOY_PROJECT_NAME = \"nimbus-workspace-preview\"\nWORKSPACE_DEPLOY_PROVIDER_MAX_POLLS = \"120\"\nWORKSPACE_DEPLOY_PROVIDER_POLL_INTERVAL_MS = \"1500\"\nAGENT_PROVIDER = \"cloudflare_agents_sdk\"\nAGENT_MODEL = \"sonnet-4.5\"\nREVIEW_MODEL = \"sonnet-4.5\"\nREVIEW_AGENT_MAX_STEPS = \"6\"\nREVIEW_AGENT_MAX_FILE_BYTES = \"48000\"\n\n# D1 Database for job persistence\n[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"nimbus-db\"\ndatabase_id = \"b0c22993-0a1a-4117-8ffb-f243e7487c05\"\n\n[[r2_buckets]]\nbinding = \"SOURCE_BUNDLES\"\nbucket_name = \"nimbus-source-bundles\"\npreview_bucket_name = \"nimbus-source-bundles-preview\"\n\n[[queues.producers]]\nbinding = \"CHECKPOINT_JOBS_QUEUE\"\nqueue = \"nimbus-checkpoint-jobs\"\n\n[[queues.producers]]\nbinding = \"WORKSPACE_TASKS_QUEUE\"\nqueue = \"nimbus-workspace-tasks\"\n\n[[queues.producers]]\nbinding = \"WORKSPACE_DEPLOYS_QUEUE\"\nqueue = \"nimbus-workspace-deploys\"\n\n[[queues.producers]]\nbinding = \"REVIEWS_QUEUE\"\nqueue = \"nimbus-reviews\"\n\n[[queues.consumers]]\nqueue = \"nimbus-checkpoint-jobs\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-workspace-tasks\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-workspace-deploys\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-reviews\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[services]]\nbinding = \"AGENT_ENDPOINT\"\nservice = \"nimbus-agent-endpoint\"\n\n# Sandbox container configuration\n# Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)\n[[containers]]\nclass_name = \"Sandbox\"\nimage = \"./Dockerfile\"\ninstance_type = \"standard-2\"\n\n[durable_objects]\nbindings = [\n  { name = \"Sandbox\", class_name = \"Sandbox\" },\n  { name = \"ReviewRunner\", class_name = \"ReviewRunner\" }\n]\n\n[[migrations]]\ntag = \"v1\"\nnew_sqlite_classes = [\"Sandbox\"]\n\n[[migrations]]\ntag = \"v2\"\nnew_sqlite_classes = [\"ReviewRunner\"]\n",
+              "after": "name = \"nimbus-worker\"\nmain = \"src/index.ts\"\ncompatibility_date = \"2025-01-21\"\ncompatibility_flags = [\"nodejs_compat\", \"global_fetch_strictly_public\"]\n\n# Enable workers.dev access\nworkers_dev = true\n\n[vars]\nNIMBUS_HOSTED = \"true\"\n# V2 runtime defaults (can be overridden in D1 runtime_flags)\nV2_ENABLED = \"false\"\nV2_CODE_BROWSER_ENABLED = \"false\"\nMAX_ATTEMPTS = \"3\"\nATTEMPT_TIMEOUT_MS = \"600000\"\nTOTAL_TIMEOUT_MS = \"1800000\"\nIDEMPOTENCY_TTL_HOURS = \"24\"\nMAX_REPAIR_CYCLES = \"2\"\nLINT_BLOCKING = \"false\"\nTEST_BLOCKING = \"true\"\nSAFE_INSTALL_IGNORE_SCRIPTS = \"true\"\nAUTO_INSTALL_SCRIPTS_FALLBACK = \"true\"\nRAW_RETENTION_DAYS = \"30\"\nSUMMARY_RETENTION_DAYS = \"180\"\nWORKSPACE_AGENT_RUNTIME_ENABLED = \"false\"\nWORKSPACE_AGENT_MAX_RETRIES = \"2\"\nWORKSPACE_AGENT_MAX_STEPS = \"24\"\nWORKSPACE_AGENT_TIMEOUT_MS = \"900000\"\nWORKSPACE_AGENT_ALLOW_SCRIPTED_PROVIDER = \"false\"\nWORKSPACE_DEPLOY_ENABLED = \"false\"\nWORKSPACE_DEPLOY_PROVIDER = \"simulated\"\nWORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED = \"false\"\nWORKSPACE_DEPLOY_PREVIEW_DOMAIN = \"preview.nimbus.local\"\nWORKSPACE_DEPLOY_PROJECT_NAME = \"nimbus-workspace-preview\"\nWORKSPACE_DEPLOY_PROVIDER_MAX_POLLS = \"120\"\nWORKSPACE_DEPLOY_PROVIDER_POLL_INTERVAL_MS = \"1500\"\nAGENT_PROVIDER = \"cloudflare_agents_sdk\"\nAGENT_MODEL = \"sonnet-4.5\"\nREVIEW_MODEL = \"sonnet-4.5\"\nREVIEW_AGENT_MAX_STEPS = \"6\"\nREVIEW_AGENT_MAX_FILE_BYTES = \"48000\"\n\n# D1 Database for job persistence\n[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"nimbus-db\"\ndatabase_id = \"b0c22993-0a1a-4117-8ffb-f243e7487c05\"\n\n[[r2_buckets]]\nbinding = \"SOURCE_BUNDLES\"\nbucket_name = \"nimbus-source-bundles\"\npreview_bucket_name = \"nimbus-source-bundles-preview\"\n\n[[queues.producers]]\nbinding = \"CHECKPOINT_JOBS_QUEUE\"\nqueue = \"nimbus-checkpoint-jobs\"\n\n[[queues.producers]]\nbinding = \"WORKSPACE_TASKS_QUEUE\"\nqueue = \"nimbus-workspace-tasks\"\n\n[[queues.producers]]\nbinding = \"WORKSPACE_DEPLOYS_QUEUE\"\nqueue = \"nimbus-workspace-deploys\"\n\n[[queues.producers]]\nbinding = \"REVIEWS_QUEUE\"\nqueue = \"nimbus-reviews\"\n\n[[queues.consumers]]\nqueue = \"nimbus-checkpoint-jobs\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-workspace-tasks\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-workspace-deploys\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-reviews\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[services]]\nbinding = \"AGENT_ENDPOINT\"\nservice = \"nimbus-agent-endpoint\"\n\n# Sandbox container configuration\n# Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)\n[[containers]]\nclass_name = \"Sandbox\"\nimage = \"./Dockerfile\"\ninstance_type = \"standard-2\"\n\n[durable_objects]\nbindings = [\n  { name = \"Sandbox\", class_name = \"Sandbox\" },\n  { name = \"ReviewRunner\", class_name = \"ReviewRunner\" }\n]\n\n[[migrations]]\ntag = \"v1\"\nnew_sqlite_classes = [\"Sandbox\"]\n\n[[migrations]]\ntag = \"v2\"\nnew_sqlite_classes = [\"ReviewRunner\"]\n",
+              "additions": 1,
+              "deletions": 1,
+              "status": "modified"
+            }
+          ]
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "gpt-5.3-codex"
+        },
+        "id": "REDACTED",
+        "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "in the wrangler.toml where it says NIMBUS_HOSTED=“false” please set that to true",
+          "id": "prt_cf6dc46b6001xUmKUUtexeZj5X",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773668157145,
+          "completed": 1773668160805
+        },
+        "parentID": "REDACTED",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01884575,
+        "tokens": {
+          "total": 9437,
+          "input": 9289,
+          "output": 148,
+          "reasoning": 37,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "5a90f316d37646d43651d92117b1a6a065fcb0fa",
+          "id": "REDACTED",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Locating curly quotes in config**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0784ac4498b93c770169b8073e30b88197ae28358d9d0d3e08",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773668158645,
+            "end": 1773668160468
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_0PfS2T3sL4cOH8TYIdScDIi8",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/wrangler.toml",
+              "path": "/Users/nickdejesus/Code/nimbus"
+            },
+            "output": "/Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml\n/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/wrangler.toml",
+            "title": "",
+            "metadata": {
+              "count": 2,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773668160473,
+              "end": 1773668160491
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0784ac4498b93c770169b8074046a08197898cc3359ac82023"
+            }
+          },
+          "id": "prt_cf6dc53d6001PbWw3gmVrRI0Qd",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "NIMBUS_HOSTED\\s*=\\s*[\"“”']?false[\"“”']?",
+              "path": "/Users/nickdejesus/Code/nimbus",
+              "include": "wrangler.toml"
+            },
+            "output": "Found 1 matches\n/Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml:\n  Line 10: NIMBUS_HOSTED = \"false\"",
+            "title": "NIMBUS_HOSTED\\s*=\\s*[\"“”']?false[\"“”']?",
+            "metadata": {
+              "matches": 1,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773668160480,
+              "end": 1773668160505
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0784ac4498b93c770169b8074046b48197bc923247556116b9"
+            }
+          },
+          "id": "prt_cf6dc53da001sXb00VtyorJH7U",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "5a90f316d37646d43651d92117b1a6a065fcb0fa",
+          "cost": 0.01884575,
+          "tokens": {
+            "total": 9437,
+            "input": 9289,
+            "output": 148,
+            "reasoning": 37,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773668160805,
+          "completed": 1773668164348
+        },
+        "parentID": "REDACTED",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0037772,
+        "tokens": {
+          "total": 9638,
+          "input": 192,
+          "output": 102,
+          "reasoning": 27,
+          "cache": {
+            "read": 9344,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cf6dc5525001PB5L4MX08h4oPe",
+        "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "5a90f316d37646d43651d92117b1a6a065fcb0fa",
+          "id": "prt_cf6dc56fc001di3LSw81AEnn6E",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "msg_cf6dc5525001PB5L4MX08h4oPe"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Planning targeted patch application**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_03776c5385304a170169b80742a290819b8fd00a38ce18be29",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773668162676,
+            "end": 1773668163745
+          },
+          "id": "prt_cf6dc5c74001SAt0Db60YcJVbm",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "msg_cf6dc5525001PB5L4MX08h4oPe"
+        },
+        {
+          "type": "tool",
+          "callID": "call_yTSrlL6Q8i1zZvOn4Ql9UhP6",
+          "tool": "apply_patch",
+          "state": {
+            "status": "completed",
+            "input": {
+              "patchText": "*** Begin Patch\n*** Update File: /Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml\n@@\n-NIMBUS_HOSTED = \"false\"\n+NIMBUS_HOSTED = \"true\"\n*** End Patch"
+            },
+            "output": "Success. Updated the following files:\nM packages/worker/wrangler.toml",
+            "title": "Success. Updated the following files:\nM packages/worker/wrangler.toml",
+            "metadata": {
+              "diff": "Index: /Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml\n===================================================================\n--- /Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml\n+++ /Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml\n@@ -6,9 +6,9 @@\n # Enable workers.dev access\n workers_dev = true\n \n [vars]\n-NIMBUS_HOSTED = \"false\"\n+NIMBUS_HOSTED = \"true\"\n # V2 runtime defaults (can be overridden in D1 runtime_flags)\n V2_ENABLED = \"false\"\n V2_CODE_BROWSER_ENABLED = \"false\"\n MAX_ATTEMPTS = \"3\"\n\n",
+              "files": [
+                {
+                  "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml",
+                  "relativePath": "packages/worker/wrangler.toml",
+                  "type": "update",
+                  "diff": "Index: /Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml\n===================================================================\n--- /Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml\n+++ /Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml\n@@ -6,9 +6,9 @@\n # Enable workers.dev access\n workers_dev = true\n \n [vars]\n-NIMBUS_HOSTED = \"false\"\n+NIMBUS_HOSTED = \"true\"\n # V2 runtime defaults (can be overridden in D1 runtime_flags)\n V2_ENABLED = \"false\"\n V2_CODE_BROWSER_ENABLED = \"false\"\n MAX_ATTEMPTS = \"3\"\n",
+                  "before": "name = \"nimbus-worker\"\nmain = \"src/index.ts\"\ncompatibility_date = \"2025-01-21\"\ncompatibility_flags = [\"nodejs_compat\", \"global_fetch_strictly_public\"]\n\n# Enable workers.dev access\nworkers_dev = true\n\n[vars]\nNIMBUS_HOSTED = \"false\"\n# V2 runtime defaults (can be overridden in D1 runtime_flags)\nV2_ENABLED = \"false\"\nV2_CODE_BROWSER_ENABLED = \"false\"\nMAX_ATTEMPTS = \"3\"\nATTEMPT_TIMEOUT_MS = \"600000\"\nTOTAL_TIMEOUT_MS = \"1800000\"\nIDEMPOTENCY_TTL_HOURS = \"24\"\nMAX_REPAIR_CYCLES = \"2\"\nLINT_BLOCKING = \"false\"\nTEST_BLOCKING = \"true\"\nSAFE_INSTALL_IGNORE_SCRIPTS = \"true\"\nAUTO_INSTALL_SCRIPTS_FALLBACK = \"true\"\nRAW_RETENTION_DAYS = \"30\"\nSUMMARY_RETENTION_DAYS = \"180\"\nWORKSPACE_AGENT_RUNTIME_ENABLED = \"false\"\nWORKSPACE_AGENT_MAX_RETRIES = \"2\"\nWORKSPACE_AGENT_MAX_STEPS = \"24\"\nWORKSPACE_AGENT_TIMEOUT_MS = \"900000\"\nWORKSPACE_AGENT_ALLOW_SCRIPTED_PROVIDER = \"false\"\nWORKSPACE_DEPLOY_ENABLED = \"false\"\nWORKSPACE_DEPLOY_PROVIDER = \"simulated\"\nWORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED = \"false\"\nWORKSPACE_DEPLOY_PREVIEW_DOMAIN = \"preview.nimbus.local\"\nWORKSPACE_DEPLOY_PROJECT_NAME = \"nimbus-workspace-preview\"\nWORKSPACE_DEPLOY_PROVIDER_MAX_POLLS = \"120\"\nWORKSPACE_DEPLOY_PROVIDER_POLL_INTERVAL_MS = \"1500\"\nAGENT_PROVIDER = \"cloudflare_agents_sdk\"\nAGENT_MODEL = \"sonnet-4.5\"\nREVIEW_MODEL = \"sonnet-4.5\"\nREVIEW_AGENT_MAX_STEPS = \"6\"\nREVIEW_AGENT_MAX_FILE_BYTES = \"48000\"\n\n# D1 Database for job persistence\n[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"nimbus-db\"\ndatabase_id = \"b0c22993-0a1a-4117-8ffb-f243e7487c05\"\n\n[[r2_buckets]]\nbinding = \"SOURCE_BUNDLES\"\nbucket_name = \"nimbus-source-bundles\"\npreview_bucket_name = \"nimbus-source-bundles-preview\"\n\n[[queues.producers]]\nbinding = \"CHECKPOINT_JOBS_QUEUE\"\nqueue = \"nimbus-checkpoint-jobs\"\n\n[[queues.producers]]\nbinding = \"WORKSPACE_TASKS_QUEUE\"\nqueue = \"nimbus-workspace-tasks\"\n\n[[queues.producers]]\nbinding = \"WORKSPACE_DEPLOYS_QUEUE\"\nqueue = \"nimbus-workspace-deploys\"\n\n[[queues.producers]]\nbinding = \"REVIEWS_QUEUE\"\nqueue = \"nimbus-reviews\"\n\n[[queues.consumers]]\nqueue = \"nimbus-checkpoint-jobs\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-workspace-tasks\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-workspace-deploys\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-reviews\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[services]]\nbinding = \"AGENT_ENDPOINT\"\nservice = \"nimbus-agent-endpoint\"\n\n# Sandbox container configuration\n# Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)\n[[containers]]\nclass_name = \"Sandbox\"\nimage = \"./Dockerfile\"\ninstance_type = \"standard-2\"\n\n[durable_objects]\nbindings = [\n  { name = \"Sandbox\", class_name = \"Sandbox\" },\n  { name = \"ReviewRunner\", class_name = \"ReviewRunner\" }\n]\n\n[[migrations]]\ntag = \"v1\"\nnew_sqlite_classes = [\"Sandbox\"]\n\n[[migrations]]\ntag = \"v2\"\nnew_sqlite_classes = [\"ReviewRunner\"]\n",
+                  "after": "name = \"nimbus-worker\"\nmain = \"src/index.ts\"\ncompatibility_date = \"2025-01-21\"\ncompatibility_flags = [\"nodejs_compat\", \"global_fetch_strictly_public\"]\n\n# Enable workers.dev access\nworkers_dev = true\n\n[vars]\nNIMBUS_HOSTED = \"true\"\n# V2 runtime defaults (can be overridden in D1 runtime_flags)\nV2_ENABLED = \"false\"\nV2_CODE_BROWSER_ENABLED = \"false\"\nMAX_ATTEMPTS = \"3\"\nATTEMPT_TIMEOUT_MS = \"600000\"\nTOTAL_TIMEOUT_MS = \"1800000\"\nIDEMPOTENCY_TTL_HOURS = \"24\"\nMAX_REPAIR_CYCLES = \"2\"\nLINT_BLOCKING = \"false\"\nTEST_BLOCKING = \"true\"\nSAFE_INSTALL_IGNORE_SCRIPTS = \"true\"\nAUTO_INSTALL_SCRIPTS_FALLBACK = \"true\"\nRAW_RETENTION_DAYS = \"30\"\nSUMMARY_RETENTION_DAYS = \"180\"\nWORKSPACE_AGENT_RUNTIME_ENABLED = \"false\"\nWORKSPACE_AGENT_MAX_RETRIES = \"2\"\nWORKSPACE_AGENT_MAX_STEPS = \"24\"\nWORKSPACE_AGENT_TIMEOUT_MS = \"900000\"\nWORKSPACE_AGENT_ALLOW_SCRIPTED_PROVIDER = \"false\"\nWORKSPACE_DEPLOY_ENABLED = \"false\"\nWORKSPACE_DEPLOY_PROVIDER = \"simulated\"\nWORKSPACE_DEPLOY_REAL_PROVIDER_ENABLED = \"false\"\nWORKSPACE_DEPLOY_PREVIEW_DOMAIN = \"preview.nimbus.local\"\nWORKSPACE_DEPLOY_PROJECT_NAME = \"nimbus-workspace-preview\"\nWORKSPACE_DEPLOY_PROVIDER_MAX_POLLS = \"120\"\nWORKSPACE_DEPLOY_PROVIDER_POLL_INTERVAL_MS = \"1500\"\nAGENT_PROVIDER = \"cloudflare_agents_sdk\"\nAGENT_MODEL = \"sonnet-4.5\"\nREVIEW_MODEL = \"sonnet-4.5\"\nREVIEW_AGENT_MAX_STEPS = \"6\"\nREVIEW_AGENT_MAX_FILE_BYTES = \"48000\"\n\n# D1 Database for job persistence\n[[d1_databases]]\nbinding = \"DB\"\ndatabase_name = \"nimbus-db\"\ndatabase_id = \"b0c22993-0a1a-4117-8ffb-f243e7487c05\"\n\n[[r2_buckets]]\nbinding = \"SOURCE_BUNDLES\"\nbucket_name = \"nimbus-source-bundles\"\npreview_bucket_name = \"nimbus-source-bundles-preview\"\n\n[[queues.producers]]\nbinding = \"CHECKPOINT_JOBS_QUEUE\"\nqueue = \"nimbus-checkpoint-jobs\"\n\n[[queues.producers]]\nbinding = \"WORKSPACE_TASKS_QUEUE\"\nqueue = \"nimbus-workspace-tasks\"\n\n[[queues.producers]]\nbinding = \"WORKSPACE_DEPLOYS_QUEUE\"\nqueue = \"nimbus-workspace-deploys\"\n\n[[queues.producers]]\nbinding = \"REVIEWS_QUEUE\"\nqueue = \"nimbus-reviews\"\n\n[[queues.consumers]]\nqueue = \"nimbus-checkpoint-jobs\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-workspace-tasks\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-workspace-deploys\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[queues.consumers]]\nqueue = \"nimbus-reviews\"\nmax_batch_size = 5\nmax_batch_timeout = 3\n\n[[services]]\nbinding = \"AGENT_ENDPOINT\"\nservice = \"nimbus-agent-endpoint\"\n\n# Sandbox container configuration\n# Using standard-2 for more memory/disk (needed for framework installs like Astro, Next.js)\n[[containers]]\nclass_name = \"Sandbox\"\nimage = \"./Dockerfile\"\ninstance_type = \"standard-2\"\n\n[durable_objects]\nbindings = [\n  { name = \"Sandbox\", class_name = \"Sandbox\" },\n  { name = \"ReviewRunner\", class_name = \"ReviewRunner\" }\n]\n\n[[migrations]]\ntag = \"v1\"\nnew_sqlite_classes = [\"Sandbox\"]\n\n[[migrations]]\ntag = \"v2\"\nnew_sqlite_classes = [\"ReviewRunner\"]\n",
+                  "additions": 1,
+                  "deletions": 1
+                }
+              ],
+              "diagnostics": {},
+              "truncated": false
+            },
+            "time": {
+              "start": 1773668164148,
+              "end": 1773668164152
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_03776c5385304a170169b80743aeb4819b96c1134c32d7cf09"
+            }
+          },
+          "id": "prt_cf6dc60a2001aC51wob2hTUeaD",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "msg_cf6dc5525001PB5L4MX08h4oPe"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "398c7969fd1c0350a1c95aefa1986b0d43f01385",
+          "cost": 0.0037772,
+          "tokens": {
+            "total": 9638,
+            "input": 192,
+            "output": 102,
+            "reasoning": 27,
+            "cache": {
+              "read": 9344,
+              "write": 0
+            }
+          },
+          "id": "prt_cf6dc6290001BQoRboQzRcjx6i",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "msg_cf6dc5525001PB5L4MX08h4oPe"
+        },
+        {
+          "type": "patch",
+          "hash": "5a90f316d37646d43651d92117b1a6a065fcb0fa",
+          "files": [
+            "/Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml"
+          ],
+          "id": "prt_cf6dc62f9001n8PpLVknaLsF3a",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "msg_cf6dc5525001PB5L4MX08h4oPe"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773668164348,
+          "completed": 1773668165595
+        },
+        "parentID": "REDACTED",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.00244335,
+        "tokens": {
+          "total": 9697,
+          "input": 193,
+          "output": 32,
+          "reasoning": 0,
+          "cache": {
+            "read": 9472,
+            "write": 0
+          }
+        },
+        "finish": "stop",
+        "id": "msg_cf6dc62fc001MSSxKZldaHrUld",
+        "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "398c7969fd1c0350a1c95aefa1986b0d43f01385",
+          "id": "prt_cf6dc6492001d5mczdFEXe7SQF",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "msg_cf6dc62fc001MSSxKZldaHrUld"
+        },
+        {
+          "type": "text",
+          "text": "Done — I changed `NIMBUS_HOSTED` to `\"true\"` in `packages/worker/wrangler.toml:10`.",
+          "time": {
+            "start": 1773668165444,
+            "end": 1773668165444
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "msg_018906ee9ef53c6a0169b80744f61081948c22d2f52bbd7177"
+            }
+          },
+          "id": "prt_cf6dc65740010sQHn7xOqAxVvG",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "msg_cf6dc62fc001MSSxKZldaHrUld"
+        },
+        {
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "398c7969fd1c0350a1c95aefa1986b0d43f01385",
+          "cost": 0.00244335,
+          "tokens": {
+            "total": 9697,
+            "input": 193,
+            "output": 32,
+            "reasoning": 0,
+            "cache": {
+              "read": 9472,
+              "write": 0
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30923b961ffeNT0MbjVtd2LiNf",
+          "messageID": "msg_cf6dc62fc001MSSxKZldaHrUld"
+        }
+      ]
+    }
+  ]
+}
