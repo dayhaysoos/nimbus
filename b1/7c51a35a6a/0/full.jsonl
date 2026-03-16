@@ -1,0 +1,1419 @@
+{
+  "info": {
+    "id": "ses_30bd48e9affe4GaCzwfTWelkP1",
+    "slug": "calm-garden",
+    "projectID": "e636a08f504c17bb94725f03ccc30ead67d304f9",
+    "directory": "/Users/nickdejesus/Code/nimbus",
+    "parentID": "ses_30bfbb6f4ffeJ2960akRy1tOR3",
+    "title": "review changes [commit|branch|pr], defaults to uncommitted (@build subagent)",
+    "version": "1.2.26",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "permission": [
+      {
+        "permission": "todowrite",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "todoread",
+        "pattern": "*",
+        "action": "deny"
+      },
+      {
+        "permission": "task",
+        "pattern": "*",
+        "action": "deny"
+      }
+    ],
+    "time": {
+      "created": 1773623013733,
+      "updated": 1773623074105
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1773623013738
+        },
+        "summary": {
+          "diffs": []
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "gpt-5.3-codex"
+        },
+        "tools": {
+          "todowrite": false,
+          "todoread": false,
+          "task": false
+        },
+        "id": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "You are a code reviewer. Your job is to review code changes and provide actionable feedback.\n\n---\n\nInput: main…security-audit\n\n---\n\n## Determining What to Review\n\nBased on the input provided, determine which type of review to perform:\n\n1. **No arguments (default)**: Review all uncommitted changes\n   - Run: `git diff` for unstaged changes\n   - Run: `git diff --cached` for staged changes\n   - Run: `git status --short` to identify untracked (net new) files\n\n2. **Commit hash** (40-char SHA or short hash): Review that specific commit\n   - Run: `git show main…security-audit`\n\n3. **Branch name**: Compare current branch to the specified branch\n   - Run: `git diff main…security-audit...HEAD`\n\n4. **PR URL or number** (contains \"github.com\" or \"pull\" or looks like a PR number): Review the pull request\n   - Run: `gh pr view main…security-audit` to get PR context\n   - Run: `gh pr diff main…security-audit` to get the diff\n\nUse best judgement when processing input.\n\n---\n\n## Gathering Context\n\n**Diffs alone are not enough.** After getting the diff, read the entire file(s) being modified to understand the full context. Code that looks wrong in isolation may be correct given surrounding logic—and vice versa.\n\n- Use the diff to identify which files changed\n- Use `git status --short` to identify untracked files, then read their full contents\n- Read the full file to understand existing patterns, control flow, and error handling\n- Check for existing style guide or conventions files (CONVENTIONS.md, AGENTS.md, .editorconfig, etc.)\n\n---\n\n## What to Look For\n\n**Bugs** - Your primary focus.\n- Logic errors, off-by-one mistakes, incorrect conditionals\n- If-else guards: missing guards, incorrect branching, unreachable code paths\n- Edge cases: null/empty/undefined inputs, error conditions, race conditions\n- Security issues: injection, auth bypass, data exposure\n- Broken error handling that swallows failures, throws unexpectedly or returns error types that are not caught.\n\n**Structure** - Does the code fit the codebase?\n- Does it follow existing patterns and conventions?\n- Are there established abstractions it should use but doesn't?\n- Excessive nesting that could be flattened with early returns or extraction\n\n**Performance** - Only flag if obviously problematic.\n- O(n²) on unbounded data, N+1 queries, blocking I/O on hot paths\n\n**Behavior Changes** - If a behavioral change is introduced, raise it (especially if it's possibly unintentional).\n\n---\n\n## Before You Flag Something\n\n**Be certain.** If you're going to call something a bug, you need to be confident it actually is one.\n\n- Only review the changes - do not review pre-existing code that wasn't modified\n- Don't flag something as a bug if you're unsure - investigate first\n- Don't invent hypothetical problems - if an edge case matters, explain the realistic scenario where it breaks\n- If you need more context to be sure, use the tools below to get it\n\n**Don't be a zealot about style.** When checking code against conventions:\n\n- Verify the code is *actually* in violation. Don't complain about else statements if early returns are already being used correctly.\n- Some \"violations\" are acceptable when they're the simplest option. A `let` statement is fine if the alternative is convoluted.\n- Excessive nesting is a legitimate concern regardless of other style choices.\n- Don't flag style preferences as issues unless they clearly violate established project conventions.\n\n---\n\n## Tools\n\nUse these to inform your review:\n\n- **Explore agent** - Find how existing code handles similar problems. Check patterns, conventions, and prior art before claiming something doesn't fit.\n- **Exa Code Context** - Verify correct usage of libraries/APIs before flagging something as wrong.\n- **Exa Web Search** - Research best practices if you're unsure about a pattern.\n\nIf you're uncertain about something and can't verify it with these tools, say \"I'm not sure about X\" rather than flagging it as a definite issue.\n\n---\n\n## Output\n\n1. If there is a bug, be direct and clear about why it is a bug.\n2. Clearly communicate severity of issues. Do not overstate severity.\n3. Critiques should clearly and explicitly communicate the scenarios, environments, or inputs that are necessary for the bug to arise. The comment should immediately indicate that the issue's severity depends on these factors.\n4. Your tone should be matter-of-fact and not accusatory or overly positive. It should read as a helpful AI assistant suggestion without sounding too much like a human reviewer.\n5. Write so the reader can quickly understand the issue without reading too closely.\n6. AVOID flattery, do not give any comments that are not helpful to the reader. Avoid phrasing like \"Great job ...\", \"Thanks for ...\".",
+          "id": "prt_cf42b716a0010a4Fo8lSuioqpO",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42b7169001w1q4DLdvHpMQf0"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623013741,
+          "completed": 1773623019315
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0074529,
+        "tokens": {
+          "total": 7517,
+          "input": 78,
+          "output": 271,
+          "reasoning": 162,
+          "cache": {
+            "read": 7168,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Interpreting branch diff input**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0f809d02f30c3ebf0169b756e66c508199bf953b9e0748380b",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623014521,
+            "end": 1773623018460
+          },
+          "id": "prt_cf42b7479001IDOGIY7GDkGteB",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_csv9GEdUwT7T5tLSin8HlPit",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git status --short",
+              "description": "Shows short working tree status"
+            },
+            "output": " M scripts/audit-with-exceptions.mjs\n",
+            "title": "Shows short working tree status",
+            "metadata": {
+              "output": " M scripts/audit-with-exceptions.mjs\n",
+              "exit": 0,
+              "description": "Shows short working tree status",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623018469,
+              "end": 1773623019201
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0f809d02f30c3ebf0169b756ea6ad08199abf6ccb626267e0f"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_lwkc9Tne0Rqz34efwgNo4xVk",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff --name-only main...security-audit",
+              "description": "Lists files changed between branches"
+            },
+            "output": ".audit-exceptions.json\n.github/workflows/dependency-scan.yml\n.github/workflows/secret-scan.yml\n.gitleaks.toml\npackages/agent-endpoint/src/index.ts\npackages/agent-endpoint/src/lib/agent.test.ts\npackages/worker/src/index.ts\npackages/worker/src/lib/request-size.test.ts\npackages/worker/src/lib/request-size.ts\npackages/worker/src/lib/run-tests.ts\nscripts/audit-with-exceptions.mjs\n",
+            "title": "Lists files changed between branches",
+            "metadata": {
+              "output": ".audit-exceptions.json\n.github/workflows/dependency-scan.yml\n.github/workflows/secret-scan.yml\n.gitleaks.toml\npackages/agent-endpoint/src/index.ts\npackages/agent-endpoint/src/lib/agent.test.ts\npackages/worker/src/index.ts\npackages/worker/src/lib/request-size.test.ts\npackages/worker/src/lib/request-size.ts\npackages/worker/src/lib/run-tests.ts\nscripts/audit-with-exceptions.mjs\n",
+              "exit": 0,
+              "description": "Lists files changed between branches",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623018502,
+              "end": 1773623019206
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0f809d02f30c3ebf0169b756ea6adc819998a3384936239e6a"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_dvUGV1DLlXxBr0xG5AJIUYzy",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git diff main...security-audit",
+              "description": "Shows diff between main and security-audit"
+            },
+            "output": "diff --git a/.audit-exceptions.json b/.audit-exceptions.json\nnew file mode 100644\nindex 0000000..78d8580\n--- /dev/null\n+++ b/.audit-exceptions.json\n@@ -0,0 +1,35 @@\n+[\n+  {\n+    \"ghsa\": \"GHSA-f269-vfmq-vjvj\",\n+    \"package\": \"undici\",\n+    \"severity\": \"high\",\n+    \"reason\": \"Impacts Undici WebSocket client parsing. Nimbus production code runs on Cloudflare Workers and does not use Undici WebSocket client paths.\",\n+    \"scope\": [\n+      \"packages/agent-endpoint > wrangler > miniflare > undici\",\n+      \"packages/worker > wrangler > miniflare > undici\",\n+      \"packages/worker > undici\"\n+    ]\n+  },\n+  {\n+    \"ghsa\": \"GHSA-vrm6-8vpv-qv8q\",\n+    \"package\": \"undici\",\n+    \"severity\": \"high\",\n+    \"reason\": \"Impacts Undici WebSocket permessage-deflate handling. Nimbus does not open outbound WebSocket client connections in Cloudflare Workers runtime.\",\n+    \"scope\": [\n+      \"packages/agent-endpoint > wrangler > miniflare > undici\",\n+      \"packages/worker > wrangler > miniflare > undici\",\n+      \"packages/worker > undici\"\n+    ]\n+  },\n+  {\n+    \"ghsa\": \"GHSA-v9p9-hfj2-hcw8\",\n+    \"package\": \"undici\",\n+    \"severity\": \"high\",\n+    \"reason\": \"Impacts Undici WebSocket decompression negotiation in Node.js clients. This code path is not reachable in Cloudflare Workers fetch runtime used in production.\",\n+    \"scope\": [\n+      \"packages/agent-endpoint > wrangler > miniflare > undici\",\n+      \"packages/worker > wrangler > miniflare > undici\",\n+      \"packages/worker > undici\"\n+    ]\n+  }\n+]\ndiff --git a/.github/workflows/dependency-scan.yml b/.github/workflows/dependency-scan.yml\nnew file mode 100644\nindex 0000000..479e463\n--- /dev/null\n+++ b/.github/workflows/dependency-scan.yml\n@@ -0,0 +1,25 @@\n+name: Dependency Scan\n+\n+on:\n+  push:\n+  pull_request:\n+\n+jobs:\n+  audit:\n+    runs-on: ubuntu-latest\n+    steps:\n+      - name: Checkout\n+        uses: actions/checkout@v4\n+      - name: Setup pnpm\n+        uses: pnpm/action-setup@v4\n+        with:\n+          version: 9.15.0\n+      - name: Setup Node\n+        uses: actions/setup-node@v4\n+        with:\n+          node-version: 20\n+          cache: pnpm\n+      - name: Install dependencies\n+        run: pnpm install --frozen-lockfile\n+      - name: Run high/critical audit\n+        run: node scripts/audit-with-exceptions.mjs\ndiff --git a/.github/workflows/secret-scan.yml b/.github/workflows/secret-scan.yml\nnew file mode 100644\nindex 0000000..13175f0\n--- /dev/null\n+++ b/.github/workflows/secret-scan.yml\n@@ -0,0 +1,18 @@\n+name: Secret Scan\n+\n+on:\n+  push:\n+  pull_request:\n+\n+jobs:\n+  gitleaks:\n+    runs-on: ubuntu-latest\n+    steps:\n+      - name: Checkout\n+        uses: actions/checkout@v4\n+      - name: Run gitleaks\n+        uses: gitleaks/gitleaks-action@v2\n+        env:\n+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n+        with:\n+          config-path: .gitleaks.toml\ndiff --git a/.gitleaks.toml b/.gitleaks.toml\nnew file mode 100644\nindex 0000000..d8df5e9\n--- /dev/null\n+++ b/.gitleaks.toml\n@@ -0,0 +1,28 @@\n+title = \"Nimbus gitleaks config\"\n+\n+[extend]\n+useDefault = true\n+\n+[[allowlists]]\n+description = \"Allow mock nmb_live_ keys in test files\"\n+condition = \"AND\"\n+paths = [\n+  '''(^|/)packages/.+\\.(test|spec)\\.ts$''',\n+]\n+regexTarget = \"match\"\n+regexes = [\n+  '''nmb_live_[A-Za-z0-9_]+''',\n+]\n+\n+[[allowlists]]\n+description = \"Allow synthetic hash fixtures in test files\"\n+condition = \"AND\"\n+paths = [\n+  '''(^|/)packages/.+\\.(test|spec)\\.ts$''',\n+]\n+regexTarget = \"line\"\n+regexes = [\n+  '''\\b[a-f0-9]{40}\\b''',\n+  '''\\b[a-f0-9]{64}\\b''',\n+  '''repeat\\((40|64)\\)''',\n+]\ndiff --git a/packages/agent-endpoint/src/index.ts b/packages/agent-endpoint/src/index.ts\nindex fbfcdf9..bb778c2 100644\n--- a/packages/agent-endpoint/src/index.ts\n+++ b/packages/agent-endpoint/src/index.ts\n@@ -5,6 +5,14 @@ import {\n   type AgentRequest,\n } from './lib/agent.js';\n \n+const SENSITIVE_PATTERNS: RegExp[] = [\n+  /Bearer\\s+[A-Za-z0-9._~+/=-]+/gi,\n+  /\\bsk-[A-Za-z0-9_-]+\\b/gi,\n+  /\\bnmb_live_[A-Za-z0-9_-]+\\b/gi,\n+];\n+\n+const GENERIC_UPSTREAM_ERROR_MESSAGE = 'upstream error';\n+\n function readBearerToken(value: string | null): string | null {\n   if (!value) {\n     return null;\n@@ -17,6 +25,49 @@ function readBearerToken(value: string | null): string | null {\n   return token ? token : null;\n }\n \n+function hasSensitivePattern(value: string): boolean {\n+  return SENSITIVE_PATTERNS.some((pattern) => {\n+    pattern.lastIndex = 0;\n+    return pattern.test(value);\n+  });\n+}\n+\n+function sanitizeErrorMessage(rawMessage: string): string {\n+  const trimmed = rawMessage.trim();\n+  if (!trimmed) {\n+    return GENERIC_UPSTREAM_ERROR_MESSAGE;\n+  }\n+\n+  let sanitized = trimmed;\n+  for (const pattern of SENSITIVE_PATTERNS) {\n+    pattern.lastIndex = 0;\n+    sanitized = sanitized.replace(pattern, '[REDACTED]');\n+  }\n+\n+  sanitized = sanitized.replace(/\\s+/g, ' ').trim();\n+  if (!sanitized || sanitized === '[REDACTED]' || hasSensitivePattern(sanitized)) {\n+    return GENERIC_UPSTREAM_ERROR_MESSAGE;\n+  }\n+\n+  return sanitized;\n+}\n+\n+function sanitizeErrorDetails(details: Record<string, unknown> | undefined): Record<string, unknown> | null {\n+  if (!details) {\n+    return null;\n+  }\n+\n+  const message = details.message;\n+  if (typeof message !== 'string') {\n+    return details;\n+  }\n+\n+  return {\n+    ...details,\n+    message: sanitizeErrorMessage(message),\n+  };\n+}\n+\n export default {\n   async fetch(request: Request, env: AgentEnv): Promise<Response> {\n     if (request.method !== 'POST') {\n@@ -56,10 +107,11 @@ export default {\n       });\n     } catch (error) {\n       if (error instanceof AgentEndpointError) {\n+        const safeDetails = sanitizeErrorDetails(error.details);\n         return new Response(\n           JSON.stringify({\n             error: error.code,\n-            details: error.details ?? null,\n+            details: safeDetails,\n           }),\n           {\n             status: error.status,\n@@ -71,7 +123,7 @@ export default {\n       return new Response(\n         JSON.stringify({\n           error: 'internal_error',\n-          details: error instanceof Error ? { message: error.message } : null,\n+          details: error instanceof Error ? { message: sanitizeErrorMessage(error.message) } : null,\n         }),\n         {\n           status: 500,\ndiff --git a/packages/agent-endpoint/src/lib/agent.test.ts b/packages/agent-endpoint/src/lib/agent.test.ts\nindex afc585e..f3427bf 100644\n--- a/packages/agent-endpoint/src/lib/agent.test.ts\n+++ b/packages/agent-endpoint/src/lib/agent.test.ts\n@@ -1,5 +1,12 @@\n import { strict as assert } from 'assert';\n import { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from './agent.js';\n+import worker from '../index.js';\n+\n+type WorkerModule = {\n+  fetch(request: Request, env: Record<string, string | undefined>): Promise<Response>;\n+};\n+\n+const handler = worker as WorkerModule;\n \n export async function runAgentTests(): Promise<void> {\n   {\n@@ -62,6 +69,81 @@ export async function runAgentTests(): Promise<void> {\n     }\n   }\n \n+  {\n+    const originalFetch = globalThis.fetch;\n+    globalThis.fetch = (async (): Promise<Response> => {\n+      throw new Error('upstream failed for Bearer token-abc sk-secret123 nmb_live_secret999');\n+    }) as typeof fetch;\n+\n+    try {\n+      const response = await handler.fetch(\n+        new Request('https://example.workers.dev', {\n+          method: 'POST',\n+          headers: {\n+            'Content-Type': 'application/json',\n+            Authorization: 'Bearer expected-token',\n+          },\n+          body: JSON.stringify({\n+            mode: 'workspace_task',\n+            prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n+            history: [],\n+          }),\n+        }),\n+        {\n+          AGENT_SDK_AUTH_TOKEN: 'expected-token',\n+          OPENROUTER_API_KEY: 'env-key',\n+        }\n+      );\n+\n+      assert.equal(response.status, 500);\n+      const payload = (await response.json()) as {\n+        details?: { message?: string };\n+      };\n+      const message = payload.details?.message ?? '';\n+      assert.equal(message.includes('Bearer token-abc'), false);\n+      assert.equal(message.includes('sk-secret123'), false);\n+      assert.equal(message.includes('nmb_live_secret999'), false);\n+    } finally {\n+      globalThis.fetch = originalFetch;\n+    }\n+  }\n+\n+  {\n+    const originalFetch = globalThis.fetch;\n+    globalThis.fetch = (async (): Promise<Response> => {\n+      throw new Error('sk-onlysecretvalue');\n+    }) as typeof fetch;\n+\n+    try {\n+      const response = await handler.fetch(\n+        new Request('https://example.workers.dev', {\n+          method: 'POST',\n+          headers: {\n+            'Content-Type': 'application/json',\n+            Authorization: 'Bearer expected-token',\n+          },\n+          body: JSON.stringify({\n+            mode: 'workspace_task',\n+            prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n+            history: [],\n+          }),\n+        }),\n+        {\n+          AGENT_SDK_AUTH_TOKEN: 'expected-token',\n+          OPENROUTER_API_KEY: 'env-key',\n+        }\n+      );\n+\n+      assert.equal(response.status, 500);\n+      const payload = (await response.json()) as {\n+        details?: { message?: string };\n+      };\n+      assert.equal(payload.details?.message, 'upstream error');\n+    } finally {\n+      globalThis.fetch = originalFetch;\n+    }\n+  }\n+\n   {\n     const originalFetch = globalThis.fetch;\n     let capturedAuthHeader = '';\ndiff --git a/packages/worker/src/index.ts b/packages/worker/src/index.ts\nindex 22e4356..952cc3b 100644\n--- a/packages/worker/src/index.ts\n+++ b/packages/worker/src/index.ts\n@@ -46,6 +46,7 @@ import { ReviewRunner } from './review-runner-do.js';\n import { handleReviewQueueDispatch } from './lib/review-dispatch.js';\n import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';\n import { authenticateRequest } from './lib/auth.js';\n+import { enforceRequestBodySizeCap } from './lib/request-size.js';\n import type { AuthContext, Env } from './types.js';\n \n // Re-export Durable Objects for bindings\n@@ -73,6 +74,11 @@ export default {\n       return new Response(null, { headers: corsHeaders });\n     }\n \n+    const sizeLimitResponse = enforceRequestBodySizeCap(request, corsHeaders);\n+    if (sizeLimitResponse) {\n+      return sizeLimitResponse;\n+    }\n+\n     const authResult = await authenticateRequest(request, env);\n     if ('response' in authResult) {\n       return authResult.response;\ndiff --git a/packages/worker/src/lib/request-size.test.ts b/packages/worker/src/lib/request-size.test.ts\nnew file mode 100644\nindex 0000000..d8c98ad\n--- /dev/null\n+++ b/packages/worker/src/lib/request-size.test.ts\n@@ -0,0 +1,85 @@\n+import { strict as assert } from 'assert';\n+import { enforceRequestBodySizeCap } from './request-size.js';\n+\n+const corsHeaders = {\n+  'Access-Control-Allow-Origin': '*',\n+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',\n+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',\n+};\n+\n+export async function runRequestSizeTests(): Promise<void> {\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/workspaces', {\n+        method: 'POST',\n+        headers: {\n+          'Content-Length': String(100 * 1024 * 1024 - 1),\n+        },\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.equal(response, null);\n+  }\n+\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/workspaces', {\n+        method: 'POST',\n+        headers: {\n+          'Content-Length': String(100 * 1024 * 1024 + 1),\n+        },\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.notEqual(response, null);\n+    assert.equal(response?.status, 413);\n+    const payload = (await response?.json()) as Record<string, unknown>;\n+    assert.equal(payload.error, 'Request body too large');\n+    assert.equal(payload.code, 'request_too_large');\n+  }\n+\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/reviews', {\n+        method: 'POST',\n+        headers: {\n+          'Content-Length': String(5 * 1024 * 1024 - 1),\n+        },\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.equal(response, null);\n+  }\n+\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/reviews', {\n+        method: 'POST',\n+        headers: {\n+          'Content-Length': String(5 * 1024 * 1024 + 1),\n+        },\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.notEqual(response, null);\n+    assert.equal(response?.status, 413);\n+    const payload = (await response?.json()) as Record<string, unknown>;\n+    assert.equal(payload.error, 'Request body too large');\n+    assert.equal(payload.code, 'request_too_large');\n+  }\n+\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/reviews', {\n+        method: 'POST',\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.equal(response, null);\n+  }\n+}\ndiff --git a/packages/worker/src/lib/request-size.ts b/packages/worker/src/lib/request-size.ts\nnew file mode 100644\nindex 0000000..6b9523c\n--- /dev/null\n+++ b/packages/worker/src/lib/request-size.ts\n@@ -0,0 +1,41 @@\n+const DEFAULT_MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;\n+const UPLOAD_MAX_REQUEST_BODY_BYTES = 100 * 1024 * 1024;\n+\n+function isUploadRoute(request: Request): boolean {\n+  if (request.method !== 'POST') {\n+    return false;\n+  }\n+\n+  const pathname = new URL(request.url).pathname;\n+  return pathname === '/api/checkpoint/jobs' || pathname === '/api/workspaces';\n+}\n+\n+function resolveRequestBodyLimitBytes(request: Request): number {\n+  return isUploadRoute(request) ? UPLOAD_MAX_REQUEST_BODY_BYTES : DEFAULT_MAX_REQUEST_BODY_BYTES;\n+}\n+\n+export function enforceRequestBodySizeCap(request: Request, corsHeaders: Record<string, string>): Response | null {\n+  const maxBytes = resolveRequestBodyLimitBytes(request);\n+  const raw = request.headers.get('Content-Length');\n+  if (!raw) {\n+    return null;\n+  }\n+\n+  const trimmed = raw.trim();\n+  if (!/^\\d+$/.test(trimmed)) {\n+    return null;\n+  }\n+\n+  const contentLength = Number(trimmed);\n+  if (!Number.isFinite(contentLength) || contentLength <= maxBytes) {\n+    return null;\n+  }\n+\n+  return new Response(JSON.stringify({ error: 'Request body too large', code: 'request_too_large' }), {\n+    status: 413,\n+    headers: {\n+      'Content-Type': 'application/json',\n+      ...corsHeaders,\n+    },\n+  });\n+}\ndiff --git a/packages/worker/src/lib/run-tests.ts b/packages/worker/src/lib/run-tests.ts\nindex 4312866..5fe16aa 100644\n--- a/packages/worker/src/lib/run-tests.ts\n+++ b/packages/worker/src/lib/run-tests.ts\n@@ -26,6 +26,7 @@ import { runReviewOutputV2Tests } from './review-output-v2.test.js';\n import { runReviewApiTests } from '../api/reviews.test.js';\n import { runSystemApiTests } from '../api/system.test.js';\n import { runAuthMiddlewareTests } from '../auth.test.js';\n+import { runRequestSizeTests } from './request-size.test.js';\n \n type TestCase = {\n   name: string;\n@@ -35,6 +36,7 @@ type TestCase = {\n const TEST_CASES: TestCase[] = [\n   { name: 'state-machine', run: runStateMachineTests },\n   { name: 'runtime-flags', run: runFlagsTests },\n+  { name: 'request-size', run: runRequestSizeTests },\n   { name: 'checkpoint-queue', run: runCheckpointQueueTests },\n   { name: 'checkpoint-plan', run: runCheckpointPlanTests },\n   { name: 'checkpoint-runner', run: runCheckpointRunnerTests },\ndiff --git a/scripts/audit-with-exceptions.mjs b/scripts/audit-with-exceptions.mjs\nnew file mode 100644\nindex 0000000..c62b7df\n--- /dev/null\n+++ b/scripts/audit-with-exceptions.mjs\n@@ -0,0 +1,81 @@\n+import { readFileSync } from 'node:fs';\n+import { execSync } from 'node:child_process';\n+\n+const HIGH_OR_CRITICAL = new Set(['high', 'critical']);\n+\n+function runAuditJson() {\n+  try {\n+    return execSync('pnpm audit --audit-level high --json', {\n+      encoding: 'utf8',\n+      stdio: ['ignore', 'pipe', 'pipe'],\n+    });\n+  } catch (error) {\n+    if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {\n+      return error.stdout;\n+    }\n+    throw error;\n+  }\n+}\n+\n+function readExceptions() {\n+  const raw = readFileSync('.audit-exceptions.json', 'utf8');\n+  const parsed = JSON.parse(raw);\n+  if (!Array.isArray(parsed)) {\n+    throw new Error('.audit-exceptions.json must be an array');\n+  }\n+  return parsed;\n+}\n+\n+function main() {\n+  const report = JSON.parse(runAuditJson());\n+  const advisories = report?.advisories ?? {};\n+  const exceptions = readExceptions();\n+  const allowed = new Set(exceptions.map((entry) => String(entry.ghsa)));\n+\n+  const failures = [];\n+  const suppressed = [];\n+\n+  for (const advisory of Object.values(advisories)) {\n+    if (!advisory || typeof advisory !== 'object') {\n+      continue;\n+    }\n+\n+    const severity = String(advisory.severity ?? '').toLowerCase();\n+    if (!HIGH_OR_CRITICAL.has(severity)) {\n+      continue;\n+    }\n+\n+    const ghsa = String(advisory.github_advisory_id ?? '');\n+    const record = {\n+      ghsa,\n+      title: String(advisory.title ?? 'Unknown advisory'),\n+      module: String(advisory.module_name ?? 'unknown'),\n+      severity,\n+    };\n+\n+    if (allowed.has(ghsa)) {\n+      suppressed.push(record);\n+    } else {\n+      failures.push(record);\n+    }\n+  }\n+\n+  if (suppressed.length > 0) {\n+    console.log('Suppressed advisories from .audit-exceptions.json:');\n+    for (const advisory of suppressed) {\n+      console.log(`- ${advisory.ghsa} (${advisory.module}): ${advisory.title}`);\n+    }\n+  }\n+\n+  if (failures.length > 0) {\n+    console.error('Unapproved high/critical advisories found:');\n+    for (const advisory of failures) {\n+      console.error(`- ${advisory.ghsa} (${advisory.module}, ${advisory.severity}): ${advisory.title}`);\n+    }\n+    process.exit(1);\n+  }\n+\n+  console.log('No unapproved high/critical advisories found.');\n+}\n+\n+main();\n",
+            "title": "Shows diff between main and security-audit",
+            "metadata": {
+              "output": "diff --git a/.audit-exceptions.json b/.audit-exceptions.json\nnew file mode 100644\nindex 0000000..78d8580\n--- /dev/null\n+++ b/.audit-exceptions.json\n@@ -0,0 +1,35 @@\n+[\n+  {\n+    \"ghsa\": \"GHSA-f269-vfmq-vjvj\",\n+    \"package\": \"undici\",\n+    \"severity\": \"high\",\n+    \"reason\": \"Impacts Undici WebSocket client parsing. Nimbus production code runs on Cloudflare Workers and does not use Undici WebSocket client paths.\",\n+    \"scope\": [\n+      \"packages/agent-endpoint > wrangler > miniflare > undici\",\n+      \"packages/worker > wrangler > miniflare > undici\",\n+      \"packages/worker > undici\"\n+    ]\n+  },\n+  {\n+    \"ghsa\": \"GHSA-vrm6-8vpv-qv8q\",\n+    \"package\": \"undici\",\n+    \"severity\": \"high\",\n+    \"reason\": \"Impacts Undici WebSocket permessage-deflate handling. Nimbus does not open outbound WebSocket client connections in Cloudflare Workers runtime.\",\n+    \"scope\": [\n+      \"packages/agent-endpoint > wrangler > miniflare > undici\",\n+      \"packages/worker > wrangler > miniflare > undici\",\n+      \"packages/worker > undici\"\n+    ]\n+  },\n+  {\n+    \"ghsa\": \"GHSA-v9p9-hfj2-hcw8\",\n+    \"package\": \"undici\",\n+    \"severity\": \"high\",\n+    \"reason\": \"Impacts Undici WebSocket decompression negotiation in Node.js clients. This code path is not reachable in Cloudflare Workers fetch runtime used in production.\",\n+    \"scope\": [\n+      \"packages/agent-endpoint > wrangler > miniflare > undici\",\n+      \"packages/worker > wrangler > miniflare > undici\",\n+      \"packages/worker > undici\"\n+    ]\n+  }\n+]\ndiff --git a/.github/workflows/dependency-scan.yml b/.github/workflows/dependency-scan.yml\nnew file mode 100644\nindex 0000000..479e463\n--- /dev/null\n+++ b/.github/workflows/dependency-scan.yml\n@@ -0,0 +1,25 @@\n+name: Dependency Scan\n+\n+on:\n+  push:\n+  pull_request:\n+\n+jobs:\n+  audit:\n+    runs-on: ubuntu-latest\n+    steps:\n+      - name: Checkout\n+        uses: actions/checkout@v4\n+      - name: Setup pnpm\n+        uses: pnpm/action-setup@v4\n+        with:\n+          version: 9.15.0\n+      - name: Setup Node\n+        uses: actions/setup-node@v4\n+        with:\n+          node-version: 20\n+          cache: pnpm\n+      - name: Install dependencies\n+        run: pnpm install --frozen-lockfile\n+      - name: Run high/critical audit\n+        run: node scripts/audit-with-exceptions.mjs\ndiff --git a/.github/workflows/secret-scan.yml b/.github/workflows/secret-scan.yml\nnew file mode 100644\nindex 0000000..13175f0\n--- /dev/null\n+++ b/.github/workflows/secret-scan.yml\n@@ -0,0 +1,18 @@\n+name: Secret Scan\n+\n+on:\n+  push:\n+  pull_request:\n+\n+jobs:\n+  gitleaks:\n+    runs-on: ubuntu-latest\n+    steps:\n+      - name: Checkout\n+        uses: actions/checkout@v4\n+      - name: Run gitleaks\n+        uses: gitleaks/gitleaks-action@v2\n+        env:\n+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n+        with:\n+          config-path: .gitleaks.toml\ndiff --git a/.gitleaks.toml b/.gitleaks.toml\nnew file mode 100644\nindex 0000000..d8df5e9\n--- /dev/null\n+++ b/.gitleaks.toml\n@@ -0,0 +1,28 @@\n+title = \"Nimbus gitleaks config\"\n+\n+[extend]\n+useDefault = true\n+\n+[[allowlists]]\n+description = \"Allow mock nmb_live_ keys in test files\"\n+condition = \"AND\"\n+paths = [\n+  '''(^|/)packages/.+\\.(test|spec)\\.ts$''',\n+]\n+regexTarget = \"match\"\n+regexes = [\n+  '''nmb_live_[A-Za-z0-9_]+''',\n+]\n+\n+[[allowlists]]\n+description = \"Allow synthetic hash fixtures in test files\"\n+condition = \"AND\"\n+paths = [\n+  '''(^|/)packages/.+\\.(test|spec)\\.ts$''',\n+]\n+regexTarget = \"line\"\n+regexes = [\n+  '''\\b[a-f0-9]{40}\\b''',\n+  '''\\b[a-f0-9]{64}\\b''',\n+  '''repeat\\((40|64)\\)''',\n+]\ndiff --git a/packages/agent-endpoint/src/index.ts b/packages/agent-endpoint/src/index.ts\nindex fbfcdf9..bb778c2 100644\n--- a/packages/agent-endpoint/src/index.ts\n+++ b/packages/agent-endpoint/src/index.ts\n@@ -5,6 +5,14 @@ import {\n   type AgentRequest,\n } from './lib/agent.js';\n \n+const SENSITIVE_PATTERNS: RegExp[] = [\n+  /Bearer\\s+[A-Za-z0-9._~+/=-]+/gi,\n+  /\\bsk-[A-Za-z0-9_-]+\\b/gi,\n+  /\\bnmb_live_[A-Za-z0-9_-]+\\b/gi,\n+];\n+\n+const GENERIC_UPSTREAM_ERROR_MESSAGE = 'upstream error';\n+\n function readBearerToken(value: string | null): string | null {\n   if (!value) {\n     return null;\n@@ -17,6 +25,49 @@ function readBearerToken(value: string | null): string | null {\n   return token ? token : null;\n }\n \n+function hasSensitivePattern(value: string): boolean {\n+  return SENSITIVE_PATTERNS.some((pattern) => {\n+    pattern.lastIndex = 0;\n+    return pattern.test(value);\n+  });\n+}\n+\n+function sanitizeErrorMessage(rawMessage: string): string {\n+  const trimmed = rawMessage.trim();\n+  if (!trimmed) {\n+    return GENERIC_UPSTREAM_ERROR_MESSAGE;\n+  }\n+\n+  let sanitized = trimmed;\n+  for (const pattern of SENSITIVE_PATTERNS) {\n+    pattern.lastIndex = 0;\n+    sanitized = sanitized.replace(pattern, '[REDACTED]');\n+  }\n+\n+  sanitized = sanitized.replace(/\\s+/g, ' ').trim();\n+  if (!sanitized || sanitized === '[REDACTED]' || hasSensitivePattern(sanitized)) {\n+    return GENERIC_UPSTREAM_ERROR_MESSAGE;\n+  }\n+\n+  return sanitized;\n+}\n+\n+function sanitizeErrorDetails(details: Record<string, unknown> | undefined): Record<string, unknown> | null {\n+  if (!details) {\n+    return null;\n+  }\n+\n+  const message = details.message;\n+  if (typeof message !== 'string') {\n+    return details;\n+  }\n+\n+  return {\n+    ...details,\n+    message: sanitizeErrorMessage(message),\n+  };\n+}\n+\n export default {\n   async fetch(request: Request, env: AgentEnv): Promise<Response> {\n     if (request.method !== 'POST') {\n@@ -56,10 +107,11 @@ export default {\n       });\n     } catch (error) {\n       if (error instanceof AgentEndpointError) {\n+        const safeDetails = sanitizeErrorDetails(error.details);\n         return new Response(\n           JSON.stringify({\n             error: error.code,\n-            details: error.details ?? null,\n+            details: safeDetails,\n           }),\n           {\n             status: error.status,\n@@ -71,7 +123,7 @@ export default {\n       return new Response(\n         JSON.stringify({\n           error: 'internal_error',\n-          details: error instanceof Error ? { message: error.message } : null,\n+          details: error instanceof Error ? { message: sanitizeErrorMessage(error.message) } : null,\n         }),\n         {\n           status: 500,\ndiff --git a/packages/agent-endpoint/src/lib/agent.test.ts b/packages/agent-endpoint/src/lib/agent.test.ts\nindex afc585e..f3427bf 100644\n--- a/packages/agent-endpoint/src/lib/agent.test.ts\n+++ b/packages/agent-endpoint/src/lib/agent.test.ts\n@@ -1,5 +1,12 @@\n import { strict as assert } from 'assert';\n import { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from './agent.js';\n+import worker from '../index.js';\n+\n+type WorkerModule = {\n+  fetch(request: Request, env: Record<string, string | undefined>): Promise<Response>;\n+};\n+\n+const handler = worker as WorkerModule;\n \n export async function runAgentTests(): Promise<void> {\n   {\n@@ -62,6 +69,81 @@ export async function runAgentTests(): Promise<void> {\n     }\n   }\n \n+  {\n+    const originalFetch = globalThis.fetch;\n+    globalThis.fetch = (async (): Promise<Response> => {\n+      throw new Error('upstream failed for Bearer token-abc sk-secret123 nmb_live_secret999');\n+    }) as typeof fetch;\n+\n+    try {\n+      const response = await handler.fetch(\n+        new Request('https://example.workers.dev', {\n+          method: 'POST',\n+          headers: {\n+            'Content-Type': 'application/json',\n+            Authorization: 'Bearer expected-token',\n+          },\n+          body: JSON.stringify({\n+            mode: 'workspace_task',\n+            prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n+            history: [],\n+          }),\n+        }),\n+        {\n+          AGENT_SDK_AUTH_TOKEN: 'expected-token',\n+          OPENROUTER_API_KEY: 'env-key',\n+        }\n+      );\n+\n+      assert.equal(response.status, 500);\n+      const payload = (await response.json()) as {\n+        details?: { message?: string };\n+      };\n+      const message = payload.details?.message ?? '';\n+      assert.equal(message.includes('Bearer token-abc'), false);\n+      assert.equal(message.includes('sk-secret123'), false);\n+      assert.equal(message.includes('nmb_live_secret999'), false);\n+    } finally {\n+      globalThis.fetch = originalFetch;\n+    }\n+  }\n+\n+  {\n+    const originalFetch = globalThis.fetch;\n+    globalThis.fetch = (async (): Promise<Response> => {\n+      throw new Error('sk-onlysecretvalue');\n+    }) as typeof fetch;\n+\n+    try {\n+      const response = await handler.fetch(\n+        new Request('https://example.workers.dev', {\n+          method: 'POST',\n+          headers: {\n+            'Content-Type': 'application/json',\n+            Authorization: 'Bearer expected-token',\n+          },\n+          body: JSON.stringify({\n+            mode: 'workspace_task',\n+            prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n+            history: [],\n+          }),\n+        }),\n+        {\n+          AGENT_SDK_AUTH_TOKEN: 'expected-token',\n+          OPENROUTER_API_KEY: 'env-key',\n+        }\n+      );\n+\n+      assert.equal(response.status, 500);\n+      const payload = (await response.json()) as {\n+        details?: { message?: string };\n+      };\n+      assert.equal(payload.details?.message, 'upstream error');\n+    } finally {\n+      globalThis.fetch = originalFetch;\n+    }\n+  }\n+\n   {\n     const originalFetch = globalThis.fetch;\n     let capturedAuthHeader = '';\ndiff --git a/packages/worker/src/index.ts b/packages/worker/src/index.ts\nindex 22e4356..952cc3b 100644\n--- a/packages/worker/src/index.ts\n+++ b/packages/worker/src/index.ts\n@@ -46,6 +46,7 @@ import { ReviewRunner } from './review-runner-do.js';\n import { handleReviewQueueDispatch } from './lib/review-dispatch.js';\n import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';\n import { authenticateRequest } from './lib/auth.js';\n+import { enforceRequestBodySizeCap } from './lib/request-size.js';\n import type { AuthContext, Env } from './types.js';\n \n // Re-export Durable Objects for bindings\n@@ -73,6 +74,11 @@ export default {\n       return new Response(null, { headers: corsHeaders });\n     }\n \n+    const sizeLimitResponse = enforceRequestBodySizeCap(request, corsHeaders);\n+    if (sizeLimitResponse) {\n+      return sizeLimitResponse;\n+    }\n+\n     const authResult = await authenticateRequest(request, env);\n     if ('response' in authResult) {\n       return authResult.response;\ndiff --git a/packages/worker/src/lib/request-size.test.ts b/packages/worker/src/lib/request-size.test.ts\nnew file mode 100644\nindex 0000000..d8c98ad\n--- /dev/null\n+++ b/packages/worker/src/lib/request-size.test.ts\n@@ -0,0 +1,85 @@\n+import { strict as assert } from 'assert';\n+import { enforceRequestBodySizeCap } from './request-size.js';\n+\n+const corsHeaders = {\n+  'Access-Control-Allow-Origin': '*',\n+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',\n+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',\n+};\n+\n+export async function runRequestSizeTests(): Promise<void> {\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/workspaces', {\n+        method: 'POST',\n+        headers: {\n+          'Content-Length': String(100 * 1024 * 1024 - 1),\n+        },\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.equal(response, null);\n+  }\n+\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/workspaces', {\n+        method: 'POST',\n+        headers: {\n+          'Content-Length': String(100 * 1024 * 1024 + 1),\n+        },\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.notEqual(response, null);\n+    assert.equal(response?.status, 413);\n+    const payload = (await response?.json()) as Record<string, unknown>;\n+    assert.equal(payload.error, 'Request body too large');\n+    assert.equal(payload.code, 'request_too_large');\n+  }\n+\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/reviews', {\n+        method: 'POST',\n+        headers: {\n+          'Content-Length': String(5 * 1024 * 1024 - 1),\n+        },\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.equal(response, null);\n+  }\n+\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/reviews', {\n+        method: 'POST',\n+        headers: {\n+          'Content-Length': String(5 * 1024 * 1024 + 1),\n+        },\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.notEqual(response, null);\n+    assert.equal(response?.status, 413);\n+    const payload = (await response?.json()) as Record<string, unknown>;\n+    assert.equal(payload.error, 'Request body too large');\n+    assert.equal(payload.code, 'request_too_large');\n+  }\n+\n+  {\n+    const response = enforceRequestBodySizeCap(\n+      new Request('https://example.com/api/reviews', {\n+        method: 'POST',\n+      }),\n+      corsHeaders\n+    );\n+\n+    assert.equal(response, null);\n+  }\n+}\ndiff --git a/packages/worker/src/lib/request-size.ts b/packages/worker/src/lib/request-size.ts\nnew file mode 100644\nindex 0000000..6b9523c\n--- /dev/null\n+++ b/packages/worker/src/lib/request-size.ts\n@@ -0,0 +1,41 @@\n+const DEFAULT_MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;\n+const UPLOAD_MAX_REQUEST_BODY_BYTES = 100 * 1024 * 1024;\n+\n+function isUploadRoute(request: Request): boolean {\n+  if (request.method !== 'POST') {\n+    return false;\n+  }\n+\n+  const pathname = new URL(request.url).pathname;\n+  return pathname === '/api/checkpoint/jobs' || pathname === '/api/workspaces';\n+}\n+\n+function resolveRequestBodyLimitBytes(request: Request): number {\n+  return isUploadRoute(request) ? UPLOAD_MAX_REQUEST_BODY_BYTES : DEFAULT_MAX_REQUEST_BODY_BYTES;\n+}\n+\n+export function enforceRequestBodySizeCap(request: Request, corsHeaders: Record<string, string>): Response | null {\n+  const maxBytes = resolveRequestBodyLimitBytes(request);\n+  const raw = request.headers.get('Content-Length');\n+  if (!raw) {\n+    return null;\n+  }\n+\n+  const trimmed = raw.trim();\n+  if (!/^\\d+$/.test(trimmed)) {\n+    return null;\n+  }\n+\n+  const contentLength = Number(trimmed);\n+  if (!Number.isFinite(contentLength) || contentLength <= maxBytes) {\n+    return null;\n+  }\n+\n+  return new Response(JSON.stringify({ error: 'Request body too large', code: 'request_too_large' }), {\n+    status: 413,\n+    headers: {\n+      'Content-Type': 'application/json',\n+      ...corsHeaders,\n+    },\n+  });\n+}\ndiff --git a/packages/worker/src/lib/run-tests.ts b/packages/worker/src/lib/run-tests.ts\nindex 4312866..5fe16aa 100644\n--- a/packages/worker/src/lib/run-tests.ts\n+++ b/packages/worker/src/lib/run-tests.ts\n@@ -26,6 +26,7 @@ import { runReviewOutputV2Tests } from './review-output-v2.test.js';\n import { runReviewApiTests } from '../api/reviews.test.js';\n import { runSystemApiTests } from '../api/system.test.js';\n import { runAuthMiddlewareTests } from '../auth.test.js';\n+import { runRequestSizeTests } from './request-size.test.js';\n \n type TestCase = {\n   name: string;\n@@ -35,6 +36,7 @@ type TestCase = {\n const TEST_CASES: TestCase[] = [\n   { name: 'state-machine', run: runStateMachineTests },\n   { name: 'runtime-flags', run: runFlagsTests },\n+  { name: 'request-size', run: runRequestSizeTests },\n   { name: 'checkpoint-queue', run: runCheckpointQueueTests },\n   { name: 'checkpoint-plan', run: runCheckpointPlanTests },\n   { name: 'checkpoint-runner', run: runCheckpointRunnerTests },\ndiff --git a/scripts/audit-with-exceptions.mjs b/scripts/audit-with-exceptions.mjs\nnew file mode 100644\nindex 0000000..c62b7df\n--- /dev/null\n+++ b/scripts/audit-with-exceptions.mjs\n@@ -0,0 +1,81 @@\n+import { readFileSync } from 'node:fs';\n+import { execSync } from 'node:child_process';\n+\n+const HIGH_OR_CRITICAL = new Set(['high', 'critical']);\n+\n+function runAuditJson() {\n+  try {\n+    return execSync('pnpm audit --audit-level high --json', {\n+      encoding: 'utf8',\n+      stdio: ['ignore', 'pipe', 'pipe'],\n+    });\n+  } catch (error) {\n+    if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {\n+      return error.stdout;\n+    }\n+    throw error;\n+  }\n+}\n+\n+function readExceptions() {\n+  const raw = readFileSync('.audit-exceptions.json', 'utf8');\n+  const parsed = JSON.parse(raw);\n+  if (!Array.isArray(parsed)) {\n+    throw new Error('.audit-exceptions.json must be an array');\n+  }\n+  return parsed;\n+}\n+\n+function main() {\n+  const report = JSON.parse(runAuditJson());\n+  const advisories = report?.advisories ?? {};\n+  const exceptions = readExceptions();\n+  const allowed = new Set(exceptions.map((entry) => String(entry.ghsa)));\n+\n+  const failures = [];\n+  const suppressed = [];\n+\n+  for (const advisory of Object.values(advisories)) {\n+    if (!advisory || typeof advisory !== 'object') {\n+      continue;\n+    }\n+\n+    const severity = String(advisory.severity ?? '').toLowerCase();\n+    if (!HIGH_OR_CRITICAL.has(severity)) {\n+      continue;\n+    }\n+\n+    const ghsa = String(advisory.github_advisory_id ?? '');\n+    const record = {\n+      ghsa,\n+      title: String(advisory.title ?? 'Unknown advisory'),\n+      module: String(advisory.module_name ?? 'unknown'),\n+      severity,\n+    };\n+\n+    if (allowed.has(ghsa)) {\n+      suppressed.push(record);\n+    } else {\n+      failures.push(record);\n+    }\n+  }\n+\n+  if (suppressed.length > 0) {\n+    console.log('Suppressed advisories from .audit-exceptions.json:');\n+    for (const advisory of suppressed) {\n+      console.log(`- ${advisory.ghsa} (${advisory.module}): ${advisory.title}`);\n+    }\n+  }\n+\n+  if (failures.length > 0) {\n+    console.error('Unapproved high/critical advisories found:');\n+    for (const advisory of failures) {\n+      console.error(`- ${advisory.ghsa} (${advisory.module}, ${advisory.severity}): ${advisory.title}`);\n+    }\n+    process.exit(1);\n+  }\n+\n+  console.log('No unapproved high/critical advisories found.');\n+}\n+\n+main();\n",
+              "exit": 0,
+              "description": "Shows diff between main and security-audit",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623018504,
+              "end": 1773623019214
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0f809d02f30c3ebf0169b756ea6ae08199b8ab19ea607df141"
+            }
+          },
+          "id": "prt_cf42b8408001zBWbJdkTbbdLKq",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.0074529,
+          "tokens": {
+            "total": 7517,
+            "input": 78,
+            "output": 271,
+            "reasoning": 162,
+            "cache": {
+              "read": 7168,
+              "write": 0
+            }
+          },
+          "id": "prt_cf42b86cf001l23tUhBbOW2i1x",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623019316,
+          "completed": 1773623026759
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.01843345,
+        "tokens": {
+          "total": 13156,
+          "input": 5247,
+          "output": 485,
+          "reasoning": 83,
+          "cache": {
+            "read": 7424,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "REDACTED",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "prt_cf42b88ff001515AYBhvK8u0EN",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Preparing full file reads**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0e913c6070eddd050169b756ed62c8819a88edc64a8cc5ff64",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623021421,
+            "end": 1773623026605
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_Bak6X70yAwgw1kga4a25JCRX",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "**/{AGENTS.md,CONVENTIONS.md,.editorconfig,README.md}"
+            },
+            "output": "/Users/nickdejesus/Code/nimbus/README.md\n/Users/nickdejesus/Code/nimbus/packages/report-ui/README.md",
+            "title": "",
+            "metadata": {
+              "count": 2,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623026609,
+              "end": 1773623026653
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f270f4819abc1da7f4445e04eb"
+            }
+          },
+          "id": "prt_cf42ba3ae001hmkcNibBDlgDT0",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_hnm5D8pdmuGWpBLJ3ym9rWt1",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/src/index.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/src/index.ts</path>\n<type>file</type>\n<content>1: import {\n2:   AgentEndpointError,\n3:   nextAgentActionWithInference,\n4:   type AgentEnv,\n5:   type AgentRequest,\n6: } from './lib/agent.js';\n7: \n8: const SENSITIVE_PATTERNS: RegExp[] = [\n9:   /Bearer\\s+[A-Za-z0-9._~+/=-]+/gi,\n10:   /\\bsk-[A-Za-z0-9_-]+\\b/gi,\n11:   /\\bnmb_live_[A-Za-z0-9_-]+\\b/gi,\n12: ];\n13: \n14: const GENERIC_UPSTREAM_ERROR_MESSAGE = 'upstream error';\n15: \n16: function readBearerToken(value: string | null): string | null {\n17:   if (!value) {\n18:     return null;\n19:   }\n20:   const match = value.match(/^Bearer\\s+(.+)$/i);\n21:   if (!match) {\n22:     return null;\n23:   }\n24:   const token = match[1]?.trim();\n25:   return token ? token : null;\n26: }\n27: \n28: function hasSensitivePattern(value: string): boolean {\n29:   return SENSITIVE_PATTERNS.some((pattern) => {\n30:     pattern.lastIndex = 0;\n31:     return pattern.test(value);\n32:   });\n33: }\n34: \n35: function sanitizeErrorMessage(rawMessage: string): string {\n36:   const trimmed = rawMessage.trim();\n37:   if (!trimmed) {\n38:     return GENERIC_UPSTREAM_ERROR_MESSAGE;\n39:   }\n40: \n41:   let sanitized = trimmed;\n42:   for (const pattern of SENSITIVE_PATTERNS) {\n43:     pattern.lastIndex = 0;\n44:     sanitized = sanitized.replace(pattern, '[REDACTED]');\n45:   }\n46: \n47:   sanitized = sanitized.replace(/\\s+/g, ' ').trim();\n48:   if (!sanitized || sanitized === '[REDACTED]' || hasSensitivePattern(sanitized)) {\n49:     return GENERIC_UPSTREAM_ERROR_MESSAGE;\n50:   }\n51: \n52:   return sanitized;\n53: }\n54: \n55: function sanitizeErrorDetails(details: Record<string, unknown> | undefined): Record<string, unknown> | null {\n56:   if (!details) {\n57:     return null;\n58:   }\n59: \n60:   const message = details.message;\n61:   if (typeof message !== 'string') {\n62:     return details;\n63:   }\n64: \n65:   return {\n66:     ...details,\n67:     message: sanitizeErrorMessage(message),\n68:   };\n69: }\n70: \n71: export default {\n72:   async fetch(request: Request, env: AgentEnv): Promise<Response> {\n73:     if (request.method !== 'POST') {\n74:       return new Response(JSON.stringify({ error: 'method_not_allowed' }), {\n75:         status: 405,\n76:         headers: { 'Content-Type': 'application/json' },\n77:       });\n78:     }\n79: \n80:     const expectedAuthToken = (env.AGENT_SDK_AUTH_TOKEN ?? '').trim();\n81:     const providedAuthToken = readBearerToken(request.headers.get('Authorization'));\n82:     if (!expectedAuthToken || !providedAuthToken || providedAuthToken !== expectedAuthToken) {\n83:       return new Response(JSON.stringify({ error: 'unauthorized' }), {\n84:         status: 401,\n85:         headers: { 'Content-Type': 'application/json' },\n86:       });\n87:     }\n88: \n89:     let payload: AgentRequest;\n90:     try {\n91:       payload = (await request.json()) as AgentRequest;\n92:     } catch {\n93:       return new Response(JSON.stringify({ error: 'invalid_json' }), {\n94:         status: 400,\n95:         headers: { 'Content-Type': 'application/json' },\n96:       });\n97:     }\n98: \n99:     try {\n100:       const openrouterApiKeyHeader = request.headers.get('X-Openrouter-Api-Key');\n101:       const action = await nextAgentActionWithInference(payload, env, {\n102:         openrouterApiKey: typeof openrouterApiKeyHeader === 'string' ? openrouterApiKeyHeader : null,\n103:       });\n104:       return new Response(JSON.stringify({ action }), {\n105:         status: 200,\n106:         headers: { 'Content-Type': 'application/json' },\n107:       });\n108:     } catch (error) {\n109:       if (error instanceof AgentEndpointError) {\n110:         const safeDetails = sanitizeErrorDetails(error.details);\n111:         return new Response(\n112:           JSON.stringify({\n113:             error: error.code,\n114:             details: safeDetails,\n115:           }),\n116:           {\n117:             status: error.status,\n118:             headers: { 'Content-Type': 'application/json' },\n119:           }\n120:         );\n121:       }\n122: \n123:       return new Response(\n124:         JSON.stringify({\n125:           error: 'internal_error',\n126:           details: error instanceof Error ? { message: sanitizeErrorMessage(error.message) } : null,\n127:         }),\n128:         {\n129:           status: 500,\n130:           headers: { 'Content-Type': 'application/json' },\n131:         }\n132:       );\n133:     }\n134:   },\n135: };\n\n(End of file - total 135 lines)\n</content>",
+            "title": "packages/agent-endpoint/src/index.ts",
+            "metadata": {
+              "preview": "import {\n  AgentEndpointError,\n  nextAgentActionWithInference,\n  type AgentEnv,\n  type AgentRequest,\n} from './lib/agent.js';\n\nconst SENSITIVE_PATTERNS: RegExp[] = [\n  /Bearer\\s+[A-Za-z0-9._~+/=-]+/gi,\n  /\\bsk-[A-Za-z0-9_-]+\\b/gi,\n  /\\bnmb_live_[A-Za-z0-9_-]+\\b/gi,\n];\n\nconst GENERIC_UPSTREAM_ERROR_MESSAGE = 'upstream error';\n\nfunction readBearerToken(value: string | null): string | null {\n  if (!value) {\n    return null;\n  }\n  const match = value.match(/^Bearer\\s+(.+)$/i);",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026611,
+              "end": 1773623026633
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27100819aa02847f814b9de34"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_9RPY2CIOE1YG4wg5r7URRGfP",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/src/lib/agent.test.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/src/lib/agent.test.ts</path>\n<type>file</type>\n<content>1: import { strict as assert } from 'assert';\n2: import { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from './agent.js';\n3: import worker from '../index.js';\n4: \n5: type WorkerModule = {\n6:   fetch(request: Request, env: Record<string, string | undefined>): Promise<Response>;\n7: };\n8: \n9: const handler = worker as WorkerModule;\n10: \n11: export async function runAgentTests(): Promise<void> {\n12:   {\n13:     const originalFetch = globalThis.fetch;\n14:     let capturedBody = '';\n15:     let capturedReferer = '';\n16:     let capturedTitle = '';\n17:     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {\n18:       capturedBody = typeof init?.body === 'string' ? init.body : '';\n19:       const headers = new Headers(init?.headers);\n20:       capturedReferer = headers.get('HTTP-Referer') ?? '';\n21:       capturedTitle = headers.get('X-Title') ?? '';\n22:       return new Response(\n23:         JSON.stringify({\n24:           choices: [\n25:             {\n26:               message: {\n27:                 content: JSON.stringify({\n28:                   findings: [],\n29:                   summary: 'Model produced strict V2 output.',\n30:                   furtherPassesLowYield: false,\n31:                 }),\n32:               },\n33:             },\n34:           ],\n35:         }),\n36:         { status: 200, headers: { 'Content-Type': 'application/json' } }\n37:       );\n38:     }) as typeof fetch;\n39: \n40:     const action = await nextAgentActionWithInference(\n41:       {\n42:       mode: 'workspace_task',\n43:       prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n44:       model: 'anthropic/claude-sonnet-4-5',\n45:       history: [],\n46:     },\n47:       {\n48:         OPENROUTER_API_KEY: 'test-key',\n49:         DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5',\n50:         OPENROUTER_HTTP_REFERER: 'https://example-review-worker.workers.dev',\n51:         OPENROUTER_X_TITLE: 'Nimbus Review',\n52:       }\n53:     );\n54: \n55:     try {\n56:       assert.equal(action.type, 'final');\n57:       const parsed = JSON.parse(action.summary) as Record<string, unknown>;\n58:       assert.equal(Array.isArray(parsed.findings), true);\n59:       assert.equal(parsed.summary, 'Model produced strict V2 output.');\n60:       assert.equal(parsed.furtherPassesLowYield, false);\n61: \n62:       const requestBody = JSON.parse(capturedBody) as Record<string, unknown>;\n63:       assert.equal(requestBody.model, 'anthropic/claude-sonnet-4-5');\n64:       assert.equal(Array.isArray(requestBody.messages), true);\n65:       assert.equal(capturedReferer, 'https://example-review-worker.workers.dev');\n66:       assert.equal(capturedTitle, 'Nimbus Review');\n67:     } finally {\n68:       globalThis.fetch = originalFetch;\n69:     }\n70:   }\n71: \n72:   {\n73:     const originalFetch = globalThis.fetch;\n74:     globalThis.fetch = (async (): Promise<Response> => {\n75:       throw new Error('upstream failed for Bearer token-abc sk-secret123 nmb_live_secret999');\n76:     }) as typeof fetch;\n77: \n78:     try {\n79:       const response = await handler.fetch(\n80:         new Request('https://example.workers.dev', {\n81:           method: 'POST',\n82:           headers: {\n83:             'Content-Type': 'application/json',\n84:             Authorization: 'Bearer expected-token',\n85:           },\n86:           body: JSON.stringify({\n87:             mode: 'workspace_task',\n88:             prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n89:             history: [],\n90:           }),\n91:         }),\n92:         {\n93:           AGENT_SDK_AUTH_TOKEN: 'expected-token',\n94:           OPENROUTER_API_KEY: 'env-key',\n95:         }\n96:       );\n97: \n98:       assert.equal(response.status, 500);\n99:       const payload = (await response.json()) as {\n100:         details?: { message?: string };\n101:       };\n102:       const message = payload.details?.message ?? '';\n103:       assert.equal(message.includes('Bearer token-abc'), false);\n104:       assert.equal(message.includes('sk-secret123'), false);\n105:       assert.equal(message.includes('nmb_live_secret999'), false);\n106:     } finally {\n107:       globalThis.fetch = originalFetch;\n108:     }\n109:   }\n110: \n111:   {\n112:     const originalFetch = globalThis.fetch;\n113:     globalThis.fetch = (async (): Promise<Response> => {\n114:       throw new Error('sk-onlysecretvalue');\n115:     }) as typeof fetch;\n116: \n117:     try {\n118:       const response = await handler.fetch(\n119:         new Request('https://example.workers.dev', {\n120:           method: 'POST',\n121:           headers: {\n122:             'Content-Type': 'application/json',\n123:             Authorization: 'Bearer expected-token',\n124:           },\n125:           body: JSON.stringify({\n126:             mode: 'workspace_task',\n127:             prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n128:             history: [],\n129:           }),\n130:         }),\n131:         {\n132:           AGENT_SDK_AUTH_TOKEN: 'expected-token',\n133:           OPENROUTER_API_KEY: 'env-key',\n134:         }\n135:       );\n136: \n137:       assert.equal(response.status, 500);\n138:       const payload = (await response.json()) as {\n139:         details?: { message?: string };\n140:       };\n141:       assert.equal(payload.details?.message, 'upstream error');\n142:     } finally {\n143:       globalThis.fetch = originalFetch;\n144:     }\n145:   }\n146: \n147:   {\n148:     const originalFetch = globalThis.fetch;\n149:     let capturedAuthHeader = '';\n150:     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {\n151:       const headers = new Headers(init?.headers);\n152:       capturedAuthHeader = headers.get('Authorization') ?? '';\n153:       return new Response(\n154:         JSON.stringify({\n155:           choices: [\n156:             {\n157:               message: {\n158:                 content: JSON.stringify({ findings: [], summary: 'ok', furtherPassesLowYield: true }),\n159:               },\n160:             },\n161:           ],\n162:         }),\n163:         { status: 200, headers: { 'Content-Type': 'application/json' } }\n164:       );\n165:     }) as typeof fetch;\n166: \n167:     try {\n168:       await nextAgentActionWithInference(\n169:         {\n170:           mode: 'workspace_task',\n171:           prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n172:           model: 'anthropic/claude-sonnet-4-5',\n173:           history: [],\n174:         },\n175:         { OPENROUTER_API_KEY: 'env-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' },\n176:         { openrouterApiKey: 'request-key' }\n177:       );\n178:       assert.equal(capturedAuthHeader, 'Bearer request-key');\n179:     } finally {\n180:       globalThis.fetch = originalFetch;\n181:     }\n182:   }\n183: \n184:   {\n185:     const originalFetch = globalThis.fetch;\n186:     let capturedAuthHeader = '';\n187:     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {\n188:       const headers = new Headers(init?.headers);\n189:       capturedAuthHeader = headers.get('Authorization') ?? '';\n190:       return new Response(\n191:         JSON.stringify({\n192:           choices: [\n193:             {\n194:               message: {\n195:                 content: JSON.stringify({ findings: [], summary: 'ok', furtherPassesLowYield: true }),\n196:               },\n197:             },\n198:           ],\n199:         }),\n200:         { status: 200, headers: { 'Content-Type': 'application/json' } }\n201:       );\n202:     }) as typeof fetch;\n203: \n204:     try {\n205:       await nextAgentActionWithInference(\n206:         {\n207:           mode: 'workspace_task',\n208:           prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n209:           model: 'anthropic/claude-sonnet-4-5',\n210:           history: [],\n211:         },\n212:         { OPENROUTER_API_KEY: 'env-fallback-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }\n213:       );\n214:       assert.equal(capturedAuthHeader, 'Bearer env-fallback-key');\n215:     } finally {\n216:       globalThis.fetch = originalFetch;\n217:     }\n218:   }\n219: \n220:   {\n221:     try {\n222:       await nextAgentActionWithInference(\n223:         {\n224:           mode: 'workspace_task',\n225:           prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n226:           model: 'anthropic/claude-sonnet-4-5',\n227:           history: [],\n228:         },\n229:         { DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }\n230:       );\n231:       assert.fail('Expected missing_openrouter_api_key error');\n232:     } catch (error) {\n233:       assert.equal(error instanceof AgentEndpointError, true);\n234:       const typed = error as AgentEndpointError;\n235:       assert.equal(typed.code, 'missing_openrouter_api_key');\n236:     }\n237:   }\n238: \n239:   {\n240:     const originalFetch = globalThis.fetch;\n241:     globalThis.fetch = (async (): Promise<Response> => {\n242:       const error = new Error('aborted');\n243:       error.name = 'AbortError';\n244:       throw error;\n245:     }) as typeof fetch;\n246: \n247:     try {\n248:       await nextAgentActionWithInference(\n249:         {\n250:           mode: 'workspace_task',\n251:           prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n252:           model: 'anthropic/claude-sonnet-4-5',\n253:           history: [],\n254:         },\n255:         { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }\n256:       );\n257:       assert.fail('Expected openrouter_request_timeout error');\n258:     } catch (error) {\n259:       assert.equal(error instanceof AgentEndpointError, true);\n260:       const typed = error as AgentEndpointError;\n261:       assert.equal(typed.code, 'openrouter_request_timeout');\n262:       assert.equal(typed.status, 504);\n263:     } finally {\n264:       globalThis.fetch = originalFetch;\n265:     }\n266:   }\n267: \n268:   {\n269:     const originalFetch = globalThis.fetch;\n270:     globalThis.fetch = (async (): Promise<Response> => {\n271:       return new Response(\n272:         JSON.stringify({\n273:           choices: [\n274:             {\n275:               message: {\n276:                 content:\n277:                   'Analysis complete. Returning JSON:\\n{\"findings\":[],\"summary\":\"Recovered from mixed prose output.\",\"furtherPassesLowYield\":true}',\n278:               },\n279:             },\n280:           ],\n281:         }),\n282:         { status: 200, headers: { 'Content-Type': 'application/json' } }\n283:       );\n284:     }) as typeof fetch;\n285: \n286:     try {\n287:       const action = await nextAgentActionWithInference(\n288:         {\n289:           mode: 'workspace_task',\n290:           prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n291:           model: 'anthropic/claude-sonnet-4-5',\n292:           history: [],\n293:         },\n294:         { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }\n295:       );\n296:       assert.equal(action.type, 'final');\n297:       const parsed = JSON.parse(action.summary) as Record<string, unknown>;\n298:       assert.equal(parsed.summary, 'Recovered from mixed prose output.');\n299:       assert.equal(parsed.furtherPassesLowYield, true);\n300:       assert.equal(Array.isArray(parsed.findings), true);\n301:     } finally {\n302:       globalThis.fetch = originalFetch;\n303:     }\n304:   }\n305: \n306:   {\n307:     const originalFetch = globalThis.fetch;\n308:     globalThis.fetch = (async (): Promise<Response> => {\n309:       return new Response(\n310:         JSON.stringify({\n311:           choices: [\n312:             {\n313:               message: {\n314:                 content: JSON.stringify({\n315:                   findings: [],\n316:                   summary: { riskLevel: 'low' },\n317:                   furtherPassesLowYield: 'false',\n318:                 }),\n319:               },\n320:             },\n321:           ],\n322:         }),\n323:         { status: 200, headers: { 'Content-Type': 'application/json' } }\n324:       );\n325:     }) as typeof fetch;\n326: \n327:     try {\n328:       await nextAgentActionWithInference(\n329:         {\n330:           mode: 'workspace_task',\n331:           prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',\n332:           model: 'anthropic/claude-sonnet-4-5',\n333:           history: [],\n334:         },\n335:         { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }\n336:       );\n337:       assert.fail('Expected invalid_model_output error');\n338:     } catch (error) {\n339:       assert.equal(error instanceof AgentEndpointError, true);\n340:       const typed = error as AgentEndpointError;\n341:       assert.equal(typed.code, 'invalid_model_output');\n342:       assert.equal(typed.status, 422);\n343:     } finally {\n344:       globalThis.fetch = originalFetch;\n345:     }\n346:   }\n347: \n348:   {\n349:     const action = await nextAgentActionWithInference({\n350:       mode: 'workspace_task',\n351:       prompt: 'General coding task prompt',\n352:       history: [],\n353:     }, { OPENROUTER_API_KEY: 'test-key' });\n354:     assert.equal(action.type, 'tool');\n355:     assert.equal(action.tool, 'list_files');\n356:   }\n357: \n358:   {\n359:     const originalFetch = globalThis.fetch;\n360:     globalThis.fetch = (async (): Promise<Response> => {\n361:       return new Response(JSON.stringify({ choices: [{ message: { content: 'ok' } }] }), {\n362:         status: 200,\n363:         headers: { 'Content-Type': 'application/json' },\n364:       });\n365:     }) as typeof fetch;\n366:     try {\n367:       const content = await callOpenRouter({\n368:         apiKey: 'test-key',\n369:         model: 'anthropic/claude-sonnet-4-5',\n370:         prompt: 'test prompt',\n371:       });\n372:       assert.equal(content, 'ok');\n373:     } finally {\n374:       globalThis.fetch = originalFetch;\n375:     }\n376:   }\n377: }\n\n(End of file - total 377 lines)\n</content>",
+            "title": "packages/agent-endpoint/src/lib/agent.test.ts",
+            "metadata": {
+              "preview": "import { strict as assert } from 'assert';\nimport { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from './agent.js';\nimport worker from '../index.js';\n\ntype WorkerModule = {\n  fetch(request: Request, env: Record<string, string | undefined>): Promise<Response>;\n};\n\nconst handler = worker as WorkerModule;\n\nexport async function runAgentTests(): Promise<void> {\n  {\n    const originalFetch = globalThis.fetch;\n    let capturedBody = '';\n    let capturedReferer = '';\n    let capturedTitle = '';\n    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {\n      capturedBody = typeof init?.body === 'string' ? init.body : '';\n      const headers = new Headers(init?.headers);\n      capturedReferer = headers.get('HTTP-Referer') ?? '';",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026612,
+              "end": 1773623026635
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27108819aaaf2ae4c2b6f7f89"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_eTRFHS5Rl3WKKubK3IWkPGi2",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/index.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/index.ts</path>\n<type>file</type>\n<content>1: import { Sandbox } from '@cloudflare/sandbox';\n2: import { handleGetJob, handleListJobs } from './api/jobs.js';\n3: import { handleGetJobEvents } from './api/job-events.js';\n4: import { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';\n5: import {\n6:   handleCancelWorkspaceTask,\n7:   handleCreateWorkspaceTask,\n8:   handleGetWorkspaceTask,\n9:   handleGetWorkspaceTaskEvents,\n10: } from './api/workspace-tasks.js';\n11: import {\n12:   handleCancelWorkspaceDeployment,\n13:   handleCreateWorkspaceDeployment,\n14:   handleGetWorkspaceDeployment,\n15:   handleGetWorkspaceDeploymentEvents,\n16:   handleWorkspaceDeploymentPreflight,\n17: } from './api/workspace-deployments.js';\n18: import { handleCreateReview, handleGetReview, handleGetReviewEvents } from './api/reviews.js';\n19: import {\n20:   handleCreateWorkspace,\n21:   handleCreateWorkspaceGithubFork,\n22:   handleCreateWorkspacePatchExport,\n23:   handleCreateWorkspaceZipExport,\n24:   handleDownloadWorkspaceArtifact,\n25:   handleDeleteWorkspace,\n26:   handleGetWorkspaceDiff,\n27:   handleGetWorkspaceFile,\n28:   handleGetWorkspace,\n29:   handleGetWorkspaceEvents,\n30:   handleGetWorkspaceOperation,\n31:   handleListWorkspaceArtifacts,\n32:   handleListWorkspaceFiles,\n33:   handleResetWorkspace,\n34: } from './api/workspaces.js';\n35: import { parseCheckpointJobQueueMessage } from './lib/checkpoint-queue.js';\n36: import { processCheckpointJob } from './lib/checkpoint-runner.js';\n37: import { parseWorkspaceTaskQueueMessage } from './lib/workspace-task-queue.js';\n38: import { processWorkspaceTask, shouldRetryWorkspaceTaskError } from './lib/workspace-task-runner.js';\n39: import { parseWorkspaceDeploymentQueueMessage } from './lib/workspace-deployment-queue.js';\n40: import {\n41:   processWorkspaceDeployment,\n42:   shouldRetryWorkspaceDeploymentError,\n43: } from './lib/workspace-deployment-runner.js';\n44: import { parseReviewQueueMessage } from './lib/review-queue.js';\n45: import { ReviewRunner } from './review-runner-do.js';\n46: import { handleReviewQueueDispatch } from './lib/review-dispatch.js';\n47: import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';\n48: import { authenticateRequest } from './lib/auth.js';\n49: import { enforceRequestBodySizeCap } from './lib/request-size.js';\n50: import type { AuthContext, Env } from './types.js';\n51: \n52: // Re-export Durable Objects for bindings\n53: export { Sandbox, ReviewRunner };\n54: \n55: // CORS headers for local development\n56: const corsHeaders = {\n57:   'Access-Control-Allow-Origin': '*',\n58:   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',\n59:   'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',\n60: };\n61: \n62: export default {\n63:   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {\n64:     const url = new URL(request.url);\n65:     let authContext: AuthContext = {\n66:       accountId: 'self-hosted',\n67:       isAdmin: true,\n68:       isAuthenticated: false,\n69:       isHostedMode: false,\n70:     };\n71: \n72:     // Handle CORS preflight\n73:     if (request.method === 'OPTIONS') {\n74:       return new Response(null, { headers: corsHeaders });\n75:     }\n76: \n77:     const sizeLimitResponse = enforceRequestBodySizeCap(request, corsHeaders);\n78:     if (sizeLimitResponse) {\n79:       return sizeLimitResponse;\n80:     }\n81: \n82:     const authResult = await authenticateRequest(request, env);\n83:     if ('response' in authResult) {\n84:       return authResult.response;\n85:     }\n86:     authContext = authResult.authContext;\n87: \n88:     // Route: POST /api/checkpoint/jobs - Create new checkpoint-based deployment job\n89:     if (url.pathname === '/api/checkpoint/jobs' && request.method === 'POST') {\n90:       return handleCreateCheckpointJob(request, env, authContext);\n91:     }\n92: \n93:     // Route: POST /api/workspaces - Create workspace from checkpoint source bundle\n94:     if (url.pathname === '/api/workspaces' && request.method === 'POST') {\n95:       return handleCreateWorkspace(request, env, authContext);\n96:     }\n97: \n98:     // Route: POST /api/reviews - Create review run\n99:     if (url.pathname === '/api/reviews' && request.method === 'POST') {\n100:       return handleCreateReview(request, env, ctx, authContext);\n101:     }\n102: \n103:     // Route: GET /api/reviews/:id/events - Review event stream\n104:     const reviewEventsMatch = url.pathname.match(/^\\/api\\/reviews\\/([a-z0-9_]+)\\/events$/);\n105:     if (reviewEventsMatch && request.method === 'GET') {\n106:       return handleGetReviewEvents(reviewEventsMatch[1], request, env, authContext);\n107:     }\n108: \n109:     // Route: GET /api/reviews/:id - Get review run\n110:     const reviewMatch = url.pathname.match(/^\\/api\\/reviews\\/([a-z0-9_]+)$/);\n111:     if (reviewMatch && request.method === 'GET') {\n112:       return handleGetReview(reviewMatch[1], request, env, authContext);\n113:     }\n114: \n115:     // Route: GET /api/workspaces/:id/events - List workspace events\n116:     const workspaceEventsMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/events$/);\n117:     if (workspaceEventsMatch && request.method === 'GET') {\n118:       return handleGetWorkspaceEvents(workspaceEventsMatch[1], request, env, authContext);\n119:     }\n120: \n121:     // Route: POST /api/workspaces/:id/export/zip - Queue zip export operation\n122:     const workspaceZipExportMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/export\\/zip$/);\n123:     if (workspaceZipExportMatch && request.method === 'POST') {\n124:       return handleCreateWorkspaceZipExport(workspaceZipExportMatch[1], request, env, ctx, authContext);\n125:     }\n126: \n127:     // Route: POST /api/workspaces/:id/export/patch - Queue patch export operation\n128:     const workspacePatchExportMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/export\\/patch$/);\n129:     if (workspacePatchExportMatch && request.method === 'POST') {\n130:       return handleCreateWorkspacePatchExport(workspacePatchExportMatch[1], request, env, ctx, authContext);\n131:     }\n132: \n133:     // Route: POST /api/workspaces/:id/fork/github - Queue GitHub fork operation\n134:     const workspaceForkGithubMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/fork\\/github$/);\n135:     if (workspaceForkGithubMatch && request.method === 'POST') {\n136:       return handleCreateWorkspaceGithubFork(workspaceForkGithubMatch[1], request, env, ctx, authContext);\n137:     }\n138: \n139:     // Route: GET /api/workspaces/:id/operations/:operationId - Poll workspace operation status\n140:     const workspaceOperationMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/operations\\/([a-z0-9_]+)$/);\n141:     if (workspaceOperationMatch && request.method === 'GET') {\n142:       return handleGetWorkspaceOperation(workspaceOperationMatch[1], workspaceOperationMatch[2], env, authContext);\n143:     }\n144: \n145:     // Route: GET /api/workspaces/:id/artifacts - List workspace artifacts\n146:     const workspaceArtifactsMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/artifacts$/);\n147:     if (workspaceArtifactsMatch && request.method === 'GET') {\n148:       return handleListWorkspaceArtifacts(workspaceArtifactsMatch[1], env, authContext);\n149:     }\n150: \n151:     // Route: GET /api/workspaces/:id/artifacts/:artifactId/download - Download artifact bytes\n152:     const workspaceArtifactDownloadMatch = url.pathname.match(\n153:       /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/artifacts\\/([a-z0-9_]+)\\/download$/\n154:     );\n155:     if (workspaceArtifactDownloadMatch && request.method === 'GET') {\n156:       return handleDownloadWorkspaceArtifact(\n157:         workspaceArtifactDownloadMatch[1],\n158:         workspaceArtifactDownloadMatch[2],\n159:         request,\n160:         env,\n161:         authContext\n162:       );\n163:     }\n164: \n165:     // Route: POST /api/workspaces/:id/tasks - Queue agentic workspace task\n166:     const workspaceTasksCreateMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks$/);\n167:     if (workspaceTasksCreateMatch && request.method === 'POST') {\n168:       return handleCreateWorkspaceTask(workspaceTasksCreateMatch[1], request, env, ctx, authContext);\n169:     }\n170: \n171:     // Route: GET /api/workspaces/:id/tasks/:taskId - Poll workspace task status\n172:     const workspaceTaskGetMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)$/);\n173:     if (workspaceTaskGetMatch && request.method === 'GET') {\n174:       return handleGetWorkspaceTask(workspaceTaskGetMatch[1], workspaceTaskGetMatch[2], env, authContext);\n175:     }\n176: \n177:     // Route: GET /api/workspaces/:id/tasks/:taskId/events - Poll workspace task events\n178:     const workspaceTaskEventsMatch = url.pathname.match(\n179:       /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)\\/events$/\n180:     );\n181:     if (workspaceTaskEventsMatch && request.method === 'GET') {\n182:       return handleGetWorkspaceTaskEvents(\n183:         workspaceTaskEventsMatch[1],\n184:         workspaceTaskEventsMatch[2],\n185:         request,\n186:         env,\n187:         authContext\n188:       );\n189:     }\n190: \n191:     // Route: POST /api/workspaces/:id/tasks/:taskId/cancel - Request task cancellation\n192:     const workspaceTaskCancelMatch = url.pathname.match(\n193:       /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/tasks\\/([a-z0-9_]+)\\/cancel$/\n194:     );\n195:     if (workspaceTaskCancelMatch && request.method === 'POST') {\n196:       return handleCancelWorkspaceTask(workspaceTaskCancelMatch[1], workspaceTaskCancelMatch[2], env, authContext);\n197:     }\n198: \n199:     // Route: POST /api/workspaces/:id/deploy - Queue workspace deployment\n200:     const workspaceDeployCreateMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/deploy$/);\n201:     if (workspaceDeployCreateMatch && request.method === 'POST') {\n202:       return handleCreateWorkspaceDeployment(workspaceDeployCreateMatch[1], request, env, ctx, authContext);\n203:     }\n204: \n205:     // Route: POST /api/workspaces/:id/deploy/preflight - Validate deploy readiness\n206:     const workspaceDeployPreflightMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/deploy\\/preflight$/);\n207:     if (workspaceDeployPreflightMatch && request.method === 'POST') {\n208:       return handleWorkspaceDeploymentPreflight(workspaceDeployPreflightMatch[1], request, env, authContext);\n209:     }\n210: \n211:     // Route: GET /api/workspaces/:id/deployments/:deploymentId - Poll deployment status\n212:     const workspaceDeploymentGetMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/deployments\\/([a-z0-9_]+)$/);\n213:     if (workspaceDeploymentGetMatch && request.method === 'GET') {\n214:       return handleGetWorkspaceDeployment(workspaceDeploymentGetMatch[1], workspaceDeploymentGetMatch[2], env, authContext);\n215:     }\n216: \n217:     // Route: GET /api/workspaces/:id/deployments/:deploymentId/events - Poll deployment events\n218:     const workspaceDeploymentEventsMatch = url.pathname.match(\n219:       /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/deployments\\/([a-z0-9_]+)\\/events$/\n220:     );\n221:     if (workspaceDeploymentEventsMatch && request.method === 'GET') {\n222:       return handleGetWorkspaceDeploymentEvents(\n223:         workspaceDeploymentEventsMatch[1],\n224:         workspaceDeploymentEventsMatch[2],\n225:         request,\n226:         env,\n227:         authContext\n228:       );\n229:     }\n230: \n231:     // Route: POST /api/workspaces/:id/deployments/:deploymentId/cancel - Cancel deployment\n232:     const workspaceDeploymentCancelMatch = url.pathname.match(\n233:       /^\\/api\\/workspaces\\/([a-z0-9_]+)\\/deployments\\/([a-z0-9_]+)\\/cancel$/\n234:     );\n235:     if (workspaceDeploymentCancelMatch && request.method === 'POST') {\n236:       return handleCancelWorkspaceDeployment(\n237:         workspaceDeploymentCancelMatch[1],\n238:         workspaceDeploymentCancelMatch[2],\n239:         env,\n240:         ctx,\n241:         authContext\n242:       );\n243:     }\n244: \n245:     // Route: GET /api/workspaces/:id/files - List files for a path\n246:     const workspaceFilesMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/files$/);\n247:     if (workspaceFilesMatch && request.method === 'GET') {\n248:       return handleListWorkspaceFiles(workspaceFilesMatch[1], request, env, authContext);\n249:     }\n250: \n251:     // Route: GET /api/workspaces/:id/file - Read a single file\n252:     const workspaceFileMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/file$/);\n253:     if (workspaceFileMatch && request.method === 'GET') {\n254:       return handleGetWorkspaceFile(workspaceFileMatch[1], request, env, authContext);\n255:     }\n256: \n257:     // Route: GET /api/workspaces/:id/diff - View workspace diff metadata/patch\n258:     const workspaceDiffMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/diff$/);\n259:     if (workspaceDiffMatch && request.method === 'GET') {\n260:       return handleGetWorkspaceDiff(workspaceDiffMatch[1], request, env, authContext);\n261:     }\n262: \n263:     // Route: POST /api/workspaces/:id/reset - Reset workspace to baseline source snapshot\n264:     const workspaceResetMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)\\/reset$/);\n265:     if (workspaceResetMatch && request.method === 'POST') {\n266:       return handleResetWorkspace(workspaceResetMatch[1], env, authContext);\n267:     }\n268: \n269:     // Route: GET /api/workspaces/:id - Get workspace\n270:     // Route: DELETE /api/workspaces/:id - Delete workspace\n271:     const workspaceMatch = url.pathname.match(/^\\/api\\/workspaces\\/([a-z0-9_]+)$/);\n272:     if (workspaceMatch && request.method === 'GET') {\n273:       return handleGetWorkspace(workspaceMatch[1], env, authContext);\n274:     }\n275:     if (workspaceMatch && request.method === 'DELETE') {\n276:       return handleDeleteWorkspace(workspaceMatch[1], env, authContext);\n277:     }\n278: \n279:     // Route: GET /api/jobs - List all jobs\n280:     if (url.pathname === '/api/jobs' && request.method === 'GET') {\n281:       return handleListJobs(env, authContext);\n282:     }\n283: \n284:     // Route: GET /api/jobs/:id - Get job by ID\n285:     const jobMatch = url.pathname.match(/^\\/api\\/jobs\\/([a-z0-9_]+)$/);\n286:     if (jobMatch && request.method === 'GET') {\n287:       return handleGetJob(jobMatch[1], env, authContext);\n288:     }\n289: \n290:     // Route: GET /api/jobs/:id/events - Event stream placeholder\n291:     const jobEventsMatch = url.pathname.match(/^\\/api\\/jobs\\/([a-z0-9_]+)\\/events$/);\n292:     if (jobEventsMatch && request.method === 'GET') {\n293:       return handleGetJobEvents(jobEventsMatch[1], request, env, authContext);\n294:     }\n295: \n296:     // Route: GET /health\n297:     if (url.pathname === '/health' && request.method === 'GET') {\n298:       return new Response(JSON.stringify({ status: 'ok' }), {\n299:         headers: { 'Content-Type': 'application/json', ...corsHeaders },\n300:       });\n301:     }\n302: \n303:     // Route: GET /api/system/deploy-readiness\n304:     if (url.pathname === '/api/system/deploy-readiness' && request.method === 'GET') {\n305:       return handleGetDeployReadiness(env);\n306:     }\n307: \n308:     // Route: GET /api/system/review-readiness\n309:     if (url.pathname === '/api/system/review-readiness' && request.method === 'GET') {\n310:       return handleGetReviewReadiness(env);\n311:     }\n312: \n313:     // 404 for unknown routes\n314:     return new Response('Not Found', { status: 404, headers: corsHeaders });\n315:   },\n316: \n317:   async queue(batch: MessageBatch<unknown>, env: Env): Promise<void> {\n318:     for (const message of batch.messages) {\n319:       const body = message.body as Record<string, unknown> | null;\n320:       const type = typeof body?.type === 'string' ? body.type : '';\n321: \n322:       if (type === 'workspace_task_created') {\n323:         let payload;\n324:         try {\n325:           payload = parseWorkspaceTaskQueueMessage(message.body);\n326:         } catch (error) {\n327:           const details = error instanceof Error ? error.message : String(error);\n328:           console.error(`[workspace-task-queue] invalid message dropped: ${details}`);\n329:           continue;\n330:         }\n331: \n332:         try {\n333:           await processWorkspaceTask(env, payload.workspaceId, payload.taskId);\n334:         } catch (error) {\n335:           const details = error instanceof Error ? error.message : String(error);\n336:           console.error(`[workspace-task-queue] message handling failed: ${details}`);\n337:           if (shouldRetryWorkspaceTaskError(error)) {\n338:             message.retry();\n339:           }\n340:         }\n341:         continue;\n342:       }\n343: \n344:       if (type === 'workspace_deployment_requested') {\n345:         let payload;\n346:         try {\n347:           payload = parseWorkspaceDeploymentQueueMessage(message.body);\n348:         } catch (error) {\n349:           const details = error instanceof Error ? error.message : String(error);\n350:           console.error(`[workspace-deploy-queue] invalid message dropped: ${details}`);\n351:           continue;\n352:         }\n353: \n354:         try {\n355:           await processWorkspaceDeployment(env, payload.workspaceId, payload.deploymentId);\n356:         } catch (error) {\n357:           const details = error instanceof Error ? error.message : String(error);\n358:           console.error(`[workspace-deploy-queue] message handling failed: ${details}`);\n359:           if (shouldRetryWorkspaceDeploymentError(error)) {\n360:             message.retry();\n361:           }\n362:         }\n363:         continue;\n364:       }\n365: \n366:       if (type === 'review_requested') {\n367:         let payload;\n368:         try {\n369:           payload = parseReviewQueueMessage(message.body);\n370:         } catch (error) {\n371:           const details = error instanceof Error ? error.message : String(error);\n372:           console.error(`[review-queue] invalid message dropped: ${details}`);\n373:           continue;\n374:         }\n375: \n376:         await handleReviewQueueDispatch(env, payload, message);\n377:         continue;\n378:       }\n379: \n380:       let checkpointPayload;\n381:       try {\n382:         checkpointPayload = parseCheckpointJobQueueMessage(message.body);\n383:       } catch (error) {\n384:         const details = error instanceof Error ? error.message : String(error);\n385:         console.error(`[checkpoint-queue] invalid message dropped: ${details}`);\n386:         continue;\n387:       }\n388: \n389:       try {\n390:         await processCheckpointJob(env, checkpointPayload.jobId);\n391:       } catch (error) {\n392:         const details = error instanceof Error ? error.message : String(error);\n393:         console.error(`[checkpoint-queue] message handling failed: ${details}`);\n394:         message.retry();\n395:       }\n396:     }\n397:   },\n398: };\n\n(End of file - total 398 lines)\n</content>",
+            "title": "packages/worker/src/index.ts",
+            "metadata": {
+              "preview": "import { Sandbox } from '@cloudflare/sandbox';\nimport { handleGetJob, handleListJobs } from './api/jobs.js';\nimport { handleGetJobEvents } from './api/job-events.js';\nimport { handleCreateCheckpointJob } from './api/checkpoint-jobs.js';\nimport {\n  handleCancelWorkspaceTask,\n  handleCreateWorkspaceTask,\n  handleGetWorkspaceTask,\n  handleGetWorkspaceTaskEvents,\n} from './api/workspace-tasks.js';\nimport {\n  handleCancelWorkspaceDeployment,\n  handleCreateWorkspaceDeployment,\n  handleGetWorkspaceDeployment,\n  handleGetWorkspaceDeploymentEvents,\n  handleWorkspaceDeploymentPreflight,\n} from './api/workspace-deployments.js';\nimport { handleCreateReview, handleGetReview, handleGetReviewEvents } from './api/reviews.js';\nimport {\n  handleCreateWorkspace,",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026614,
+              "end": 1773623026639
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f2710c819abb57519e96b65c9e"
+            }
+          },
+          "id": "prt_cf42ba3b5001MuKXGl10Ic2IsP",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_RUMBfQZoXPQQc3SWsr5xIerT",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/request-size.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/request-size.ts</path>\n<type>file</type>\n<content>1: const DEFAULT_MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;\n2: const UPLOAD_MAX_REQUEST_BODY_BYTES = 100 * 1024 * 1024;\n3: \n4: function isUploadRoute(request: Request): boolean {\n5:   if (request.method !== 'POST') {\n6:     return false;\n7:   }\n8: \n9:   const pathname = new URL(request.url).pathname;\n10:   return pathname === '/api/checkpoint/jobs' || pathname === '/api/workspaces';\n11: }\n12: \n13: function resolveRequestBodyLimitBytes(request: Request): number {\n14:   return isUploadRoute(request) ? UPLOAD_MAX_REQUEST_BODY_BYTES : DEFAULT_MAX_REQUEST_BODY_BYTES;\n15: }\n16: \n17: export function enforceRequestBodySizeCap(request: Request, corsHeaders: Record<string, string>): Response | null {\n18:   const maxBytes = resolveRequestBodyLimitBytes(request);\n19:   const raw = request.headers.get('Content-Length');\n20:   if (!raw) {\n21:     return null;\n22:   }\n23: \n24:   const trimmed = raw.trim();\n25:   if (!/^\\d+$/.test(trimmed)) {\n26:     return null;\n27:   }\n28: \n29:   const contentLength = Number(trimmed);\n30:   if (!Number.isFinite(contentLength) || contentLength <= maxBytes) {\n31:     return null;\n32:   }\n33: \n34:   return new Response(JSON.stringify({ error: 'Request body too large', code: 'request_too_large' }), {\n35:     status: 413,\n36:     headers: {\n37:       'Content-Type': 'application/json',\n38:       ...corsHeaders,\n39:     },\n40:   });\n41: }\n\n(End of file - total 41 lines)\n</content>",
+            "title": "packages/worker/src/lib/request-size.ts",
+            "metadata": {
+              "preview": "const DEFAULT_MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;\nconst UPLOAD_MAX_REQUEST_BODY_BYTES = 100 * 1024 * 1024;\n\nfunction isUploadRoute(request: Request): boolean {\n  if (request.method !== 'POST') {\n    return false;\n  }\n\n  const pathname = new URL(request.url).pathname;\n  return pathname === '/api/checkpoint/jobs' || pathname === '/api/workspaces';\n}\n\nfunction resolveRequestBodyLimitBytes(request: Request): number {\n  return isUploadRoute(request) ? UPLOAD_MAX_REQUEST_BODY_BYTES : DEFAULT_MAX_REQUEST_BODY_BYTES;\n}\n\nexport function enforceRequestBodySizeCap(request: Request, corsHeaders: Record<string, string>): Response | null {\n  const maxBytes = resolveRequestBodyLimitBytes(request);\n  const raw = request.headers.get('Content-Length');\n  if (!raw) {",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026616,
+              "end": 1773623026637
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27114819a8981c48fe2e1652f"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/request-size.test.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/request-size.test.ts</path>\n<type>file</type>\n<content>1: import { strict as assert } from 'assert';\n2: import { enforceRequestBodySizeCap } from './request-size.js';\n3: \n4: const corsHeaders = {\n5:   'Access-Control-Allow-Origin': '*',\n6:   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',\n7:   'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',\n8: };\n9: \n10: export async function runRequestSizeTests(): Promise<void> {\n11:   {\n12:     const response = enforceRequestBodySizeCap(\n13:       new Request('https://example.com/api/workspaces', {\n14:         method: 'POST',\n15:         headers: {\n16:           'Content-Length': String(100 * 1024 * 1024 - 1),\n17:         },\n18:       }),\n19:       corsHeaders\n20:     );\n21: \n22:     assert.equal(response, null);\n23:   }\n24: \n25:   {\n26:     const response = enforceRequestBodySizeCap(\n27:       new Request('https://example.com/api/workspaces', {\n28:         method: 'POST',\n29:         headers: {\n30:           'Content-Length': String(100 * 1024 * 1024 + 1),\n31:         },\n32:       }),\n33:       corsHeaders\n34:     );\n35: \n36:     assert.notEqual(response, null);\n37:     assert.equal(response?.status, 413);\n38:     const payload = (await response?.json()) as Record<string, unknown>;\n39:     assert.equal(payload.error, 'Request body too large');\n40:     assert.equal(payload.code, 'request_too_large');\n41:   }\n42: \n43:   {\n44:     const response = enforceRequestBodySizeCap(\n45:       new Request('https://example.com/api/reviews', {\n46:         method: 'POST',\n47:         headers: {\n48:           'Content-Length': String(5 * 1024 * 1024 - 1),\n49:         },\n50:       }),\n51:       corsHeaders\n52:     );\n53: \n54:     assert.equal(response, null);\n55:   }\n56: \n57:   {\n58:     const response = enforceRequestBodySizeCap(\n59:       new Request('https://example.com/api/reviews', {\n60:         method: 'POST',\n61:         headers: {\n62:           'Content-Length': String(5 * 1024 * 1024 + 1),\n63:         },\n64:       }),\n65:       corsHeaders\n66:     );\n67: \n68:     assert.notEqual(response, null);\n69:     assert.equal(response?.status, 413);\n70:     const payload = (await response?.json()) as Record<string, unknown>;\n71:     assert.equal(payload.error, 'Request body too large');\n72:     assert.equal(payload.code, 'request_too_large');\n73:   }\n74: \n75:   {\n76:     const response = enforceRequestBodySizeCap(\n77:       new Request('https://example.com/api/reviews', {\n78:         method: 'POST',\n79:       }),\n80:       corsHeaders\n81:     );\n82: \n83:     assert.equal(response, null);\n84:   }\n85: }\n\n(End of file - total 85 lines)\n</content>",
+            "title": "packages/worker/src/lib/request-size.test.ts",
+            "metadata": {
+              "preview": "import { strict as assert } from 'assert';\nimport { enforceRequestBodySizeCap } from './request-size.js';\n\nconst corsHeaders = {\n  'Access-Control-Allow-Origin': '*',\n  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',\n  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',\n};\n\nexport async function runRequestSizeTests(): Promise<void> {\n  {\n    const response = enforceRequestBodySizeCap(\n      new Request('https://example.com/api/workspaces', {\n        method: 'POST',\n        headers: {\n          'Content-Length': String(100 * 1024 * 1024 - 1),\n        },\n      }),\n      corsHeaders\n    );",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026618,
+              "end": 1773623026637
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27118819a8f496ed3155bafb3"
+            }
+          },
+          "id": "prt_cf42ba3b9001XRhOaC2ASIydca",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_IfmlqbptZyelyl9wGnvXSipO",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/run-tests.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/run-tests.ts</path>\n<type>file</type>\n<content>1: import { runFlagsTests } from './flags.test.js';\n2: import { runStateMachineTests } from './state-machine.test.js';\n3: import { runCheckpointJobsApiTests } from '../api/checkpoint-jobs.test.js';\n4: import { runCheckpointDbTests } from './db.checkpoint.test.js';\n5: import { runJobEventsApiTests } from '../api/job-events.test.js';\n6: import { runCheckpointQueueTests } from './checkpoint-queue.test.js';\n7: import { runCheckpointPlanTests } from './checkpoint-plan.test.js';\n8: import { runCheckpointRunnerTests } from './checkpoint-runner.test.js';\n9: import { runDbEventsTests } from './db.events.test.js';\n10: import { runWorkspaceDbTests } from './db.workspace.test.js';\n11: import { runWorkspaceApiTests } from '../api/workspaces.test.js';\n12: import { runWorkspaceTaskApiTests } from '../api/workspace-tasks.test.js';\n13: import { runWorkspaceTaskQueueTests } from './workspace-task-queue.test.js';\n14: import { runWorkspaceTaskRunnerTests } from './workspace-task-runner.test.js';\n15: import { runWorkspaceDeploymentApiTests } from '../api/workspace-deployments.test.js';\n16: import { runWorkspaceDeploymentQueueTests } from './workspace-deployment-queue.test.js';\n17: import { runWorkspaceDeploymentRunnerTests } from './workspace-deployment-runner.test.js';\n18: import { runWorkspaceToolchainTests } from './workspace-toolchain.test.js';\n19: import { runWorkspaceDeployProviderTests } from './workspace-deploy-provider.test.js';\n20: import { runReviewQueueTests } from './review-queue.test.js';\n21: import { runReviewQueueDispatchTests } from '../review-queue-dispatch.test.js';\n22: import { runReviewRunnerTests } from './review-runner.test.js';\n23: import { runReviewRunnerDurableObjectTests } from '../review-runner-do.test.js';\n24: import { runReviewDbTests } from './db.review.test.js';\n25: import { runReviewOutputV2Tests } from './review-output-v2.test.js';\n26: import { runReviewApiTests } from '../api/reviews.test.js';\n27: import { runSystemApiTests } from '../api/system.test.js';\n28: import { runAuthMiddlewareTests } from '../auth.test.js';\n29: import { runRequestSizeTests } from './request-size.test.js';\n30: \n31: type TestCase = {\n32:   name: string;\n33:   run: () => void | Promise<void>;\n34: };\n35: \n36: const TEST_CASES: TestCase[] = [\n37:   { name: 'state-machine', run: runStateMachineTests },\n38:   { name: 'runtime-flags', run: runFlagsTests },\n39:   { name: 'request-size', run: runRequestSizeTests },\n40:   { name: 'checkpoint-queue', run: runCheckpointQueueTests },\n41:   { name: 'checkpoint-plan', run: runCheckpointPlanTests },\n42:   { name: 'checkpoint-runner', run: runCheckpointRunnerTests },\n43:   { name: 'db-events', run: runDbEventsTests },\n44:   { name: 'workspace-db', run: runWorkspaceDbTests },\n45:   { name: 'workspace-api', run: runWorkspaceApiTests },\n46:   { name: 'workspace-task-queue', run: runWorkspaceTaskQueueTests },\n47:   { name: 'workspace-task-runner', run: runWorkspaceTaskRunnerTests },\n48:   { name: 'workspace-task-api', run: runWorkspaceTaskApiTests },\n49:   { name: 'workspace-deployment-queue', run: runWorkspaceDeploymentQueueTests },\n50:   { name: 'workspace-deployment-runner', run: runWorkspaceDeploymentRunnerTests },\n51:   { name: 'workspace-deployment-api', run: runWorkspaceDeploymentApiTests },\n52:   { name: 'workspace-toolchain', run: runWorkspaceToolchainTests },\n53:   { name: 'workspace-deploy-provider', run: runWorkspaceDeployProviderTests },\n54:   { name: 'review-queue', run: runReviewQueueTests },\n55:   { name: 'review-queue-dispatch', run: runReviewQueueDispatchTests },\n56:   { name: 'review-runner-do', run: runReviewRunnerDurableObjectTests },\n57:   { name: 'review-db', run: runReviewDbTests },\n58:   { name: 'review-output-v2', run: runReviewOutputV2Tests },\n59:   { name: 'review-runner', run: runReviewRunnerTests },\n60:   { name: 'review-api', run: runReviewApiTests },\n61:   { name: 'auth-middleware', run: runAuthMiddlewareTests },\n62:   { name: 'system-api', run: runSystemApiTests },\n63:   { name: 'job-events-api', run: runJobEventsApiTests },\n64:   { name: 'checkpoint-db', run: runCheckpointDbTests },\n65:   { name: 'checkpoint-jobs-api', run: runCheckpointJobsApiTests },\n66: ];\n67: \n68: async function main(): Promise<void> {\n69:   let failed = 0;\n70: \n71:   for (const testCase of TEST_CASES) {\n72:     try {\n73:       await testCase.run();\n74:       console.log(`PASS ${testCase.name}`);\n75:     } catch (error) {\n76:       failed += 1;\n77:       const message = error instanceof Error ? error.stack || error.message : String(error);\n78:       console.error(`FAIL ${testCase.name}`);\n79:       console.error(message);\n80:     }\n81:   }\n82: \n83:   if (failed > 0) {\n84:     process.exit(1);\n85:   }\n86: \n87:   console.log(`All tests passed (${TEST_CASES.length})`);\n88: }\n89: \n90: main().catch((error) => {\n91:   const message = error instanceof Error ? error.stack || error.message : String(error);\n92:   console.error('Test runner crashed');\n93:   console.error(message);\n94:   process.exit(1);\n95: });\n\n(End of file - total 95 lines)\n</content>",
+            "title": "packages/worker/src/lib/run-tests.ts",
+            "metadata": {
+              "preview": "import { runFlagsTests } from './flags.test.js';\nimport { runStateMachineTests } from './state-machine.test.js';\nimport { runCheckpointJobsApiTests } from '../api/checkpoint-jobs.test.js';\nimport { runCheckpointDbTests } from './db.checkpoint.test.js';\nimport { runJobEventsApiTests } from '../api/job-events.test.js';\nimport { runCheckpointQueueTests } from './checkpoint-queue.test.js';\nimport { runCheckpointPlanTests } from './checkpoint-plan.test.js';\nimport { runCheckpointRunnerTests } from './checkpoint-runner.test.js';\nimport { runDbEventsTests } from './db.events.test.js';\nimport { runWorkspaceDbTests } from './db.workspace.test.js';\nimport { runWorkspaceApiTests } from '../api/workspaces.test.js';\nimport { runWorkspaceTaskApiTests } from '../api/workspace-tasks.test.js';\nimport { runWorkspaceTaskQueueTests } from './workspace-task-queue.test.js';\nimport { runWorkspaceTaskRunnerTests } from './workspace-task-runner.test.js';\nimport { runWorkspaceDeploymentApiTests } from '../api/workspace-deployments.test.js';\nimport { runWorkspaceDeploymentQueueTests } from './workspace-deployment-queue.test.js';\nimport { runWorkspaceDeploymentRunnerTests } from './workspace-deployment-runner.test.js';\nimport { runWorkspaceToolchainTests } from './workspace-toolchain.test.js';\nimport { runWorkspaceDeployProviderTests } from './workspace-deploy-provider.test.js';\nimport { runReviewQueueTests } from './review-queue.test.js';",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026620,
+              "end": 1773623026638
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27120819abdc133b8ba2b550e"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/scripts/audit-with-exceptions.mjs"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/scripts/audit-with-exceptions.mjs</path>\n<type>file</type>\n<content>1: import { readFileSync } from 'node:fs';\n2: import { execSync } from 'node:child_process';\n3: \n4: const HIGH_OR_CRITICAL = new Set(['high', 'critical']);\n5: \n6: function normalizeDependencyPath(path) {\n7:   return String(path)\n8:     .split('>')\n9:     .map((segment) => segment.trim().replace(/@[^@\\s]+$/, ''))\n10:     .join(' > ');\n11: }\n12: \n13: function advisoryPaths(advisory) {\n14:   const findings = Array.isArray(advisory.findings) ? advisory.findings : [];\n15:   const paths = [];\n16:   for (const finding of findings) {\n17:     const findingPaths = Array.isArray(finding?.paths) ? finding.paths : [];\n18:     for (const path of findingPaths) {\n19:       paths.push(normalizeDependencyPath(path));\n20:     }\n21:   }\n22:   return [...new Set(paths)];\n23: }\n24: \n25: function scopeMatches(exceptionScope, path) {\n26:   return path === exceptionScope || path.startsWith(`${exceptionScope} > `);\n27: }\n28: \n29: function matchesException(advisory, severity, paths, exception) {\n30:   const exceptionGhsa = String(exception.ghsa ?? '');\n31:   const advisoryGhsa = String(advisory.github_advisory_id ?? '');\n32:   if (!exceptionGhsa || exceptionGhsa !== advisoryGhsa) {\n33:     return false;\n34:   }\n35: \n36:   if (typeof exception.package === 'string') {\n37:     const advisoryModule = String(advisory.module_name ?? '');\n38:     if (!advisoryModule || advisoryModule !== exception.package) {\n39:       return false;\n40:     }\n41:   }\n42: \n43:   if (typeof exception.severity === 'string') {\n44:     if (exception.severity.toLowerCase() !== severity) {\n45:       return false;\n46:     }\n47:   }\n48: \n49:   if (Array.isArray(exception.scope) && exception.scope.length > 0) {\n50:     const normalizedScope = exception.scope.map((entry) => normalizeDependencyPath(entry));\n51:     return paths.some((path) => normalizedScope.some((scopeEntry) => scopeMatches(scopeEntry, path)));\n52:   }\n53: \n54:   return true;\n55: }\n56: \n57: function runAuditJson() {\n58:   try {\n59:     return execSync('pnpm audit --audit-level high --json', {\n60:       encoding: 'utf8',\n61:       stdio: ['ignore', 'pipe', 'pipe'],\n62:     });\n63:   } catch (error) {\n64:     if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {\n65:       return error.stdout;\n66:     }\n67:     throw error;\n68:   }\n69: }\n70: \n71: function readExceptions() {\n72:   const raw = readFileSync('.audit-exceptions.json', 'utf8');\n73:   const parsed = JSON.parse(raw);\n74:   if (!Array.isArray(parsed)) {\n75:     throw new Error('.audit-exceptions.json must be an array');\n76:   }\n77:   return parsed;\n78: }\n79: \n80: function main() {\n81:   const report = JSON.parse(runAuditJson());\n82:   const advisories = report?.advisories ?? {};\n83:   const exceptions = readExceptions();\n84: \n85:   const failures = [];\n86:   const suppressed = [];\n87: \n88:   for (const advisory of Object.values(advisories)) {\n89:     if (!advisory || typeof advisory !== 'object') {\n90:       continue;\n91:     }\n92: \n93:     const severity = String(advisory.severity ?? '').toLowerCase();\n94:     if (!HIGH_OR_CRITICAL.has(severity)) {\n95:       continue;\n96:     }\n97: \n98:     const ghsa = String(advisory.github_advisory_id ?? '');\n99:     const paths = advisoryPaths(advisory);\n100:     const record = {\n101:       ghsa,\n102:       title: String(advisory.title ?? 'Unknown advisory'),\n103:       module: String(advisory.module_name ?? 'unknown'),\n104:       severity,\n105:       paths,\n106:     };\n107: \n108:     const isSuppressed = exceptions.some((exception) => matchesException(advisory, severity, paths, exception));\n109:     if (isSuppressed) {\n110:       suppressed.push(record);\n111:     } else {\n112:       failures.push(record);\n113:     }\n114:   }\n115: \n116:   if (suppressed.length > 0) {\n117:     console.log('Suppressed advisories from .audit-exceptions.json:');\n118:     for (const advisory of suppressed) {\n119:       console.log(`- ${advisory.ghsa} (${advisory.module}): ${advisory.title}`);\n120:     }\n121:   }\n122: \n123:   if (failures.length > 0) {\n124:     console.error('Unapproved high/critical advisories found:');\n125:     for (const advisory of failures) {\n126:       console.error(`- ${advisory.ghsa} (${advisory.module}, ${advisory.severity}): ${advisory.title}`);\n127:       for (const path of advisory.paths) {\n128:         console.error(`  path: ${path}`);\n129:       }\n130:     }\n131:     process.exit(1);\n132:   }\n133: \n134:   console.log('No unapproved high/critical advisories found.');\n135: }\n136: \n137: main();\n\n(End of file - total 137 lines)\n</content>",
+            "title": "scripts/audit-with-exceptions.mjs",
+            "metadata": {
+              "preview": "import { readFileSync } from 'node:fs';\nimport { execSync } from 'node:child_process';\n\nconst HIGH_OR_CRITICAL = new Set(['high', 'critical']);\n\nfunction normalizeDependencyPath(path) {\n  return String(path)\n    .split('>')\n    .map((segment) => segment.trim().replace(/@[^@\\s]+$/, ''))\n    .join(' > ');\n}\n\nfunction advisoryPaths(advisory) {\n  const findings = Array.isArray(advisory.findings) ? advisory.findings : [];\n  const paths = [];\n  for (const finding of findings) {\n    const findingPaths = Array.isArray(finding?.paths) ? finding.paths : [];\n    for (const path of findingPaths) {\n      paths.push(normalizeDependencyPath(path));\n    }",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026621,
+              "end": 1773623026633
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27124819a995e169216dd1231"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/.gitleaks.toml"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/.gitleaks.toml</path>\n<type>file</type>\n<content>1: title = \"Nimbus gitleaks config\"\n2: \n3: [extend]\n4: useDefault = true\n5: \n6: [[allowlists]]\n7: description = \"Allow mock nmb_live_ keys in test files\"\n8: condition = \"AND\"\n9: paths = [\n10:   '''(^|/)packages/.+\\.(test|spec)\\.ts$''',\n11: ]\n12: regexTarget = \"match\"\n13: regexes = [\n14:   '''nmb_live_[A-Za-z0-9_]+''',\n15: ]\n16: \n17: [[allowlists]]\n18: description = \"Allow synthetic hash fixtures in test files\"\n19: condition = \"AND\"\n20: paths = [\n21:   '''(^|/)packages/.+\\.(test|spec)\\.ts$''',\n22: ]\n23: regexTarget = \"line\"\n24: regexes = [\n25:   '''\\b[a-f0-9]{40}\\b''',\n26:   '''\\b[a-f0-9]{64}\\b''',\n27:   '''repeat\\((40|64)\\)''',\n28: ]\n\n(End of file - total 28 lines)\n</content>",
+            "title": ".gitleaks.toml",
+            "metadata": {
+              "preview": "title = \"Nimbus gitleaks config\"\n\n[extend]\nuseDefault = true\n\n[[allowlists]]\ndescription = \"Allow mock nmb_live_ keys in test files\"\ncondition = \"AND\"\npaths = [\n  '''(^|/)packages/.+\\.(test|spec)\\.ts$''',\n]\nregexTarget = \"match\"\nregexes = [\n  '''nmb_live_[A-Za-z0-9_]+''',\n]\n\n[[allowlists]]\ndescription = \"Allow synthetic hash fixtures in test files\"\ncondition = \"AND\"\npaths = [",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026623,
+              "end": 1773623026636
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27128819aaad7625d2f437ab6"
+            }
+          },
+          "id": "prt_cf42ba3be001Fuqf7hmdbO0pYv",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/.github/workflows/dependency-scan.yml"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/.github/workflows/dependency-scan.yml</path>\n<type>file</type>\n<content>1: name: Dependency Scan\n2: \n3: on:\n4:   push:\n5:   pull_request:\n6: \n7: jobs:\n8:   audit:\n9:     runs-on: ubuntu-latest\n10:     steps:\n11:       - name: Checkout\n12:         uses: actions/checkout@v4\n13:       - name: Setup pnpm\n14:         uses: pnpm/action-setup@v4\n15:         with:\n16:           version: 9.15.0\n17:       - name: Setup Node\n18:         uses: actions/setup-node@v4\n19:         with:\n20:           node-version: 20\n21:           cache: pnpm\n22:       - name: Install dependencies\n23:         run: pnpm install --frozen-lockfile\n24:       - name: Run high/critical audit\n25:         run: node scripts/audit-with-exceptions.mjs\n\n(End of file - total 25 lines)\n</content>",
+            "title": ".github/workflows/dependency-scan.yml",
+            "metadata": {
+              "preview": "name: Dependency Scan\n\non:\n  push:\n  pull_request:\n\njobs:\n  audit:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n      - name: Setup pnpm\n        uses: pnpm/action-setup@v4\n        with:\n          version: 9.15.0\n      - name: Setup Node\n        uses: actions/setup-node@v4\n        with:\n          node-version: 20",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026625,
+              "end": 1773623026636
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27130819a87c53c5ecb8b5577"
+            }
+          },
+          "id": "prt_cf42ba3c0001IbrPYVe0Yf1LQE",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_XjXrtAksJLiJssTUFJiWCRE5",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/.github/workflows/secret-scan.yml"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/.github/workflows/secret-scan.yml</path>\n<type>file</type>\n<content>1: name: Secret Scan\n2: \n3: on:\n4:   push:\n5:   pull_request:\n6: \n7: jobs:\n8:   gitleaks:\n9:     runs-on: ubuntu-latest\n10:     steps:\n11:       - name: Checkout\n12:         uses: actions/checkout@v4\n13:       - name: Run gitleaks\n14:         uses: gitleaks/gitleaks-action@v2\n15:         env:\n16:           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n17:         with:\n18:           config-path: .gitleaks.toml\n\n(End of file - total 18 lines)\n</content>",
+            "title": ".github/workflows/secret-scan.yml",
+            "metadata": {
+              "preview": "name: Secret Scan\n\non:\n  push:\n  pull_request:\n\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    steps:\n      - name: Checkout\n        uses: actions/checkout@v4\n      - name: Run gitleaks\n        uses: gitleaks/gitleaks-action@v2\n        env:\n          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n        with:\n          config-path: .gitleaks.toml",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026626,
+              "end": 1773623026634
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f27134819a9b2ead34c7507a87"
+            }
+          },
+          "id": "prt_cf42ba3c1001nkoDATw2r31qEK",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "tool",
+          "callID": "call_bd9FQKadWscXiZGS34wqjQ8S",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/.audit-exceptions.json"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/.audit-exceptions.json</path>\n<type>file</type>\n<content>1: [\n2:   {\n3:     \"ghsa\": \"GHSA-f269-vfmq-vjvj\",\n4:     \"package\": \"undici\",\n5:     \"severity\": \"high\",\n6:     \"reason\": \"Impacts Undici WebSocket client parsing. Nimbus production code runs on Cloudflare Workers and does not use Undici WebSocket client paths.\",\n7:     \"scope\": [\n8:       \"packages/agent-endpoint > wrangler > miniflare > undici\",\n9:       \"packages/worker > wrangler > miniflare > undici\",\n10:       \"packages/worker > undici\"\n11:     ]\n12:   },\n13:   {\n14:     \"ghsa\": \"GHSA-vrm6-8vpv-qv8q\",\n15:     \"package\": \"undici\",\n16:     \"severity\": \"high\",\n17:     \"reason\": \"Impacts Undici WebSocket permessage-deflate handling. Nimbus does not open outbound WebSocket client connections in Cloudflare Workers runtime.\",\n18:     \"scope\": [\n19:       \"packages/agent-endpoint > wrangler > miniflare > undici\",\n20:       \"packages/worker > wrangler > miniflare > undici\",\n21:       \"packages/worker > undici\"\n22:     ]\n23:   },\n24:   {\n25:     \"ghsa\": \"GHSA-v9p9-hfj2-hcw8\",\n26:     \"package\": \"undici\",\n27:     \"severity\": \"high\",\n28:     \"reason\": \"Impacts Undici WebSocket decompression negotiation in Node.js clients. This code path is not reachable in Cloudflare Workers fetch runtime used in production.\",\n29:     \"scope\": [\n30:       \"packages/agent-endpoint > wrangler > miniflare > undici\",\n31:       \"packages/worker > wrangler > miniflare > undici\",\n32:       \"packages/worker > undici\"\n33:     ]\n34:   }\n35: ]\n\n(End of file - total 35 lines)\n</content>",
+            "title": ".audit-exceptions.json",
+            "metadata": {
+              "preview": "[\n  {\n    \"ghsa\": \"GHSA-f269-vfmq-vjvj\",\n    \"package\": \"undici\",\n    \"severity\": \"high\",\n    \"reason\": \"Impacts Undici WebSocket client parsing. Nimbus production code runs on Cloudflare Workers and does not use Undici WebSocket client paths.\",\n    \"scope\": [\n      \"packages/agent-endpoint > wrangler > miniflare > undici\",\n      \"packages/worker > wrangler > miniflare > undici\",\n      \"packages/worker > undici\"\n    ]\n  },\n  {\n    \"ghsa\": \"GHSA-vrm6-8vpv-qv8q\",\n    \"package\": \"undici\",\n    \"severity\": \"high\",\n    \"reason\": \"Impacts Undici WebSocket permessage-deflate handling. Nimbus does not open outbound WebSocket client connections in Cloudflare Workers runtime.\",\n    \"scope\": [\n      \"packages/agent-endpoint > wrangler > miniflare > undici\",\n      \"packages/worker > wrangler > miniflare > undici\",",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623026628,
+              "end": 1773623026634
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0e913c6070eddd050169b756f2713c819a826d91df38432056"
+            }
+          },
+          "id": "prt_cf42ba3c3001LsECEeOJ43D01O",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.01843345,
+          "tokens": {
+            "total": 13156,
+            "input": 5247,
+            "output": 485,
+            "reasoning": 83,
+            "cache": {
+              "read": 7424,
+              "write": 0
+            }
+          },
+          "id": "prt_cf42ba3dd001J5s0a6qC3KZpST",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "REDACTED"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623026760,
+          "completed": 1773623037058
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0405573,
+        "tokens": {
+          "total": 28645,
+          "input": 15150,
+          "output": 439,
+          "reasoning": 401,
+          "cache": {
+            "read": 13056,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cf42ba448001dUYX9ZLh7J0b7S",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "prt_cf42ba6b9001WKGlw1ckkcRNON",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42ba448001dUYX9ZLh7J0b7S"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Clarifying diff versus local modifications**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_05ad30a429a9a01a0169b756f3a2788199b84fbad87c6cafa4",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623027668,
+            "end": 1773623036211
+          },
+          "id": "prt_cf42ba7d4001syvoffNCLNt3Z1",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42ba448001dUYX9ZLh7J0b7S"
+        },
+        {
+          "type": "tool",
+          "callID": "REDACTED",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git branch --show-current && git status --short",
+              "description": "Shows current branch and short status"
+            },
+            "output": "security-audit\n M scripts/audit-with-exceptions.mjs\n",
+            "title": "Shows current branch and short status",
+            "metadata": {
+              "output": "security-audit\n M scripts/audit-with-exceptions.mjs\n",
+              "exit": 0,
+              "description": "Shows current branch and short status",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623036307,
+              "end": 1773623036950
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_05ad30a429a9a01a0169b756fc27088199b3b08903c961fffe"
+            }
+          },
+          "id": "prt_cf42bc933001zMvnjFWtM0HVH3",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42ba448001dUYX9ZLh7J0b7S"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.0405573,
+          "tokens": {
+            "total": 28645,
+            "input": 15150,
+            "output": 439,
+            "reasoning": 401,
+            "cache": {
+              "read": 13056,
+              "write": 0
+            }
+          },
+          "id": "prt_cf42bcc17001npYpYhmX0Z4Ugu",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42ba448001dUYX9ZLh7J0b7S"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623037059,
+          "completed": 1773623046794
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0185297,
+        "tokens": {
+          "total": 29170,
+          "input": 126,
+          "output": 500,
+          "reasoning": 451,
+          "cache": {
+            "read": 28544,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cf42bcc830017w8puhTx7QEFes",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bcc830017w8puhTx7QEFes"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Analyzing branch diff and potential request size bug**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0951663e3a7e36d40169b756fdb44c81969e4ead5064f6719b",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623037726,
+            "end": 1773623046525
+          },
+          "id": "prt_cf42bcf1e001ljXbm6eMSgga3f",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bcc830017w8puhTx7QEFes"
+        },
+        {
+          "type": "tool",
+          "callID": "call_IXLvadW4OVDJ9IJ174X2jkS4",
+          "tool": "grep",
+          "state": {
+            "status": "completed",
+            "input": {
+              "pattern": "new AgentEndpointError\\(",
+              "path": "/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/src",
+              "include": "*.ts"
+            },
+            "output": "Found 8 matches\n/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/src/lib/agent.ts:\n  Line 180:       throw new AgentEndpointError('openrouter_request_timeout', 504, {\n  Line 200:     throw new AgentEndpointError('openrouter_request_failed', 502, {\n  Line 208:     throw new AgentEndpointError('openrouter_invalid_response', 502, {\n  Line 217:     throw new AgentEndpointError('invalid_model_output', 422, {\n  Line 237:     throw new AgentEndpointError('invalid_model_output', 422, { errors });\n  Line 303:     throw new AgentEndpointError('missing_openrouter_api_key', 500, {\n  Line 324:       throw new AgentEndpointError('invalid_model_output', 422, {\n  Line 332:       throw new AgentEndpointError('invalid_model_output', 422, {",
+            "title": "new AgentEndpointError\\(",
+            "metadata": {
+              "matches": 8,
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623046638,
+              "end": 1773623046655
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0951663e3a7e36d40169b757067a2c8196b70304d3f84c0941"
+            }
+          },
+          "id": "prt_cf42bf17e0011gRJdP2Z0KrS2o",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bcc830017w8puhTx7QEFes"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.0185297,
+          "tokens": {
+            "total": 29170,
+            "input": 126,
+            "output": 500,
+            "reasoning": 451,
+            "cache": {
+              "read": 28544,
+              "write": 0
+            }
+          },
+          "id": "prt_cf42bf222001m5VjO8DSXhIrhN",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bcc830017w8puhTx7QEFes"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623046795,
+          "completed": 1773623048337
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.00676305,
+        "tokens": {
+          "total": 29435,
+          "input": 319,
+          "output": 60,
+          "reasoning": 20,
+          "cache": {
+            "read": 29056,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cf42bf28b001HIW6x1iBsuVpbj",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "prt_cf42bf480001VSEEgt8WDLOntB",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bf28b001HIW6x1iBsuVpbj"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_08c0045422f6568d0169b757076744819783f8924b11a1ea19",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623047435,
+            "end": 1773623048110
+          },
+          "id": "prt_cf42bf50b001gHrw8jKmmeT0Fk",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bf28b001HIW6x1iBsuVpbj"
+        },
+        {
+          "type": "tool",
+          "callID": "call_vNiUiblaZHvYrOU8foW9Itpn",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/src/lib/agent.ts"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/packages/agent-endpoint/src/lib/agent.ts</path>\n<type>file</type>\n<content>1: type AgentHistoryEntry =\n2:   | { role: 'assistant'; content: string }\n3:   | { role: 'tool'; tool: string; output: unknown };\n4: \n5: export type AgentAction =\n6:   | { type: 'tool'; tool: 'list_files'; args: { path?: string } }\n7:   | { type: 'tool'; tool: 'read_file'; args: { path: string; maxBytes?: number } }\n8:   | { type: 'tool'; tool: 'diff_summary'; args: { maxBytes?: number } }\n9:   | { type: 'final'; summary: string };\n10: \n11: export interface AgentRequest {\n12:   mode?: string;\n13:   prompt?: string;\n14:   model?: string;\n15:   maxSteps?: number;\n16:   step?: number;\n17:   history?: AgentHistoryEntry[];\n18: }\n19: \n20: export interface AgentEnv {\n21:   OPENROUTER_API_KEY?: string;\n22:   DEFAULT_MODEL?: string;\n23:   AGENT_SDK_AUTH_TOKEN?: string;\n24:   OPENROUTER_HTTP_REFERER?: string;\n25:   OPENROUTER_X_TITLE?: string;\n26: }\n27: \n28: export class AgentEndpointError extends Error {\n29:   constructor(\n30:     public readonly code: string,\n31:     public readonly status: number,\n32:     public readonly details?: Record<string, unknown>\n33:   ) {\n34:     super(code);\n35:     this.name = 'AgentEndpointError';\n36:   }\n37: }\n38: \n39: export interface ReviewOutputV2 {\n40:   findings: unknown[];\n41:   summary: string;\n42:   furtherPassesLowYield: boolean;\n43: }\n44: \n45: function hasToolOutput(history: AgentHistoryEntry[], tool: string): boolean {\n46:   return history.some((entry) => entry.role === 'tool' && entry.tool === tool);\n47: }\n48: \n49: function isReviewPrompt(prompt: string): boolean {\n50:   const normalized = prompt.toLowerCase();\n51:   return (\n52:     normalized.includes('you are nimbus review') ||\n53:     normalized.includes('furtherpasseslowyield') ||\n54:     normalized.includes('return your final answer as raw json')\n55:   );\n56: }\n57: \n58: function stripCodeFences(raw: string): string {\n59:   const trimmed = raw.trim();\n60:   const match = trimmed.match(/^```(?:json)?\\s*([\\s\\S]*?)\\s*```$/i);\n61:   return match ? match[1].trim() : trimmed;\n62: }\n63: \n64: function extractJsonObjectCandidate(raw: string): string | null {\n65:   const source = raw.trim();\n66:   const first = source.indexOf('{');\n67:   if (first < 0) {\n68:     return null;\n69:   }\n70: \n71:   let depth = 0;\n72:   let inString = false;\n73:   let escaped = false;\n74:   for (let i = first; i < source.length; i += 1) {\n75:     const ch = source[i];\n76:     if (inString) {\n77:       if (escaped) {\n78:         escaped = false;\n79:       } else if (ch === '\\\\') {\n80:         escaped = true;\n81:       } else if (ch === '\"') {\n82:         inString = false;\n83:       }\n84:       continue;\n85:     }\n86: \n87:     if (ch === '\"') {\n88:       inString = true;\n89:       continue;\n90:     }\n91:     if (ch === '{') {\n92:       depth += 1;\n93:       continue;\n94:     }\n95:     if (ch === '}') {\n96:       depth -= 1;\n97:       if (depth === 0) {\n98:         return source.slice(first, i + 1).trim();\n99:       }\n100:     }\n101:   }\n102:   return null;\n103: }\n104: \n105: function resolveOpenRouterModel(requestModel: string | undefined, defaultModel: string | undefined): string {\n106:   const raw = (typeof requestModel === 'string' ? requestModel : '').trim() || (defaultModel ?? '').trim();\n107:   if (!raw) {\n108:     return 'anthropic/claude-sonnet-4-5';\n109:   }\n110:   if (raw === 'sonnet-4.5') {\n111:     return 'anthropic/claude-sonnet-4-5';\n112:   }\n113:   return raw;\n114: }\n115: \n116: function parseOpenRouterContent(payload: unknown): string {\n117:   const record = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : null;\n118:   const choices = Array.isArray(record?.choices) ? record.choices : [];\n119:   const first = choices[0];\n120:   const choiceRecord = first && typeof first === 'object' && !Array.isArray(first) ? (first as Record<string, unknown>) : null;\n121:   const message = choiceRecord?.message;\n122:   const messageRecord = message && typeof message === 'object' && !Array.isArray(message)\n123:     ? (message as Record<string, unknown>)\n124:     : null;\n125:   const content = messageRecord?.content;\n126:   if (typeof content === 'string') {\n127:     return content.trim();\n128:   }\n129:   if (Array.isArray(content)) {\n130:     const joined = content\n131:       .map((part) => {\n132:         if (!part || typeof part !== 'object' || Array.isArray(part)) {\n133:           return '';\n134:         }\n135:         const text = (part as Record<string, unknown>).text;\n136:         return typeof text === 'string' ? text : '';\n137:       })\n138:       .join('')\n139:       .trim();\n140:     return joined;\n141:   }\n142:   return '';\n143: }\n144: \n145: export async function callOpenRouter(input: {\n146:   apiKey: string;\n147:   model: string;\n148:   prompt: string;\n149:   httpReferer?: string;\n150:   xTitle?: string;\n151: }): Promise<string> {\n152:   let response: Response;\n153:   let timeoutId: ReturnType<typeof setTimeout> | null = null;\n154:   try {\n155:     const signal =\n156:       typeof AbortSignal.timeout === 'function'\n157:         ? AbortSignal.timeout(90_000)\n158:         : (() => {\n159:             const controller = new AbortController();\n160:             timeoutId = setTimeout(() => controller.abort('openrouter_timeout'), 90_000);\n161:             return controller.signal;\n162:           })();\n163:     response = await fetch('https://openrouter.ai/api/v1/chat/completions', {\n164:       method: 'POST',\n165:       headers: {\n166:         'Content-Type': 'application/json',\n167:         Authorization: `Bearer ${input.apiKey}`,\n168:         ...(input.httpReferer ? { 'HTTP-Referer': input.httpReferer } : {}),\n169:         ...(input.xTitle ? { 'X-Title': input.xTitle } : {}),\n170:       },\n171:       body: JSON.stringify({\n172:         model: input.model,\n173:         response_format: { type: 'json_object' },\n174:         messages: [{ role: 'user', content: input.prompt }],\n175:       }),\n176:       signal,\n177:     });\n178:   } catch (error) {\n179:     if (error instanceof Error && (error.name === 'AbortError' || /timeout|timed out|aborted/i.test(error.message))) {\n180:       throw new AgentEndpointError('openrouter_request_timeout', 504, {\n181:         message: 'OpenRouter request timed out after 90 seconds',\n182:       });\n183:     }\n184:     throw error;\n185:   } finally {\n186:     if (timeoutId !== null) {\n187:       clearTimeout(timeoutId);\n188:     }\n189:   }\n190: \n191:   const bodyText = await response.text();\n192:   let parsed: unknown = null;\n193:   try {\n194:     parsed = bodyText ? JSON.parse(bodyText) : null;\n195:   } catch {\n196:     parsed = null;\n197:   }\n198: \n199:   if (!response.ok) {\n200:     throw new AgentEndpointError('openrouter_request_failed', 502, {\n201:       status: response.status,\n202:       body: bodyText.slice(0, 2_000),\n203:     });\n204:   }\n205: \n206:   const content = parseOpenRouterContent(parsed);\n207:   if (!content) {\n208:     throw new AgentEndpointError('openrouter_invalid_response', 502, {\n209:       reason: 'empty_content',\n210:     });\n211:   }\n212:   return content;\n213: }\n214: \n215: function validateReviewOutputV2(payload: unknown): ReviewOutputV2 {\n216:   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {\n217:     throw new AgentEndpointError('invalid_model_output', 422, {\n218:       errors: [{ path: '$', message: 'output must be an object' }],\n219:     });\n220:   }\n221:   const record = payload as Record<string, unknown>;\n222:   const errors: Array<{ path: string; message: string }> = [];\n223: \n224:   if (!Array.isArray(record.findings)) {\n225:     errors.push({ path: '$.findings', message: 'findings must be an array' });\n226:   }\n227: \n228:   if (typeof record.summary !== 'string' || !record.summary.trim()) {\n229:     errors.push({ path: '$.summary', message: 'summary must be a non-empty string' });\n230:   }\n231: \n232:   if (typeof record.furtherPassesLowYield !== 'boolean') {\n233:     errors.push({ path: '$.furtherPassesLowYield', message: 'furtherPassesLowYield must be a boolean' });\n234:   }\n235: \n236:   if (errors.length > 0) {\n237:     throw new AgentEndpointError('invalid_model_output', 422, { errors });\n238:   }\n239: \n240:   return {\n241:     findings: record.findings as unknown[],\n242:     summary: (record.summary as string).trim(),\n243:     furtherPassesLowYield: record.furtherPassesLowYield as boolean,\n244:   };\n245: }\n246: \n247: function buildReviewFinalSummary(): string {\n248:   return JSON.stringify({\n249:     findings: [],\n250:     summary: 'No actionable findings identified from the provided review context.',\n251:     furtherPassesLowYield: true,\n252:   });\n253: }\n254: \n255: function nextReviewAction(history: AgentHistoryEntry[]): AgentAction {\n256:   if (!hasToolOutput(history, 'diff_summary')) {\n257:     return { type: 'tool', tool: 'diff_summary', args: { maxBytes: 32_000 } };\n258:   }\n259:   if (!hasToolOutput(history, 'list_files')) {\n260:     return { type: 'tool', tool: 'list_files', args: { path: '.' } };\n261:   }\n262:   return {\n263:     type: 'final',\n264:     summary: buildReviewFinalSummary(),\n265:   };\n266: }\n267: \n268: function nextWorkspaceTaskAction(history: AgentHistoryEntry[]): AgentAction {\n269:   if (!hasToolOutput(history, 'list_files')) {\n270:     return { type: 'tool', tool: 'list_files', args: { path: '.' } };\n271:   }\n272:   if (!hasToolOutput(history, 'read_file')) {\n273:     return { type: 'tool', tool: 'read_file', args: { path: 'README.md', maxBytes: 2000 } };\n274:   }\n275:   return { type: 'final', summary: 'Completed by Nimbus agent endpoint.' };\n276: }\n277: \n278: export function nextAgentAction(request: AgentRequest): AgentAction {\n279:   const prompt = typeof request.prompt === 'string' ? request.prompt : '';\n280:   const history = Array.isArray(request.history) ? request.history : [];\n281:   if (isReviewPrompt(prompt)) {\n282:     return nextReviewAction(history);\n283:   }\n284:   return nextWorkspaceTaskAction(history);\n285: }\n286: \n287: export async function nextAgentActionWithInference(\n288:   request: AgentRequest,\n289:   env: AgentEnv,\n290:   options?: { openrouterApiKey?: string | null }\n291: ): Promise<AgentAction> {\n292:   const prompt = typeof request.prompt === 'string' ? request.prompt : '';\n293:   const history = Array.isArray(request.history) ? request.history : [];\n294: \n295:   if (!isReviewPrompt(prompt)) {\n296:     return nextWorkspaceTaskAction(history);\n297:   }\n298: \n299:   const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';\n300:   const envApiKey = (env.OPENROUTER_API_KEY ?? '').trim();\n301:   const apiKey = requestApiKey || envApiKey;\n302:   if (!apiKey) {\n303:     throw new AgentEndpointError('missing_openrouter_api_key', 500, {\n304:       message: 'OPENROUTER_API_KEY is required',\n305:     });\n306:   }\n307: \n308:   const model = resolveOpenRouterModel(request.model, env.DEFAULT_MODEL);\n309:   const httpReferer = typeof env.OPENROUTER_HTTP_REFERER === 'string' ? env.OPENROUTER_HTTP_REFERER.trim() : '';\n310:   const xTitle = typeof env.OPENROUTER_X_TITLE === 'string' ? env.OPENROUTER_X_TITLE.trim() : '';\n311:   const content = await callOpenRouter({\n312:     apiKey,\n313:     model,\n314:     prompt,\n315:     ...(httpReferer ? { httpReferer } : {}),\n316:     ...(xTitle ? { xTitle } : {}),\n317:   });\n318:   let parsed: unknown;\n319:   try {\n320:     parsed = JSON.parse(stripCodeFences(content));\n321:   } catch {\n322:     const candidate = extractJsonObjectCandidate(content);\n323:     if (!candidate) {\n324:       throw new AgentEndpointError('invalid_model_output', 422, {\n325:         errors: [{ path: '$', message: 'model response was not valid JSON' }],\n326:         preview: content.slice(0, 500),\n327:       });\n328:     }\n329:     try {\n330:       parsed = JSON.parse(candidate);\n331:     } catch {\n332:       throw new AgentEndpointError('invalid_model_output', 422, {\n333:         errors: [{ path: '$', message: 'model response was not valid JSON' }],\n334:         preview: content.slice(0, 500),\n335:       });\n336:     }\n337:   }\n338: \n339:   const validated = validateReviewOutputV2(parsed);\n340:   return {\n341:     type: 'final',\n342:     summary: JSON.stringify(validated),\n343:   };\n344: }\n\n(End of file - total 344 lines)\n</content>",
+            "title": "packages/agent-endpoint/src/lib/agent.ts",
+            "metadata": {
+              "preview": "type AgentHistoryEntry =\n  | { role: 'assistant'; content: string }\n  | { role: 'tool'; tool: string; output: unknown };\n\nexport type AgentAction =\n  | { type: 'tool'; tool: 'list_files'; args: { path?: string } }\n  | { type: 'tool'; tool: 'read_file'; args: { path: string; maxBytes?: number } }\n  | { type: 'tool'; tool: 'diff_summary'; args: { maxBytes?: number } }\n  | { type: 'final'; summary: string };\n\nexport interface AgentRequest {\n  mode?: string;\n  prompt?: string;\n  model?: string;\n  maxSteps?: number;\n  step?: number;\n  history?: AgentHistoryEntry[];\n}\n\nexport interface AgentEnv {",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1773623048191,
+              "end": 1773623048193
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_08c0045422f6568d0169b757080754819798476d1adf938379"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bf28b001HIW6x1iBsuVpbj"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.00676305,
+          "tokens": {
+            "total": 29435,
+            "input": 319,
+            "output": 60,
+            "reasoning": 20,
+            "cache": {
+              "read": 29056,
+              "write": 0
+            }
+          },
+          "id": "prt_cf42bf822001SsfK1gSNJ7Cgpr",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bf28b001HIW6x1iBsuVpbj"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623048338,
+          "completed": 1773623062799
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.02671935,
+        "tokens": {
+          "total": 33466,
+          "input": 3585,
+          "output": 569,
+          "reasoning": 525,
+          "cache": {
+            "read": 29312,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cf42bf892001fsNaL8gceGCIiR",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "prt_cf42bfab400136TV0ZPwMAaloC",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bf892001fsNaL8gceGCIiR"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Analyzing error sanitization and request size limits**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0230ac13f0dfa3b30169b75708fa1c819ba3cf9e9556a11bc3",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623049090,
+            "end": 1773623060863
+          },
+          "id": "prt_cf42bfb82001suvkwz99223Os8",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bf892001fsNaL8gceGCIiR"
+        },
+        {
+          "type": "tool",
+          "callID": "call_s6NuBqJ8HZta9JgsExZOFQtA",
+          "tool": "websearch",
+          "state": {
+            "status": "completed",
+            "input": {
+              "query": "gitleaks/gitleaks-action v2 config-path input",
+              "numResults": 5,
+              "type": "fast"
+            },
+            "output": "Title: v2.md at master · gitleaks/gitleaks-action\nAuthor: gitleaks\nPublished Date: 2020-02-24T00:00:00.000Z\nURL: https://github.com/gitleaks/gitleaks-action/blob/master/v2.md\nText: # File: gitleaks/gitleaks-action/v2.md\n\n- Repository: gitleaks/gitleaks-action | Protect your secrets using Gitleaks-Action | 531 stars | JavaScript\n- Branch: master\n\n```md\n## Announcements\n### 📢 Release of Gitleaks-Action v2\n_6/13/2022_\n\n\nOn June 2, 2022, we released Gitleaks Action v2. There are a boatload of improvements\nin v2, but it also represents a breaking change from the prior version (v1.6.0). We haven't merged v2 to the `master` branch yet because we noticed that\nmany users of Gitleaks Action don't pin their version. If you are using `zricethezav/gitleaks-action@master` (or now `gitleaks/gitleaks-action@master`),\nthen as soon as we merge v2 to master, your jobs will start fa\niling.\n\n#### How to upgrade to v2\n\nFor full details, see the rest of the v2 README. Here is the quick list of changes to your .yml:\n* Change the \"uses\" line to `- uses: gitleaks/gitleaks-action@v2`\n* Add an `env:` section with `GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}`\n* If you are scanning repos that belong to an organization, you'll also have to acquire a GITLEAKS_LICENSE,\n  add the license to your GitHub Secrets, and add this line to the `env:` section: `GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE}}`\n\n#### How to pin to v1.6.0\n* Change your \"uses\" line to `gitleaks/gitleaks-action@v1.6.0`\n* Set a reminder to upgrade to v2 later.\n\n\n## v2 Benefits\nIf you are using Gitleaks-Action v2 to scan repos owned by an Organization,\nyou will find that you need to acquire a GITEAKS_LICENSE in order for the action to run. A \"Starter\" license to scan 1 repo is\nfree, but scanning more than 1 repo belonging to the same organization requires a paid license. This raises the obvious question:\n\n**_Is v2 really worth paying for?_**\n\nIt's a fair question. We think that the new features and improvements in v2 deliver exce\n\nTitle: Setting baseline path in gihub actions · Issue #141 · gitleaks/gitleaks-action\nAuthor: do-i-need-a-username\nPublished Date: 2024-03-12T00:00:00.000Z\nURL: https://github.com/gitleaks/gitleaks-action/issues/141\nText: # Issue: gitleaks/gitleaks-action #141\n\n- Repository: gitleaks/gitleaks-action | Protect your secrets using Gitleaks-Action | 535 stars | JavaScript\n\n## Setting baseline path in gihub actions\n\n- Author: @do-i-need-a-username\n- State: open\n- Reactions: 👍 4 👀 4\n- Created: 2024-03-12T22:41:58Z\n- Updated: 2025-02-21T10:41:05Z\n\nHow do I use the `--baseline-path` flag in github actions.\n\nIs it possible to set the path in my config file `.gitleak-config.toml`. I can't see a reference to in the gitleaks configuration file docs or the default configuration file\n\n---\n\n### Timeline\n\n**@IliaOpiakin** commented · Aug 16, 2024 at 1:58pm · edited\n\n> I think the best quick solution is to create .gitleaksignore file and put there fingerprints from your baseline reports\n> https://github.com/gitleaks/gitleaks/blob/master/.gitleaksignore\n> It will give you chance to ignore some false positive detection, but of course will not improve the speed\n\n**@thunermay** commented · Feb 21, 2025 at 8:47am\n\n> @IliaOpiakin The default baseline report is a json and unfortunately not suitable for .`gitleaksignore`, is it?\n> Is there an easy way to convert a baseline report to a `.gitleaksignore`?\n> Thanks!\n\n**IliaOpiakin** was mentioned · Feb 21, 2025 at 8:47am\n\n**@IliaOpiakin** commented · Feb 21, 2025 at 10:41am\n\n> It can be easily done with the sh script, like this\n> \n> ```sh\n> # Read the file and grep for Fingerprint, then process each line\n> cat gitleaks-report.json | grep 'Fingerprint' | while read -r line; do\n> # Use sed to extract the desired part of the string\n> parsed_output=$(echo $line | sed -E 's/.*\"Fingerprint\": \"(.*)\"/\\1/')\n> # Append the parsed output to the .gitleaksignore file\n> echo $parsed_output >> .gitleaksignore\n> done\n> ```\n\nTitle: gitleaks/gitleaks-action\nAuthor: gitleaks\nPublished Date: 2020-02-24T00:00:00.000Z\nURL: https://github.com/gitleaks/gitleaks-action\nText: # Repository: gitleaks/gitleaks-action\n\nProtect your secrets using Gitleaks-Action\n\n- Stars: 534\n- Forks: 176\n- Watchers: 534\n- Open issues: 54\n- Primary language: JavaScript\n- Languages: JavaScript\n- License: Other (NOASSERTION)\n- Topics: action, actions, github, github-actions, secret-scanner, secret-scanning, secrets, security, security-automation, security-tools, static-analysis\n- Default branch: master\n- Homepage: https://gitleaks.io\n- Created: 2020-02-24T22:11:13Z\n- Last push: 2025-07-15T00:01:46Z\n- Contributors: 20 (top: zricethezav, weineran, ericcornelissen, niall-byrne, codykhon, paulschuberth, gmti-bwhyle, adamdecaf, HannesOberreiter, spaze)\n- Releases: 38\n- Latest release: v2.3.9 (2025-04-17T01:55:05Z)\n\n---\n\n# Gitleaks Action\n\n```\n\n  ┌─○───┐\n  │ │╲  │\n  │ │ ○ │\n  │ ○ ┌─┴───────────────────┐\n  └─░─┤  4 github actions   │\n      └─────────────────────┘\n\n```\n\n \n \n \n \n \n\nGitleaks is a SAST tool for detecting and preventing hardcoded secrets like passwords, API keys, and tokens in git repos. Gitleaks is an easy-to-use, all-in-one solution for detecting secrets, past or present, in your code. Enable **Gitleaks-Action** in your GitHub workflows to be alerted when secrets are leaked as soon as they happen. Check out our demos here (.gif) and here (.png), or see what's new in v2 here. Don't forget to check out our blog, which details how to configure and set up Gitleaks-Action for organizations and enterprises.\n\n## Usage Example\n\n```yml\nname: gitleaks\non:\n  pull_request:\n  push:\n  workflow_dispatch:\n  schedule:\n    - cron: \"0 4 * * *\" # run once a day at 4 AM\njobs:\n  scan:\n    name: gitleaks\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0\n      - uses: gitleaks/gitleaks-action@v2\n        env:\n          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          GITL\n\nTitle: Run GitLeaks · Actions · GitHub Marketplace · GitHub\nURL: https://github.com/marketplace/actions/run-gitleaks\nText: Run GitLeaks · Actions · GitHub Marketplace · GitHub\n\n# Run GitLeaks action\n\nThis action provides a simple way to run GitLeaks in your CI/CD pipeline. It can be run on Linux (`ubuntu-latest`), macOS (`macos-latest`), or Windows (`windows-latest`).\n\nIn addition, it supports GitLeaks v8.x (and v7.x), and uses the GitHub caching mechanism to speed up your workflow execution time!\n\nTip\n\nThe config file can be located in`.github` directory (e.g.:` /.github/.gitleaks.toml`), and if`with.config-path` was not provided - it will be used.\n\n## Additional Configuration\n\n### gitleaks:allow\n\nNote\n\nSince GitLeaks v8.10.0\n\nIf you are knowingly committing a test secret that GitLeaks will catch you can add a`gitleaks:allow` comment to that line which will instruct GitLeaks to ignore that secret. Ex:\n\n```\nclass CustomClass:\n    discord_client_secret = '8dyfuiRyq=vVc3RRr_edRk-fK__JItpZ' #gitleaks:allow\n```\n\n### .gitleaksignore\n\nNote\n\nSince GitLeaks v8.10.0\n\nYou can ignore specific findings by creating a`.gitleaksignore` file at the root of your repo. In release v8.10.0 GitLeaks added a`Fingerprint` value to the GitLeaks report. Each leak, or finding, has a Fingerprint that uniquely identifies a secret. Add this fingerprint to the`.gitleaksignore` file to ignore that specific secret. See GitLeaks' .gitleaksignore for an example.\n\nNote\n\nThis feature is experimental and is subject to change in the future.\n\n## Usage\n\n```\njobs:\n  gitleaks:\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v3\n        with: {fetch-depth: 0}\n\n      - name: Check for GitLeaks\n        uses: gacts/gitleaks@v1\n        #id: gitleaks\n        #with:\n        #  version: latest\n        #  config-path: .github/.gitleaks.toml\n        #  path: any/directory/path\n\n      #- if: ${{ always() }} # reason - https://github.com/gitleaks/gitleaks/issues/782\n      #  uses: github/codeql-ac\n\nTitle: Can't use config-path flag · Issue #571 · gitleaks/gitleaks\nAuthor: marcelo321\nPublished Date: 2021-05-21T00:00:00.000Z\nURL: https://github.com/zricethezav/gitleaks/issues/571\nText: # Issue: gitleaks/gitleaks #571\n\n- Repository: gitleaks/gitleaks | Find secrets with Gitleaks 🔑 | 25K stars | Go\n\n## Can't use config-path flag\n\n- Author: @marcelo321\n- State: closed (completed)\n- Labels: bug\n- Created: 2021-05-21T00:11:06Z\n- Updated: 2021-11-22T19:39:29Z\n- Closed: 2021-11-22T19:39:29Z\n- Closed by: @zricethezav\n\nsorry I don't know if im stupid or what but I can't add a local config.go file.\n\nI am trying:\n\n```\ngitleaks -r https://somerepo.com/ -q --config-path=\"/root/githubsearch/\"\ngitleaks -r https://somerepo.com/ -q --config-path=\"/root/githubsearch/default.go\"\ngitleaks -r https://somerepo.com/ -q --config-path=/root/githubsearch/default.go\ngitleaks -r https://somerepo.com/ -q --config-path=default.go\n```\n\nI tried all the ways It is common to select a path.. but none work\n\nCan somebody please help me?\n\n---\n\n### Timeline\n\n**marcelo321** added label `bug` · May 21, 2021 at 12:11am\n\n**@marcelo321** commented · May 21, 2021 at 12:15am · Author · edited\n\n> The usual way that most golang tools use is `-c config.go` or `-c /path/to/file.yaml` and that's it, none of them working here\n\n**@w0rmr1d3r** commented · May 21, 2021 at 5:38am\n\n> Hello @marcelo321 !\n> I'd try without the `-q` mode, and use `-v` or `--verbose` instead, to have a better look of what's the error.\n> However, the _config path_ it refers to, the path to the gitleaks config file, not the config file of your application.\n> \n> If you want to scan that file, use it as it's shown in this example -> https://github.com/zricethezav/gitleaks#scan-a-file\n> Here you have more info about the `--config-path` option you are using -> https://github.com/zricethezav/gitleaks#configuration\n> \n> Cheers!\n\n**marcelo321** was mentioned · May 21, 2021 at 5:38am\n\n**@zricethezav** commented · May 21, 2021 at 2:02pm\n\n> @w0rmr\n\n",
+            "title": "Web search: gitleaks/gitleaks-action v2 config-path input",
+            "metadata": {
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623060995,
+              "end": 1773623062681
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0230ac13f0dfa3b30169b75714cb08819ba6f4b53f0ef5f67e"
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bf892001fsNaL8gceGCIiR"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.02671935,
+          "tokens": {
+            "total": 33466,
+            "input": 3585,
+            "output": 569,
+            "reasoning": 525,
+            "cache": {
+              "read": 29312,
+              "write": 0
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42bf892001fsNaL8gceGCIiR"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623062801,
+          "completed": 1773623066155
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.013993,
+        "tokens": {
+          "total": 36580,
+          "input": 3188,
+          "output": 112,
+          "reasoning": 73,
+          "cache": {
+            "read": 33280,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cf42c3111001K4o92PuzYguXnF",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "prt_cf42c33160019mict0ggVKX3oJ",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c3111001K4o92PuzYguXnF"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Verifying config-path support**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0861a2dca13e8e910169b75717da7c8196b47e583b3f6b35f2",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623063871,
+            "end": 1773623065812
+          },
+          "id": "prt_cf42c353f001eNnWCaU0X1w8GS",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c3111001K4o92PuzYguXnF"
+        },
+        {
+          "type": "tool",
+          "callID": "call_GuvOELlb0nKLgHPUSlVarFrt",
+          "tool": "webfetch",
+          "state": {
+            "status": "completed",
+            "input": {
+              "url": "https://raw.githubusercontent.com/gitleaks/gitleaks-action/master/README.md",
+              "format": "text"
+            },
+            "output": "# Gitleaks Action\n\n```\n\n  ┌─○───┐\n  │ │╲  │\n  │ │ ○ │\n  │ ○ ┌─┴───────────────────┐\n  └─░─┤  4 github actions   │\n      └─────────────────────┘\n\n```\n\n<p align=\"left\">\n    <a href=\"https://github.com/zricethezav/gitleaks-action\">\n        <img alt=\"gitleaks badge\" src=\"https://img.shields.io/badge/protected%20by-gitleaks-blue\">\n    </a>\n</p>\n\nGitleaks is a SAST tool for detecting and preventing hardcoded secrets like passwords, API keys, and tokens in git repos. Gitleaks is an easy-to-use, all-in-one solution for detecting secrets, past or present, in your code. Enable **Gitleaks-Action** in your GitHub workflows to be alerted when secrets are leaked as soon as they happen. Check out our demos [here (.gif)](https://user-images.githubusercontent.com/15034943/178513034-de5a1906-b71d-454a-a792-47b7ac0e21e6.gif) and [here (.png)](https://user-images.githubusercontent.com/15034943/193462170-7314a63b-1c37-4c9e-ac93-33d6d3fc561a.png), or see what's new in v2 [here](v2.md). Don't forget to check out our [blog](https://blog.gitleaks.io), which details how to configure and set up Gitleaks-Action for organizations and enterprises.\n\n## Usage Example\n\n```yml\nname: gitleaks\non:\n  pull_request:\n  push:\n  workflow_dispatch:\n  schedule:\n    - cron: \"0 4 * * *\" # run once a day at 4 AM\njobs:\n  scan:\n    name: gitleaks\n    runs-on: ubuntu-latest\n    steps:\n      - uses: actions/checkout@v4\n        with:\n          fetch-depth: 0\n      - uses: gitleaks/gitleaks-action@v2\n        env:\n          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}\n          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }} # Only required for Organizations, not personal accounts.\n```\n\n\n---\n### Environment Variables:\n\n- `GITHUB_TOKEN`: This variable is automatically assigned by GitHub when any action gets kicked off. You can read more about the token [here](https://docs.github.com/en/actions/security-guides/automatic-token-authentication#about-the-github_token-secret).\n  **gitleaks-action** uses this token to call [a GitHub API](https://octokit.github.io/rest.js/v18#pulls-create-review-comment) to comment on PRs.\n- `GITLEAKS_LICENSE` (required for organizations, not required for user accounts): A **gitleaks-action** license can be obtained at [gitleaks.io](https://gitleaks.io). **It should be added as an encrypted secret [to the repo](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-a-repository) or [to the organization](https://docs.github.com/en/actions/security-guides/encrypted-secrets#creating-encrypted-secrets-for-an-organization).**\n- `GITLEAKS_NOTIFY_USER_LIST` (optional): A list of GitHub accounts that should be alerted when **gitleaks-action** detects a leak. An email will be sent by GitHub to the user if their GitHub notification settings permit it. The format should be comma-separated with each username prefixed with `@`. Ex: `@octocat,@zricethezav,@gitleaks`. Spaces are okay too.\n- `GITLEAKS_ENABLE_COMMENTS` (optional): Boolean value that turns on or off PR commenting. Default value is `true`.\n  Set to `false` to disable comments.\n- `GITLEAKS_CONFIG` (optional): Path to a [gitleaks configuration file](https://github.com/zricethezav/gitleaks#configuration).\n- `GITLEAKS_ENABLE_UPLOAD_ARTIFACT` (optional): Boolean value that turns on or off uploading a sarif artifact when gitleaks detects secrets. Defaults to `true`.\n- `GITLEAKS_ENABLE_SUMMARY` (optional): Boolean value to enable or disable gitleaks job summary. Defaults to `true`.\n- `GITLEAKS_VERSION` (optional): A particular Gitleaks version to use (e.g. `8.15.3`, no `v` prefix) or use `latest` to always use the newest available version. Defaults to a hard-coded version number.\n---\n\n## Questions\n\n### Do I need a _free_ license key?\nIf you are scanning repos that belong to [an organization account](https://docs.github.com/en/organizations/collaborating-with-groups-in-organizations/about-organizations), you will need to obtain a [free license key](https://gitleaks.io)\n\nIf you are scanning repos that belong to [a personal account](https://docs.github.com/en/get-started/learning-about-github/types-of-github-accounts#personal-accounts), then no license key is required.\n\n### How do I get a _free_ license key?\n\nYou can visit [gitleaks.io](https://gitleaks.io) to sign up for a\nfree license key. Clicking \"Sign Up\" will take you to a google form where you will need to supply name, email, and company. An email with a license key will show up shortly after submission.\n\n### Can I use a custom gitleaks configuration?\n\nYou can! This GitHub Action follows a similar order of precedence\nas the gitleaks CLI tool. You can use `GITLEAKS_CONFIG` to explicitly set a\nconfig path _or_ create a `gitleaks.toml` at the root of the repo which will be\nautomatically detected and used by **gitleaks-action**.\n\n### Does this GitHub Action send any data to 3rd parties?\n\nThe only data that **gitleaks-action** sends to any third party is data related to license key validation (namely `GITLEAKS_LICENSE`, [repo name](https://github.com/zricethezav/gitleaks-action/blob/v2/src/keygen.js#L76), and [repo owner](https://github.com/zricethezav/gitleaks-action/blob/v2/src/keygen.js#L18)), which is sent to the license key validation service, [keygen](https://keygen.sh). Your code never leaves GitHub because the scanning takes place within the GitHub Actions docker container.\n\n### Can I use **gitleaks-action** as a third-party tool for [GitHub code scanning](https://docs.github.com/en/code-security/code-scanning/automatically-scanning-your-code-for-vulnerabilities-and-errors/setting-up-code-scanning-for-a-repository)?\n\nYou _can_ but it is not recommended because it gives a false sense of security. If a secret is leaked in one commit, then removed in a subsequent commit,\nthe security alert in the GitHub Security dashboard will show as resolved, even though the secret is still visible in the commit history. To truly address the leak,\nyou should rotate the secret (and also consider re-writing the git history to remove the leak altogether).\n\n### Why is my gitleaks-action job suddenly failing?\n_6/21/2022_\n\nOn June 21, 2022, we merged [Gitleaks Action v2](https://github.com/gitleaks/gitleaks-action/releases/tag/v2.0.0) into the `master` branch. This was a breaking update, and we made an effort to contact as many of our users as possible via GitHub, social media, etc. If you didn't know this breaking update was coming, we sincerely apologize for the inconvenience. The good news is, remedying the job failure is straightforward! You can either:\n1. [Upgrade to v2](v2.md#how-to-upgrade-to-v2), or\n1. [Pin to an older version](v2.md#how-to-pin-to-v160)\n\nPlease note that if you are scanning repos that belong to an organization, you'll have to [acquire a GITLEAKS_LICENSE](https://github.com/gitleaks/gitleaks-action#environment-variables) to use v2 (free \"Trial\" license available). That might come as a surprise to my users that are accustomed to using Gitleaks-Action free of charge, so I wrote a blog post explaining how/why I decided to monetize this project: https://blog.gitleaks.io/gitleaks-llc-announcement-d7d06a52e801\n\nFinally, please see above for a summary of why I think you'll love the new v2 release: [v2 Benefits](v2.md#v2-benefits)\n\n### How can I get a gitleaks badge on my readme?\n\nEnable this **gitleaks-action** and copy\n`<img alt=\"gitleaks badge\" src=\"https://img.shields.io/badge/protected%20by-gitleaks-blue\">` to your readme.\n\n## License Change\nSince v2.0.0 of Gitleaks-Action, the license has changed from MIT to a [license](LICENSE.txt). Prior versions to v2.0.0 of Gitleaks-Actions will remain under the MIT license.\n\n## Contributing\nPlease see our [contributing guidelines](CONTRIBUTING.md).\n\n_Copyright © 2022 Gitleaks LLC - All Rights Reserved_\n",
+            "title": "https://raw.githubusercontent.com/gitleaks/gitleaks-action/master/README.md (text/plain; charset=utf-8)",
+            "metadata": {
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623065938,
+              "end": 1773623066046
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0861a2dca13e8e910169b75719c864819686cf2fd23846cde8"
+            }
+          },
+          "id": "prt_cf42c3cd5001mtmEsOW3TsHYDJ",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c3111001K4o92PuzYguXnF"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.013993,
+          "tokens": {
+            "total": 36580,
+            "input": 3188,
+            "output": 112,
+            "reasoning": 73,
+            "cache": {
+              "read": 33280,
+              "write": 0
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c3111001K4o92PuzYguXnF"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623066156,
+          "completed": 1773623074061
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0191366,
+        "tokens": {
+          "total": 38978,
+          "input": 2292,
+          "output": 334,
+          "reasoning": 292,
+          "cache": {
+            "read": 36352,
+            "write": 0
+          }
+        },
+        "finish": "tool-calls",
+        "id": "msg_cf42c3e2c0013Aa1wNKg91mQrD",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "prt_cf42c3fe8001aDZAgIg3HMfm70",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c3e2c0013Aa1wNKg91mQrD"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Identifying Gitleaks config bug and audit script review**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_01b4703027c4f1660169b7571ba02881968108adbfa979f363",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623067652,
+            "end": 1773623073088
+          },
+          "id": "prt_cf42c4404001bs1MnQZ5OfE69e",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c3e2c0013Aa1wNKg91mQrD"
+        },
+        {
+          "type": "tool",
+          "callID": "call_03aKAZR9kNIAGknm7VJqkBk9",
+          "tool": "bash",
+          "state": {
+            "status": "completed",
+            "input": {
+              "command": "git show security-audit:scripts/audit-with-exceptions.mjs",
+              "description": "Shows committed audit script on branch"
+            },
+            "output": "import { readFileSync } from 'node:fs';\nimport { execSync } from 'node:child_process';\n\nconst HIGH_OR_CRITICAL = new Set(['high', 'critical']);\n\nfunction runAuditJson() {\n  try {\n    return execSync('pnpm audit --audit-level high --json', {\n      encoding: 'utf8',\n      stdio: ['ignore', 'pipe', 'pipe'],\n    });\n  } catch (error) {\n    if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {\n      return error.stdout;\n    }\n    throw error;\n  }\n}\n\nfunction readExceptions() {\n  const raw = readFileSync('.audit-exceptions.json', 'utf8');\n  const parsed = JSON.parse(raw);\n  if (!Array.isArray(parsed)) {\n    throw new Error('.audit-exceptions.json must be an array');\n  }\n  return parsed;\n}\n\nfunction main() {\n  const report = JSON.parse(runAuditJson());\n  const advisories = report?.advisories ?? {};\n  const exceptions = readExceptions();\n  const allowed = new Set(exceptions.map((entry) => String(entry.ghsa)));\n\n  const failures = [];\n  const suppressed = [];\n\n  for (const advisory of Object.values(advisories)) {\n    if (!advisory || typeof advisory !== 'object') {\n      continue;\n    }\n\n    const severity = String(advisory.severity ?? '').toLowerCase();\n    if (!HIGH_OR_CRITICAL.has(severity)) {\n      continue;\n    }\n\n    const ghsa = String(advisory.github_advisory_id ?? '');\n    const record = {\n      ghsa,\n      title: String(advisory.title ?? 'Unknown advisory'),\n      module: String(advisory.module_name ?? 'unknown'),\n      severity,\n    };\n\n    if (allowed.has(ghsa)) {\n      suppressed.push(record);\n    } else {\n      failures.push(record);\n    }\n  }\n\n  if (suppressed.length > 0) {\n    console.log('Suppressed advisories from .audit-exceptions.json:');\n    for (const advisory of suppressed) {\n      console.log(`- ${advisory.ghsa} (${advisory.module}): ${advisory.title}`);\n    }\n  }\n\n  if (failures.length > 0) {\n    console.error('Unapproved high/critical advisories found:');\n    for (const advisory of failures) {\n      console.error(`- ${advisory.ghsa} (${advisory.module}, ${advisory.severity}): ${advisory.title}`);\n    }\n    process.exit(1);\n  }\n\n  console.log('No unapproved high/critical advisories found.');\n}\n\nmain();\n",
+            "title": "Shows committed audit script on branch",
+            "metadata": {
+              "output": "import { readFileSync } from 'node:fs';\nimport { execSync } from 'node:child_process';\n\nconst HIGH_OR_CRITICAL = new Set(['high', 'critical']);\n\nfunction runAuditJson() {\n  try {\n    return execSync('pnpm audit --audit-level high --json', {\n      encoding: 'utf8',\n      stdio: ['ignore', 'pipe', 'pipe'],\n    });\n  } catch (error) {\n    if (error && typeof error === 'object' && 'stdout' in error && typeof error.stdout === 'string') {\n      return error.stdout;\n    }\n    throw error;\n  }\n}\n\nfunction readExceptions() {\n  const raw = readFileSync('.audit-exceptions.json', 'utf8');\n  const parsed = JSON.parse(raw);\n  if (!Array.isArray(parsed)) {\n    throw new Error('.audit-exceptions.json must be an array');\n  }\n  return parsed;\n}\n\nfunction main() {\n  const report = JSON.parse(runAuditJson());\n  const advisories = report?.advisories ?? {};\n  const exceptions = readExceptions();\n  const allowed = new Set(exceptions.map((entry) => String(entry.ghsa)));\n\n  const failures = [];\n  const suppressed = [];\n\n  for (const advisory of Object.values(advisories)) {\n    if (!advisory || typeof advisory !== 'object') {\n      continue;\n    }\n\n    const severity = String(advisory.severity ?? '').toLowerCase();\n    if (!HIGH_OR_CRITICAL.has(severity)) {\n      continue;\n    }\n\n    const ghsa = String(advisory.github_advisory_id ?? '');\n    const record = {\n      ghsa,\n      title: String(advisory.title ?? 'Unknown advisory'),\n      module: String(advisory.module_name ?? 'unknown'),\n      severity,\n    };\n\n    if (allowed.has(ghsa)) {\n      suppressed.push(record);\n    } else {\n      failures.push(record);\n    }\n  }\n\n  if (suppressed.length > 0) {\n    console.log('Suppressed advisories from .audit-exceptions.json:');\n    for (const advisory of suppressed) {\n      console.log(`- ${advisory.ghsa} (${advisory.module}): ${advisory.title}`);\n    }\n  }\n\n  if (failures.length > 0) {\n    console.error('Unapproved high/critical advisories found:');\n    for (const advisory of failures) {\n      console.error(`- ${advisory.ghsa} (${advisory.module}, ${advisory.severity}): ${advisory.title}`);\n    }\n    process.exit(1);\n  }\n\n  console.log('No unapproved high/critical advisories found.');\n}\n\nmain();\n",
+              "exit": 0,
+              "description": "Shows committed audit script on branch",
+              "truncated": false
+            },
+            "time": {
+              "start": 1773623073252,
+              "end": 1773623073955
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_01b4703027c4f1660169b757210f4c81968094d9db139da144"
+            }
+          },
+          "id": "prt_cf42c59440018Jw5gqYKxo1w3b",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c3e2c0013Aa1wNKg91mQrD"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.0191366,
+          "tokens": {
+            "total": 38978,
+            "input": 2292,
+            "output": 334,
+            "reasoning": 292,
+            "cache": {
+              "read": 36352,
+              "write": 0
+            }
+          },
+          "id": "REDACTED",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c3e2c0013Aa1wNKg91mQrD"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1773623074063,
+          "completed": 1773623102596
+        },
+        "parentID": "msg_cf42b7169001w1q4DLdvHpMQf0",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.048356,
+        "tokens": {
+          "total": 41184,
+          "input": 1152,
+          "output": 1632,
+          "reasoning": 1198,
+          "cache": {
+            "read": 38400,
+            "write": 0
+          }
+        },
+        "finish": "stop",
+        "id": "msg_cf42c5d0f001MRGt7efmZTit2F",
+        "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "id": "prt_cf42c5f17001Kr1lHy70OITZss",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c5d0f001MRGt7efmZTit2F"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Identifying key security bugs**",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0f6d685ba8de21770169b7572385bc81949db21720a3c46f11",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1773623075554,
+            "end": 1773623096855
+          },
+          "id": "prt_cf42c62e2001b6GI1h9gPLW0q3",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c5d0f001MRGt7efmZTit2F"
+        },
+        {
+          "type": "text",
+          "text": "Found 3 issues worth fixing.\n\n- **High – audit exceptions are broader than intended, so real vulnerabilities can be hidden**\n  - In `scripts/audit-with-exceptions.mjs`, exceptions are applied by GHSA only (`allowed` set built from `entry.ghsa` and checked with `allowed.has(ghsa)`), while `.audit-exceptions.json` includes `package`, `severity`, and `scope` that are never enforced.\n  - Scenario: a future high-severity advisory with the same GHSA appears in a new dependency path that *should* fail CI; this script will still suppress it.\n  - Action: match on all declared fields (`ghsa` + `package` + `severity` + dependency path scope), not GHSA alone.\n\n- **Medium – secret scan workflow likely ignores your custom allowlist config**\n  - `secret-scan.yml` uses `with: config-path: .gitleaks.toml` at `.github/workflows/secret-scan.yml:18`, but `gitleaks/gitleaks-action@v2` expects config via `GITLEAKS_CONFIG` env (or default autodetection), not this input key.\n  - Scenario: your test fixtures (`nmb_live_*`, synthetic hashes) may still trigger leaks, causing noisy/failed CI despite `.gitleaks.toml`.\n  - Action: set `env: GITLEAKS_CONFIG: .gitleaks.toml` (or verify the exact supported input from the action version docs and use that).\n\n- **Medium – request size cap is bypassable when `Content-Length` is missing**\n  - In `packages/worker/src/lib/request-size.ts:19`, requests without `Content-Length` return `null` and skip enforcement.\n  - Scenario: chunked/streamed POST requests (or proxies that omit `Content-Length`) can exceed the intended 5 MB default cap and still be processed.\n  - Action: enforce limit while reading body (streaming byte count) in handlers, or reject body-bearing methods without `Content-Length` where strict caps are required.",
+          "time": {
+            "start": 1773623102433,
+            "end": 1773623102433
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "msg_0f6d685ba8de21770169b75738c6d0819480cbe20636bb6562"
+            }
+          },
+          "id": "prt_cf42cb61a001pGyR4ZjDK2KXyC",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c5d0f001MRGt7efmZTit2F"
+        },
+        {
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "58bd424ec35d450bea86e387aeaabf618888d105",
+          "cost": 0.048356,
+          "tokens": {
+            "total": 41184,
+            "input": 1152,
+            "output": 1632,
+            "reasoning": 1198,
+            "cache": {
+              "read": 38400,
+              "write": 0
+            }
+          },
+          "id": "prt_cf42ccc08001mDRJusYig2GZTL",
+          "sessionID": "ses_30bd48e9affe4GaCzwfTWelkP1",
+          "messageID": "msg_cf42c5d0f001MRGt7efmZTit2F"
+        }
+      ]
+    }
+  ]
+}

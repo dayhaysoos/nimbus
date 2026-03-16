@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "b17c51a35a6a",
+  "session_id": "ses_30bd48e9affe4GaCzwfTWelkP1",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-16T01:10:27.802546Z",
+  "branch": "security-audit",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "scripts/audit-with-exceptions.mjs"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "d36a38b41a42",
+  "token_usage": {
+    "input_tokens": 31137,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 222592,
+    "output_tokens": 4402,
+    "api_call_count": 9
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-16T01:10:27.657145Z",
+    "agent_lines": 58,
+    "human_added": 1,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 59,
+    "agent_percentage": 98.30508474576271
+  }
+}
