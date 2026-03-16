@@ -1,0 +1,28 @@
+title = "Nimbus gitleaks config"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Allow mock nmb_live_ keys in test files"
+condition = "AND"
+paths = [
+  '''(^|/)packages/.+\.(test|spec)\.ts$''',
+]
+regexTarget = "match"
+regexes = [
+  '''nmb_live_[A-Za-z0-9_]+''',
+]
+
+[[allowlists]]
+description = "Allow synthetic hash fixtures in test files"
+condition = "AND"
+paths = [
+  '''(^|/)packages/.+\.(test|spec)\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''\b[a-f0-9]{40}\b''',
+  '''\b[a-f0-9]{64}\b''',
+  '''repeat\((40|64)\)''',
+]
