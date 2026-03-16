@@ -33,13 +33,17 @@ jobs:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
           REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
         run: |
+          is_blank() {
+            [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ]
+          }
+
           MISSING=0
           INVALID=0
-          if [ -z "${NIMBUS_API_KEY}" ]; then
+          if is_blank "${NIMBUS_API_KEY}"; then
             echo "Missing required workflow configuration. See README/docs for required secrets."
             MISSING=1
           fi
-          if [ -z "${REVIEW_CONTEXT_GITHUB_TOKEN}" ]; then
+          if is_blank "${REVIEW_CONTEXT_GITHUB_TOKEN}"; then
             echo "Missing required workflow configuration. See README/docs for required secrets."
             MISSING=1
           fi
@@ -95,6 +99,11 @@ jobs:
       # Dogfood invocation for monorepo development.
       # When extracted to standalone nimbus-action, replace with globally-installed CLI:
       # nimbus review create --commit <sha> --base <ref>
+      - name: Refresh PR base ref
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true'
+        run: |
+          git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
+
       - name: Run Nimbus review create (non-blocking)
         id: create_review
         if: steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true'
@@ -205,6 +214,13 @@ jobs:
 
             ---
             ${markdown}
+            `;
+            } else if (createOutcome !== 'success') {
+              body += `
+
+            ---
+            Nimbus review create did not complete successfully, so no review ID was available for export.
+            Check workflow logs for the create-step failure details.
             `;
             } else {
               body += `
