@@ -17,17 +17,26 @@ jobs:
 
     steps:
       - name: Validate required secrets
+        id: validate_secrets
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
           REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
         run: |
+          MISSING=0
           if [ -z "${NIMBUS_API_KEY}" ]; then
             echo "Missing required workflow configuration. See README/docs for required secrets."
-            exit 1
+            MISSING=1
           fi
           if [ -z "${REVIEW_CONTEXT_GITHUB_TOKEN}" ]; then
             echo "Missing required workflow configuration. See README/docs for required secrets."
-            exit 1
+            MISSING=1
+          fi
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "secrets_ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Nimbus review steps will be skipped because required secrets are missing."
+          else
+            echo "secrets_ready=true" >> "$GITHUB_OUTPUT"
           fi
 
       - name: Checkout
@@ -65,6 +74,7 @@ jobs:
       # nimbus review create --commit <sha> --base <ref>
       - name: Run Nimbus review create (non-blocking)
         id: create_review
+        if: steps.validate_secrets.outputs.secrets_ready == 'true'
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
@@ -81,17 +91,17 @@ jobs:
 
       - name: Read review ID
         id: parse_review_id
-        if: always()
+        if: always() && steps.validate_secrets.outputs.secrets_ready == 'true'
         run: |
           # Try file first (reliable)
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
           # Fall back to log parsing if file not present.
           # This fallback is intentionally conservative: it only accepts a
-          # single unique review ID candidate from the log; otherwise it emits
+          # single unique review ID candidate from "Review queued:" lines; otherwise it emits
           # a warning and returns empty output.
           if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
-            MATCHES=$(grep -Eo 'rev_[A-Za-z0-9_]+' "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null | sort -u || true)
+            MATCHES=$(grep -E 'Review queued:' "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null | sed -E 's/.*Review queued:[[:space:]]*(rev_[A-Za-z0-9_]+).*/\1/' | grep -E '^rev_[A-Za-z0-9_]+$' | sort -u || true)
             MATCH_COUNT=$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l | tr -d ' ')
             if [ "$MATCH_COUNT" = "1" ]; then
               REVIEW_ID="$MATCHES"
@@ -106,7 +116,7 @@ jobs:
 
       - name: Export review markdown (non-blocking)
         id: export_markdown
-        if: always() && steps.parse_review_id.outputs.review_id != ''
+        if: always() && steps.validate_secrets.outputs.secrets_ready == 'true' && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
@@ -118,6 +128,7 @@ jobs:
         if: always()
         uses: actions/github-script@v7
         env:
+          SECRETS_READY: ${{ steps.validate_secrets.outputs.secrets_ready }}
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
           CREATE_OUTCOME: ${{ steps.create_review.outcome }}
           EXPORT_OUTCOME: ${{ steps.export_markdown.outcome }}
@@ -130,6 +141,7 @@ jobs:
             const reviewId = process.env.REVIEW_ID || '';
             const createOutcome = process.env.CREATE_OUTCOME || 'unknown';
             const exportOutcome = process.env.EXPORT_OUTCOME || 'skipped';
+            const secretsReady = process.env.SECRETS_READY || 'unknown';
             const checkpointsFetched = process.env.ENTIRE_CHECKPOINTS_FETCHED || 'unknown';
             const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
             const markdownPath = `${workspace}/nimbus-review.md`;
@@ -146,11 +158,19 @@ jobs:
             - Base: \`${baseRef}\`
             - Create step: \`${createOutcome}\`
             - Export step: \`${exportOutcome}\`
+            - Required secrets ready: \`${secretsReady}\`
             - Entire checkpoints ref fetched: \`${checkpointsFetched}\`
             - Workflow run: ${runUrl}
             `;
 
-            if (reviewId && fs.existsSync(markdownPath)) {
+            if (secretsReady !== 'true') {
+              body += `
+
+            ---
+            Nimbus review was skipped because required workflow secrets are not configured.
+            Add required secrets and re-run the workflow.
+            `;
+            } else if (reviewId && fs.existsSync(markdownPath)) {
               const markdown = fs.readFileSync(markdownPath, 'utf8').trim();
               body += `
 
