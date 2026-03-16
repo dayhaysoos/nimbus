@@ -3,6 +3,57 @@ import { execSync } from 'node:child_process';
 
 const HIGH_OR_CRITICAL = new Set(['high', 'critical']);
 
+function normalizeDependencyPath(path) {
+  return String(path)
+    .split('>')
+    .map((segment) => segment.trim().replace(/@[^@\s]+$/, ''))
+    .join(' > ');
+}
+
+function advisoryPaths(advisory) {
+  const findings = Array.isArray(advisory.findings) ? advisory.findings : [];
+  const paths = [];
+  for (const finding of findings) {
+    const findingPaths = Array.isArray(finding?.paths) ? finding.paths : [];
+    for (const path of findingPaths) {
+      paths.push(normalizeDependencyPath(path));
+    }
+  }
+  return [...new Set(paths)];
+}
+
+function scopeMatches(exceptionScope, path) {
+  return path === exceptionScope || path.startsWith(`${exceptionScope} > `);
+}
+
+function matchesException(advisory, severity, paths, exception) {
+  const exceptionGhsa = String(exception.ghsa ?? '');
+  const advisoryGhsa = String(advisory.github_advisory_id ?? '');
+  if (!exceptionGhsa || exceptionGhsa !== advisoryGhsa) {
+    return false;
+  }
+
+  if (typeof exception.package === 'string') {
+    const advisoryModule = String(advisory.module_name ?? '');
+    if (!advisoryModule || advisoryModule !== exception.package) {
+      return false;
+    }
+  }
+
+  if (typeof exception.severity === 'string') {
+    if (exception.severity.toLowerCase() !== severity) {
+      return false;
+    }
+  }
+
+  if (Array.isArray(exception.scope) && exception.scope.length > 0) {
+    const normalizedScope = exception.scope.map((entry) => normalizeDependencyPath(entry));
+    return paths.some((path) => normalizedScope.some((scopeEntry) => scopeMatches(scopeEntry, path)));
+  }
+
+  return true;
+}
+
 function runAuditJson() {
   try {
     return execSync('pnpm audit --audit-level high --json', {
@@ -30,7 +81,6 @@ function main() {
   const report = JSON.parse(runAuditJson());
   const advisories = report?.advisories ?? {};
   const exceptions = readExceptions();
-  const allowed = new Set(exceptions.map((entry) => String(entry.ghsa)));
 
   const failures = [];
   const suppressed = [];
@@ -46,14 +96,17 @@ function main() {
     }
 
     const ghsa = String(advisory.github_advisory_id ?? '');
+    const paths = advisoryPaths(advisory);
     const record = {
       ghsa,
       title: String(advisory.title ?? 'Unknown advisory'),
       module: String(advisory.module_name ?? 'unknown'),
       severity,
+      paths,
     };
 
-    if (allowed.has(ghsa)) {
+    const isSuppressed = exceptions.some((exception) => matchesException(advisory, severity, paths, exception));
+    if (isSuppressed) {
       suppressed.push(record);
     } else {
       failures.push(record);
@@ -71,6 +124,9 @@ function main() {
     console.error('Unapproved high/critical advisories found:');
     for (const advisory of failures) {
       console.error(`- ${advisory.ghsa} (${advisory.module}, ${advisory.severity}): ${advisory.title}`);
+      for (const path of advisory.paths) {
+        console.error(`  path: ${path}`);
+      }
     }
     process.exit(1);
   }
