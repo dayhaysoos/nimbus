@@ -44,7 +44,12 @@ jobs:
           # Required for local Entire context/co-change resolution in CI.
           # If this branch doesn't exist yet, the review will still run
           # but without local co-change context.
-          git fetch --no-tags origin entire/checkpoints/v1:refs/remotes/origin/entire/checkpoints/v1 || true
+          if git fetch --no-tags origin entire/checkpoints/v1:refs/remotes/origin/entire/checkpoints/v1; then
+            echo "ENTIRE_CHECKPOINTS_FETCHED=true" >> "$GITHUB_ENV"
+          else
+            echo "ENTIRE_CHECKPOINTS_FETCHED=false" >> "$GITHUB_ENV"
+            echo "::warning::Could not fetch origin/entire/checkpoints/v1. Continuing without local Entire co-change context."
+          fi
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -81,7 +86,7 @@ jobs:
 
           # Fall back to log parsing if file not present
           if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
-            REVIEW_ID=$(grep -oP 'Review queued:\s+\K(rev_[a-z0-9_]+)' "$GITHUB_WORKSPACE/nimbus-review-create.log" || echo "")
+            REVIEW_ID=$(node -e "const fs=require('fs');const logPath=process.argv[1];const text=fs.readFileSync(logPath,'utf8');for(const line of text.split(/\\r?\\n/)){const marker='Review queued: ';const idx=line.indexOf(marker);if(idx===-1) continue;const candidate=line.slice(idx+marker.length).trim();if(/^rev_[a-z0-9_]+$/i.test(candidate)){process.stdout.write(candidate);break;}}" "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null || echo "")
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
@@ -101,6 +106,7 @@ jobs:
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
           CREATE_OUTCOME: ${{ steps.create_review.outcome }}
           EXPORT_OUTCOME: ${{ steps.export_markdown.outcome }}
+          ENTIRE_CHECKPOINTS_FETCHED: ${{ env.ENTIRE_CHECKPOINTS_FETCHED }}
         with:
           script: |
             const fs = require('fs');
@@ -109,6 +115,7 @@ jobs:
             const reviewId = process.env.REVIEW_ID || '';
             const createOutcome = process.env.CREATE_OUTCOME || 'unknown';
             const exportOutcome = process.env.EXPORT_OUTCOME || 'skipped';
+            const checkpointsFetched = process.env.ENTIRE_CHECKPOINTS_FETCHED || 'unknown';
             const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
             const markdownPath = `${workspace}/nimbus-review.md`;
 
@@ -124,6 +131,7 @@ jobs:
             - Base: \`${baseRef}\`
             - Create step: \`${createOutcome}\`
             - Export step: \`${exportOutcome}\`
+            - Entire checkpoints ref fetched: \`${checkpointsFetched}\`
             - Workflow run: ${runUrl}
             `;
 
