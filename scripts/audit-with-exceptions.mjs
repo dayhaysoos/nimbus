@@ -26,7 +26,7 @@ function scopeMatches(exceptionScope, path) {
   return path === exceptionScope || path.startsWith(`${exceptionScope} > `);
 }
 
-function matchesException(advisory, severity, paths, exception) {
+function matchesExceptionMetadata(advisory, severity, exception) {
   const exceptionGhsa = String(exception.ghsa ?? '');
   const advisoryGhsa = String(advisory.github_advisory_id ?? '');
   if (!exceptionGhsa || exceptionGhsa !== advisoryGhsa) {
@@ -46,9 +46,13 @@ function matchesException(advisory, severity, paths, exception) {
     }
   }
 
+  return true;
+}
+
+function exceptionCoversPath(exception, path) {
   if (Array.isArray(exception.scope) && exception.scope.length > 0) {
     const normalizedScope = exception.scope.map((entry) => normalizeDependencyPath(entry));
-    return paths.some((path) => normalizedScope.some((scopeEntry) => scopeMatches(scopeEntry, path)));
+    return normalizedScope.some((scopeEntry) => scopeMatches(scopeEntry, path));
   }
 
   return true;
@@ -105,11 +109,18 @@ function main() {
       paths,
     };
 
-    const isSuppressed = exceptions.some((exception) => matchesException(advisory, severity, paths, exception));
-    if (isSuppressed) {
+    const metadataMatches = exceptions.filter((exception) => matchesExceptionMetadata(advisory, severity, exception));
+    const uncoveredPaths = paths.filter(
+      (path) => !metadataMatches.some((exception) => exceptionCoversPath(exception, path))
+    );
+
+    if (metadataMatches.length > 0 && uncoveredPaths.length === 0) {
       suppressed.push(record);
     } else {
-      failures.push(record);
+      failures.push({
+        ...record,
+        uncoveredPaths,
+      });
     }
   }
 
@@ -124,7 +135,7 @@ function main() {
     console.error('Unapproved high/critical advisories found:');
     for (const advisory of failures) {
       console.error(`- ${advisory.ghsa} (${advisory.module}, ${advisory.severity}): ${advisory.title}`);
-      for (const path of advisory.paths) {
+      for (const path of advisory.uncoveredPaths.length > 0 ? advisory.uncoveredPaths : advisory.paths) {
         console.error(`  path: ${path}`);
       }
     }
