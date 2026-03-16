@@ -16,8 +16,19 @@ jobs:
     timeout-minutes: 10
 
     steps:
+      - name: Detect trusted PR context
+        id: pr_context
+        run: |
+          if [ "${{ github.event.pull_request.head.repo.full_name }}" = "${{ github.repository }}" ]; then
+            echo "trusted_pr=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "trusted_pr=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::Fork PR detected. Nimbus review steps requiring repository secrets will be skipped."
+          fi
+
       - name: Validate required secrets
         id: validate_secrets
+        if: steps.pr_context.outputs.trusted_pr == 'true'
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
           REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
@@ -74,7 +85,7 @@ jobs:
       # nimbus review create --commit <sha> --base <ref>
       - name: Run Nimbus review create (non-blocking)
         id: create_review
-        if: steps.validate_secrets.outputs.secrets_ready == 'true'
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true'
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
@@ -91,24 +102,13 @@ jobs:
 
       - name: Read review ID
         id: parse_review_id
-        if: always() && steps.validate_secrets.outputs.secrets_ready == 'true'
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true'
         run: |
           # Try file first (reliable)
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
-          # Fall back to log parsing if file not present.
-          # This fallback is intentionally conservative: it only accepts a
-          # single unique review ID candidate from "Review queued:" lines; otherwise it emits
-          # a warning and returns empty output.
-          if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
-            MATCHES=$(grep -E 'Review queued:' "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null | sed -E 's/.*Review queued:[[:space:]]*(rev_[A-Za-z0-9_]+).*/\1/' | grep -E '^rev_[A-Za-z0-9_]+$' | sort -u || true)
-            MATCH_COUNT=$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l | tr -d ' ')
-            if [ "$MATCH_COUNT" = "1" ]; then
-              REVIEW_ID="$MATCHES"
-              echo "::warning::Review ID file was missing; recovered review ID from logs fallback."
-            elif [ "$MATCH_COUNT" -gt 1 ]; then
-              echo "::warning::Review ID file was missing and multiple log candidates were found; skipping fallback to avoid ambiguity."
-            fi
+          if [ -z "${REVIEW_ID}" ]; then
+            echo "::warning::Review ID file was not produced; skipping markdown export for this run."
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
@@ -116,7 +116,7 @@ jobs:
 
       - name: Export review markdown (non-blocking)
         id: export_markdown
-        if: always() && steps.validate_secrets.outputs.secrets_ready == 'true' && steps.parse_review_id.outputs.review_id != ''
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true' && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
@@ -128,6 +128,7 @@ jobs:
         if: always()
         uses: actions/github-script@v7
         env:
+          TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}
           SECRETS_READY: ${{ steps.validate_secrets.outputs.secrets_ready }}
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
           CREATE_OUTCOME: ${{ steps.create_review.outcome }}
@@ -141,6 +142,7 @@ jobs:
             const reviewId = process.env.REVIEW_ID || '';
             const createOutcome = process.env.CREATE_OUTCOME || 'unknown';
             const exportOutcome = process.env.EXPORT_OUTCOME || 'skipped';
+            const trustedPr = process.env.TRUSTED_PR || 'unknown';
             const secretsReady = process.env.SECRETS_READY || 'unknown';
             const checkpointsFetched = process.env.ENTIRE_CHECKPOINTS_FETCHED || 'unknown';
             const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
@@ -158,12 +160,20 @@ jobs:
             - Base: \`${baseRef}\`
             - Create step: \`${createOutcome}\`
             - Export step: \`${exportOutcome}\`
+            - Trusted PR context: \`${trustedPr}\`
             - Required secrets ready: \`${secretsReady}\`
             - Entire checkpoints ref fetched: \`${checkpointsFetched}\`
             - Workflow run: ${runUrl}
             `;
 
-            if (secretsReady !== 'true') {
+            if (trustedPr !== 'true') {
+              body += `
+
+            ---
+            Nimbus review was skipped for this run because this PR comes from a fork.
+            Repository secrets are intentionally not exposed to forked pull requests.
+            `;
+            } else if (secretsReady !== 'true') {
               body += `
 
             ---

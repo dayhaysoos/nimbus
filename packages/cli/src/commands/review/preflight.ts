@@ -377,7 +377,7 @@ export async function validateReviewEntireIntentContext(
 
 export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed' | 'legacy_unknown'> {
   const missingTokenMessage =
-    "co-change retrieval requires a GitHub token with repo read access to your repository. This must be your own GitHub PAT - it cannot be shared across users because it accesses your repo's Entire checkpoint data. Set REVIEW_CONTEXT_GITHUB_TOKEN in your .env for local dev, or as a repository secret in GitHub Actions for CI.";
+    "co-change retrieval requires a GitHub token with repo read access to your repository. This must be your own GitHub PAT - it cannot be shared across users because it accesses your repo's Entire checkpoint data. Set REVIEW_CONTEXT_GITHUB_TOKEN in your .env for local dev, or as a repository secret in GitHub Actions for same-repository CI runs. For pull requests from forks, repository secrets are not exposed by default.";
   const localToken =
     typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
       ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
