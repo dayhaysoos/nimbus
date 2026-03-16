@@ -284,7 +284,11 @@ export function nextAgentAction(request: AgentRequest): AgentAction {
   return nextWorkspaceTaskAction(history);
 }
 
-export async function nextAgentActionWithInference(request: AgentRequest, env: AgentEnv): Promise<AgentAction> {
+export async function nextAgentActionWithInference(
+  request: AgentRequest,
+  env: AgentEnv,
+  options?: { openrouterApiKey?: string | null }
+): Promise<AgentAction> {
   const prompt = typeof request.prompt === 'string' ? request.prompt : '';
   const history = Array.isArray(request.history) ? request.history : [];
 
@@ -292,7 +296,9 @@ export async function nextAgentActionWithInference(request: AgentRequest, env: A
     return nextWorkspaceTaskAction(history);
   }
 
-  const apiKey = (env.OPENROUTER_API_KEY ?? '').trim();
+  const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';
+  const envApiKey = (env.OPENROUTER_API_KEY ?? '').trim();
+  const apiKey = requestApiKey || envApiKey;
   if (!apiKey) {
     throw new AgentEndpointError('missing_openrouter_api_key', 500, {
       message: 'OPENROUTER_API_KEY is required',

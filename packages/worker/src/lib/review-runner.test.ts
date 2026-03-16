@@ -829,6 +829,88 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
+    let capturedOpenrouterHeader: string | null = null;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const headers = new Headers(init?.headers);
+      capturedOpenrouterHeader = headers.get('X-Openrouter-Api-Key');
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    try {
+      const { env } = createReviewRunnerEnv({ envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' } });
+      await processReviewRun(env as never, 'rev_abcd1234', { openrouterApiKey: 'or_request_key_123' });
+      assert.equal(capturedOpenrouterHeader, 'or_request_key_123');
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    const openrouterKey = 'or_sensitive_key_abc';
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(`provider failed: X-Openrouter-Api-Key: ${openrouterKey}`, { status: 500 });
+    }) as typeof fetch;
+
+    try {
+      const { env, state } = createReviewRunnerEnv({ envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' } });
+      await assert.rejects(
+        () => processReviewRun(env as never, 'rev_abcd1234', { openrouterApiKey: openrouterKey }),
+        /retry requested/
+      );
+      assert.equal(state.status, 'queued');
+      assert.equal(JSON.stringify(state.events).includes(openrouterKey), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       if (url.includes('api.github.com/repos/') && /\/commits\?sha=/i.test(url)) {
@@ -1748,6 +1830,99 @@ export async function runReviewRunnerTests(): Promise<void> {
     assert.equal(state.status, 'failed');
     assert.equal(state.errorCode, 'review_context_github_token_missing');
     assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_failed'), true);
+    setReviewAnalysisSandboxResolverForTests(null);
+  }
+
+  {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    const { env, state } = createReviewRunnerEnv({
+      envOverrides: {
+        REVIEW_CONTEXT_GITHUB_TOKEN: undefined,
+      },
+      deploymentRequestProvenance: {
+        commitDiffPatch:
+          'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        localCochange: {
+          source: 'local_git',
+          checkpointsRef: 'refs/remotes/origin/entire/checkpoints/v1',
+          lookbackSessions: 5,
+          topN: 20,
+          sessionsScanned: 2,
+          relatedByChangedPath: {
+            'src/feature.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+          },
+        },
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    const completed = state.events.find((event) => event.eventType === 'review_context_cochange_lookup_completed');
+    assert.equal((completed?.payload as { source?: string } | undefined)?.source, 'local_git');
+    setReviewAnalysisSandboxResolverForTests(null);
+  }
+
+  {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('tar -xzf') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('.read_text(')) {
+          return { stdout: JSON.stringify({ content: 'export const value = 2;\n', bytes: 24, truncated: false }), stderr: '', exitCode: 0 };
+        }
+        if (command.includes('pathlib.Path') && command.includes('is_dir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    const { env, state } = createReviewRunnerEnv({
+      failCochangeCacheWriteOnce: true,
+      envOverrides: {
+        REVIEW_CONTEXT_GITHUB_TOKEN: undefined,
+      },
+      deploymentRequestProvenance: {
+        commitDiffPatch:
+          'diff --git a/src/feature.ts b/src/feature.ts\nindex 1111111..2222222 100644\n--- a/src/feature.ts\n+++ b/src/feature.ts\n@@ -1 +1 @@\n-a\n+b\n',
+        localCochange: {
+          source: 'local_git',
+          checkpointsRef: 'refs/remotes/origin/entire/checkpoints/v1',
+          lookbackSessions: 5,
+          topN: 20,
+          sessionsScanned: 2,
+          relatedByChangedPath: {
+            'src/feature.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+          },
+        },
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
     setReviewAnalysisSandboxResolverForTests(null);
   }
 

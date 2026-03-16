@@ -65,6 +65,14 @@ export interface Env {
   REVIEW_CONTEXT_REPO?: string;
   REVIEW_CONTEXT_GITHUB_TOKEN?: string;
   REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET?: string;
+  NIMBUS_HOSTED?: string;
+}
+
+export interface AuthContext {
+  accountId: string;
+  isAdmin: boolean;
+  isAuthenticated: boolean;
+  isHostedMode: boolean;
 }
 
 // Job status type
@@ -573,7 +581,7 @@ export interface ReviewContext {
     relatedFiles: ReviewContextRelatedFile[];
     conventionFiles: ReviewContextFile[];
     coChange: {
-      source: 'entire/checkpoints/v1';
+      source: 'entire/checkpoints/v1' | 'local_git';
       lookbackSessions: number;
       sessionsScanned: number;
       filesConsidered: number;

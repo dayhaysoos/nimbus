@@ -25,6 +25,7 @@ import { runReviewDbTests } from './db.review.test.js';
 import { runReviewOutputV2Tests } from './review-output-v2.test.js';
 import { runReviewApiTests } from '../api/reviews.test.js';
 import { runSystemApiTests } from '../api/system.test.js';
+import { runAuthMiddlewareTests } from '../auth.test.js';
 
 type TestCase = {
   name: string;
@@ -55,6 +56,7 @@ const TEST_CASES: TestCase[] = [
   { name: 'review-output-v2', run: runReviewOutputV2Tests },
   { name: 'review-runner', run: runReviewRunnerTests },
   { name: 'review-api', run: runReviewApiTests },
+  { name: 'auth-middleware', run: runAuthMiddlewareTests },
   { name: 'system-api', run: runSystemApiTests },
   { name: 'job-events-api', run: runJobEventsApiTests },
   { name: 'checkpoint-db', run: runCheckpointDbTests },

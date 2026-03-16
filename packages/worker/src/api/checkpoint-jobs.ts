@@ -1,4 +1,4 @@
-import type { Env } from '../types.js';
+import type { AuthContext, Env } from '../types.js';
 import { createCheckpointJob, deleteJob, generateJobId, updateJobStatus } from '../lib/db.js';
 import { createCheckpointJobQueueMessage } from '../lib/checkpoint-queue.js';
 import { normalizeProjectRoot } from '../lib/checkpoint-plan.js';
@@ -11,7 +11,7 @@ const COMMIT_SHA_REGEX = /^[a-f0-9]{40}$/i;
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  'Access-Control-Allow-Headers': 'Content-Type, X-Nimbus-Api-Key',
 };
 
 export interface CheckpointJobMetadata {
@@ -215,7 +215,7 @@ function sourceBundleR2Key(jobId: string, commitSha: string): string {
   return `jobs/${jobId}/source/${commitSha}.tar.gz`;
 }
 
-export async function handleCreateCheckpointJob(request: Request, env: Env): Promise<Response> {
+export async function handleCreateCheckpointJob(request: Request, env: Env, _authContext?: AuthContext): Promise<Response> {
   if (!env.SOURCE_BUNDLES) {
     return new Response(
       JSON.stringify({ error: 'SOURCE_BUNDLES R2 binding is not configured' }),

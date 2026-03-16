@@ -192,7 +192,8 @@ Examples:
   nimbus watch job_abc123
 
 Environment Variables:
-  NIMBUS_WORKER_URL  Worker URL (required) - Your self-hosted Nimbus worker
+  NIMBUS_WORKER_URL  Worker URL (optional) - Defaults to hosted Nimbus worker
+  NIMBUS_API_KEY     API key for hosted Nimbus worker access
 
 Self-hosting: https://github.com/dayhaysoos/nimbus#self-hosting-guide
 `);

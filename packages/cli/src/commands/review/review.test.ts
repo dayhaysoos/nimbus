@@ -731,6 +731,119 @@ export async function runReviewCommandTests(): Promise<void> {
     }
 
     {
+      let capturedProvenance: Record<string, unknown> | null = null;
+      process.env.REVIEW_CONTEXT_GITHUB_TOKEN = '';
+      setReviewPreflightTokenReadinessResolverForTests(async () => false);
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_local_cochange'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      setReviewCommitResolverForTests(() => ({
+        commitSha: 'a'.repeat(40),
+        checkpointId: '8a513f56ed70',
+        commitDiffPatch:
+          'diff --git a/src/app.ts b/src/app.ts\nindex 111..222 100644\n--- a/src/app.ts\n+++ b/src/app.ts\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewCreateFlowForTests({
+        resolveWorkspaceSource: () => ({
+          commitSha: 'a'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          sourceRef: null,
+          projectRoot: '.',
+        }),
+        resolveLocalCochange: () => ({
+          source: 'local_git',
+          checkpointsRef: 'refs/remotes/origin/entire/checkpoints/v1',
+          lookbackSessions: 5,
+          topN: 20,
+          sessionsScanned: 2,
+          relatedByChangedPath: {
+            'src/app.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+          },
+        }),
+        createWorkspace: async () => ({
+          workspace: {
+            id: 'ws_local_cochange',
+            status: 'ready',
+            sourceType: 'checkpoint',
+            checkpointId: '8a513f56ed70',
+            commitSha: 'a'.repeat(40),
+            sourceRef: null,
+            sourceProjectRoot: '.',
+            sourceBundleKey: 'bundle',
+            sourceBundleSha256: 'f'.repeat(64),
+            sourceBundleBytes: 123,
+            sandboxId: 'workspace-ws_local_cochange',
+            baselineReady: true,
+            errorCode: null,
+            errorMessage: null,
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:00.000Z',
+            deletedAt: null,
+            eventsUrl: '/api/workspaces/ws_local_cochange/events',
+          },
+        }),
+        deployWorkspace: async () => ({
+          id: 'dep_local_cochange',
+          workspaceId: 'ws_local_cochange',
+          status: 'succeeded',
+          provider: 'simulated',
+          idempotencyKey: 'idem-deploy',
+          maxRetries: 2,
+          attemptCount: 1,
+          sourceSnapshotSha256: null,
+          sourceBundleKey: 'bundle',
+          deployedUrl: 'https://example.dev',
+          providerDeploymentId: null,
+          cancelRequestedAt: null,
+          startedAt: '2026-03-11T00:00:00.000Z',
+          finishedAt: '2026-03-11T00:00:30.000Z',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          updatedAt: '2026-03-11T00:00:30.000Z',
+          provenance: {},
+          toolchain: null,
+          dependencyCacheKey: null,
+          dependencyCacheHit: false,
+          remediations: [],
+        }),
+        createReview: async (_workerUrl, _idempotencyKey, payload) => {
+          capturedProvenance = (payload.provenance ?? null) as Record<string, unknown> | null;
+          return {
+            reviewId: 'rev_local_cochange',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_local_cochange/events',
+            resultUrl: '/reviews/rev_local_cochange',
+          };
+        },
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => createReviewResponseBody() as unknown as { review: any },
+      });
+
+      await createReviewFromCommitCommand({ commitish: 'HEAD' });
+      const localCochange = (capturedProvenance?.['localCochange'] ?? null) as
+        | {
+            source: string;
+            lookbackSessions: number;
+            sessionsScanned: number;
+            relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
+          }
+        | null;
+      assert.equal(localCochange?.source, 'local_git');
+      assert.equal(localCochange?.lookbackSessions, 5);
+      assert.equal(localCochange?.sessionsScanned, 2);
+      assert.deepEqual(localCochange?.relatedByChangedPath['src/app.ts']?.[0]?.path, 'src/config.ts');
+
+      setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewCreateFlowForTests(null);
+      setReviewPreflightTokenReadinessResolverForTests(async () => true);
+    }
+
+    {
       setReviewPreflightContextResolverForTests(async () => ({
         note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
         sessionIds: ['sess_faildeploy'],

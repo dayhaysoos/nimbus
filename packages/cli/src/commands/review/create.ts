@@ -8,6 +8,7 @@ import {
 } from '../../lib/api.js';
 import { workspaceDeployCommand } from '../workspace/deploy.js';
 import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../workspace/create.js';
+import { resolveCochangeFromLocalGit } from '../../lib/entire/context.js';
 import { formatEvent } from './events.js';
 import {
   setReviewPreflightCommitResolverForTests,
@@ -22,6 +23,27 @@ import type {
 } from '../../lib/types.js';
 
 const MAX_COMMIT_DIFF_PATCH_CHARS = 120_000;
+const COCHANGE_LOOKBACK_SESSIONS = 5;
+const COCHANGE_TOP_N = 20;
+
+function parseChangedPathsFromDiff(patch: string): string[] {
+  const paths = new Set<string>();
+  for (const line of patch.split('\n')) {
+    if (!line.startsWith('+++ ')) {
+      continue;
+    }
+    const raw = line.slice(4).trim();
+    if (!raw || raw === '/dev/null') {
+      continue;
+    }
+    const normalized = raw.replace(/^b\//, '').replace(/^\.\//, '').trim();
+    if (!normalized || normalized === '/dev/null') {
+      continue;
+    }
+    paths.add(normalized);
+  }
+  return Array.from(paths);
+}
 
 function buildIdempotencyKey(workspaceId: string, deploymentId: string): string {
   const seed = `${workspaceId}:${deploymentId}:${Date.now()}:${Math.random()}`;
@@ -129,6 +151,7 @@ let deployWorkspaceForCommitFlow: (
 let createReviewForCommitFlow: typeof createReview = createReview;
 let streamReviewEventsForCommitFlow: typeof streamReviewEvents = streamReviewEvents;
 let getReviewForCommitFlow: typeof getReview = getReview;
+let resolveLocalCochangeForCommitFlow: typeof resolveCochangeFromLocalGit = resolveCochangeFromLocalGit;
 
 export function setReviewCommitResolverForTests(resolver: ((commitish: string) => CommitResolution) | null): void {
   setReviewPreflightCommitResolverForTests(resolver);
@@ -143,6 +166,7 @@ export function setReviewCreateFlowForTests(
         createReview?: typeof createReviewForCommitFlow;
         streamReviewEvents?: typeof streamReviewEventsForCommitFlow;
         getReview?: typeof getReviewForCommitFlow;
+        resolveLocalCochange?: typeof resolveLocalCochangeForCommitFlow;
       }
     | null
 ): void {
@@ -152,6 +176,7 @@ export function setReviewCreateFlowForTests(
   createReviewForCommitFlow = overrides?.createReview ?? createReview;
   streamReviewEventsForCommitFlow = overrides?.streamReviewEvents ?? streamReviewEvents;
   getReviewForCommitFlow = overrides?.getReview ?? getReview;
+  resolveLocalCochangeForCommitFlow = overrides?.resolveLocalCochange ?? resolveCochangeFromLocalGit;
 }
 
 function buildWorkspaceIdempotencyKey(commitSha: string): string {
@@ -228,6 +253,17 @@ export async function createReviewFromCommitCommand(
   let commitDiffPatchTruncated = false;
   let commitDiffPatchOriginalChars = 0;
   let entireContextResolution: ReviewEntireContextResolution | null = null;
+  let localCochange:
+    | {
+        source: 'local_git';
+        checkpointsRef: string;
+        lookbackSessions: number;
+        topN: number;
+        sessionsScanned: number;
+        relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
+      }
+    | null = null;
+  let changedPaths: string[] = [];
 
   try {
     spinner.start('Resolving checkpoint...');
@@ -235,6 +271,7 @@ export async function createReviewFromCommitCommand(
       const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd());
       commitSha = resolvedCommit.commitSha;
       checkpointId = resolvedCommit.checkpointId;
+      changedPaths = parseChangedPathsFromDiff(resolvedCommit.commitDiffPatch);
       const normalizedPatch = normalizeCommitDiffPatch(resolvedCommit.commitDiffPatch);
       commitDiffPatch = normalizedPatch.patch;
       commitDiffPatchSha256 = normalizedPatch.sha256;
@@ -272,13 +309,35 @@ export async function createReviewFromCommitCommand(
       throw new Error(`Review flow failed at checkpoint resolution: ${message}`);
     }
 
+    spinner.start('Resolving local co-change context...');
+    try {
+      localCochange = resolveLocalCochangeForCommitFlow(changedPaths, process.cwd(), {
+        lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+        topN: COCHANGE_TOP_N,
+      });
+      if (localCochange) {
+        spinner.stop(
+          `Resolved local co-change context from ${localCochange.checkpointsRef} (${localCochange.sessionsScanned} sessions scanned)`
+        );
+      } else {
+        spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
+      }
+    } catch {
+      localCochange = null;
+      spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
+    }
+
     spinner.start('Checking co-change token readiness...');
     try {
-      const readiness = await validateReviewCochangeTokenReadiness();
-      if (readiness === 'legacy_unknown') {
-        spinner.stop('Co-change token readiness unknown on legacy worker (continuing)');
+      if (localCochange) {
+        spinner.stop('Co-change token check skipped (using local co-change context)');
       } else {
-        spinner.stop('Co-change token readiness confirmed');
+        const readiness = await validateReviewCochangeTokenReadiness();
+        if (readiness === 'legacy_unknown') {
+          spinner.stop('Co-change token readiness unknown on legacy worker (continuing)');
+        } else {
+          spinner.stop('Co-change token readiness confirmed');
+        }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -365,6 +424,16 @@ export async function createReviewFromCommitCommand(
               entireContextResolution?.contextResolution === 'branch_fallback'
                 ? entireContextResolution.resolvedCommitSubject
                 : undefined,
+            localCochange: localCochange
+              ? {
+                  source: localCochange.source,
+                  checkpointsRef: localCochange.checkpointsRef,
+                  lookbackSessions: localCochange.lookbackSessions,
+                  topN: localCochange.topN,
+                  sessionsScanned: localCochange.sessionsScanned,
+                  relatedByChangedPath: localCochange.relatedByChangedPath,
+                }
+              : undefined,
           },
         }
       );

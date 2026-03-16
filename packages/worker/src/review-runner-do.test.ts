@@ -38,6 +38,7 @@ export async function runReviewRunnerDurableObjectTests(): Promise<void> {
     setReviewRunnerExecutorForTests(async (_env, reviewId, _maxCycles, options) => {
       assert.equal(reviewId, 'rev_abcd1234');
       assert.equal(options?.cochangeGithubToken, 'ghp_user_token_123');
+      assert.equal(options?.openrouterApiKey, 'or_user_token_123');
       started = true;
       await new Promise<void>((resolve) => {
         release = resolve;
@@ -51,6 +52,7 @@ export async function runReviewRunnerDurableObjectTests(): Promise<void> {
         body: JSON.stringify({
           reviewId: 'rev_abcd1234',
           cochangeGithubToken: 'ghp_user_token_123',
+          openrouterApiKey: 'or_user_token_123',
         }),
       })
     );

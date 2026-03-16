@@ -46,7 +46,10 @@ export default {
     }
 
     try {
-      const action = await nextAgentActionWithInference(payload, env);
+      const openrouterApiKeyHeader = request.headers.get('X-Openrouter-Api-Key');
+      const action = await nextAgentActionWithInference(payload, env, {
+        openrouterApiKey: typeof openrouterApiKeyHeader === 'string' ? openrouterApiKeyHeader : null,
+      });
       return new Response(JSON.stringify({ action }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },

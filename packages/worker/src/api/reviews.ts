@@ -1,11 +1,13 @@
-import type { Env, ReviewRunStatus } from '../types.js';
+import type { AuthContext, Env, ReviewRunStatus } from '../types.js';
 import {
   ReviewIdempotencyConflictError,
   appendReviewEvent,
   createReviewRun,
   generateReviewRunId,
   getReviewRun,
+  getReviewRunAccountId,
   getReviewRunByIdempotency,
+  getWorkspaceAccountId,
   getWorkspace,
   getWorkspaceDeployment,
   hasReviewEvent,
@@ -13,11 +15,12 @@ import {
   updateReviewRunStatus,
 } from '../lib/db.js';
 import { createReviewQueueMessage } from '../lib/review-queue.js';
+import { canAccessAccount } from '../lib/authz.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',
 };
 
 // Keep review SSE polling at 1s to stay within Cloudflare per-invocation API request
@@ -54,7 +57,8 @@ function readWorkerReviewGithubToken(env: Env): string | null {
 async function recoverStaleRunningReviewIfNeeded(
   env: Env,
   reviewId: string,
-  review: { status: ReviewRunStatus; startedAt: string | null; updatedAt: string; createdAt: string; attemptCount: number }
+  review: { status: ReviewRunStatus; startedAt: string | null; updatedAt: string; createdAt: string; attemptCount: number },
+  openrouterApiKey?: string | null
 ): Promise<void> {
   if (review.status !== 'running') {
     return;
@@ -91,7 +95,7 @@ async function recoverStaleRunningReviewIfNeeded(
         staleForSeconds: Math.floor(staleForMs / 1000),
       },
     });
-    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, workerGithubToken));
+    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, workerGithubToken, openrouterApiKey));
     return;
   }
 
@@ -120,6 +124,22 @@ function jsonResponse(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json', ...corsHeaders },
   });
+}
+
+async function requireWorkspaceAccess(env: Env, workspaceId: string, authContext: AuthContext): Promise<Response | null> {
+  const accountId = await getWorkspaceAccountId(env.DB, workspaceId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Workspace not found' }, 404);
+  }
+  return null;
+}
+
+async function requireReviewAccess(env: Env, reviewId: string, authContext: AuthContext): Promise<Response | null> {
+  const accountId = await getReviewRunAccountId(env.DB, reviewId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Review not found' }, 404);
+  }
+  return null;
 }
 
 function formatSseData(payload: unknown): string {
@@ -156,8 +176,101 @@ function isSeverityThreshold(value: unknown): value is 'low' | 'medium' | 'high'
   return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
 }
 
+function normalizeLocalCochange(value: unknown): {
+  source: 'local_git';
+  checkpointsRef: string;
+  lookbackSessions: number;
+  topN: number;
+  sessionsScanned: number;
+  relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
+} | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const source = typeof value.source === 'string' && value.source.trim() ? value.source.trim() : null;
+  if (source !== 'local_git') {
+    return null;
+  }
+  const checkpointsRef =
+    typeof value.checkpointsRef === 'string' && value.checkpointsRef.trim()
+      ? value.checkpointsRef.trim().slice(0, 256)
+      : 'entire/checkpoints/v1';
+  const lookbackSessions =
+    typeof value.lookbackSessions === 'number' && Number.isFinite(value.lookbackSessions)
+      ? Math.max(1, Math.min(50, Math.floor(value.lookbackSessions)))
+      : 5;
+  const topN =
+    typeof value.topN === 'number' && Number.isFinite(value.topN)
+      ? Math.max(1, Math.min(100, Math.floor(value.topN)))
+      : 20;
+  const sessionsScanned =
+    typeof value.sessionsScanned === 'number' && Number.isFinite(value.sessionsScanned)
+      ? Math.max(0, Math.min(200, Math.floor(value.sessionsScanned)))
+      : 0;
+
+  const relatedByChangedPathRaw = isRecord(value.relatedByChangedPath) ? value.relatedByChangedPath : null;
+  if (!relatedByChangedPathRaw) {
+    return null;
+  }
+
+  const relatedByChangedPath = Object.entries(relatedByChangedPathRaw)
+    .slice(0, 400)
+    .reduce<Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>>((acc, [changedPath, entries]) => {
+      const key = changedPath.trim();
+      if (!key || !Array.isArray(entries)) {
+        return acc;
+      }
+      const normalizedEntries = entries
+        .slice(0, 400)
+        .flatMap((entry) => {
+          if (!isRecord(entry)) {
+            return [];
+          }
+          const path = typeof entry.path === 'string' ? entry.path.trim() : '';
+          const frequency =
+            typeof entry.frequency === 'number' && Number.isFinite(entry.frequency)
+              ? Math.max(0, Math.floor(entry.frequency))
+              : 0;
+          const sessionIds = Array.isArray(entry.sessionIds)
+            ? Array.from(
+                new Set(
+                  entry.sessionIds
+                    .filter((item): item is string => typeof item === 'string')
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .slice(0, 40)
+                )
+              )
+            : [];
+          if (!path || frequency <= 0) {
+            return [];
+          }
+          return [{ path, frequency, sessionIds }];
+        })
+        .sort((left, right) => right.frequency - left.frequency)
+        .slice(0, topN);
+      acc[key] = normalizedEntries;
+      return acc;
+    }, {});
+
+  return {
+    source: 'local_git',
+    checkpointsRef,
+    lookbackSessions,
+    topN,
+    sessionsScanned,
+    relatedByChangedPath,
+  };
+}
+
 function readReviewGithubTokenHeader(request: Request): string | null {
   const value = request.headers.get('X-Review-Github-Token');
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function readOpenrouterApiKeyHeader(request: Request): string | null {
+  const value = request.headers.get('X-Openrouter-Api-Key');
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
@@ -174,6 +287,8 @@ function stripSensitiveTokenFields(value: unknown): unknown {
     if (
       normalizedKey === 'x-review-github-token' ||
       normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'x-openrouter-api-key' ||
+      normalizedKey === 'openrouter_api_key' ||
       normalizedKey === 'authorization'
     ) {
       return result;
@@ -266,6 +381,7 @@ function buildReviewRequestPayload(input: {
     input.provenance.contextResolutionResolvedCommitMessage.trim()
       ? input.provenance.contextResolutionResolvedCommitMessage.trim()
       : undefined;
+  const localCochange = normalizeLocalCochange(input.provenance.localCochange);
   const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
 
   const normalized = {
@@ -306,6 +422,7 @@ function buildReviewRequestPayload(input: {
       ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),
       ...(contextResolutionResolvedCommitSha ? { contextResolutionResolvedCommitSha } : {}),
       ...(contextResolutionResolvedCommitMessage ? { contextResolutionResolvedCommitMessage } : {}),
+      ...(localCochange ? { localCochange } : {}),
     },
     ...(model ? { model } : {}),
   };
@@ -465,6 +582,9 @@ function hasExtendedReviewIdempotencyInputs(input: {
   ) {
     return true;
   }
+  if (normalizeLocalCochange(provenance.localCochange)) {
+    return true;
+  }
   return false;
 }
 
@@ -475,7 +595,15 @@ async function sha256Hex(input: string): Promise<string> {
     .join('');
 }
 
-export async function handleCreateReview(request: Request, env: Env, _ctx?: ExecutionContext): Promise<Response> {
+export async function handleCreateReview(
+  request: Request,
+  env: Env,
+  _ctx?: ExecutionContext,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   try {
     if (!env.REVIEWS_QUEUE || !env.ReviewRunner) {
       return jsonResponse(
@@ -491,14 +619,12 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
     if (!idempotencyKey) {
       return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);
     }
-    const reviewGithubToken = readReviewGithubTokenHeader(request);
-    const workerGithubToken = readWorkerReviewGithubToken(env);
-    if (!reviewGithubToken && !workerGithubToken) {
-      return jsonResponse(
-        { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
-        400
-      );
+    if (effectiveAuthContext.isHostedMode && new URL(request.url).protocol !== 'https:') {
+      return jsonResponse({ error: 'Hosted review requests must use HTTPS' }, 400);
     }
+    const reviewGithubToken = readReviewGithubTokenHeader(request);
+    const openrouterApiKey = readOpenrouterApiKeyHeader(request);
+    const workerGithubToken = readWorkerReviewGithubToken(env);
 
     const payloadRaw = await request.text();
     const payload = payloadRaw.trim() ? (JSON.parse(payloadRaw) as unknown) : {};
@@ -527,6 +653,11 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
     const deploymentId = typeof target.deploymentId === 'string' ? target.deploymentId.trim() : '';
     if (!workspaceId || !deploymentId) {
       return jsonResponse({ error: 'target.workspaceId and target.deploymentId are required' }, 400);
+    }
+
+    const workspaceAccessResponse = await requireWorkspaceAccess(env, workspaceId, effectiveAuthContext);
+    if (workspaceAccessResponse) {
+      return workspaceAccessResponse;
     }
 
     const mode = typeof payload.mode === 'string' && payload.mode.trim() ? payload.mode.trim() : 'report_only';
@@ -568,6 +699,14 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
       provenance,
       model,
     });
+    const requestProvenance: Record<string, unknown> = isRecord(requestPayload.provenance) ? requestPayload.provenance : {};
+    const hasLocalCochange = isRecord(requestProvenance.localCochange);
+    if (!reviewGithubToken && !workerGithubToken && !hasLocalCochange) {
+      return jsonResponse(
+        { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
+        400
+      );
+    }
     const sanitizedRequestPayload = stripSensitiveTokenFields(requestPayload) as Record<string, unknown>;
 
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));
@@ -594,8 +733,18 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
         const alreadyEnqueued = await hasReviewEvent(env.DB, created.review.id, 'review_enqueued');
         const shouldReenqueueRecoveredReview =
           created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
+        const requiresOpenrouterRetryKey = created.review.error?.code === 'missing_openrouter_api_key';
         if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken));
+          if (shouldReenqueueRecoveredReview && requiresOpenrouterRetryKey && !openrouterApiKey) {
+            return jsonResponse(
+              {
+                error: 'OpenRouter API key required for retry',
+                code: 'missing_openrouter_api_key',
+              },
+              409
+            );
+          }
+          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken, openrouterApiKey));
 
           await appendReviewEvent(env.DB, {
             reviewId: created.review.id,
@@ -625,6 +774,11 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
       return jsonResponse({ error: 'Workspace not found' }, 404);
     }
 
+    const workspaceAccountId = await getWorkspaceAccountId(env.DB, workspaceId);
+    if (workspaceAccountId === undefined) {
+      return jsonResponse({ error: 'Workspace not found' }, 404);
+    }
+
     const deployment = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
     if (!deployment) {
       return jsonResponse({ error: 'Deployment not found' }, 404);
@@ -649,6 +803,9 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
       requestPayload: sanitizedRequestPayload,
       requestPayloadSha256,
       requestPayloadSha256Aliases,
+      // Keep review ownership aligned to the workspace owner so admin-triggered
+      // reviews stay visible to the owning account in hosted mode.
+      accountId: workspaceAccountId,
       provenance: {
         promptSummary: `Review deployment ${deploymentId} for workspace ${workspaceId}`,
       },
@@ -670,8 +827,18 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
       const alreadyEnqueued = await hasReviewEvent(env.DB, created.review.id, 'review_enqueued');
       const shouldReenqueueRecoveredReview =
         created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
+      const requiresOpenrouterRetryKey = created.review.error?.code === 'missing_openrouter_api_key';
       if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-        await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken));
+        if (shouldReenqueueRecoveredReview && requiresOpenrouterRetryKey && !openrouterApiKey) {
+          return jsonResponse(
+            {
+              error: 'OpenRouter API key required for retry',
+              code: 'missing_openrouter_api_key',
+            },
+            409
+          );
+        }
+        await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken, openrouterApiKey));
 
         await appendReviewEvent(env.DB, {
           reviewId: created.review.id,
@@ -714,13 +881,26 @@ export async function handleCreateReview(request: Request, env: Env, _ctx?: Exec
   }
 }
 
-export async function handleGetReview(reviewId: string, env: Env): Promise<Response> {
+export async function handleGetReview(
+  reviewId: string,
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
+  const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
+  if (reviewAccessResponse) {
+    return reviewAccessResponse;
+  }
+
   let review = await getReviewRun(env.DB, reviewId);
   if (!review) {
     return jsonResponse({ error: 'Review not found' }, 404);
   }
 
-  await recoverStaleRunningReviewIfNeeded(env, reviewId, review);
+  await recoverStaleRunningReviewIfNeeded(env, reviewId, review, readOpenrouterApiKeyHeader(request));
   review = await getReviewRun(env.DB, reviewId);
   if (!review) {
     return jsonResponse({ error: 'Review not found' }, 404);
@@ -729,8 +909,21 @@ export async function handleGetReview(reviewId: string, env: Env): Promise<Respo
   return jsonResponse({ review });
 }
 
-export async function handleGetReviewEvents(reviewId: string, request: Request, env: Env): Promise<Response> {
+export async function handleGetReviewEvents(
+  reviewId: string,
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
   try {
+    const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
+    if (reviewAccessResponse) {
+      return reviewAccessResponse;
+    }
+
     const review = await getReviewRun(env.DB, reviewId);
     if (!review) {
       return jsonResponse({ error: 'Review not found' }, 404);
@@ -815,7 +1008,7 @@ export async function handleGetReviewEvents(reviewId: string, request: Request, 
                 );
                 break;
               }
-              await recoverStaleRunningReviewIfNeeded(env, reviewId, latest);
+              await recoverStaleRunningReviewIfNeeded(env, reviewId, latest, readOpenrouterApiKeyHeader(request));
               const refreshed = await getReviewRun(env.DB, reviewId);
               currentStatus = refreshed?.status ?? latest.status;
             }

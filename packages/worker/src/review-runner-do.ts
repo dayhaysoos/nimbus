@@ -4,6 +4,7 @@ import type { Env } from './types.js';
 interface ReviewRunnerStartRequest {
   reviewId: string;
   cochangeGithubToken?: string;
+  openrouterApiKey?: string;
 }
 
 interface ReviewRunnerState {
@@ -21,7 +22,7 @@ let reviewRunnerExecutorForTests: null | ((
   env: Env,
   reviewId: string,
   maxCycles?: number,
-  options?: { cochangeGithubToken?: string | null }
+  options?: { cochangeGithubToken?: string | null; openrouterApiKey?: string | null }
 ) => Promise<void>) = null;
 
 function defaultState(): ReviewRunnerState {
@@ -50,11 +51,21 @@ function parseRunRequest(payload: unknown): ReviewRunnerStartRequest {
   ) {
     throw new Error('invalid_cochange_github_token');
   }
+  if (
+    record.openrouterApiKey !== undefined &&
+    (typeof record.openrouterApiKey !== 'string' || !record.openrouterApiKey.trim())
+  ) {
+    throw new Error('invalid_openrouter_api_key');
+  }
   return {
     reviewId: record.reviewId.trim(),
     cochangeGithubToken:
       typeof record.cochangeGithubToken === 'string' && record.cochangeGithubToken.trim()
         ? record.cochangeGithubToken.trim()
+        : undefined,
+    openrouterApiKey:
+      typeof record.openrouterApiKey === 'string' && record.openrouterApiKey.trim()
+        ? record.openrouterApiKey.trim()
         : undefined,
   };
 }
@@ -73,11 +84,12 @@ export class ReviewRunner {
     await this.state.storage.put(STATE_KEY, next);
   }
 
-  private async execute(reviewId: string, cochangeGithubToken?: string): Promise<void> {
+  private async execute(reviewId: string, cochangeGithubToken?: string, openrouterApiKey?: string): Promise<void> {
     const executor = reviewRunnerExecutorForTests ?? runReviewInlineWithRetries;
     try {
       await executor(this.env, reviewId, 4, {
         cochangeGithubToken,
+        openrouterApiKey,
       });
       const current = await this.loadState();
       await this.persistState({
@@ -138,7 +150,7 @@ export class ReviewRunner {
       lastError: null,
     });
 
-    this.state.waitUntil(this.execute(payload.reviewId, payload.cochangeGithubToken));
+    this.state.waitUntil(this.execute(payload.reviewId, payload.cochangeGithubToken, payload.openrouterApiKey));
 
     return new Response(JSON.stringify({ accepted: true, status: 'started' }), {
       status: 202,
@@ -148,7 +160,12 @@ export class ReviewRunner {
 }
 
 export function setReviewRunnerExecutorForTests(
-  executor: null | ((env: Env, reviewId: string, maxCycles?: number, options?: { cochangeGithubToken?: string | null }) => Promise<void>)
+  executor: null | ((
+    env: Env,
+    reviewId: string,
+    maxCycles?: number,
+    options?: { cochangeGithubToken?: string | null; openrouterApiKey?: string | null }
+  ) => Promise<void>)
 ): void {
   reviewRunnerExecutorForTests = executor;
 }
