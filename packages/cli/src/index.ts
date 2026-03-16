@@ -413,9 +413,7 @@ async function main(): Promise<void> {
           const outputReviewIdFlag = flags['output-review-id'];
           const outputReviewIdPath =
             typeof outputReviewIdFlag === 'string' && outputReviewIdFlag.trim() ? outputReviewIdFlag.trim() : undefined;
-          if (outputReviewIdFlag === true) {
-            p.log.warning('Ignoring --output-review-id without a file path.');
-          }
+          const outputReviewIdPathForCommand = outputReviewIdFlag === true ? '' : outputReviewIdPath;
           const severityThreshold = parseReviewSeverityThreshold(flags['severity-threshold']);
           const maxFindings = parseReviewMaxFindings(flags['max-findings']);
           const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;
@@ -439,7 +437,7 @@ async function main(): Promise<void> {
             await createReviewFromCommitCommand({
               commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',
               baseRef,
-              outputReviewIdPath,
+              outputReviewIdPath: outputReviewIdPathForCommand,
               projectRoot,
               idempotencyKey,
               severityThreshold,

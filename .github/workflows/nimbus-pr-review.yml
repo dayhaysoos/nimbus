@@ -34,6 +34,7 @@ jobs:
           REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
         run: |
           MISSING=0
+          INVALID=0
           if [ -z "${NIMBUS_API_KEY}" ]; then
             echo "Missing required workflow configuration. See README/docs for required secrets."
             MISSING=1
@@ -43,9 +44,20 @@ jobs:
             MISSING=1
           fi
 
-          if [ "$MISSING" -eq 1 ]; then
+          if [ "$MISSING" -eq 0 ]; then
+            if ! [[ "${NIMBUS_API_KEY}" =~ ^nmb_[A-Za-z0-9_]+$ ]]; then
+              echo "Invalid workflow configuration. NIMBUS_API_KEY has an unexpected format."
+              INVALID=1
+            fi
+            if ! [[ "${REVIEW_CONTEXT_GITHUB_TOKEN}" =~ ^(ghp_|github_pat_) ]]; then
+              echo "Invalid workflow configuration. REVIEW_CONTEXT_GITHUB_TOKEN must be a GitHub PAT (ghp_ or github_pat_)."
+              INVALID=1
+            fi
+          fi
+
+          if [ "$MISSING" -eq 1 ] || [ "$INVALID" -eq 1 ]; then
             echo "secrets_ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Nimbus review steps will be skipped because required secrets are missing."
+            echo "::warning::Nimbus review steps will be skipped because required secrets are missing or invalid."
           else
             echo "secrets_ready=true" >> "$GITHUB_OUTPUT"
           fi
@@ -165,6 +177,13 @@ jobs:
             - Entire checkpoints ref fetched: \`${checkpointsFetched}\`
             - Workflow run: ${runUrl}
             `;
+
+            if (checkpointsFetched !== 'true') {
+              body += `
+
+            > ⚠️ Entire checkpoint ref fetch failed in CI. Review may run without local co-change context, which can reduce result quality.
+            `;
+            }
 
             if (trustedPr !== 'true') {
               body += `
