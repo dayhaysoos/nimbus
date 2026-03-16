@@ -1,5 +1,12 @@
 import { strict as assert } from 'assert';
 import { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from './agent.js';
+import worker from '../index.js';
+
+type WorkerModule = {
+  fetch(request: Request, env: Record<string, string | undefined>): Promise<Response>;
+};
+
+const handler = worker as WorkerModule;
 
 export async function runAgentTests(): Promise<void> {
   {
@@ -57,6 +64,81 @@ export async function runAgentTests(): Promise<void> {
       assert.equal(Array.isArray(requestBody.messages), true);
       assert.equal(capturedReferer, 'https://example-review-worker.workers.dev');
       assert.equal(capturedTitle, 'Nimbus Review');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
+      throw new Error('upstream failed for Bearer token-abc sk-secret123 nmb_live_secret999');
+    }) as typeof fetch;
+
+    try {
+      const response = await handler.fetch(
+        new Request('https://example.workers.dev', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer expected-token',
+          },
+          body: JSON.stringify({
+            mode: 'workspace_task',
+            prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+            history: [],
+          }),
+        }),
+        {
+          AGENT_SDK_AUTH_TOKEN: 'expected-token',
+          OPENROUTER_API_KEY: 'env-key',
+        }
+      );
+
+      assert.equal(response.status, 500);
+      const payload = (await response.json()) as {
+        details?: { message?: string };
+      };
+      const message = payload.details?.message ?? '';
+      assert.equal(message.includes('Bearer token-abc'), false);
+      assert.equal(message.includes('sk-secret123'), false);
+      assert.equal(message.includes('nmb_live_secret999'), false);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
+      throw new Error('sk-onlysecretvalue');
+    }) as typeof fetch;
+
+    try {
+      const response = await handler.fetch(
+        new Request('https://example.workers.dev', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer expected-token',
+          },
+          body: JSON.stringify({
+            mode: 'workspace_task',
+            prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+            history: [],
+          }),
+        }),
+        {
+          AGENT_SDK_AUTH_TOKEN: 'expected-token',
+          OPENROUTER_API_KEY: 'env-key',
+        }
+      );
+
+      assert.equal(response.status, 500);
+      const payload = (await response.json()) as {
+        details?: { message?: string };
+      };
+      assert.equal(payload.details?.message, 'upstream error');
     } finally {
       globalThis.fetch = originalFetch;
     }
