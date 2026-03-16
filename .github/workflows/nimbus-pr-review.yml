@@ -86,7 +86,12 @@ jobs:
 
           # Fall back to log parsing if file not present
           if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
-            REVIEW_ID=$(node -e "const fs=require('fs');const logPath=process.argv[1];const text=fs.readFileSync(logPath,'utf8');for(const line of text.split(/\\r?\\n/)){const marker='Review queued: ';const idx=line.indexOf(marker);if(idx===-1) continue;const candidate=line.slice(idx+marker.length).trim();if(/^rev_[a-z0-9_]+$/i.test(candidate)){process.stdout.write(candidate);break;}}" "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null || echo "")
+            REVIEW_ID=$(awk '
+              match($0, /Review queued:[[:space:]]*(rev_[A-Za-z0-9_]+)/, m) {
+                print m[1];
+                exit;
+              }
+            ' "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null || echo "")
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"

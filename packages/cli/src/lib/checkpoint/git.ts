@@ -109,6 +109,8 @@ export class GitRepo {
   }
 
   getRangePatch(baseRef: string, headSha: string): string {
+    // Use three-dot range for PR-style diffs: merge-base(baseRef, headSha)..headSha.
+    // This isolates branch-introduced changes relative to the base branch.
     return this.run(['diff', '--no-ext-diff', '--unified=3', `${baseRef}...${headSha}`]);
   }
 
