@@ -1,8 +1,21 @@
-export function enforceRequestBodySizeCap(
-  request: Request,
-  maxBytes: number,
-  corsHeaders: Record<string, string>
-): Response | null {
+const DEFAULT_MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;
+const UPLOAD_MAX_REQUEST_BODY_BYTES = 100 * 1024 * 1024;
+
+function isUploadRoute(request: Request): boolean {
+  if (request.method !== 'POST') {
+    return false;
+  }
+
+  const pathname = new URL(request.url).pathname;
+  return pathname === '/api/checkpoint/jobs' || pathname === '/api/workspaces';
+}
+
+function resolveRequestBodyLimitBytes(request: Request): number {
+  return isUploadRoute(request) ? UPLOAD_MAX_REQUEST_BODY_BYTES : DEFAULT_MAX_REQUEST_BODY_BYTES;
+}
+
+export function enforceRequestBodySizeCap(request: Request, corsHeaders: Record<string, string>): Response | null {
+  const maxBytes = resolveRequestBodyLimitBytes(request);
   const raw = request.headers.get('Content-Length');
   if (!raw) {
     return null;

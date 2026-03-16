@@ -13,10 +13,23 @@ export async function runRequestSizeTests(): Promise<void> {
       new Request('https://example.com/api/workspaces', {
         method: 'POST',
         headers: {
-          'Content-Length': String(5 * 1024 * 1024 + 1),
+          'Content-Length': String(100 * 1024 * 1024 - 1),
         },
       }),
-      5 * 1024 * 1024,
+      corsHeaders
+    );
+
+    assert.equal(response, null);
+  }
+
+  {
+    const response = enforceRequestBodySizeCap(
+      new Request('https://example.com/api/workspaces', {
+        method: 'POST',
+        headers: {
+          'Content-Length': String(100 * 1024 * 1024 + 1),
+        },
+      }),
       corsHeaders
     );
 
@@ -29,10 +42,41 @@ export async function runRequestSizeTests(): Promise<void> {
 
   {
     const response = enforceRequestBodySizeCap(
-      new Request('https://example.com/api/workspaces', {
+      new Request('https://example.com/api/reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Length': String(5 * 1024 * 1024 - 1),
+        },
+      }),
+      corsHeaders
+    );
+
+    assert.equal(response, null);
+  }
+
+  {
+    const response = enforceRequestBodySizeCap(
+      new Request('https://example.com/api/reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Length': String(5 * 1024 * 1024 + 1),
+        },
+      }),
+      corsHeaders
+    );
+
+    assert.notEqual(response, null);
+    assert.equal(response?.status, 413);
+    const payload = (await response?.json()) as Record<string, unknown>;
+    assert.equal(payload.error, 'Request body too large');
+    assert.equal(payload.code, 'request_too_large');
+  }
+
+  {
+    const response = enforceRequestBodySizeCap(
+      new Request('https://example.com/api/reviews', {
         method: 'POST',
       }),
-      5 * 1024 * 1024,
       corsHeaders
     );
 

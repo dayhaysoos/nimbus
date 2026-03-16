@@ -59,8 +59,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',
 };
 
-const MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;
-
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -76,7 +74,7 @@ export default {
       return new Response(null, { headers: corsHeaders });
     }
 
-    const sizeLimitResponse = enforceRequestBodySizeCap(request, MAX_REQUEST_BODY_BYTES, corsHeaders);
+    const sizeLimitResponse = enforceRequestBodySizeCap(request, corsHeaders);
     if (sizeLimitResponse) {
       return sizeLimitResponse;
     }
