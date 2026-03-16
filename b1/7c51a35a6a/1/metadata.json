@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "b17c51a35a6a",
+  "session_id": "ses_30bfbb6f4ffeJ2960akRy1tOR3",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-16T01:10:28.392535Z",
+  "branch": "security-audit",
+  "checkpoints_count": 4,
+  "files_touched": [
+    ".github/workflows/secret-scan.yml",
+    "scripts/audit-with-exceptions.mjs"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "005f50d8a410",
+  "token_usage": {
+    "input_tokens": 154762,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4143744,
+    "output_tokens": 25161,
+    "api_call_count": 82
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-16T01:10:27.850053Z",
+    "agent_lines": 59,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 59,
+    "agent_percentage": 100
+  }
+}

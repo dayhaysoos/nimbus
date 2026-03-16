@@ -3,8 +3,9 @@
   "checkpoint_id": "b17c51a35a6a",
   "strategy": "manual-commit",
   "branch": "security-audit",
-  "checkpoints_count": 1,
+  "checkpoints_count": 5,
   "files_touched": [
+    ".github/workflows/secret-scan.yml",
     "scripts/audit-with-exceptions.mjs"
   ],
   "sessions": [
@@ -14,13 +15,20 @@
       "context": "/b1/7c51a35a6a/0/context.md",
       "content_hash": "/b1/7c51a35a6a/0/content_hash.txt",
       "prompt": "/b1/7c51a35a6a/0/prompt.txt"
+    },
+    {
+      "metadata": "/b1/7c51a35a6a/1/metadata.json",
+      "transcript": "/b1/7c51a35a6a/1/full.jsonl",
+      "context": "/b1/7c51a35a6a/1/context.md",
+      "content_hash": "/b1/7c51a35a6a/1/content_hash.txt",
+      "prompt": "/b1/7c51a35a6a/1/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 31137,
+    "input_tokens": 185899,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 222592,
-    "output_tokens": 4402,
-    "api_call_count": 9
+    "cache_read_tokens": 4366336,
+    "output_tokens": 29563,
+    "api_call_count": 91
   }
 }

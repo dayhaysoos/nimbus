@@ -1,0 +1,159 @@
+You are starting a focused security hardening pass on Nimbus. This is not feature work — every change must be minimal, targeted, and not break existing behavior.
+
+
+Work through the following in order, committing after each item. Stop and report 
+after all items are complete.
+
+
+## Item 1 — CI security workflows
+
+
+Add two GitHub Actions workflows in `.github/workflows/`:
+
+
+**`secret-scan.yml`**
+- Trigger: on push and pull_request to any branch
+- Use `gitleaks/gitleaks-action@v2`
+- Fail the workflow if secrets are detected
+- Add a `.gitleaks.toml` at repo root with rules that suppress known false 
+  positives (e.g. test fixture hashes, mock key strings in test files that 
+  follow the `nmb_live_` prefix pattern)
+
+
+**`dependency-scan.yml`**
+- Trigger: on push and pull_request to any branch
+- Run `pnpm audit --audit-level high` across all packages
+- Fail the workflow on high or critical vulnerabilities
+- Add an audit exceptions file (`.audit-exceptions` or similar) to document 
+  any known transitive vulnerabilities that are not reachable in the Cloudflare 
+  Workers runtime, with a note explaining why each is safe to suppress
+
+
+Commit message: `ci: add secret scan and dependency vulnerability workflows`
+
+
+## Item 2 — Agent endpoint error sanitization
+
+
+In `packages/agent-endpoint/src/index.ts`, the error handler at approximately 
+line 74 may echo `details.message` from upstream errors in the response body. 
+This could leak sensitive data if the upstream (OpenRouter) ever reflects key 
+material in an error message.
+
+
+Fix: sanitize `details.message` before including it in any response body. 
+Strip any string that matches known sensitive patterns (Bearer tokens, 
+`sk-` prefixed strings, `nmb_live_` prefixed strings). If the message 
+cannot be safely sanitized, replace it with a generic "upstream error” 
+string rather than omitting the field entirely.
+
+
+Update tests in `packages/agent-endpoint/src/lib/agent.test.ts` to confirm 
+sensitive patterns in upstream error messages do not appear in response bodies.
+
+
+Commit message: `fix: sanitize agent endpoint upstream error messages`
+
+
+## Item 3 — Request body size cap
+
+
+Add a global request body size cap at the worker entrypoint in 
+`packages/worker/src/index.ts`.
+
+
+- Read `Content-Length` header on incoming requests
+- If `Content-Length` exceeds 5MB (5 * 1024 * 1024 bytes), return 413 
+  with `{ error: "Request body too large", code: "request_too_large” }`
+- Apply this check before routing — it should be one of the first things 
+  that runs in the fetch handler
+- Skip the check for requests with no `Content-Length` header (streaming 
+  or chunked) — do not attempt to buffer and measure the body
+
+
+Add a test in the worker test suite confirming oversized requests return 413.
+
+
+Commit message: `fix: add global request body size cap at worker entrypoint`
+
+
+## Constraints across all items
+- Do not change any auth, ownership, or review pipeline logic
+- Do not modify existing tests except where directly required by the fix
+- Run relevant test suites after each commit:
+  - Items 1-3: `pnpm --filter @dayhaysoos/nimbus-worker test`
+  - Item 2 also: `pnpm --filter @dayhaysoos/nimbus-agent-endpoint test`
+- If `pnpm audit` reports high/critical vulnerabilities in transitive deps 
+  that are not reachable in Cloudflare Workers runtime, document them in 
+  the exceptions file rather than failing the build
+
+
+Stop after all three commits and report what was done, any suppressed 
+audit findings and why, and current test suite status.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+what do you mean there were no change? You literally made commits with some new files right? I want to run a review on the branch? Explain what happened to me, don’t do anything.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Fix the request body size cap introduced in `packages/worker/src/lib/request-size.ts` and `packages/worker/src/index.ts` to be route-aware rather than a blanket global cap.
+
+
+Problem: the current 5MB global cap breaks upload routes that legitimately accept 
+large payloads (checkpoint/workspace source bundle uploads, up to 100MB).
+
+
+Fix: instead of one global limit, apply different caps based on the route:
+
+
+- Upload routes (checkpoint source bundles, workspace source uploads): 
+  100MB cap — these routes are designed for large payloads
+- All other routes: 5MB cap — this covers review create, auth, API calls, etc.
+
+
+Implementation:
+- Define the route patterns that qualify as upload routes and apply the 
+  larger cap to them
+- Apply the 5MB cap to everything else
+- The existing behavior for missing Content-Length (skip enforcement, 
+  no buffering) stays unchanged
+
+
+Update tests to cover:
+- Upload route with payload under 100MB → passes
+- Upload route with payload over 100MB → 413
+- Non-upload route with payload under 5MB → passes  
+- Non-upload route with payload over 5MB → 413
+- Any route with missing Content-Length → passes (unchanged)
+
+
+Run `pnpm --filter @dayhaysoos/nimbus-worker test` after changes.3
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+commit it
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
