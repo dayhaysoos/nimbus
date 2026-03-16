@@ -46,6 +46,7 @@ import { ReviewRunner } from './review-runner-do.js';
 import { handleReviewQueueDispatch } from './lib/review-dispatch.js';
 import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';
 import { authenticateRequest } from './lib/auth.js';
+import { enforceRequestBodySizeCap } from './lib/request-size.js';
 import type { AuthContext, Env } from './types.js';
 
 // Re-export Durable Objects for bindings
@@ -57,6 +58,8 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',
 };
+
+const MAX_REQUEST_BODY_BYTES = 5 * 1024 * 1024;
 
 export default {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
@@ -71,6 +74,11 @@ export default {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
+    }
+
+    const sizeLimitResponse = enforceRequestBodySizeCap(request, MAX_REQUEST_BODY_BYTES, corsHeaders);
+    if (sizeLimitResponse) {
+      return sizeLimitResponse;
     }
 
     const authResult = await authenticateRequest(request, env);

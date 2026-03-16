@@ -26,6 +26,7 @@ import { runReviewOutputV2Tests } from './review-output-v2.test.js';
 import { runReviewApiTests } from '../api/reviews.test.js';
 import { runSystemApiTests } from '../api/system.test.js';
 import { runAuthMiddlewareTests } from '../auth.test.js';
+import { runRequestSizeTests } from './request-size.test.js';
 
 type TestCase = {
   name: string;
@@ -35,6 +36,7 @@ type TestCase = {
 const TEST_CASES: TestCase[] = [
   { name: 'state-machine', run: runStateMachineTests },
   { name: 'runtime-flags', run: runFlagsTests },
+  { name: 'request-size', run: runRequestSizeTests },
   { name: 'checkpoint-queue', run: runCheckpointQueueTests },
   { name: 'checkpoint-plan', run: runCheckpointPlanTests },
   { name: 'checkpoint-runner', run: runCheckpointRunnerTests },
