@@ -153,7 +153,9 @@ let streamReviewEventsForCommitFlow: typeof streamReviewEvents = streamReviewEve
 let getReviewForCommitFlow: typeof getReview = getReview;
 let resolveLocalCochangeForCommitFlow: typeof resolveCochangeFromLocalGit = resolveCochangeFromLocalGit;
 
-export function setReviewCommitResolverForTests(resolver: ((commitish: string) => CommitResolution) | null): void {
+export function setReviewCommitResolverForTests(
+  resolver: ((commitish: string, options?: { baseRef?: string }) => CommitResolution) | null
+): void {
   setReviewPreflightCommitResolverForTests(resolver);
 }
 
@@ -223,6 +225,7 @@ function normalizeCommitDiffPatch(patch: string): {
 export async function createReviewFromCommitCommand(
   options?: {
     commitish?: string;
+    baseRef?: string;
     projectRoot?: string;
     idempotencyKey?: string;
     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
@@ -268,7 +271,9 @@ export async function createReviewFromCommitCommand(
   try {
     spinner.start('Resolving checkpoint...');
     try {
-      const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd());
+      const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
+        baseRef: options?.baseRef,
+      });
       commitSha = resolvedCommit.commitSha;
       checkpointId = resolvedCommit.checkpointId;
       changedPaths = parseChangedPathsFromDiff(resolvedCommit.commitDiffPatch);

@@ -151,6 +151,7 @@ Options:
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
+  --base <ref>        Diff base ref for review create (uses <base>...<commit>)
   --severity-threshold <level>
                       Review finding floor (low|medium|high|critical)
   --max-findings <n>  Maximum findings to include in report
@@ -405,6 +406,8 @@ async function main(): Promise<void> {
           const model = typeof modelFlag === 'string' && modelFlag.trim() ? modelFlag.trim() : undefined;
           const projectRootFlag = flags['project-root'];
           const projectRoot = typeof projectRootFlag === 'string' && projectRootFlag.trim() ? projectRootFlag.trim() : undefined;
+          const baseFlag = flags.base;
+          const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
           const severityThreshold = parseReviewSeverityThreshold(flags['severity-threshold']);
           const maxFindings = parseReviewMaxFindings(flags['max-findings']);
           const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;
@@ -427,6 +430,7 @@ async function main(): Promise<void> {
             }
             await createReviewFromCommitCommand({
               commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',
+              baseRef,
               projectRoot,
               idempotencyKey,
               severityThreshold,

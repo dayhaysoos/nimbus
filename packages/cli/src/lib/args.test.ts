@@ -52,6 +52,8 @@ export function runArgsParsingTests(): void {
       'review',
       '--commit',
       'main~1',
+      '--base',
+      'origin/main',
       '--workspace',
       'ws_abc12345',
       '--deployment',
@@ -73,6 +75,7 @@ export function runArgsParsingTests(): void {
     ]);
     assert.equal(parsed.flags.workspace, 'ws_abc12345');
     assert.equal(parsed.flags.commit, 'main~1');
+    assert.equal(parsed.flags.base, 'origin/main');
     assert.equal(parsed.flags.deployment, 'dep_abcd1234');
     assert.equal(parsed.flags['severity-threshold'], 'medium');
     assert.equal(parsed.flags['max-findings'], '12');

@@ -25,6 +25,7 @@ const LONG_VALUE_FLAGS = new Set([
   'model',
   'label',
   'account-id',
+  'base',
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',

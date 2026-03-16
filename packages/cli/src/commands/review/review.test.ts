@@ -105,7 +105,7 @@ export async function runReviewCommandTests(): Promise<void> {
       setReviewPreflightLastCheckpointResolverForTests(() => null);
       await assert.rejects(
         () => reviewPreflightCommand('HEAD'),
-        /This branch has no Entire session history\. Make sure Entire capture is active before committing \(`entire status` to verify\)\./
+        /This branch has no Entire session history locally\./
       );
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightLastCheckpointResolverForTests(null);
@@ -143,7 +143,7 @@ export async function runReviewCommandTests(): Promise<void> {
       setReviewPreflightTokenReadinessResolverForTests(async () => false);
       await assert.rejects(
         () => reviewPreflightCommand('HEAD'),
-        /Review preflight failed: co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local \.env/
+        /Review preflight failed: co-change retrieval requires a GitHub token with repo read access to your repository/
       );
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
@@ -185,7 +185,7 @@ export async function runReviewCommandTests(): Promise<void> {
       setReviewPreflightLastValidContextResolverForTests(async () => null);
       await assert.rejects(
         () => reviewPreflightCommand('HEAD'),
-        /Review preflight failed: This branch has no Entire session history\. Make sure Entire capture is active before committing \(`entire status` to verify\)\./
+        /Review preflight failed: This branch has no Entire session history locally\./
       );
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
@@ -289,6 +289,180 @@ export async function runReviewCommandTests(): Promise<void> {
       setReviewCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightLastValidContextResolverForTests(null);
+      setReviewCreateFlowForTests(null);
+    }
+
+    {
+      let capturedBaseRef: string | undefined;
+      setReviewCommitResolverForTests((_commitish, options) => {
+        capturedBaseRef = options?.baseRef;
+        return {
+          commitSha: '1'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          commitDiffPatch: 'diff --git a/range.txt b/range.txt\nindex 111..222 100644\n--- a/range.txt\n+++ b/range.txt\n@@ -1 +1 @@\n-a\n+b\n',
+        };
+      });
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_base_ref'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      setReviewCreateFlowForTests({
+        resolveWorkspaceSource: () => ({
+          commitSha: '1'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          sourceRef: null,
+          projectRoot: '.',
+        }),
+        createWorkspace: async () => ({
+          workspace: {
+            id: 'ws_base_ref',
+            status: 'ready',
+            sourceType: 'checkpoint',
+            checkpointId: '8a513f56ed70',
+            commitSha: '1'.repeat(40),
+            sourceRef: null,
+            sourceProjectRoot: '.',
+            sourceBundleKey: 'bundle',
+            sourceBundleSha256: 'f'.repeat(64),
+            sourceBundleBytes: 123,
+            sandboxId: 'workspace-ws_base_ref',
+            baselineReady: true,
+            errorCode: null,
+            errorMessage: null,
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:00.000Z',
+            deletedAt: null,
+            eventsUrl: '/api/workspaces/ws_base_ref/events',
+          },
+        }),
+        deployWorkspace: async () => ({
+          id: 'dep_base_ref',
+          workspaceId: 'ws_base_ref',
+          status: 'succeeded',
+          provider: 'simulated',
+          idempotencyKey: 'idem-deploy',
+          maxRetries: 2,
+          attemptCount: 1,
+          sourceSnapshotSha256: null,
+          sourceBundleKey: 'bundle',
+          deployedUrl: 'https://example.dev',
+          providerDeploymentId: null,
+          cancelRequestedAt: null,
+          startedAt: '2026-03-11T00:00:00.000Z',
+          finishedAt: '2026-03-11T00:00:30.000Z',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          updatedAt: '2026-03-11T00:00:30.000Z',
+          provenance: {},
+          toolchain: null,
+          dependencyCacheKey: null,
+          dependencyCacheHit: false,
+          remediations: [],
+        }),
+        createReview: async () => ({
+          reviewId: 'rev_base_ref',
+          status: 'queued',
+          eventsUrl: '/api/reviews/rev_base_ref/events',
+          resultUrl: '/reviews/rev_base_ref',
+        }),
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => createReviewResponseBody() as unknown as { review: any },
+      });
+
+      await createReviewFromCommitCommand({ commitish: 'HEAD', baseRef: 'origin/main' });
+      assert.equal(capturedBaseRef, 'origin/main');
+      setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewCreateFlowForTests(null);
+    }
+
+    {
+      let capturedBaseRef: string | undefined;
+      setReviewCommitResolverForTests((_commitish, options) => {
+        capturedBaseRef = options?.baseRef;
+        return {
+          commitSha: '2'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          commitDiffPatch: 'diff --git a/commit.txt b/commit.txt\nindex 111..222 100644\n--- a/commit.txt\n+++ b/commit.txt\n@@ -1 +1 @@\n-a\n+b\n',
+        };
+      });
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_commit_patch'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      setReviewCreateFlowForTests({
+        resolveWorkspaceSource: () => ({
+          commitSha: '2'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          sourceRef: null,
+          projectRoot: '.',
+        }),
+        createWorkspace: async () => ({
+          workspace: {
+            id: 'ws_commit_patch',
+            status: 'ready',
+            sourceType: 'checkpoint',
+            checkpointId: '8a513f56ed70',
+            commitSha: '2'.repeat(40),
+            sourceRef: null,
+            sourceProjectRoot: '.',
+            sourceBundleKey: 'bundle',
+            sourceBundleSha256: 'f'.repeat(64),
+            sourceBundleBytes: 123,
+            sandboxId: 'workspace-ws_commit_patch',
+            baselineReady: true,
+            errorCode: null,
+            errorMessage: null,
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:00.000Z',
+            deletedAt: null,
+            eventsUrl: '/api/workspaces/ws_commit_patch/events',
+          },
+        }),
+        deployWorkspace: async () => ({
+          id: 'dep_commit_patch',
+          workspaceId: 'ws_commit_patch',
+          status: 'succeeded',
+          provider: 'simulated',
+          idempotencyKey: 'idem-deploy',
+          maxRetries: 2,
+          attemptCount: 1,
+          sourceSnapshotSha256: null,
+          sourceBundleKey: 'bundle',
+          deployedUrl: 'https://example.dev',
+          providerDeploymentId: null,
+          cancelRequestedAt: null,
+          startedAt: '2026-03-11T00:00:00.000Z',
+          finishedAt: '2026-03-11T00:00:30.000Z',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          updatedAt: '2026-03-11T00:00:30.000Z',
+          provenance: {},
+          toolchain: null,
+          dependencyCacheKey: null,
+          dependencyCacheHit: false,
+          remediations: [],
+        }),
+        createReview: async () => ({
+          reviewId: 'rev_commit_patch',
+          status: 'queued',
+          eventsUrl: '/api/reviews/rev_commit_patch/events',
+          resultUrl: '/reviews/rev_commit_patch',
+        }),
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => createReviewResponseBody() as unknown as { review: any },
+      });
+
+      await createReviewFromCommitCommand({ commitish: 'HEAD' });
+      assert.equal(capturedBaseRef, undefined);
+      setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
       setReviewCreateFlowForTests(null);
     }
 
@@ -972,7 +1146,7 @@ export async function runReviewCommandTests(): Promise<void> {
 
       await assert.rejects(
         () => createReviewCommand('ws_abc12345', 'dep_abcd1234', { idempotencyKey: 'idem-review-token-missing' }),
-        /co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local \.env/
+        /co-change retrieval requires a GitHub token with repo read access to your repository/
       );
       assert.equal(fetchCount, 0);
       setReviewPreflightTokenReadinessResolverForTests(async () => true);

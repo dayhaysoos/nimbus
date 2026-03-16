@@ -11,6 +11,10 @@ interface CommitResolution {
   commitDiffPatch: string;
 }
 
+interface ResolveCommitContextOptions {
+  baseRef?: string;
+}
+
 export interface ReviewCommitValidationResult {
   commitSha: string;
   checkpointId: string;
@@ -35,7 +39,7 @@ export interface ReviewEntireContextResolution {
   commitsAgo: number;
 }
 
-let resolveCommitForTests: ((commitish: string) => CommitResolution) | null = null;
+let resolveCommitForTests: ((commitish: string, options?: ResolveCommitContextOptions) => CommitResolution) | null = null;
 let resolveEntireContextForTests: typeof resolveEntireIntentContextForCommit | null = null;
 let resolveLastCheckpointOnBranchForTests: ((commitSha: string, cwd: string) => LastCheckpointOnBranch | null) | null = null;
 let resolveLastValidContextOnBranchForTests:
@@ -51,7 +55,7 @@ let resolveLastValidContextOnBranchForTests:
 let resolveTokenReadinessForTests: (() => Promise<boolean>) | null = null;
 
 export function setReviewPreflightCommitResolverForTests(
-  resolver: ((commitish: string) => CommitResolution) | null
+  resolver: ((commitish: string, options?: ResolveCommitContextOptions) => CommitResolution) | null
 ): void {
   resolveCommitForTests = resolver;
 }
@@ -145,7 +149,7 @@ export function buildMissingCheckpointTrailerMessage(commitSha: string, cwd = pr
     )} ('${lastCheckpoint.subject}') ${lastCheckpoint.commitsAgo} commits ago.`;
   }
 
-  return 'This branch has no Entire session history. Make sure Entire capture is active before committing (`entire status` to verify).';
+  return 'This branch has no Entire session history locally. If running in CI, fetch the checkpoint branch first:\n  `git fetch origin entire/checkpoints/v1`\nOtherwise make sure Entire capture is active before committing (`entire status` to verify).';
 }
 
 async function findLastCommitWithValidCheckpointContext(
@@ -281,29 +285,31 @@ async function buildMissingEntireContextMessage(
       7
     )} ('${lastValid.subject}') ${lastValid.commitsAgo} commits ago. Make sure Entire capture is active before committing.`;
   }
-  return 'This branch has no Entire session history. Make sure Entire capture is active before committing (`entire status` to verify).';
+  return 'This branch has no Entire session history locally. If running in CI, fetch the checkpoint branch first:\n  `git fetch origin entire/checkpoints/v1`\nOtherwise make sure Entire capture is active before committing (`entire status` to verify).';
 }
 
-function resolveCommitContext(commitish: string, cwd = process.cwd()): CommitResolution {
+function resolveCommitContext(commitish: string, cwd = process.cwd(), options?: ResolveCommitContextOptions): CommitResolution {
   if (resolveCommitForTests) {
-    return resolveCommitForTests(commitish);
+    return resolveCommitForTests(commitish, options);
   }
   const git = new GitRepo(cwd);
   const commitSha = git.resolveCommitSha(commitish);
   const trailers = parseCommitTrailers(git.getCommitMessage(commitSha));
+  const baseRef = typeof options?.baseRef === 'string' && options.baseRef.trim() ? options.baseRef.trim() : null;
   return {
     commitSha,
     checkpointId: trailers.checkpointId,
-    commitDiffPatch: git.getCommitPatch(commitSha),
+    commitDiffPatch: baseRef ? git.getRangePatch(baseRef, commitSha) : git.getCommitPatch(commitSha),
   };
 }
 
 export function validateReviewCommitCheckpoint(
   commitish: string,
-  cwd = process.cwd()
+  cwd = process.cwd(),
+  options?: ResolveCommitContextOptions
 ): ReviewCommitValidationResult {
   const normalizedCommitish = commitish.trim() || 'HEAD';
-  const resolved = resolveCommitContext(normalizedCommitish, cwd);
+  const resolved = resolveCommitContext(normalizedCommitish, cwd, options);
   const checkpointId = resolved.checkpointId ?? '';
   if (!checkpointId) {
     throw new Error(buildMissingCheckpointTrailerMessage(resolved.commitSha, cwd));
@@ -370,6 +376,8 @@ export async function validateReviewEntireIntentContext(
 }
 
 export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed' | 'legacy_unknown'> {
+  const missingTokenMessage =
+    "co-change retrieval requires a GitHub token with repo read access to your repository. This must be your own GitHub PAT - it cannot be shared across users because it accesses your repo's Entire checkpoint data. Set REVIEW_CONTEXT_GITHUB_TOKEN in your .env for local dev, or as a repository secret in GitHub Actions for CI.";
   const localToken =
     typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
       ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
@@ -381,14 +389,14 @@ export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed
   if (resolveTokenReadinessForTests) {
     const ready = await resolveTokenReadinessForTests();
     if (!ready) {
-      throw new Error('co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env');
+      throw new Error(missingTokenMessage);
     }
     return 'confirmed';
   }
 
   const workerUrl = getWorkerUrl();
   if (!workerUrl) {
-    throw new Error('co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env');
+    throw new Error(missingTokenMessage);
   }
   let readiness;
   try {
@@ -401,7 +409,7 @@ export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed
     throw error;
   }
   if (!readiness.ok) {
-    throw new Error('co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env');
+    throw new Error(missingTokenMessage);
   }
   return 'confirmed';
 }
