@@ -26,45 +26,16 @@ jobs:
             echo "::warning::Fork PR detected. Nimbus review steps requiring repository secrets will be skipped."
           fi
 
-      - name: Validate required secrets
-        id: validate_secrets
-        if: steps.pr_context.outputs.trusted_pr == 'true'
-        env:
-          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
-          REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
+      - name: Mark secrets ready
+        id: secrets_gate
+        if: ${{ steps.pr_context.outputs.trusted_pr == 'true' && secrets.NIMBUS_API_KEY != '' && secrets.REVIEW_CONTEXT_GITHUB_TOKEN != '' }}
         run: |
-          is_blank() {
-            [ -z "$(printf '%s' "$1" | tr -d '[:space:]')" ]
-          }
+          echo "secrets_ready=true" >> "$GITHUB_OUTPUT"
 
-          MISSING=0
-          INVALID=0
-          if is_blank "${NIMBUS_API_KEY}"; then
-            echo "Missing required workflow configuration. See README/docs for required secrets."
-            MISSING=1
-          fi
-          if is_blank "${REVIEW_CONTEXT_GITHUB_TOKEN}"; then
-            echo "Missing required workflow configuration. See README/docs for required secrets."
-            MISSING=1
-          fi
-
-          if [ "$MISSING" -eq 0 ]; then
-            if ! [[ "${NIMBUS_API_KEY}" =~ ^nmb_[A-Za-z0-9_]+$ ]]; then
-              echo "Invalid workflow configuration. NIMBUS_API_KEY has an unexpected format."
-              INVALID=1
-            fi
-            if ! [[ "${REVIEW_CONTEXT_GITHUB_TOKEN}" =~ ^(ghp_|github_pat_) ]]; then
-              echo "Invalid workflow configuration. REVIEW_CONTEXT_GITHUB_TOKEN must be a GitHub PAT (ghp_ or github_pat_)."
-              INVALID=1
-            fi
-          fi
-
-          if [ "$MISSING" -eq 1 ] || [ "$INVALID" -eq 1 ]; then
-            echo "secrets_ready=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Nimbus review steps will be skipped because required secrets are missing or invalid."
-          else
-            echo "secrets_ready=true" >> "$GITHUB_OUTPUT"
-          fi
+      - name: Warn when secrets missing
+        if: ${{ steps.pr_context.outputs.trusted_pr == 'true' && !(secrets.NIMBUS_API_KEY != '' && secrets.REVIEW_CONTEXT_GITHUB_TOKEN != '') }}
+        run: |
+          echo "::warning::Nimbus review steps will be skipped because required secrets are missing."
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -100,13 +71,13 @@ jobs:
       # When extracted to standalone nimbus-action, replace with globally-installed CLI:
       # nimbus review create --commit <sha> --base <ref>
       - name: Refresh PR base ref
-        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true'
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.secrets_gate.outputs.secrets_ready == 'true'
         run: |
           git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
 
       - name: Run Nimbus review create (non-blocking)
         id: create_review
-        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true'
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.secrets_gate.outputs.secrets_ready == 'true'
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
@@ -123,13 +94,15 @@ jobs:
 
       - name: Read review ID
         id: parse_review_id
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true'
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.secrets_gate.outputs.secrets_ready == 'true'
+        env:
+          CREATE_OUTCOME: ${{ steps.create_review.outcome }}
         run: |
           # Try file first (reliable)
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
           if [ -z "${REVIEW_ID}" ]; then
-            echo "::warning::Review ID file was not produced; skipping markdown export for this run."
+            echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}); skipping markdown export for this run."
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
@@ -137,7 +110,7 @@ jobs:
 
       - name: Export review markdown (non-blocking)
         id: export_markdown
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.validate_secrets.outputs.secrets_ready == 'true' && steps.parse_review_id.outputs.review_id != ''
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.secrets_gate.outputs.secrets_ready == 'true' && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
@@ -150,7 +123,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}
-          SECRETS_READY: ${{ steps.validate_secrets.outputs.secrets_ready }}
+          SECRETS_READY: ${{ steps.secrets_gate.outputs.secrets_ready || 'false' }}
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
           CREATE_OUTCOME: ${{ steps.create_review.outcome }}
           EXPORT_OUTCOME: ${{ steps.export_markdown.outcome }}
