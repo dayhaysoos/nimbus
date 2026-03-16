@@ -29,6 +29,7 @@ const LONG_VALUE_FLAGS = new Set([
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',
+  'output-review-id',
 ]);
 const SHORT_VALUE_FLAGS = new Set<string>();
 

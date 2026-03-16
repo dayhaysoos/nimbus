@@ -152,6 +152,8 @@ Options:
   --deployment <id>   Deployment ID for review create
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
   --base <ref>        Diff base ref for review create (uses <base>...<commit>)
+  --output-review-id [path]
+                      Write queued review ID to a file (machine-readable)
   --severity-threshold <level>
                       Review finding floor (low|medium|high|critical)
   --max-findings <n>  Maximum findings to include in report
@@ -408,6 +410,12 @@ async function main(): Promise<void> {
           const projectRoot = typeof projectRootFlag === 'string' && projectRootFlag.trim() ? projectRootFlag.trim() : undefined;
           const baseFlag = flags.base;
           const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
+          const outputReviewIdFlag = flags['output-review-id'];
+          const outputReviewIdPath =
+            typeof outputReviewIdFlag === 'string' && outputReviewIdFlag.trim() ? outputReviewIdFlag.trim() : undefined;
+          if (outputReviewIdFlag === true) {
+            p.log.warning('Ignoring --output-review-id without a file path.');
+          }
           const severityThreshold = parseReviewSeverityThreshold(flags['severity-threshold']);
           const maxFindings = parseReviewMaxFindings(flags['max-findings']);
           const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;
@@ -431,6 +439,7 @@ async function main(): Promise<void> {
             await createReviewFromCommitCommand({
               commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',
               baseRef,
+              outputReviewIdPath,
               projectRoot,
               idempotencyKey,
               severityThreshold,

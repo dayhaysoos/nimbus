@@ -1,0 +1,189 @@
+name: Nimbus PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  nimbus-review:
+    name: Nimbus Review (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    env:
+      NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+      REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
+      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+      NIMBUS_WORKER_URL: ${{ secrets.NIMBUS_WORKER_URL }}
+
+    steps:
+      - name: Validate required secrets
+        run: |
+          if [ -z "${NIMBUS_API_KEY}" ]; then
+            echo "Missing required secret: NIMBUS_API_KEY"
+            exit 1
+          fi
+          if [ -z "${REVIEW_CONTEXT_GITHUB_TOKEN}" ]; then
+            echo "Missing required secret: REVIEW_CONTEXT_GITHUB_TOKEN"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Entire checkpoint branch
+        continue-on-error: true
+        run: |
+          # Required for local Entire context/co-change resolution in CI.
+          # If this branch doesn't exist yet, the review will still run
+          # but without local co-change context.
+          git fetch --no-tags origin entire/checkpoints/v1:refs/remotes/origin/entire/checkpoints/v1 || true
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Dogfood invocation for monorepo development.
+      # When extracted to standalone nimbus-action, replace with globally-installed CLI:
+      # nimbus review create --commit <sha> --base <ref>
+      - name: Run Nimbus review create (non-blocking)
+        id: create_review
+        continue-on-error: true
+        run: |
+          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
+          BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
+          pnpm --filter @dayhaysoos/nimbus dev review create \
+            --commit "${HEAD_SHA}" \
+            --base "${BASE_REF}" \
+            --output-review-id nimbus-review-id.txt | tee nimbus-review-create.log
+
+      - name: Read review ID
+        id: parse_review_id
+        if: always()
+        run: |
+          # Try file first (reliable)
+          REVIEW_ID=$(cat nimbus-review-id.txt 2>/dev/null || echo "")
+
+          # Fall back to log parsing if file not present
+          if [ -z "${REVIEW_ID}" ] && [ -f nimbus-review-create.log ]; then
+            REVIEW_ID=$(grep -oP 'Review queued:\s+\K(rev_[a-z0-9_]+)' nimbus-review-create.log || echo "")
+          fi
+
+          echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
+          echo "Parsed review_id='${REVIEW_ID}'"
+
+      - name: Export review markdown (non-blocking)
+        id: export_markdown
+        if: always() && steps.parse_review_id.outputs.review_id != ''
+        continue-on-error: true
+        run: |
+          pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out nimbus-review.md
+
+      - name: Upsert sticky PR comment
+        if: always()
+        uses: actions/github-script@v7
+        env:
+          REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
+          CREATE_OUTCOME: ${{ steps.create_review.outcome }}
+          EXPORT_OUTCOME: ${{ steps.export_markdown.outcome }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const marker = '<!-- nimbus-review-comment -->';
+            const reviewId = process.env.REVIEW_ID || '';
+            const createOutcome = process.env.CREATE_OUTCOME || 'unknown';
+            const exportOutcome = process.env.EXPORT_OUTCOME || 'skipped';
+
+            const pr = context.payload.pull_request;
+            const headSha = pr.head.sha;
+            const baseRef = pr.base.ref;
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            let body = `${marker}
+            ## Nimbus Review
+
+            - Commit: \`${headSha}\`
+            - Base: \`${baseRef}\`
+            - Create step: \`${createOutcome}\`
+            - Export step: \`${exportOutcome}\`
+            - Workflow run: ${runUrl}
+            `;
+
+            if (reviewId && fs.existsSync('nimbus-review.md')) {
+              const markdown = fs.readFileSync('nimbus-review.md', 'utf8').trim();
+              body += `
+
+            ---
+            ${markdown}
+            `;
+            } else {
+              body += `
+
+            ---
+            Nimbus review did not produce an exportable markdown report in this run.
+            Check workflow logs for details.
+            `;
+            }
+
+            const max = 65000;
+            if (body.length > max) {
+              body = body.slice(0, max) + '\n\n... (truncated)';
+            }
+
+            const { owner, repo } = context.repo;
+            const issue_number = pr.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existing = comments.find(c =>
+              c.user?.type === 'Bot' &&
+              typeof c.body === 'string' &&
+              c.body.includes(marker)
+            );
+
+            if (existing) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: existing.id,
+                body,
+              });
+              core.info(`Updated existing Nimbus comment: ${existing.id}`);
+            } else {
+              const created = await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body,
+              });
+              core.info(`Created Nimbus comment: ${created.data.id}`);
+            }
+
+      - name: Finalize as informational check
+        if: always()
+        run: |
+          echo "Nimbus PR review completed (informational mode)."
+          exit 0

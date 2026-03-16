@@ -1,5 +1,7 @@
 import * as p from '@clack/prompts';
 import { createHash } from 'crypto';
+import { mkdir, writeFile } from 'fs/promises';
+import { dirname, resolve } from 'path';
 import {
   createReview,
   getReview,
@@ -226,6 +228,7 @@ export async function createReviewFromCommitCommand(
   options?: {
     commitish?: string;
     baseRef?: string;
+    outputReviewIdPath?: string;
     projectRoot?: string;
     idempotencyKey?: string;
     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
@@ -475,6 +478,22 @@ export async function createReviewFromCommitCommand(
     const status = typeof terminalStatus === 'string' ? terminalStatus : final.review.status;
     if (status !== 'succeeded') {
       throw new Error(formatReviewExecutionFailure(status, final.review, lastFailureEvent));
+    }
+
+    const outputReviewIdRaw = options?.outputReviewIdPath;
+    const outputReviewIdPath = outputReviewIdRaw?.trim();
+    if (outputReviewIdRaw !== undefined && !outputReviewIdPath) {
+      p.log.warning('Ignoring --output-review-id without a file path.');
+    }
+    if (outputReviewIdPath) {
+      try {
+        const absolutePath = resolve(outputReviewIdPath);
+        await mkdir(dirname(absolutePath), { recursive: true });
+        await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        p.log.warning(`Could not write review ID file at ${outputReviewIdPath}: ${message}`);
+      }
     }
 
     console.log(`Report URL: ${reviewResultUrl}`);

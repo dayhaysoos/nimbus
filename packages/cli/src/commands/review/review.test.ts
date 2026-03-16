@@ -1,7 +1,9 @@
 import { strict as assert } from 'assert';
+import { existsSync } from 'fs';
 import { mkdtemp, readFile, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import { join } from 'path';
+import * as p from '@clack/prompts';
 import {
   createReviewCommand,
   createReviewFromCommitCommand,
@@ -464,6 +466,286 @@ export async function runReviewCommandTests(): Promise<void> {
       setReviewCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewCreateFlowForTests(null);
+    }
+
+    {
+      const dir = await mkdtemp(join(tmpdir(), 'nimbus-review-id-success-'));
+      const reviewIdPath = join(dir, 'review-id.txt');
+      try {
+        setReviewPreflightContextResolverForTests(async () => ({
+          note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+          sessionIds: ['sess_review_id_write'],
+          transcriptUrl: null,
+          intentSessionContext: ['Constraint: Keep scope narrow.'],
+        }));
+        setReviewCommitResolverForTests(() => ({
+          commitSha: '3'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+        }));
+        setReviewCreateFlowForTests({
+          resolveWorkspaceSource: () => ({
+            commitSha: '3'.repeat(40),
+            checkpointId: '8a513f56ed70',
+            sourceRef: null,
+            projectRoot: '.',
+          }),
+          createWorkspace: async () => ({
+            workspace: {
+              id: 'ws_review_id_write',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: '8a513f56ed70',
+              commitSha: '3'.repeat(40),
+              sourceRef: null,
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'bundle',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 123,
+              sandboxId: 'workspace-ws_review_id_write',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_review_id_write/events',
+            },
+          }),
+          deployWorkspace: async () => ({
+            id: 'dep_review_id_write',
+            workspaceId: 'ws_review_id_write',
+            status: 'succeeded',
+            provider: 'simulated',
+            idempotencyKey: 'idem-deploy',
+            maxRetries: 2,
+            attemptCount: 1,
+            sourceSnapshotSha256: null,
+            sourceBundleKey: 'bundle',
+            deployedUrl: 'https://example.dev',
+            providerDeploymentId: null,
+            cancelRequestedAt: null,
+            startedAt: '2026-03-11T00:00:00.000Z',
+            finishedAt: '2026-03-11T00:00:30.000Z',
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:30.000Z',
+            provenance: {},
+            toolchain: null,
+            dependencyCacheKey: null,
+            dependencyCacheHit: false,
+            remediations: [],
+          }),
+          createReview: async () => ({
+            reviewId: 'rev_review_id_write',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_review_id_write/events',
+            resultUrl: '/reviews/rev_review_id_write',
+          }),
+          streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+            await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+          },
+          getReview: async () => createReviewResponseBody() as unknown as { review: any },
+        });
+
+        await createReviewFromCommitCommand({ commitish: 'HEAD', outputReviewIdPath: reviewIdPath });
+        const saved = await readFile(reviewIdPath, 'utf8');
+        assert.equal(saved.trim(), 'rev_review_id_write');
+      } finally {
+        setReviewCommitResolverForTests(null);
+        setReviewPreflightContextResolverForTests(null);
+        setReviewCreateFlowForTests(null);
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+
+    {
+      const dir = await mkdtemp(join(tmpdir(), 'nimbus-review-id-failure-'));
+      const reviewIdPath = join(dir, 'review-id.txt');
+      try {
+        setReviewPreflightContextResolverForTests(async () => ({
+          note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+          sessionIds: ['sess_review_id_fail'],
+          transcriptUrl: null,
+          intentSessionContext: ['Constraint: Keep scope narrow.'],
+        }));
+        setReviewCommitResolverForTests(() => ({
+          commitSha: '4'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+        }));
+        setReviewCreateFlowForTests({
+          resolveWorkspaceSource: () => ({
+            commitSha: '4'.repeat(40),
+            checkpointId: '8a513f56ed70',
+            sourceRef: null,
+            projectRoot: '.',
+          }),
+          createWorkspace: async () => ({
+            workspace: {
+              id: 'ws_review_id_fail',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: '8a513f56ed70',
+              commitSha: '4'.repeat(40),
+              sourceRef: null,
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'bundle',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 123,
+              sandboxId: 'workspace-ws_review_id_fail',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_review_id_fail/events',
+            },
+          }),
+          deployWorkspace: async () => ({
+            id: 'dep_review_id_fail',
+            workspaceId: 'ws_review_id_fail',
+            status: 'succeeded',
+            provider: 'simulated',
+            idempotencyKey: 'idem-deploy',
+            maxRetries: 2,
+            attemptCount: 1,
+            sourceSnapshotSha256: null,
+            sourceBundleKey: 'bundle',
+            deployedUrl: 'https://example.dev',
+            providerDeploymentId: null,
+            cancelRequestedAt: null,
+            startedAt: '2026-03-11T00:00:00.000Z',
+            finishedAt: '2026-03-11T00:00:30.000Z',
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:30.000Z',
+            provenance: {},
+            toolchain: null,
+            dependencyCacheKey: null,
+            dependencyCacheHit: false,
+            remediations: [],
+          }),
+          createReview: async () => ({
+            reviewId: 'rev_review_id_fail',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_review_id_fail/events',
+            resultUrl: '/reviews/rev_review_id_fail',
+          }),
+          streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+            await onEvent({ id: '1', data: { type: 'terminal', status: 'failed' } });
+          },
+          getReview: async () => ({
+            review: {
+              ...createReviewResponseBody().review,
+              status: 'failed',
+              error: {
+                code: 'review_failed',
+                message: 'review failed in test',
+              },
+            },
+          }) as unknown as { review: any },
+        });
+
+        await assert.rejects(() => createReviewFromCommitCommand({ commitish: 'HEAD', outputReviewIdPath: reviewIdPath }));
+        assert.equal(existsSync(reviewIdPath), false);
+      } finally {
+        setReviewCommitResolverForTests(null);
+        setReviewPreflightContextResolverForTests(null);
+        setReviewCreateFlowForTests(null);
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+
+    {
+      const warnings: string[] = [];
+      const originalWarning = p.log.warning;
+      (p.log as { warning: (message: string) => void }).warning = (message: string) => {
+        warnings.push(message);
+      };
+      try {
+        setReviewPreflightContextResolverForTests(async () => ({
+          note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+          sessionIds: ['sess_review_id_warn'],
+          transcriptUrl: null,
+          intentSessionContext: ['Constraint: Keep scope narrow.'],
+        }));
+        setReviewCommitResolverForTests(() => ({
+          commitSha: '5'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+        }));
+        setReviewCreateFlowForTests({
+          resolveWorkspaceSource: () => ({
+            commitSha: '5'.repeat(40),
+            checkpointId: '8a513f56ed70',
+            sourceRef: null,
+            projectRoot: '.',
+          }),
+          createWorkspace: async () => ({
+            workspace: {
+              id: 'ws_review_id_warn',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: '8a513f56ed70',
+              commitSha: '5'.repeat(40),
+              sourceRef: null,
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'bundle',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 123,
+              sandboxId: 'workspace-ws_review_id_warn',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_review_id_warn/events',
+            },
+          }),
+          deployWorkspace: async () => ({
+            id: 'dep_review_id_warn',
+            workspaceId: 'ws_review_id_warn',
+            status: 'succeeded',
+            provider: 'simulated',
+            idempotencyKey: 'idem-deploy',
+            maxRetries: 2,
+            attemptCount: 1,
+            sourceSnapshotSha256: null,
+            sourceBundleKey: 'bundle',
+            deployedUrl: 'https://example.dev',
+            providerDeploymentId: null,
+            cancelRequestedAt: null,
+            startedAt: '2026-03-11T00:00:00.000Z',
+            finishedAt: '2026-03-11T00:00:30.000Z',
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:30.000Z',
+            provenance: {},
+            toolchain: null,
+            dependencyCacheKey: null,
+            dependencyCacheHit: false,
+            remediations: [],
+          }),
+          createReview: async () => ({
+            reviewId: 'rev_review_id_warn',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_review_id_warn/events',
+            resultUrl: '/reviews/rev_review_id_warn',
+          }),
+          streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+            await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+          },
+          getReview: async () => createReviewResponseBody() as unknown as { review: any },
+        });
+
+        await createReviewFromCommitCommand({ commitish: 'HEAD', outputReviewIdPath: '   ' });
+        assert.equal(warnings.some((message) => message.includes('Ignoring --output-review-id without a file path')), true);
+      } finally {
+        (p.log as { warning: (message: string) => void }).warning = originalWarning;
+        setReviewCommitResolverForTests(null);
+        setReviewPreflightContextResolverForTests(null);
+        setReviewCreateFlowForTests(null);
+      }
     }
 
     {
