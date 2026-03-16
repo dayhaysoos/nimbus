@@ -15,14 +15,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
-    env:
-      NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
-      REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
-      OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-      NIMBUS_WORKER_URL: ${{ secrets.NIMBUS_WORKER_URL }}
-
     steps:
       - name: Validate required secrets
+        env:
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+          REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
         run: |
           if [ -z "${NIMBUS_API_KEY}" ]; then
             echo "Missing required secret: NIMBUS_API_KEY"
@@ -69,6 +66,11 @@ jobs:
       - name: Run Nimbus review create (non-blocking)
         id: create_review
         continue-on-error: true
+        env:
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+          REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NIMBUS_WORKER_URL: ${{ secrets.NIMBUS_WORKER_URL }}
         run: |
           HEAD_SHA="${{ github.event.pull_request.head.sha }}"
           BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
@@ -86,12 +88,10 @@ jobs:
 
           # Fall back to log parsing if file not present
           if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
-            REVIEW_ID=$(awk '
-              match($0, /Review queued:[[:space:]]*(rev_[A-Za-z0-9_]+)/, m) {
-                print m[1];
-                exit;
-              }
-            ' "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null || echo "")
+            REVIEW_ID=$(grep -Eo 'rev_[A-Za-z0-9_]+' "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null | tail -n 1 || echo "")
+            if [ -n "${REVIEW_ID}" ]; then
+              echo "::warning::Review ID file was missing; recovered review ID from logs fallback."
+            fi
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
@@ -101,6 +101,9 @@ jobs:
         id: export_markdown
         if: always() && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
+        env:
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+          NIMBUS_WORKER_URL: ${{ secrets.NIMBUS_WORKER_URL }}
         run: |
           pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
