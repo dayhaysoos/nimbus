@@ -70,18 +70,18 @@ jobs:
           pnpm --filter @dayhaysoos/nimbus dev review create \
             --commit "${HEAD_SHA}" \
             --base "${BASE_REF}" \
-            --output-review-id nimbus-review-id.txt | tee nimbus-review-create.log
+            --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt" | tee "$GITHUB_WORKSPACE/nimbus-review-create.log"
 
       - name: Read review ID
         id: parse_review_id
         if: always()
         run: |
           # Try file first (reliable)
-          REVIEW_ID=$(cat nimbus-review-id.txt 2>/dev/null || echo "")
+          REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
           # Fall back to log parsing if file not present
-          if [ -z "${REVIEW_ID}" ] && [ -f nimbus-review-create.log ]; then
-            REVIEW_ID=$(grep -oP 'Review queued:\s+\K(rev_[a-z0-9_]+)' nimbus-review-create.log || echo "")
+          if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
+            REVIEW_ID=$(grep -oP 'Review queued:\s+\K(rev_[a-z0-9_]+)' "$GITHUB_WORKSPACE/nimbus-review-create.log" || echo "")
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
@@ -92,7 +92,7 @@ jobs:
         if: always() && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
         run: |
-          pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out nimbus-review.md
+          pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
       - name: Upsert sticky PR comment
         if: always()
@@ -109,6 +109,8 @@ jobs:
             const reviewId = process.env.REVIEW_ID || '';
             const createOutcome = process.env.CREATE_OUTCOME || 'unknown';
             const exportOutcome = process.env.EXPORT_OUTCOME || 'skipped';
+            const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+            const markdownPath = `${workspace}/nimbus-review.md`;
 
             const pr = context.payload.pull_request;
             const headSha = pr.head.sha;
@@ -125,8 +127,8 @@ jobs:
             - Workflow run: ${runUrl}
             `;
 
-            if (reviewId && fs.existsSync('nimbus-review.md')) {
-              const markdown = fs.readFileSync('nimbus-review.md', 'utf8').trim();
+            if (reviewId && fs.existsSync(markdownPath)) {
+              const markdown = fs.readFileSync(markdownPath, 'utf8').trim();
               body += `
 
             ---
