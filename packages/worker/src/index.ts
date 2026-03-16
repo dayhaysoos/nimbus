@@ -46,6 +46,7 @@ import { ReviewRunner } from './review-runner-do.js';
 import { handleReviewQueueDispatch } from './lib/review-dispatch.js';
 import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';
 import { authenticateRequest } from './lib/auth.js';
+import { enforceRequestBodySizeCap } from './lib/request-size.js';
 import type { AuthContext, Env } from './types.js';
 
 // Re-export Durable Objects for bindings
@@ -71,6 +72,11 @@ export default {
     // Handle CORS preflight
     if (request.method === 'OPTIONS') {
       return new Response(null, { headers: corsHeaders });
+    }
+
+    const sizeLimitResponse = enforceRequestBodySizeCap(request, corsHeaders);
+    if (sizeLimitResponse) {
+      return sizeLimitResponse;
     }
 
     const authResult = await authenticateRequest(request, env);

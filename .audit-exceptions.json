@@ -1,0 +1,35 @@
+[
+  {
+    "ghsa": "GHSA-f269-vfmq-vjvj",
+    "package": "undici",
+    "severity": "high",
+    "reason": "Impacts Undici WebSocket client parsing. Nimbus production code runs on Cloudflare Workers and does not use Undici WebSocket client paths.",
+    "scope": [
+      "packages/agent-endpoint > wrangler > miniflare > undici",
+      "packages/worker > wrangler > miniflare > undici",
+      "packages/worker > undici"
+    ]
+  },
+  {
+    "ghsa": "GHSA-vrm6-8vpv-qv8q",
+    "package": "undici",
+    "severity": "high",
+    "reason": "Impacts Undici WebSocket permessage-deflate handling. Nimbus does not open outbound WebSocket client connections in Cloudflare Workers runtime.",
+    "scope": [
+      "packages/agent-endpoint > wrangler > miniflare > undici",
+      "packages/worker > wrangler > miniflare > undici",
+      "packages/worker > undici"
+    ]
+  },
+  {
+    "ghsa": "GHSA-v9p9-hfj2-hcw8",
+    "package": "undici",
+    "severity": "high",
+    "reason": "Impacts Undici WebSocket decompression negotiation in Node.js clients. This code path is not reachable in Cloudflare Workers fetch runtime used in production.",
+    "scope": [
+      "packages/agent-endpoint > wrangler > miniflare > undici",
+      "packages/worker > wrangler > miniflare > undici",
+      "packages/worker > undici"
+    ]
+  }
+]
