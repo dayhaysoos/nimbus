@@ -320,3 +320,10 @@ export interface ReviewEventEnvelope {
   id: string | null;
   data: Record<string, unknown>;
 }
+
+export interface AdminApiKeyCreateResponse {
+  key: string;
+  accountId: string;
+  label: string;
+  isAdmin: boolean;
+}

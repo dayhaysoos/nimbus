@@ -45,6 +45,7 @@ import { parseReviewQueueMessage } from './lib/review-queue.js';
 import { ReviewRunner } from './review-runner-do.js';
 import { handleReviewQueueDispatch } from './lib/review-dispatch.js';
 import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';
+import { handleCreateAdminApiKey } from './api/admin.js';
 import { authenticateRequest } from './lib/auth.js';
 import { enforceRequestBodySizeCap } from './lib/request-size.js';
 import type { AuthContext, Env } from './types.js';
@@ -98,6 +99,11 @@ export default {
     // Route: POST /api/reviews - Create review run
     if (url.pathname === '/api/reviews' && request.method === 'POST') {
       return handleCreateReview(request, env, ctx, authContext);
+    }
+
+    // Route: POST /api/admin/keys - Provision hosted API key
+    if (url.pathname === '/api/admin/keys' && request.method === 'POST') {
+      return handleCreateAdminApiKey(request, env, authContext);
     }
 
     // Route: GET /api/reviews/:id/events - Review event stream

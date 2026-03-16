@@ -23,6 +23,8 @@ const LONG_VALUE_FLAGS = new Set([
   'summarize-session',
   'intent-token-budget',
   'model',
+  'label',
+  'account-id',
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',
