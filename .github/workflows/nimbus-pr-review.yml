@@ -22,11 +22,11 @@ jobs:
           REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
         run: |
           if [ -z "${NIMBUS_API_KEY}" ]; then
-            echo "Missing required secret: NIMBUS_API_KEY"
+            echo "Missing required workflow configuration. See README/docs for required secrets."
             exit 1
           fi
           if [ -z "${REVIEW_CONTEXT_GITHUB_TOKEN}" ]; then
-            echo "Missing required secret: REVIEW_CONTEXT_GITHUB_TOKEN"
+            echo "Missing required workflow configuration. See README/docs for required secrets."
             exit 1
           fi
 
@@ -86,11 +86,18 @@ jobs:
           # Try file first (reliable)
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
-          # Fall back to log parsing if file not present
+          # Fall back to log parsing if file not present.
+          # This fallback is intentionally conservative: it only accepts a
+          # single unique review ID candidate from the log; otherwise it emits
+          # a warning and returns empty output.
           if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
-            REVIEW_ID=$(grep -Eo 'rev_[A-Za-z0-9_]+' "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null | tail -n 1 || echo "")
-            if [ -n "${REVIEW_ID}" ]; then
+            MATCHES=$(grep -Eo 'rev_[A-Za-z0-9_]+' "$GITHUB_WORKSPACE/nimbus-review-create.log" 2>/dev/null | sort -u || true)
+            MATCH_COUNT=$(printf '%s\n' "$MATCHES" | sed '/^$/d' | wc -l | tr -d ' ')
+            if [ "$MATCH_COUNT" = "1" ]; then
+              REVIEW_ID="$MATCHES"
               echo "::warning::Review ID file was missing; recovered review ID from logs fallback."
+            elif [ "$MATCH_COUNT" -gt 1 ]; then
+              echo "::warning::Review ID file was missing and multiple log candidates were found; skipping fallback to avoid ambiguity."
             fi
           fi
 
@@ -159,9 +166,11 @@ jobs:
             `;
             }
 
-            const max = 65000;
-            if (body.length > max) {
-              body = body.slice(0, max) + '\n\n... (truncated)';
+            const suffix = '\n\n... (truncated)';
+            const max = 65536;
+            const maxBeforeSuffix = max - suffix.length;
+            if (body.length > maxBeforeSuffix) {
+              body = body.slice(0, maxBeforeSuffix) + suffix;
             }
 
             const { owner, repo } = context.repo;
