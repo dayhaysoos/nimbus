@@ -4,6 +4,10 @@ on:
   pull_request:
     types: [opened, synchronize]
 
+concurrency:
+  group: nimbus-pr-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
   pull-requests: write
@@ -123,7 +127,25 @@ jobs:
           pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
       - name: Upsert sticky PR comment
+        id: stale_guard
         if: always()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo } = context.repo;
+            const pull_number = context.payload.pull_request.number;
+            const triggerHead = context.payload.pull_request.head.sha;
+            const latest = await github.rest.pulls.get({ owner, repo, pull_number });
+            const currentHead = latest.data.head.sha;
+            const isStale = currentHead !== triggerHead;
+            core.setOutput('is_stale', isStale ? 'true' : 'false');
+            core.setOutput('current_head', currentHead);
+            if (isStale) {
+              core.warning(`Skipping sticky comment update from stale run. Trigger head=${triggerHead}, current PR head=${currentHead}`);
+            }
+
+      - name: Upsert sticky PR comment
+        if: always() && steps.stale_guard.outputs.is_stale != 'true'
         uses: actions/github-script@v7
         env:
           TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}
