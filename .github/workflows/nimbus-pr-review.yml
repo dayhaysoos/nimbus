@@ -100,9 +100,13 @@ jobs:
         run: |
           # Try file first (reliable)
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
+          LOG_PRESENT="false"
+          if [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
+            LOG_PRESENT="true"
+          fi
 
           if [ -z "${REVIEW_ID}" ]; then
-            echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}); skipping markdown export for this run."
+            echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}, create log present: ${LOG_PRESENT}); skipping markdown export for this run."
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
