@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize]
 
 concurrency:
-  group: nimbus-pr-review-${{ github.event.pull_request.number }}
+  group: nimbus-pr-review-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
@@ -15,6 +15,7 @@ permissions:
 
 jobs:
   nimbus-review:
+    if: github.event_name == 'pull_request'
     name: Nimbus Review (informational)
     runs-on: ubuntu-latest
     timeout-minutes: 10
