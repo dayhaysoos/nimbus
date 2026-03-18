@@ -31,17 +31,6 @@ jobs:
             echo "::warning::Fork PR detected. Nimbus review steps requiring repository secrets will be skipped."
           fi
 
-      - name: Mark secrets ready
-        id: secrets_gate
-        if: ${{ steps.pr_context.outputs.trusted_pr == 'true' && secrets.NIMBUS_API_KEY != '' && secrets.REVIEW_CONTEXT_GITHUB_TOKEN != '' }}
-        run: |
-          echo "secrets_ready=true" >> "$GITHUB_OUTPUT"
-
-      - name: Warn when secrets missing
-        if: ${{ steps.pr_context.outputs.trusted_pr == 'true' && !(secrets.NIMBUS_API_KEY != '' && secrets.REVIEW_CONTEXT_GITHUB_TOKEN != '') }}
-        run: |
-          echo "::warning::Nimbus review steps will be skipped because required secrets are missing."
-
       - name: Checkout
         uses: actions/checkout@v4
         with:
@@ -76,13 +65,13 @@ jobs:
       # When extracted to standalone nimbus-action, replace with globally-installed CLI:
       # nimbus review create --commit <sha> --base <ref>
       - name: Refresh PR base ref
-        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.secrets_gate.outputs.secrets_ready == 'true'
+        if: steps.pr_context.outputs.trusted_pr == 'true'
         run: |
           git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
 
       - name: Run Nimbus review create (non-blocking)
         id: create_review
-        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.secrets_gate.outputs.secrets_ready == 'true'
+        if: steps.pr_context.outputs.trusted_pr == 'true'
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
@@ -99,7 +88,7 @@ jobs:
 
       - name: Read review ID
         id: parse_review_id
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.secrets_gate.outputs.secrets_ready == 'true'
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true'
         env:
           CREATE_OUTCOME: ${{ steps.create_review.outcome }}
         run: |
@@ -119,7 +108,7 @@ jobs:
 
       - name: Export review markdown (non-blocking)
         id: export_markdown
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.secrets_gate.outputs.secrets_ready == 'true' && steps.parse_review_id.outputs.review_id != ''
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
@@ -150,7 +139,7 @@ jobs:
         uses: actions/github-script@v7
         env:
           TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}
-          SECRETS_READY: ${{ steps.secrets_gate.outputs.secrets_ready || 'false' }}
+          SECRETS_READY: ${{ steps.create_review.outcome != 'skipped' && 'true' || 'false' }}
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
           CREATE_OUTCOME: ${{ steps.create_review.outcome }}
           EXPORT_OUTCOME: ${{ steps.export_markdown.outcome }}
