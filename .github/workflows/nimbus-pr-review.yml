@@ -24,11 +24,11 @@ jobs:
       - name: Detect trusted PR context
         id: pr_context
         run: |
-          if [ "${{ github.event.pull_request.head.repo.full_name }}" = "${{ github.repository }}" ]; then
+          if [ "${{ github.event.pull_request.head.repo.fork }}" = "false" ] && [ "${{ github.event.pull_request.head.repo.id }}" = "${{ github.repository_id }}" ]; then
             echo "trusted_pr=true" >> "$GITHUB_OUTPUT"
           else
             echo "trusted_pr=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Fork PR detected. Nimbus review steps requiring repository secrets will be skipped."
+            echo "::warning::Untrusted PR context detected (fork or different repository id). Nimbus review steps requiring repository secrets will be skipped."
           fi
 
       - name: Checkout
@@ -100,7 +100,7 @@ jobs:
           fi
 
           if [ -z "${REVIEW_ID}" ]; then
-            echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}, create log present: ${LOG_PRESENT}); skipping markdown export for this run."
+            echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}, create log present: ${LOG_PRESENT}). Markdown export will be skipped. Check $GITHUB_WORKSPACE/nimbus-review-create.log and re-run this workflow if create failed unexpectedly."
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"

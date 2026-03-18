@@ -488,9 +488,15 @@ export async function createReviewFromCommitCommand(
     }
     if (outputReviewIdPath) {
       try {
+        let baseDir = process.cwd();
+        try {
+          baseDir = new GitRepo(process.cwd()).getRepoRoot();
+        } catch {
+          // Fall back to current working directory outside git contexts.
+        }
         const absolutePath = isAbsolute(outputReviewIdPath)
           ? outputReviewIdPath
-          : resolve(new GitRepo(process.cwd()).getRepoRoot(), outputReviewIdPath);
+          : resolve(baseDir, outputReviewIdPath);
         await mkdir(dirname(absolutePath), { recursive: true });
         await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
       } catch (error) {

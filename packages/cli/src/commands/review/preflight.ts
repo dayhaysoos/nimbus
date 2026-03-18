@@ -29,6 +29,14 @@ interface LastCheckpointOnBranch {
   context?: EntireIntentContext;
 }
 
+function buildMissingLocalCheckpointHistoryMessage(): string {
+  return [
+    'This branch has no Entire session history locally. If running in CI, fetch the checkpoint branch first:',
+    '  `git fetch origin entire/checkpoints/v1`',
+    'Otherwise make sure Entire capture is active before committing (`entire status` to verify).',
+  ].join('\n');
+}
+
 export interface ReviewEntireContextResolution {
   context: EntireIntentContext;
   contextResolution: 'direct' | 'branch_fallback';
@@ -149,7 +157,7 @@ export function buildMissingCheckpointTrailerMessage(commitSha: string, cwd = pr
     )} ('${lastCheckpoint.subject}') ${lastCheckpoint.commitsAgo} commits ago.`;
   }
 
-  return 'This branch has no Entire session history locally. If running in CI, fetch the checkpoint branch first:\n  `git fetch origin entire/checkpoints/v1`\nOtherwise make sure Entire capture is active before committing (`entire status` to verify).';
+  return buildMissingLocalCheckpointHistoryMessage();
 }
 
 async function findLastCommitWithValidCheckpointContext(
@@ -285,7 +293,7 @@ async function buildMissingEntireContextMessage(
       7
     )} ('${lastValid.subject}') ${lastValid.commitsAgo} commits ago. Make sure Entire capture is active before committing.`;
   }
-  return 'This branch has no Entire session history locally. If running in CI, fetch the checkpoint branch first:\n  `git fetch origin entire/checkpoints/v1`\nOtherwise make sure Entire capture is active before committing (`entire status` to verify).';
+  return buildMissingLocalCheckpointHistoryMessage();
 }
 
 function resolveCommitContext(commitish: string, cwd = process.cwd(), options?: ResolveCommitContextOptions): CommitResolution {
