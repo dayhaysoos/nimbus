@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import { createHash } from 'crypto';
 import { mkdir, writeFile } from 'fs/promises';
-import { dirname, resolve } from 'path';
+import { dirname, isAbsolute, resolve } from 'path';
 import {
   createReview,
   getReview,
@@ -19,6 +19,7 @@ import {
   validateReviewCommitCheckpoint,
   validateReviewEntireIntentContext,
 } from './preflight.js';
+import { GitRepo } from '../../lib/checkpoint/git.js';
 import type {
   WorkspaceDeploymentResponse,
   WorkspaceResponse,
@@ -487,7 +488,9 @@ export async function createReviewFromCommitCommand(
     }
     if (outputReviewIdPath) {
       try {
-        const absolutePath = resolve(outputReviewIdPath);
+        const absolutePath = isAbsolute(outputReviewIdPath)
+          ? outputReviewIdPath
+          : resolve(new GitRepo(process.cwd()).getRepoRoot(), outputReviewIdPath);
         await mkdir(dirname(absolutePath), { recursive: true });
         await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
       } catch (error) {

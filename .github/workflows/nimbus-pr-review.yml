@@ -31,22 +31,16 @@ jobs:
             echo "::warning::Fork PR detected. Nimbus review steps requiring repository secrets will be skipped."
           fi
 
-      - name: Validate required secrets presence
+      - name: Mark secrets ready
         id: secrets_gate
-        if: steps.pr_context.outputs.trusted_pr == 'true'
-        uses: actions/github-script@v7
-        env:
-          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
-          REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
-        with:
-          script: |
-            const hasNimbus = Boolean((process.env.NIMBUS_API_KEY || '').trim());
-            const hasReviewToken = Boolean((process.env.REVIEW_CONTEXT_GITHUB_TOKEN || '').trim());
-            const ready = hasNimbus && hasReviewToken;
-            core.setOutput('secrets_ready', ready ? 'true' : 'false');
-            if (!ready) {
-              core.warning('Nimbus review steps will be skipped because required secrets are missing.');
-            }
+        if: ${{ steps.pr_context.outputs.trusted_pr == 'true' && secrets.NIMBUS_API_KEY != '' && secrets.REVIEW_CONTEXT_GITHUB_TOKEN != '' }}
+        run: |
+          echo "secrets_ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Warn when secrets missing
+        if: ${{ steps.pr_context.outputs.trusted_pr == 'true' && !(secrets.NIMBUS_API_KEY != '' && secrets.REVIEW_CONTEXT_GITHUB_TOKEN != '') }}
+        run: |
+          echo "::warning::Nimbus review steps will be skipped because required secrets are missing."
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -152,7 +146,7 @@ jobs:
             }
 
       - name: Upsert sticky PR comment
-        if: always() && steps.stale_guard.outputs.is_stale != 'true'
+        if: always() && steps.stale_guard.outcome == 'success' && steps.stale_guard.outputs.is_stale != 'true'
         uses: actions/github-script@v7
         env:
           TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}
