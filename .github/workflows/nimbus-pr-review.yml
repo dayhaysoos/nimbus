@@ -74,13 +74,13 @@ jobs:
         if: steps.pr_context.outputs.trusted_pr == 'true'
         continue-on-error: true
         env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          BASE_REF: origin/${{ github.event.pull_request.base.ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
           REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           NIMBUS_WORKER_URL: ${{ secrets.NIMBUS_WORKER_URL }}
         run: |
-          HEAD_SHA="${{ github.event.pull_request.head.sha }}"
-          BASE_REF="origin/${{ github.event.pull_request.base.ref }}"
           pnpm --filter @dayhaysoos/nimbus dev review create \
             --commit "${HEAD_SHA}" \
             --base "${BASE_REF}" \
@@ -133,6 +133,11 @@ jobs:
             if (isStale) {
               core.warning(`Skipping sticky comment update from stale run. Trigger head=${triggerHead}, current PR head=${currentHead}`);
             }
+
+      - name: Warn if stale guard failed
+        if: always() && steps.stale_guard.outcome != 'success'
+        run: |
+          echo "::warning::Stale-run guard failed; sticky Nimbus comment update was skipped to avoid posting stale results."
 
       - name: Upsert sticky PR comment
         if: always() && steps.stale_guard.outcome == 'success' && steps.stale_guard.outputs.is_stale != 'true'
