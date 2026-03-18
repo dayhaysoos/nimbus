@@ -196,10 +196,11 @@ jobs:
             `;
             } else if (reviewId && fs.existsSync(markdownPath)) {
               const markdown = fs.readFileSync(markdownPath, 'utf8').trim();
+              const noFindings = /- Findings:\s*0\b/.test(markdown);
               body += `
 
             ---
-            ${markdown}
+            ${noFindings ? '✅ No actionable findings detected in this run.\n\n' : ''}${markdown}
             `;
             } else if (createOutcome !== 'success') {
               body += `
