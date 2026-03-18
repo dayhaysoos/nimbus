@@ -9,6 +9,7 @@ Prereqs:
 - Node 20+
 - A repo tracked with Entire checkpoints
 - `NIMBUS_API_KEY`
+- `REVIEW_CONTEXT_GITHUB_TOKEN` (recommended for CI/CD and PR reviews to enable co-change context)
 
 Install:
 
@@ -21,7 +22,12 @@ Set environment variables:
 ```bash
 export NIMBUS_API_KEY="nmb_live_..."
 export OPENROUTER_API_KEY="..."
+export REVIEW_CONTEXT_GITHUB_TOKEN="ghp_..."
 ```
+
+CI/CD note: for pull request reviews, provide `REVIEW_CONTEXT_GITHUB_TOKEN` as a GitHub Actions secret in the target repository. For PRs from forks, repository secrets are not exposed by default.
+
+Caution: reviews can still run without `REVIEW_CONTEXT_GITHUB_TOKEN`, but co-change context may be unavailable and overall review quality/relevance can drop.
 
 Run your first review:
 
