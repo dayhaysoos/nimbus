@@ -90,8 +90,6 @@ jobs:
           BASE_REF: origin/${{ github.event.pull_request.base.ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
           REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          NIMBUS_WORKER_URL: ${{ secrets.NIMBUS_WORKER_URL }}
         run: |
           pnpm --filter @dayhaysoos/nimbus dev review create \
             --commit "${HEAD_SHA}" \
@@ -120,7 +118,6 @@ jobs:
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
-          NIMBUS_WORKER_URL: ${{ secrets.NIMBUS_WORKER_URL }}
         run: |
           pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
@@ -155,9 +152,14 @@ jobs:
 
             // Re-check freshness at update time to narrow race window between stale_guard and comment upsert.
             const latest = await github.rest.pulls.get({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number });
-            if (latest.data.head.sha !== headSha) {
-              core.warning(`Skipping sticky comment update due to head advancement during run. Trigger head=${headSha}, current head=${latest.data.head.sha}`);
-              return;
+            const staleContext = latest.data.head.sha !== headSha
+              ? {
+                  triggerHead: headSha,
+                  currentHead: latest.data.head.sha,
+                }
+              : null;
+            if (staleContext) {
+              core.warning(`Run became stale before comment update. Trigger head=${staleContext.triggerHead}, current head=${staleContext.currentHead}`);
             }
 
             let body = `${marker}
@@ -180,7 +182,14 @@ jobs:
             `;
             }
 
-            if (trustedPr !== 'true') {
+            if (staleContext) {
+              body += `
+
+            ---
+            Nimbus skipped posting run findings for stale commit \`${staleContext.triggerHead}\` because PR head advanced to \`${staleContext.currentHead}\` during execution.
+            A newer run should post fresh findings for the current head.
+            `;
+            } else if (trustedPr !== 'true') {
               body += `
 
             ---
