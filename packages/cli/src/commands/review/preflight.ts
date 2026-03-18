@@ -1,5 +1,4 @@
 import * as p from '@clack/prompts';
-import { getReviewReadiness, getWorkerUrl } from '../../lib/api.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';
 import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
@@ -385,7 +384,7 @@ export async function validateReviewEntireIntentContext(
 
 export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed' | 'legacy_unknown'> {
   const missingTokenMessage =
-    "co-change retrieval requires a GitHub token with repo read access to your repository. This must be your own GitHub PAT - it cannot be shared across users because it accesses your repo's Entire checkpoint data. Set REVIEW_CONTEXT_GITHUB_TOKEN in your .env for local dev, or as a repository secret in GitHub Actions for same-repository CI runs. For pull requests from forks, repository secrets are not exposed by default.";
+    "co-change retrieval requires a GitHub token with repo read access to your repository. This must be your own GitHub PAT and should be supplied per run (for CLI usage, set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env or shell environment).";
   const localToken =
     typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
       ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
@@ -402,24 +401,7 @@ export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed
     return 'confirmed';
   }
 
-  const workerUrl = getWorkerUrl();
-  if (!workerUrl) {
-    throw new Error(missingTokenMessage);
-  }
-  let readiness;
-  try {
-    readiness = await getReviewReadiness(workerUrl);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.includes('Worker error (404)')) {
-      return 'legacy_unknown';
-    }
-    throw error;
-  }
-  if (!readiness.ok) {
-    throw new Error(missingTokenMessage);
-  }
-  return 'confirmed';
+  throw new Error(missingTokenMessage);
 }
 
 export async function reviewPreflightCommand(
