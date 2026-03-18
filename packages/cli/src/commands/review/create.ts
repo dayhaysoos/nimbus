@@ -484,7 +484,7 @@ export async function createReviewFromCommitCommand(
     const outputReviewIdRaw = options?.outputReviewIdPath;
     const outputReviewIdPath = outputReviewIdRaw?.trim();
     if (outputReviewIdRaw !== undefined && !outputReviewIdPath) {
-      p.log.warning('Ignoring --output-review-id without a usable file path. Provide a non-empty path to enable review ID file output on successful runs.');
+      p.log.warning('Ignoring --output-review-id because the provided path is empty.');
     }
     if (outputReviewIdPath) {
       try {

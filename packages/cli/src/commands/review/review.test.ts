@@ -739,7 +739,7 @@ export async function runReviewCommandTests(): Promise<void> {
         });
 
         await createReviewFromCommitCommand({ commitish: 'HEAD', outputReviewIdPath: '   ' });
-        assert.equal(warnings.some((message) => message.includes('Ignoring --output-review-id without a usable file path')), true);
+        assert.equal(warnings.some((message) => message.includes('Ignoring --output-review-id because the provided path is empty.')), true);
       } finally {
         (p.log as { warning: (message: string) => void }).warning = originalWarning;
         setReviewCommitResolverForTests(null);
