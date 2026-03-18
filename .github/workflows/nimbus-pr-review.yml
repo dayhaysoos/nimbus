@@ -5,14 +5,13 @@ on:
     types: [opened, synchronize]
 
 concurrency:
-  group: "nimbus-pr-review-pr-${{ github.event.pull_request.number || github.ref }}"
+  group: nimbus-pr-review-${{ github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
   pull-requests: write
   issues: write
-  checks: write
 
 jobs:
   nimbus-review:
@@ -140,10 +139,8 @@ jobs:
         run: |
           pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
-      - name: Publish Nimbus findings check run
-        id: publish_check
+      - name: Upsert sticky PR comment
         if: always()
-        continue-on-error: true
         uses: actions/github-script@v7
         env:
           TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}
@@ -156,6 +153,7 @@ jobs:
           script: |
             const fs = require('fs');
 
+            const marker = '<!-- nimbus-review-comment -->';
             const reviewId = process.env.REVIEW_ID || '';
             const createOutcome = process.env.CREATE_OUTCOME || 'unknown';
             const exportOutcome = process.env.EXPORT_OUTCOME || 'skipped';
@@ -170,6 +168,7 @@ jobs:
             const baseRef = pr.base.ref;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
 
+            // Re-check freshness at update time to narrow race window between stale_guard and comment upsert.
             const latest = await github.rest.pulls.get({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number });
             const staleContext = latest.data.head.sha !== headSha
               ? {
@@ -177,106 +176,81 @@ jobs:
                   currentHead: latest.data.head.sha,
                 }
               : null;
+            if (staleContext) {
+              core.warning(`Run became stale before comment update. Trigger head=${staleContext.triggerHead}, current head=${staleContext.currentHead}`);
+            }
 
-            let summary = [
-              `Commit: \`${headSha}\``,
-              `Base: \`${baseRef}\``,
-              `Create step: \`${createOutcome}\``,
-              `Export step: \`${exportOutcome}\``,
-              `Trusted PR context: \`${trustedPr}\``,
-              `Required secrets ready: \`${secretsReady}\``,
-              `Entire checkpoints ref fetched: \`${checkpointsFetched}\``,
-              `Workflow run: ${runUrl}`,
-            ].join('\n');
+            let body = `${marker}
+            ## Nimbus Review
 
-            let findingsCount = '';
-            let noFindings = false;
+            - Commit: \`${headSha}\`
+            - Base: \`${baseRef}\`
+            - Create step: \`${createOutcome}\`
+            - Export step: \`${exportOutcome}\`
+            - Trusted PR context: \`${trustedPr}\`
+            - Required secrets ready: \`${secretsReady}\`
+            - Entire checkpoints ref fetched: \`${checkpointsFetched}\`
+            - Workflow run: ${runUrl}
+            `;
 
             if (checkpointsFetched !== 'true') {
-              summary += '\n\n> Entire checkpoint ref fetch failed in CI. Review may run without local co-change context.';
+              body += `
+
+            > ⚠️ Entire checkpoint ref fetch failed in CI. Review may run without local co-change context, which can reduce result quality.
+            `;
             }
 
             if (staleContext) {
-              summary += `\n\nRun became stale before findings publication. Trigger head=\`${staleContext.triggerHead}\`, current head=\`${staleContext.currentHead}\`.`;
+              body += `
+
+            ---
+            Nimbus skipped posting run findings for stale commit \`${staleContext.triggerHead}\` because PR head advanced to \`${staleContext.currentHead}\` during execution.
+            A newer run should post fresh findings for the current head.
+            `;
             } else if (trustedPr !== 'true') {
-              summary += '\n\nNimbus review was skipped because this PR context is not trusted.';
+              body += `
+
+            ---
+            Nimbus review was skipped for this run because this PR context is not trusted.
+            Repository secrets are only used for same-repo pull requests authored by users with write-level repository access.
+            `;
             } else if (secretsReady !== 'true') {
-              summary += '\n\nNimbus review was skipped because required workflow secrets are not configured.';
+              body += `
+
+            ---
+            Nimbus review was skipped because required workflow secrets are not configured.
+            Add required secrets and re-run the workflow.
+            `;
             } else if (reviewId && fs.existsSync(markdownPath)) {
               const markdown = fs.readFileSync(markdownPath, 'utf8').trim();
-              const findingsMatch = markdown.match(/- Findings:\s*(\d+)\b/);
-              findingsCount = findingsMatch ? findingsMatch[1] : '';
-              noFindings = findingsCount === '0';
-              summary += `\n\n---\n\n${markdown}`;
+              const noFindings = /- Findings:\s*0\b/.test(markdown);
+              body += `
+
+            ---
+            ${noFindings ? '✅ No actionable findings detected in this run.\n\n' : ''}${markdown}
+            `;
             } else if (createOutcome !== 'success') {
-              summary += '\n\nNimbus review create did not complete successfully, so no review ID was available for export.';
+              body += `
+
+            ---
+            Nimbus review create did not complete successfully, so no review ID was available for export.
+            Check workflow logs for the create-step failure details.
+            `;
             } else {
-              summary += '\n\nNimbus review did not produce an exportable markdown report in this run.';
+              body += `
+
+            ---
+            Nimbus review did not produce an exportable markdown report in this run.
+            Check workflow logs for details.
+            `;
             }
 
-            const maxSummary = 65000;
-            if (summary.length > maxSummary) {
-              summary = summary.slice(0, maxSummary) + '\n\n... (truncated)';
+            const suffix = '\n\n... (truncated)';
+            const max = 65536;
+            const maxBeforeSuffix = max - suffix.length;
+            if (body.length > maxBeforeSuffix) {
+              body = body.slice(0, maxBeforeSuffix) + suffix;
             }
-
-            const conclusion = noFindings ? 'success' : 'neutral';
-            const title = noFindings ? 'Nimbus Findings (no issues)' : 'Nimbus Findings';
-
-            const checkRun = await github.rest.checks.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              name: 'Nimbus Findings',
-              head_sha: headSha,
-              status: 'completed',
-              conclusion,
-              details_url: runUrl,
-              external_id: reviewId || undefined,
-              output: {
-                title,
-                summary,
-              },
-            });
-
-            core.setOutput('conclusion', conclusion);
-            core.setOutput('findings_count', findingsCount);
-            core.setOutput('stale', staleContext ? 'true' : 'false');
-            core.setOutput('check_id', String(checkRun.data.id));
-
-      - name: Upsert sticky PR comment
-        if: always()
-        continue-on-error: true
-        uses: actions/github-script@v7
-        env:
-          CHECK_CONCLUSION: ${{ steps.publish_check.outputs.conclusion }}
-          FINDINGS_COUNT: ${{ steps.publish_check.outputs.findings_count }}
-          STALE_RUN: ${{ steps.publish_check.outputs.stale }}
-        with:
-          script: |
-            const marker = '<!-- nimbus-review-comment -->';
-            const checkConclusion = process.env.CHECK_CONCLUSION || 'neutral';
-            const findingsCount = process.env.FINDINGS_COUNT || '';
-            const staleRun = process.env.STALE_RUN === 'true';
-
-            const pr = context.payload.pull_request;
-            const headSha = pr.head.sha;
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
-
-            const checksUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/pull/${pr.number}/checks`;
-            const findingsLabel = findingsCount === '' ? 'unknown' : findingsCount;
-            const body = [
-              marker,
-              '## Nimbus Findings',
-              '',
-              `- Latest analyzed commit: \`${headSha}\``,
-              `- Current result: \`${checkConclusion}\``,
-              `- Findings count: \`${findingsLabel}\``,
-              `- Detailed findings: ${checksUrl}`,
-              `- Workflow run: ${runUrl}`,
-              '',
-              staleRun
-                ? '> This run became stale before publication. A newer run should provide the latest findings.'
-                : '> Nimbus posts detailed findings to the Checks tab for consistency; this comment is a stable pointer.',
-            ].join('\n');
 
             const { owner, repo } = context.repo;
             const issue_number = pr.number;
@@ -288,13 +262,11 @@ jobs:
               per_page: 100,
             });
 
-            const existing = comments
-              .filter(c =>
-                c.user?.login === 'github-actions[bot]' &&
-                typeof c.body === 'string' &&
-                c.body.includes(marker)
-              )
-              .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))[0];
+            const existing = comments.find(c =>
+              c.user?.type === 'Bot' &&
+              typeof c.body === 'string' &&
+              c.body.includes(marker)
+            );
 
             if (existing) {
               await github.rest.issues.updateComment({
@@ -303,7 +275,7 @@ jobs:
                 comment_id: existing.id,
                 body,
               });
-              core.info(`Updated existing Nimbus anchor comment: ${existing.id}`);
+              core.info(`Updated existing Nimbus comment: ${existing.id}`);
             } else {
               const created = await github.rest.issues.createComment({
                 owner,
@@ -311,7 +283,7 @@ jobs:
                 issue_number,
                 body,
               });
-              core.info(`Created Nimbus anchor comment: ${created.data.id}`);
+              core.info(`Created Nimbus comment: ${created.data.id}`);
             }
 
       - name: Finalize as informational check
