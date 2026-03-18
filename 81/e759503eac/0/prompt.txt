@@ -1,0 +1,25 @@
+in the wrangler.toml where it says NIMBUS_HOSTED=“false” please set that to true
+
+---
+
+Look at the nimbus findings section on the PR right now. Just answer with “yes” or “no”. Is this a new comment after a new review?
+
+---
+
+What was the previous findings message?
+
+---
+
+You checked for it within this chat history, look there
+
+---
+
+That’s literally also the current message on the PR right now. Why do you think that it’s not the same?
+
+---
+
+Why could this be happening? I am starting to feel like we should move away from this experience because the PR comment does not get updated consistently at all
+
+---
+
+Go ahead and build it just to see
