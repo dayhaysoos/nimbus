@@ -94,18 +94,48 @@ jobs:
       # Dogfood invocation for monorepo development.
       # When extracted to standalone nimbus-action, replace with globally-installed CLI:
       # nimbus review create --commit <sha> --base <ref>
-      - name: Refresh PR base ref
+      - name: Validate and fetch review refs
+        id: review_refs
         if: steps.pr_context.outputs.trusted_pr == 'true'
+        env:
+          RAW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RAW_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
-          git fetch --no-tags origin "${{ github.event.pull_request.base.ref }}:refs/remotes/origin/${{ github.event.pull_request.base.ref }}"
+          sha_re='^[0-9a-f]{40}$'
+
+          if ! [[ "${RAW_HEAD_SHA}" =~ ${sha_re} ]]; then
+            echo "::error::Invalid PR head SHA: ${RAW_HEAD_SHA}"
+            exit 1
+          fi
+
+          if ! [[ "${RAW_BASE_SHA}" =~ ${sha_re} ]]; then
+            echo "::error::Invalid PR base SHA: ${RAW_BASE_SHA}"
+            exit 1
+          fi
+
+          git fetch --no-tags --depth=1 origin "${RAW_BASE_SHA}"
+          git fetch --no-tags --depth=1 origin "${RAW_HEAD_SHA}"
+
+          if ! git cat-file -e "${RAW_BASE_SHA}^{commit}"; then
+            echo "::error::Base commit is unavailable locally: ${RAW_BASE_SHA}"
+            exit 1
+          fi
+
+          if ! git cat-file -e "${RAW_HEAD_SHA}^{commit}"; then
+            echo "::error::Head commit is unavailable locally: ${RAW_HEAD_SHA}"
+            exit 1
+          fi
+
+          echo "head_sha=${RAW_HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${RAW_BASE_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Run Nimbus review create (non-blocking)
         id: create_review
         if: steps.pr_context.outputs.trusted_pr == 'true'
         continue-on-error: true
         env:
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          BASE_REF: origin/${{ github.event.pull_request.base.ref }}
+          HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
+          BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
           REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
         run: |
@@ -140,7 +170,7 @@ jobs:
           pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
       - name: Post PR findings comment
-        if: always()
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != '' && steps.export_markdown.outcome == 'success'
         uses: actions/github-script@v7
         env:
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
