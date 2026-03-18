@@ -494,7 +494,7 @@ export async function createReviewFromCommitCommand(
         try {
           baseDir = new GitRepo(process.cwd()).getRepoRoot();
         } catch {
-          // Fall back to current working directory outside git contexts.
+          p.log.warning('Could not resolve git repository root; resolving --output-review-id relative to current working directory.');
         }
         const absolutePath = isAbsolute(outputReviewIdPath)
           ? outputReviewIdPath

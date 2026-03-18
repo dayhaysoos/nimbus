@@ -28,9 +28,11 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const owner = context.repo.owner;
+            const repoFullName = `${context.repo.owner}/${context.repo.repo}`;
             const trusted =
               pr?.head?.repo?.fork === false &&
               String(pr?.head?.repo?.id ?? '') === String(context.payload.repository?.id ?? '') &&
+              pr?.head?.repo?.full_name === repoFullName &&
               typeof pr?.head?.label === 'string' &&
               pr.head.label.startsWith(`${owner}:`);
 
@@ -148,7 +150,7 @@ jobs:
           echo "::warning::Stale-run guard failed; sticky Nimbus comment update was skipped to avoid posting stale results."
 
       - name: Upsert sticky PR comment
-        if: always() && steps.stale_guard.outcome == 'success'
+        if: always() && steps.stale_guard.outcome == 'success' && steps.stale_guard.outputs.is_stale != 'true'
         uses: actions/github-script@v7
         env:
           TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}
