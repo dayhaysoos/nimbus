@@ -27,18 +27,16 @@ jobs:
         with:
           script: |
             const pr = context.payload.pull_request;
-            const owner = context.repo.owner;
             const repoFullName = `${context.repo.owner}/${context.repo.repo}`;
             const trusted =
               pr?.head?.repo?.fork === false &&
               String(pr?.head?.repo?.id ?? '') === String(context.payload.repository?.id ?? '') &&
               pr?.head?.repo?.full_name === repoFullName &&
-              typeof pr?.head?.label === 'string' &&
-              pr.head.label.startsWith(`${owner}:`);
+              pr?.head?.repo?.owner?.login === context.repo.owner;
 
             core.setOutput('trusted_pr', trusted ? 'true' : 'false');
             if (!trusted) {
-              core.warning('Untrusted PR context detected (fork, repository mismatch, or non-owner head label). Nimbus review steps requiring repository secrets will be skipped.');
+              core.warning('Untrusted PR context detected (fork or repository mismatch). Nimbus review steps requiring repository secrets will be skipped.');
             }
 
       - name: Checkout
@@ -127,30 +125,7 @@ jobs:
           pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
       - name: Upsert sticky PR comment
-        id: stale_guard
         if: always()
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const { owner, repo } = context.repo;
-            const pull_number = context.payload.pull_request.number;
-            const triggerHead = context.payload.pull_request.head.sha;
-            const latest = await github.rest.pulls.get({ owner, repo, pull_number });
-            const currentHead = latest.data.head.sha;
-            const isStale = currentHead !== triggerHead;
-            core.setOutput('is_stale', isStale ? 'true' : 'false');
-            core.setOutput('current_head', currentHead);
-            if (isStale) {
-              core.warning(`Skipping sticky comment update from stale run. Trigger head=${triggerHead}, current PR head=${currentHead}`);
-            }
-
-      - name: Warn if stale guard failed
-        if: always() && steps.stale_guard.outcome != 'success'
-        run: |
-          echo "::warning::Stale-run guard failed; sticky Nimbus comment update was skipped to avoid posting stale results."
-
-      - name: Upsert sticky PR comment
-        if: always() && steps.stale_guard.outcome == 'success' && steps.stale_guard.outputs.is_stale != 'true'
         uses: actions/github-script@v7
         env:
           TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}

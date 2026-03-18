@@ -449,6 +449,32 @@ export async function createReviewFromCommitCommand(
       reviewId = response.reviewId;
       reviewResultUrl = normalizeResultUrl(workerUrl, response.resultUrl);
       spinner.stop(`Review queued: ${reviewId}`);
+
+      const outputReviewIdRaw = options?.outputReviewIdPath;
+      const outputReviewIdPath = outputReviewIdRaw?.trim();
+      if (outputReviewIdRaw !== undefined && !outputReviewIdPath) {
+        p.log.warning('Ignoring --output-review-id because the provided path is empty.');
+      }
+      if (outputReviewIdPath) {
+        try {
+          let baseDir = process.cwd();
+          try {
+            baseDir = new GitRepo(process.cwd()).getRepoRoot();
+          } catch {
+            p.log.warning('Could not resolve git repository root; resolving --output-review-id relative to current working directory.');
+          }
+          const absolutePath = isAbsolute(outputReviewIdPath)
+            ? outputReviewIdPath
+            : resolve(baseDir, outputReviewIdPath);
+          await mkdir(dirname(absolutePath), { recursive: true });
+          await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          p.log.warning(
+            `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review queued successfully, but downstream automation that expects this file may skip export steps.`
+          );
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Review creation failed');
@@ -483,31 +509,6 @@ export async function createReviewFromCommitCommand(
 
     console.log(`Report URL: ${reviewResultUrl}`);
 
-    const outputReviewIdRaw = options?.outputReviewIdPath;
-    const outputReviewIdPath = outputReviewIdRaw?.trim();
-    if (outputReviewIdRaw !== undefined && !outputReviewIdPath) {
-      p.log.warning('Ignoring --output-review-id because the provided path is empty.');
-    }
-    if (outputReviewIdPath) {
-      try {
-        let baseDir = process.cwd();
-        try {
-          baseDir = new GitRepo(process.cwd()).getRepoRoot();
-        } catch {
-          p.log.warning('Could not resolve git repository root; resolving --output-review-id relative to current working directory.');
-        }
-        const absolutePath = isAbsolute(outputReviewIdPath)
-          ? outputReviewIdPath
-          : resolve(baseDir, outputReviewIdPath);
-        await mkdir(dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        p.log.warning(
-          `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review succeeded, but downstream automation that expects this file may skip export steps.`
-        );
-      }
-    }
   } catch (error) {
     throw error;
   }

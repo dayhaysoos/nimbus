@@ -647,7 +647,9 @@ export async function runReviewCommandTests(): Promise<void> {
         });
 
         await assert.rejects(() => createReviewFromCommitCommand({ commitish: 'HEAD', outputReviewIdPath: reviewIdPath }));
-        assert.equal(existsSync(reviewIdPath), false);
+        assert.equal(existsSync(reviewIdPath), true);
+        const saved = await readFile(reviewIdPath, 'utf8');
+        assert.equal(saved.trim(), 'rev_review_id_fail');
       } finally {
         setReviewCommitResolverForTests(null);
         setReviewPreflightContextResolverForTests(null);
