@@ -23,12 +23,17 @@ jobs:
     steps:
       - name: Detect trusted PR context
         id: pr_context
+        env:
+          HEAD_LABEL: ${{ github.event.pull_request.head.label }}
+          REPO_OWNER: ${{ github.repository_owner }}
         run: |
-          if [ "${{ github.event.pull_request.head.repo.fork }}" = "false" ] && [ "${{ github.event.pull_request.head.repo.id }}" = "${{ github.repository_id }}" ]; then
+          if [ "${{ github.event.pull_request.head.repo.fork }}" = "false" ] \
+            && [ "${{ github.event.pull_request.head.repo.id }}" = "${{ github.repository_id }}" ] \
+            && [[ "${HEAD_LABEL}" == "${REPO_OWNER}:"* ]]; then
             echo "trusted_pr=true" >> "$GITHUB_OUTPUT"
           else
             echo "trusted_pr=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Untrusted PR context detected (fork or different repository id). Nimbus review steps requiring repository secrets will be skipped."
+            echo "::warning::Untrusted PR context detected (fork, repository mismatch, or non-owner head label). Nimbus review steps requiring repository secrets will be skipped."
           fi
 
       - name: Checkout
@@ -167,6 +172,13 @@ jobs:
             const headSha = pr.head.sha;
             const baseRef = pr.base.ref;
             const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+
+            // Re-check freshness at update time to narrow race window between stale_guard and comment upsert.
+            const latest = await github.rest.pulls.get({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number });
+            if (latest.data.head.sha !== headSha) {
+              core.warning(`Skipping sticky comment update due to head advancement during run. Trigger head=${headSha}, current head=${latest.data.head.sha}`);
+              return;
+            }
 
             let body = `${marker}
             ## Nimbus Review

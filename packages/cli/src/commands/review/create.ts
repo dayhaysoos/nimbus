@@ -501,7 +501,9 @@ export async function createReviewFromCommitCommand(
         await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        p.log.warning(`Could not write review ID file at ${outputReviewIdPath}: ${message}`);
+        p.log.warning(
+          `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review succeeded, but downstream automation that expects this file may skip export steps.`
+        );
       }
     }
 
