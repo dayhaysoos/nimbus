@@ -139,152 +139,50 @@ jobs:
         run: |
           pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
-      - name: Upsert sticky PR comment
+      - name: Post PR findings comment
         if: always()
         uses: actions/github-script@v7
         env:
-          TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}
-          SECRETS_READY: ${{ steps.create_review.outcome != 'skipped' && 'true' || 'false' }}
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
-          CREATE_OUTCOME: ${{ steps.create_review.outcome }}
-          EXPORT_OUTCOME: ${{ steps.export_markdown.outcome }}
-          ENTIRE_CHECKPOINTS_FETCHED: ${{ env.ENTIRE_CHECKPOINTS_FETCHED }}
         with:
           script: |
             const fs = require('fs');
 
-            const marker = '<!-- nimbus-review-comment -->';
             const reviewId = process.env.REVIEW_ID || '';
-            const createOutcome = process.env.CREATE_OUTCOME || 'unknown';
-            const exportOutcome = process.env.EXPORT_OUTCOME || 'skipped';
-            const trustedPr = process.env.TRUSTED_PR || 'unknown';
-            const secretsReady = process.env.SECRETS_READY || 'unknown';
-            const checkpointsFetched = process.env.ENTIRE_CHECKPOINTS_FETCHED || 'unknown';
             const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
             const markdownPath = `${workspace}/nimbus-review.md`;
 
             const pr = context.payload.pull_request;
             const headSha = pr.head.sha;
-            const baseRef = pr.base.ref;
-            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            let findingsBody = 'No findings report was produced for this run.';
 
-            // Re-check freshness at update time to narrow race window between stale_guard and comment upsert.
-            const latest = await github.rest.pulls.get({ owner: context.repo.owner, repo: context.repo.repo, pull_number: pr.number });
-            const staleContext = latest.data.head.sha !== headSha
-              ? {
-                  triggerHead: headSha,
-                  currentHead: latest.data.head.sha,
-                }
-              : null;
-            if (staleContext) {
-              core.warning(`Run became stale before comment update. Trigger head=${staleContext.triggerHead}, current head=${staleContext.currentHead}`);
-            }
-
-            let body = `${marker}
-            ## Nimbus Review
-
-            - Commit: \`${headSha}\`
-            - Base: \`${baseRef}\`
-            - Create step: \`${createOutcome}\`
-            - Export step: \`${exportOutcome}\`
-            - Trusted PR context: \`${trustedPr}\`
-            - Required secrets ready: \`${secretsReady}\`
-            - Entire checkpoints ref fetched: \`${checkpointsFetched}\`
-            - Workflow run: ${runUrl}
-            `;
-
-            if (checkpointsFetched !== 'true') {
-              body += `
-
-            > ⚠️ Entire checkpoint ref fetch failed in CI. Review may run without local co-change context, which can reduce result quality.
-            `;
-            }
-
-            if (staleContext) {
-              body += `
-
-            ---
-            Nimbus skipped posting run findings for stale commit \`${staleContext.triggerHead}\` because PR head advanced to \`${staleContext.currentHead}\` during execution.
-            A newer run should post fresh findings for the current head.
-            `;
-            } else if (trustedPr !== 'true') {
-              body += `
-
-            ---
-            Nimbus review was skipped for this run because this PR context is not trusted.
-            Repository secrets are only used for same-repo pull requests authored by users with write-level repository access.
-            `;
-            } else if (secretsReady !== 'true') {
-              body += `
-
-            ---
-            Nimbus review was skipped because required workflow secrets are not configured.
-            Add required secrets and re-run the workflow.
-            `;
-            } else if (reviewId && fs.existsSync(markdownPath)) {
+            if (reviewId && fs.existsSync(markdownPath)) {
               const markdown = fs.readFileSync(markdownPath, 'utf8').trim();
-              const noFindings = /- Findings:\s*0\b/.test(markdown);
-              body += `
+              const findingsSection = markdown.match(/## Findings\n\n([\s\S]*?)(\n##\s|$)/);
 
-            ---
-            ${noFindings ? '✅ No actionable findings detected in this run.\n\n' : ''}${markdown}
-            `;
-            } else if (createOutcome !== 'success') {
-              body += `
-
-            ---
-            Nimbus review create did not complete successfully, so no review ID was available for export.
-            Check workflow logs for the create-step failure details.
-            `;
-            } else {
-              body += `
-
-            ---
-            Nimbus review did not produce an exportable markdown report in this run.
-            Check workflow logs for details.
-            `;
+              if (findingsSection && findingsSection[1].trim()) {
+                findingsBody = findingsSection[1].trim();
+              } else if (/- Findings:\s*0\b/.test(markdown)) {
+                findingsBody = 'No actionable findings.';
+              }
             }
 
-            const suffix = '\n\n... (truncated)';
-            const max = 65536;
-            const maxBeforeSuffix = max - suffix.length;
-            if (body.length > maxBeforeSuffix) {
-              body = body.slice(0, maxBeforeSuffix) + suffix;
+            let body = `## Nimbus Findings\n\n${findingsBody}`;
+
+            if (body.length > 65536) {
+              body = `${body.slice(0, 65520)}\n\n... (truncated)`;
             }
 
             const { owner, repo } = context.repo;
             const issue_number = pr.number;
 
-            const comments = await github.paginate(github.rest.issues.listComments, {
+            const created = await github.rest.issues.createComment({
               owner,
               repo,
               issue_number,
-              per_page: 100,
+              body,
             });
-
-            const existing = comments.find(c =>
-              c.user?.type === 'Bot' &&
-              typeof c.body === 'string' &&
-              c.body.includes(marker)
-            );
-
-            if (existing) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: existing.id,
-                body,
-              });
-              core.info(`Updated existing Nimbus comment: ${existing.id}`);
-            } else {
-              const created = await github.rest.issues.createComment({
-                owner,
-                repo,
-                issue_number,
-                body,
-              });
-              core.info(`Created Nimbus comment: ${created.data.id}`);
-            }
+            core.info(`Created Nimbus findings comment: ${created.data.id} for ${headSha}`);
 
       - name: Finalize as informational check
         if: always()
