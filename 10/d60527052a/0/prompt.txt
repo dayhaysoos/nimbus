@@ -1,0 +1,47 @@
+in the wrangler.toml where it says NIMBUS_HOSTED=“false” please set that to true
+
+---
+
+Look at the nimbus findings section on the PR right now. Just answer with “yes” or “no”. Is this a new comment after a new review?
+
+---
+
+What was the previous findings message?
+
+---
+
+You checked for it within this chat history, look there
+
+---
+
+That’s literally also the current message on the PR right now. Why do you think that it’s not the same?
+
+---
+
+Why could this be happening? I am starting to feel like we should move away from this experience because the PR comment does not get updated consistently at all
+
+---
+
+Go ahead and build it just to see
+
+---
+
+This actually doesn’t reveal any information at all. Maybe we can go back to teh way people do thing snow and add a comment for every review. This whole idea of maintaining a comment is not working out at all. I also feel like we should iterate on the design a bit. First, why don’t you revert the last commit that was made. Then I want you to make this simpler. 
+
+For every PR review, there will be a comment made that gives a report. I want the report to simply go over the findings, don’t share the test of the extra details for now.
+
+---
+
+This is the recent feedback. Verify if they exist and fix if they do:
+
+[medium/security/single] The workflow step 'Refresh PR base ref' executes git fetch using user-controlled input from github.event.pull_request.base.ref without sanitization. This allows PR authors to inject arbitrary git references, potentially fetching unintended branches or triggering remote code execution if combined with git hooks or malicious refs. (.github/workflows/nimbus-pr-review.yml:98-110)
+[low/logic/single] The 'Run Nimbus review create' step passes BASE_REF and HEAD_SHA from pull request event data to the CLI. If the PR is from a fork (untrusted context), these values could reference attacker-controlled commits. Although the workflow skips untrusted PRs via trusted_pr check, the step runs only when trusted_pr == 'true', so the risk is mitigated. However, the CLI receives base/head refs without additional validation, which could cause unexpected behavior if the trust check is bypassed or misconfigured. (.github/workflows/nimbus-pr-review.yml:105-113)
+[low/logic/single] The 'Post PR findings comment' step runs unconditionally (if: always()) and creates a new comment on every workflow run, even if no review was produced (e.g., untrusted PR or creation failure). This will accumulate noise comments on PRs from forks or failed runs. The intent session context excerpt 'This whole idea of maintaining a comment is not working out at all' and 'we should move away from this experience' suggests known UX issues with comment accumulation. (.github/workflows/nimbus-pr-review.yml:142-180)
+
+---
+
+give me the command to add and commit
+
+---
+
+I just pushed and it looks like a new comment wasn’t even added. What happened?

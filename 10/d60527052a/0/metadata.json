@@ -1,0 +1,32 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "10d60527052a",
+  "session_id": "ses_30923b961ffeNT0MbjVtd2LiNf",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-18T21:54:17.480609Z",
+  "branch": "github-action-work",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/nimbus-pr-review.yml"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "9ff4c281466c",
+  "checkpoint_transcript_start": 51,
+  "transcript_lines_at_start": 51,
+  "token_usage": {
+    "input_tokens": 18538,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 316672,
+    "output_tokens": 1804,
+    "api_call_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-18T21:54:17.102186Z",
+    "agent_lines": 7,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 7,
+    "agent_percentage": 100
+  }
+}
