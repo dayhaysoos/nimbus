@@ -113,8 +113,13 @@ jobs:
             exit 1
           fi
 
-          git fetch --no-tags --depth=1 origin "${RAW_BASE_SHA}"
-          git fetch --no-tags --depth=1 origin "${RAW_HEAD_SHA}"
+          if ! git cat-file -e "${RAW_BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "${RAW_BASE_SHA}"
+          fi
+
+          if ! git cat-file -e "${RAW_HEAD_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "${RAW_HEAD_SHA}"
+          fi
 
           if ! git cat-file -e "${RAW_BASE_SHA}^{commit}"; then
             echo "::error::Base commit is unavailable locally: ${RAW_BASE_SHA}"
