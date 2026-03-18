@@ -23,18 +23,21 @@ jobs:
     steps:
       - name: Detect trusted PR context
         id: pr_context
-        env:
-          HEAD_LABEL: ${{ github.event.pull_request.head.label }}
-          REPO_OWNER: ${{ github.repository_owner }}
-        run: |
-          if [ "${{ github.event.pull_request.head.repo.fork }}" = "false" ] \
-            && [ "${{ github.event.pull_request.head.repo.id }}" = "${{ github.repository_id }}" ] \
-            && [[ "${HEAD_LABEL}" == "${REPO_OWNER}:"* ]]; then
-            echo "trusted_pr=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "trusted_pr=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Untrusted PR context detected (fork, repository mismatch, or non-owner head label). Nimbus review steps requiring repository secrets will be skipped."
-          fi
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const owner = context.repo.owner;
+            const trusted =
+              pr?.head?.repo?.fork === false &&
+              String(pr?.head?.repo?.id ?? '') === String(context.payload.repository?.id ?? '') &&
+              typeof pr?.head?.label === 'string' &&
+              pr.head.label.startsWith(`${owner}:`);
+
+            core.setOutput('trusted_pr', trusted ? 'true' : 'false');
+            if (!trusted) {
+              core.warning('Untrusted PR context detected (fork, repository mismatch, or non-owner head label). Nimbus review steps requiring repository secrets will be skipped.');
+            }
 
       - name: Checkout
         uses: actions/checkout@v4
@@ -145,7 +148,7 @@ jobs:
           echo "::warning::Stale-run guard failed; sticky Nimbus comment update was skipped to avoid posting stale results."
 
       - name: Upsert sticky PR comment
-        if: always() && steps.stale_guard.outcome == 'success' && steps.stale_guard.outputs.is_stale != 'true'
+        if: always() && steps.stale_guard.outcome == 'success'
         uses: actions/github-script@v7
         env:
           TRUSTED_PR: ${{ steps.pr_context.outputs.trusted_pr }}

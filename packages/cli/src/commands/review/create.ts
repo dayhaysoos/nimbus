@@ -481,6 +481,8 @@ export async function createReviewFromCommitCommand(
       throw new Error(formatReviewExecutionFailure(status, final.review, lastFailureEvent));
     }
 
+    console.log(`Report URL: ${reviewResultUrl}`);
+
     const outputReviewIdRaw = options?.outputReviewIdPath;
     const outputReviewIdPath = outputReviewIdRaw?.trim();
     if (outputReviewIdRaw !== undefined && !outputReviewIdPath) {
@@ -506,8 +508,6 @@ export async function createReviewFromCommitCommand(
         );
       }
     }
-
-    console.log(`Report URL: ${reviewResultUrl}`);
   } catch (error) {
     throw error;
   }
