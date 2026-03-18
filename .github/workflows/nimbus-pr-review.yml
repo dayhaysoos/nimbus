@@ -30,17 +30,35 @@ jobs:
             const repoFullName = `${context.repo.owner}/${context.repo.repo}`;
             const headRepoId = pr?.head?.repo?.id;
             const baseRepoId = context.payload.repository?.id;
+            const authorLogin = pr?.user?.login;
+
+            let hasWriteLikeAccess = false;
+            if (authorLogin) {
+              try {
+                const permission = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username: authorLogin,
+                });
+                const level = permission.data.permission;
+                hasWriteLikeAccess = level === 'admin' || level === 'maintain' || level === 'write';
+              } catch (error) {
+                core.warning(`Could not resolve collaborator permission for ${authorLogin}; treating PR as untrusted.`);
+              }
+            }
+
             const trusted =
               pr?.head?.repo?.fork === false &&
               Number.isInteger(headRepoId) &&
               Number.isInteger(baseRepoId) &&
               headRepoId === baseRepoId &&
               pr?.head?.repo?.full_name === repoFullName &&
-              pr?.head?.repo?.owner?.login === context.repo.owner;
+              pr?.head?.repo?.owner?.login === context.repo.owner &&
+              hasWriteLikeAccess;
 
             core.setOutput('trusted_pr', trusted ? 'true' : 'false');
             if (!trusted) {
-              core.warning('Untrusted PR context detected (fork or repository mismatch). Nimbus review steps requiring repository secrets will be skipped.');
+              core.warning('Untrusted PR context detected (fork/repository mismatch or missing write permissions). Nimbus review steps requiring repository secrets will be skipped.');
             }
 
       - name: Checkout
@@ -193,8 +211,8 @@ jobs:
               body += `
 
             ---
-            Nimbus review was skipped for this run because this PR comes from a fork.
-            Repository secrets are intentionally not exposed to forked pull requests.
+            Nimbus review was skipped for this run because this PR context is not trusted.
+            Repository secrets are only used for same-repo pull requests authored by users with write-level repository access.
             `;
             } else if (secretsReady !== 'true') {
               body += `
