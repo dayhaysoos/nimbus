@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "d797099f1e71",
+  "session_id": "ses_30923b961ffeNT0MbjVtd2LiNf",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-19T19:02:32.097004Z",
+  "branch": "github-action-work",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/preflight.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "9ff4c281466c",
+  "token_usage": {
+    "input_tokens": 1771274,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 22884992,
+    "output_tokens": 101310,
+    "api_call_count": 272
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-19T19:02:30.129986Z",
+    "agent_lines": 13,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 13,
+    "agent_percentage": 100
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "d797099f1e71",
+  "strategy": "manual-commit",
+  "branch": "github-action-work",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/preflight.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d7/97099f1e71/0/metadata.json",
+      "transcript": "/d7/97099f1e71/0/full.jsonl",
+      "context": "/d7/97099f1e71/0/context.md",
+      "content_hash": "/d7/97099f1e71/0/content_hash.txt",
+      "prompt": "/d7/97099f1e71/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1771274,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 22884992,
+    "output_tokens": 101310,
+    "api_call_count": 272
+  }
+}
