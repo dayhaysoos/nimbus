@@ -1,0 +1,92 @@
+in the wrangler.toml where it says NIMBUS_HOSTED=“false” please set that to true
+
+---
+
+Look at the nimbus findings section on the PR right now. Just answer with “yes” or “no”. Is this a new comment after a new review?
+
+---
+
+What was the previous findings message?
+
+---
+
+You checked for it within this chat history, look there
+
+---
+
+That’s literally also the current message on the PR right now. Why do you think that it’s not the same?
+
+---
+
+Why could this be happening? I am starting to feel like we should move away from this experience because the PR comment does not get updated consistently at all
+
+---
+
+Go ahead and build it just to see
+
+---
+
+This actually doesn’t reveal any information at all. Maybe we can go back to teh way people do thing snow and add a comment for every review. This whole idea of maintaining a comment is not working out at all. I also feel like we should iterate on the design a bit. First, why don’t you revert the last commit that was made. Then I want you to make this simpler. 
+
+For every PR review, there will be a comment made that gives a report. I want the report to simply go over the findings, don’t share the test of the extra details for now.
+
+---
+
+This is the recent feedback. Verify if they exist and fix if they do:
+
+[medium/security/single] The workflow step 'Refresh PR base ref' executes git fetch using user-controlled input from github.event.pull_request.base.ref without sanitization. This allows PR authors to inject arbitrary git references, potentially fetching unintended branches or triggering remote code execution if combined with git hooks or malicious refs. (.github/workflows/nimbus-pr-review.yml:98-110)
+[low/logic/single] The 'Run Nimbus review create' step passes BASE_REF and HEAD_SHA from pull request event data to the CLI. If the PR is from a fork (untrusted context), these values could reference attacker-controlled commits. Although the workflow skips untrusted PRs via trusted_pr check, the step runs only when trusted_pr == 'true', so the risk is mitigated. However, the CLI receives base/head refs without additional validation, which could cause unexpected behavior if the trust check is bypassed or misconfigured. (.github/workflows/nimbus-pr-review.yml:105-113)
+[low/logic/single] The 'Post PR findings comment' step runs unconditionally (if: always()) and creates a new comment on every workflow run, even if no review was produced (e.g., untrusted PR or creation failure). This will accumulate noise comments on PRs from forks or failed runs. The intent session context excerpt 'This whole idea of maintaining a comment is not working out at all' and 'we should move away from this experience' suggests known UX issues with comment accumulation. (.github/workflows/nimbus-pr-review.yml:142-180)
+
+---
+
+give me the command to add and commit
+
+---
+
+I just pushed and it looks like a new comment wasn’t even added. What happened?
+
+---
+
+Give me the exact add/commit command for this. Do that every time.
+
+---
+
+Verify and fix:
+
+[medium/security/single] The PR trust detection logic checks for fork status, repository IDs, full names, and write-like permissions. However, it does not verify that the PR head SHA is actually reachable from the base branch or that the PR hasn't been force-pushed after permission checks. An attacker with temporary write access could open a PR, have it marked trusted, then force-push malicious content before the workflow runs, potentially accessing repository secrets. (.github/workflows/nimbus-pr-review.yml:23-61)
+[low/logic/single] The workflow creates a new PR comment on every review run instead of updating an existing comment. According to the intent session context, this is a known issue: 'This whole idea of maintaining a comment is not working out at all' and 'we should move away from this experience because the PR comment does not get updated consistently at all.' The current implementation will create comment spam on PRs with multiple synchronize events. (.github/workflows/nimbus-pr-review.yml:174-176)
+[low/logic/single] The 'Read review ID' step attempts to parse the review ID from a file but only logs a warning if the file is missing. However, all subsequent steps depend on this review ID being non-empty. If the create step fails silently or times out, the export and comment steps will be skipped without clear user feedback about why the review didn't complete. (.github/workflows/nimbus-pr-review.yml:150-165)
+
+---
+
+This is the new round of feedback. verify and fix:
+
+[high/security/single] Secret exposure risk: REVIEW_CONTEXT_GITHUB_TOKEN is provided as environment variable to a pnpm command that runs user-controlled code. In the context of a fork PR workflow, this could leak the repository secret if malicious code is present in dependencies or CLI commands. The workflow restricts execution to trusted PRs only (same repo, write permissions), but the secret is exposed during workspace deployment steps that may execute untrusted code from the PR branch. (.github/workflows/nimbus-pr-review.yml:207-209)
+[medium/logic/single] Comment deduplication logic may fail if multiple workflow runs execute concurrently for the same commit SHA. The workflow checks for existing comments matching both the marker and commit SHA before creating a new one, but does not use atomic comment creation. If two runs reach the comment creation step simultaneously, both could observe no existing comment and create duplicates. This is inconsistent with the intent described in the session context excerpts, which mention difficulty maintaining a single updated comment. (.github/workflows/nimbus-pr-review.yml:275-283)
+[low/logic/single] Review ID file write failure is logged as a warning but does not fail the review creation command. If downstream CI/CD automation depends on this file (as the warning message indicates), the pipeline may silently skip export steps without clear indication in the workflow status. The command succeeds even though the contract with dependent steps is broken. (packages/cli/src/commands/review/create.ts:450-476)
+[low/logic/single] validateReviewCochangeTokenReadiness always throws an error when running in CLI context without a local token, even though the documentation (README.md, docs/development.md) describes REVIEW_CONTEXT_GITHUB_TOKEN as 'recommended' and states 'reviews can still run without REVIEW_CONTEXT_GITHUB_TOKEN'. The implementation enforces token presence unconditionally, making it a hard requirement despite documentation suggesting graceful degradation. (packages/cli/src/commands/review/preflight.ts:389-404)
+
+---
+
+Before you fix this, can you clean up how this looks?
+
+[high/security/single] Secret exposure risk: REVIEW_CONTEXT_GITHUB_TOKEN is provided as environment variable to a pnpm command that runs user-controlled code. In the context of a fork PR workflow, this could leak the repository secret if malicious code is present in dependencies or CLI commands. The workflow restricts execution to trusted PRs only (same repo, write permissions), but the secret is exposed during workspace deployment steps that may execute untrusted code from the PR branch. (.github/workflows/nimbus-pr-review.yml:207-209)
+[medium/logic/single] Comment deduplication logic may fail if multiple workflow runs execute concurrently for the same commit SHA. The workflow checks for existing comments matching both the marker and commit SHA before creating a new one, but does not use atomic comment creation. If two runs reach the comment creation step simultaneously, both could observe no existing comment and create duplicates. This is inconsistent with the intent described in the session context excerpts, which mention difficulty maintaining a single updated comment. (.github/workflows/nimbus-pr-review.yml:275-283)
+[low/logic/single] Review ID file write failure is logged as a warning but does not fail the review creation command. If downstream CI/CD automation depends on this file (as the warning message indicates), the pipeline may silently skip export steps without clear indication in the workflow status. The command succeeds even though the contract with dependent steps is broken. (packages/cli/src/commands/review/create.ts:450-476)
+[low/logic/single] validateReviewCochangeTokenReadiness always throws an error when running in CLI context without a local token, even though the documentation (README.md, docs/development.md) describes REVIEW_CONTEXT_GITHUB_TOKEN as 'recommended' and states 'reviews can still run without REVIEW_CONTEXT_GITHUB_TOKEN'. The implementation enforces token presence unconditionally, making it a hard requirement despite documentation suggesting graceful degradation. (packages/cli/src/commands/review/preflight.ts:389-404)
+
+
+We have 3 categories. severity/type of bug/ single or mutli line
+
+It should look way better for markdown format. I also feel like we should change how the paragraph look. We have links to where the files should be fixed, they don’t link to anything. They should be actual URLs. 
+
+Can you propose 3 different styles for them, show me in ASCII. Once I choose one I like, we can then fix the related bugs
+
+---
+
+I like 2, let’s start with that
+
+---
+
+Well to be honest I wanna take a deeper look into the data that comes back and how it’s structured later so let’s save that for another time. Give me the add and commit command to send this
