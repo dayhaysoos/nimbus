@@ -131,12 +131,80 @@ jobs:
             exit 1
           fi
 
+          if ! git merge-base "${RAW_BASE_SHA}" "${RAW_HEAD_SHA}" >/dev/null; then
+            echo "::error::No merge base found between base ${RAW_BASE_SHA} and head ${RAW_HEAD_SHA}."
+            exit 1
+          fi
+
           echo "head_sha=${RAW_HEAD_SHA}" >> "$GITHUB_OUTPUT"
           echo "base_ref=${RAW_BASE_SHA}" >> "$GITHUB_OUTPUT"
 
+      - name: Revalidate PR trust at runtime
+        id: runtime_guard
+        if: steps.pr_context.outputs.trusted_pr == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const expectedHead = pr?.head?.sha;
+            const repoFullName = `${context.repo.owner}/${context.repo.repo}`;
+
+            let trustedRuntime = false;
+            let reason = 'unknown';
+
+            try {
+              const latest = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+              });
+
+              const latestPr = latest.data;
+              const latestHead = latestPr?.head?.sha;
+              const authorLogin = latestPr?.user?.login;
+
+              let hasWriteLikeAccess = false;
+              if (authorLogin) {
+                try {
+                  const permission = await github.rest.repos.getCollaboratorPermissionLevel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    username: authorLogin,
+                  });
+                  const level = permission.data.permission;
+                  hasWriteLikeAccess = level === 'admin' || level === 'maintain' || level === 'write';
+                } catch (error) {
+                  core.warning(`Runtime permission check failed for ${authorLogin}; treating PR as untrusted.`);
+                }
+              }
+
+              trustedRuntime =
+                latestPr?.head?.repo?.fork === false &&
+                latestPr?.head?.repo?.full_name === repoFullName &&
+                latestPr?.head?.repo?.owner?.login === context.repo.owner &&
+                hasWriteLikeAccess &&
+                latestHead === expectedHead;
+
+              reason = trustedRuntime
+                ? 'ok'
+                : latestHead !== expectedHead
+                  ? `stale_head:${expectedHead}->${latestHead}`
+                  : 'runtime_trust_check_failed';
+            } catch (error) {
+              reason = `runtime_check_error:${error.message}`;
+              core.warning(`Runtime trust revalidation failed: ${error.message}`);
+            }
+
+            core.setOutput('trusted_runtime', trustedRuntime ? 'true' : 'false');
+            core.setOutput('reason', reason);
+
+            if (!trustedRuntime) {
+              core.warning(`Skipping review creation because runtime trust check failed (${reason}).`);
+            }
+
       - name: Run Nimbus review create (non-blocking)
         id: create_review
-        if: steps.pr_context.outputs.trusted_pr == 'true'
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
         continue-on-error: true
         env:
           HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
@@ -151,7 +219,7 @@ jobs:
 
       - name: Read review ID
         id: parse_review_id
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true'
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
         env:
           CREATE_OUTCOME: ${{ steps.create_review.outcome }}
         run: |
@@ -160,6 +228,9 @@ jobs:
 
           if [ -z "${REVIEW_ID}" ]; then
             echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}). Markdown export will be skipped. Re-run this workflow if review creation failed unexpectedly."
+            echo "review_id_missing=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "review_id_missing=false" >> "$GITHUB_OUTPUT"
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
@@ -167,15 +238,28 @@ jobs:
 
       - name: Export review markdown (non-blocking)
         id: export_markdown
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != ''
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
           pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
 
+      - name: Report skipped findings publication
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && (steps.runtime_guard.outputs.trusted_runtime != 'true' || steps.create_review.outcome != 'success' || steps.parse_review_id.outputs.review_id == '' || steps.export_markdown.outcome != 'success')
+        run: |
+          if [ "${{ steps.runtime_guard.outputs.trusted_runtime }}" != "true" ]; then
+            echo "::warning::Nimbus findings publication skipped: runtime trust revalidation failed (${{ steps.runtime_guard.outputs.reason }})."
+          elif [ "${{ steps.create_review.outcome }}" != "success" ]; then
+            echo "::warning::Nimbus findings publication skipped: review creation outcome was '${{ steps.create_review.outcome }}'."
+          elif [ -z "${{ steps.parse_review_id.outputs.review_id }}" ]; then
+            echo "::warning::Nimbus findings publication skipped: review ID was empty."
+          elif [ "${{ steps.export_markdown.outcome }}" != "success" ]; then
+            echo "::warning::Nimbus findings publication skipped: markdown export outcome was '${{ steps.export_markdown.outcome }}'."
+          fi
+
       - name: Post PR findings comment
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != '' && steps.export_markdown.outcome == 'success'
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != '' && steps.export_markdown.outcome == 'success'
         uses: actions/github-script@v7
         env:
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
@@ -183,6 +267,7 @@ jobs:
           script: |
             const fs = require('fs');
 
+            const marker = '<!-- nimbus-findings-comment -->';
             const reviewId = process.env.REVIEW_ID || '';
             const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
             const markdownPath = `${workspace}/nimbus-review.md`;
@@ -202,7 +287,8 @@ jobs:
               }
             }
 
-            let body = `## Nimbus Findings\n\n${findingsBody}`;
+            const commitMarker = `<!-- nimbus-findings-head:${headSha} -->`;
+            let body = `${marker}\n${commitMarker}\n## Nimbus Findings\n\n${findingsBody}`;
 
             if (body.length > 65536) {
               body = `${body.slice(0, 65520)}\n\n... (truncated)`;
@@ -210,6 +296,25 @@ jobs:
 
             const { owner, repo } = context.repo;
             const issue_number = pr.number;
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const existingForHead = comments.find(comment =>
+              comment.user?.login === 'github-actions[bot]' &&
+              typeof comment.body === 'string' &&
+              comment.body.includes(marker) &&
+              comment.body.includes(commitMarker)
+            );
+
+            if (existingForHead) {
+              core.info(`Skipping duplicate findings comment for ${headSha}; existing comment ${existingForHead.id}.`);
+              return;
+            }
 
             const created = await github.rest.issues.createComment({
               owner,
