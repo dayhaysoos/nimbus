@@ -61,13 +61,16 @@ jobs:
               core.warning('Untrusted PR context detected (fork/repository mismatch or missing write permissions). Nimbus review steps requiring repository secrets will be skipped.');
             }
 
-      - name: Checkout
+      - name: Checkout trusted base CLI
         uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: .nimbus-trusted-cli
           fetch-depth: 0
 
       - name: Fetch Entire checkpoint branch
         continue-on-error: true
+        working-directory: .nimbus-trusted-cli
         run: |
           # Required for local Entire context/co-change resolution in CI.
           # If this branch doesn't exist yet, the review will still run
@@ -89,6 +92,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
+        working-directory: .nimbus-trusted-cli
         run: pnpm install --frozen-lockfile
 
       # Dogfood invocation for monorepo development.
@@ -97,6 +101,7 @@ jobs:
       - name: Validate and fetch review refs
         id: review_refs
         if: steps.pr_context.outputs.trusted_pr == 'true'
+        working-directory: .nimbus-trusted-cli
         env:
           RAW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RAW_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -113,36 +118,39 @@ jobs:
             exit 1
           fi
 
-          if ! git cat-file -e "${RAW_BASE_SHA}^{commit}" 2>/dev/null; then
-            git fetch --no-tags origin "${RAW_BASE_SHA}"
+          HEAD_SHA="${RAW_HEAD_SHA}"
+          BASE_SHA="${RAW_BASE_SHA}"
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "${BASE_SHA}"
           fi
 
-          if ! git cat-file -e "${RAW_HEAD_SHA}^{commit}" 2>/dev/null; then
-            git fetch --no-tags origin "${RAW_HEAD_SHA}"
+          if ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "${HEAD_SHA}"
           fi
 
-          if ! git cat-file -e "${RAW_BASE_SHA}^{commit}"; then
-            echo "::error::Base commit is unavailable locally: ${RAW_BASE_SHA}"
+          if ! git cat-file -e "${BASE_SHA}^{commit}"; then
+            echo "::error::Base commit is unavailable locally: ${BASE_SHA}"
             exit 1
           fi
 
-          if ! git cat-file -e "${RAW_HEAD_SHA}^{commit}"; then
-            echo "::error::Head commit is unavailable locally: ${RAW_HEAD_SHA}"
+          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
+            echo "::error::Head commit is unavailable locally: ${HEAD_SHA}"
             exit 1
           fi
 
-          if ! git merge-base "${RAW_BASE_SHA}" "${RAW_HEAD_SHA}" >/dev/null; then
-            echo "::error::No merge base found between base ${RAW_BASE_SHA} and head ${RAW_HEAD_SHA}."
+          if ! git merge-base "${BASE_SHA}" "${HEAD_SHA}" >/dev/null; then
+            echo "::error::No merge base found between base ${BASE_SHA} and head ${HEAD_SHA}."
             exit 1
           fi
 
-          if ! git merge-base --is-ancestor "${RAW_BASE_SHA}" "${RAW_HEAD_SHA}"; then
-            echo "::error::Base commit ${RAW_BASE_SHA} is not an ancestor of head ${RAW_HEAD_SHA}."
+          if ! git merge-base --is-ancestor "${BASE_SHA}" "${HEAD_SHA}"; then
+            echo "::error::Base commit ${BASE_SHA} is not an ancestor of head ${HEAD_SHA}."
             exit 1
           fi
 
-          echo "head_sha=${RAW_HEAD_SHA}" >> "$GITHUB_OUTPUT"
-          echo "base_ref=${RAW_BASE_SHA}" >> "$GITHUB_OUTPUT"
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${BASE_SHA}" >> "$GITHUB_OUTPUT"
 
       - name: Revalidate PR trust at runtime
         id: runtime_guard
@@ -216,6 +224,7 @@ jobs:
         id: create_review
         if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
         continue-on-error: true
+        working-directory: .nimbus-trusted-cli
         env:
           HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
@@ -249,6 +258,7 @@ jobs:
         id: export_review
         if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
+        working-directory: .nimbus-trusted-cli
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
@@ -257,15 +267,17 @@ jobs:
       - name: Report skipped findings publication
         if: always() && steps.pr_context.outputs.trusted_pr == 'true' && (steps.runtime_guard.outputs.trusted_runtime != 'true' || steps.create_review.outcome != 'success' || steps.parse_review_id.outputs.review_id == '' || steps.export_review.outcome != 'success')
         run: |
+          REASON="unknown"
           if [ "${{ steps.runtime_guard.outputs.trusted_runtime }}" != "true" ]; then
-            echo "::warning::Nimbus findings publication skipped: runtime trust revalidation failed (${{ steps.runtime_guard.outputs.reason }})."
+            REASON="runtime trust revalidation failed (${{ steps.runtime_guard.outputs.reason }})"
           elif [ "${{ steps.create_review.outcome }}" != "success" ]; then
-            echo "::warning::Nimbus findings publication skipped: review creation outcome was '${{ steps.create_review.outcome }}'."
+            REASON="review creation outcome was '${{ steps.create_review.outcome }}'"
           elif [ -z "${{ steps.parse_review_id.outputs.review_id }}" ]; then
-            echo "::warning::Nimbus findings publication skipped: review ID was empty."
+            REASON="review ID was empty"
           elif [ "${{ steps.export_review.outcome }}" != "success" ]; then
-            echo "::warning::Nimbus findings publication skipped: review export outcome was '${{ steps.export_review.outcome }}'."
+            REASON="review export outcome was '${{ steps.export_review.outcome }}'"
           fi
+          echo "::warning::Nimbus findings publication skipped (first unmet gate): ${REASON}."
 
       - name: Post PR findings comment
         if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != '' && steps.export_review.outcome == 'success'

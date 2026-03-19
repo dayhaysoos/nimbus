@@ -70,7 +70,12 @@ export async function createReviewCommand(
     throw new Error('NIMBUS_WORKER_URL environment variable is required');
   }
 
-  await validateReviewCochangeTokenReadiness();
+  const readiness = await validateReviewCochangeTokenReadiness();
+  if (readiness === 'legacy_unknown') {
+    p.log.warning(
+      'REVIEW_CONTEXT_GITHUB_TOKEN is not set locally. Review will continue, but co-change context may fall back and reduce findings quality.'
+    );
+  }
 
   const response = await createReview(workerUrl, options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId, deploymentId), {
     target: {
@@ -343,7 +348,10 @@ export async function createReviewFromCommitCommand(
       } else {
         const readiness = await validateReviewCochangeTokenReadiness();
         if (readiness === 'legacy_unknown') {
-          spinner.stop('Co-change token readiness unknown on legacy worker (continuing)');
+          spinner.stop('Co-change token unavailable locally (continuing with possible fallback)');
+          p.log.warning(
+            'Set REVIEW_CONTEXT_GITHUB_TOKEN to improve co-change context reliability for review create/export flows.'
+          );
         } else {
           spinner.stop('Co-change token readiness confirmed');
         }
@@ -468,8 +476,8 @@ export async function createReviewFromCommitCommand(
           await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          throw new Error(
-            `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review creation stopped because downstream automation expects this file.`
+          p.log.warning(
+            `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review queued successfully, but downstream automation may skip export if it depends on this file.`
           );
         }
       }

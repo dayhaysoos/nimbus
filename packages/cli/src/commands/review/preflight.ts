@@ -453,7 +453,10 @@ export async function reviewPreflightCommand(
   try {
     const readiness = await validateReviewCochangeTokenReadiness();
     if (readiness === 'legacy_unknown') {
-      spinner.stop('Co-change token readiness unknown on legacy worker (continuing)');
+      spinner.stop('Co-change token unavailable locally (continuing with possible fallback)');
+      p.log.warning(
+        'Set REVIEW_CONTEXT_GITHUB_TOKEN to improve co-change context reliability during review execution.'
+      );
     } else {
       spinner.stop('Co-change token readiness confirmed');
     }
