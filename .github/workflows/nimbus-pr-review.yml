@@ -233,7 +233,7 @@ jobs:
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          pnpm --filter @dayhaysoos/nimbus dev review create \
+          pnpm --filter @dayhaysoos/nimbus dev -- review create \
             --commit "${HEAD_SHA}" \
             --base "${BASE_REF}" \
             --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
@@ -265,7 +265,7 @@ jobs:
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
+          pnpm --filter @dayhaysoos/nimbus dev -- review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
 
       - name: Report skipped findings publication
         if: always() && steps.pr_context.outputs.trusted_pr == 'true' && (steps.runtime_guard.outputs.trusted_runtime != 'true' || steps.create_review.outcome != 'success' || steps.parse_review_id.outputs.review_id == '' || steps.export_review.outcome != 'success')
@@ -459,6 +459,26 @@ jobs:
               body,
             });
             core.info(`Created Nimbus findings comment: ${created.data.id} for ${headSha}`);
+
+      - name: Enforce successful review publication
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
+        run: |
+          if [ "${{ steps.create_review.outcome }}" != "success" ]; then
+            echo "::error::Nimbus review creation failed (outcome=${{ steps.create_review.outcome }})."
+            exit 1
+          fi
+
+          if [ -z "${{ steps.parse_review_id.outputs.review_id }}" ]; then
+            echo "::error::Nimbus review ID missing after successful review creation."
+            exit 1
+          fi
+
+          if [ "${{ steps.export_review.outcome }}" != "success" ]; then
+            echo "::error::Nimbus review export failed (outcome=${{ steps.export_review.outcome }})."
+            exit 1
+          fi
+
+          echo "Nimbus review publication checks passed."
 
       - name: Finalize as informational check
         if: always()
