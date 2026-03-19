@@ -233,7 +233,7 @@ jobs:
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          pnpm --filter @dayhaysoos/nimbus dev -- review create \
+          pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review create \
             --commit "${HEAD_SHA}" \
             --base "${BASE_REF}" \
             --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
@@ -265,7 +265,7 @@ jobs:
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          pnpm --filter @dayhaysoos/nimbus dev -- review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
+          pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
 
       - name: Report skipped findings publication
         if: always() && steps.pr_context.outputs.trusted_pr == 'true' && (steps.runtime_guard.outputs.trusted_runtime != 'true' || steps.create_review.outcome != 'success' || steps.parse_review_id.outputs.review_id == '' || steps.export_review.outcome != 'success')
