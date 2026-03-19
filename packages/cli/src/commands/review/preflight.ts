@@ -384,6 +384,9 @@ export async function validateReviewEntireIntentContext(
 }
 
 export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed' | 'legacy_unknown'> {
+  const missingTokenMessage =
+    'REVIEW_CONTEXT_GITHUB_TOKEN is not ready. Set REVIEW_CONTEXT_GITHUB_TOKEN locally or configure worker review readiness with a valid GitHub token.';
+
   const localToken =
     typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
       ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
@@ -395,7 +398,7 @@ export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed
   if (resolveTokenReadinessForTests) {
     const ready = await resolveTokenReadinessForTests();
     if (!ready) {
-      return 'legacy_unknown';
+      throw new Error(missingTokenMessage);
     }
     return 'confirmed';
   }
@@ -410,11 +413,11 @@ export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed
     if (tokenReadyCheck?.ok) {
       return 'confirmed';
     }
-  } catch {
-    // Keep legacy fallback behavior when worker readiness cannot be resolved.
+    throw new Error(missingTokenMessage);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(`${missingTokenMessage} (${message})`);
   }
-
-  return 'legacy_unknown';
 }
 
 export async function reviewPreflightCommand(
@@ -466,15 +469,8 @@ export async function reviewPreflightCommand(
 
   spinner.start('Checking co-change token readiness...');
   try {
-    const readiness = await validateReviewCochangeTokenReadiness();
-    if (readiness === 'legacy_unknown') {
-      spinner.stop('Co-change token unavailable locally (continuing with possible fallback)');
-      p.log.warning(
-        'Set REVIEW_CONTEXT_GITHUB_TOKEN to improve co-change context reliability during review execution.'
-      );
-    } else {
-      spinner.stop('Co-change token readiness confirmed');
-    }
+    await validateReviewCochangeTokenReadiness();
+    spinner.stop('Co-change token readiness confirmed');
     p.log.success('Review preflight passed');
     p.log.message(`Commit: ${resolved.commitSha}`);
     p.log.message(`Checkpoint: ${contextResolution.resolvedCheckpointId}`);
