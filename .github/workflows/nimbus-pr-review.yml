@@ -72,11 +72,16 @@ jobs:
           # Required for local Entire context/co-change resolution in CI.
           # If this branch doesn't exist yet, the review will still run
           # but without local co-change context.
-          if git fetch --no-tags origin entire/checkpoints/v1:refs/remotes/origin/entire/checkpoints/v1; then
+          CHECKPOINTS_OID=$(git ls-remote --exit-code origin "refs/heads/entire/checkpoints/v1" | awk '{print $1}' || true)
+
+          if [ -z "${CHECKPOINTS_OID}" ]; then
+            echo "ENTIRE_CHECKPOINTS_FETCHED=false" >> "$GITHUB_ENV"
+            echo "::warning::Could not resolve origin/entire/checkpoints/v1. Continuing without local Entire co-change context."
+          elif git fetch --no-tags origin "${CHECKPOINTS_OID}:refs/remotes/origin/entire/checkpoints/v1" && [ "$(git rev-parse refs/remotes/origin/entire/checkpoints/v1)" = "${CHECKPOINTS_OID}" ]; then
             echo "ENTIRE_CHECKPOINTS_FETCHED=true" >> "$GITHUB_ENV"
           else
             echo "ENTIRE_CHECKPOINTS_FETCHED=false" >> "$GITHUB_ENV"
-            echo "::warning::Could not fetch origin/entire/checkpoints/v1. Continuing without local Entire co-change context."
+            echo "::warning::Could not fetch/verify origin/entire/checkpoints/v1 at expected OID. Continuing without local Entire co-change context."
           fi
 
       - name: Setup pnpm
@@ -89,7 +94,7 @@ jobs:
           cache: pnpm
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        run: pnpm install --frozen-lockfile --ignore-scripts
 
       - name: Build Nimbus CLI
         run: pnpm --filter @dayhaysoos/nimbus build
@@ -226,7 +231,9 @@ jobs:
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          node packages/cli/dist/index.js review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
+          set -o pipefail
+          node packages/cli/dist/index.js review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>&1 | tee "$GITHUB_WORKSPACE/nimbus-review-create.log"
+          exit "${PIPESTATUS[0]}"
 
       - name: Read review ID
         id: parse_review_id
@@ -234,10 +241,22 @@ jobs:
         run: |
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
+          if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
+            REVIEW_ID=$(python3 -c 'import re,sys,pathlib; text=pathlib.Path(sys.argv[1]).read_text(errors="ignore"); m=re.search(r"Review queued:\\s*(rev_[A-Za-z0-9]+)", text); print(m.group(1) if m else "")' "$GITHUB_WORKSPACE/nimbus-review-create.log")
+          fi
+
           if [ -z "${REVIEW_ID}" ]; then
             echo "::error::Review ID file was not produced by review create."
             exit 1
           fi
+
+          case "${REVIEW_ID}" in
+            rev_[a-z0-9]*) ;;
+            *)
+              echo "::error::Invalid review ID format: ${REVIEW_ID}"
+              exit 1
+              ;;
+          esac
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
           echo "Parsed review_id=${REVIEW_ID}"
