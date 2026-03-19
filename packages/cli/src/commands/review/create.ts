@@ -453,10 +453,25 @@ export async function createReviewFromCommitCommand(
       }
       if (outputReviewIdPath) {
         try {
+          const repoRoot = new GitRepo(process.cwd()).getRepoRoot();
           const workspaceDir = typeof process.env.GITHUB_WORKSPACE === 'string' && process.env.GITHUB_WORKSPACE.trim()
             ? process.env.GITHUB_WORKSPACE.trim()
             : null;
-          const baseDir = workspaceDir ?? new GitRepo(process.cwd()).getRepoRoot();
+          let baseDir = repoRoot;
+          if (workspaceDir) {
+            const resolvedWorkspaceDir = resolve(workspaceDir);
+            const resolvedRepoRoot = resolve(repoRoot);
+            if (
+              resolvedWorkspaceDir === resolvedRepoRoot ||
+              resolvedWorkspaceDir.startsWith(`${resolvedRepoRoot}/`)
+            ) {
+              baseDir = resolvedWorkspaceDir;
+            } else {
+              p.log.warning(
+                `Ignoring GITHUB_WORKSPACE=${workspaceDir} because it is outside the repository root; resolving --output-review-id from repo root instead.`
+              );
+            }
+          }
           const absolutePath = isAbsolute(outputReviewIdPath)
             ? outputReviewIdPath
             : resolve(baseDir, outputReviewIdPath);
@@ -464,8 +479,8 @@ export async function createReviewFromCommitCommand(
           await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
         } catch (error) {
           const message = error instanceof Error ? error.message : String(error);
-          p.log.warning(
-            `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review queued successfully, but downstream automation may skip export if it depends on this file.`
+          throw new Error(
+            `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review creation failed because downstream automation expects this file.`
           );
         }
       }

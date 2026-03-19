@@ -99,6 +99,15 @@ jobs:
       - name: Build Nimbus CLI
         run: pnpm --filter @dayhaysoos/nimbus build
 
+      - name: Mask hosted API key
+        if: steps.pr_context.outputs.trusted_pr == 'true'
+        env:
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+        run: |
+          if [ -n "${NIMBUS_API_KEY}" ]; then
+            echo "::add-mask::${NIMBUS_API_KEY}"
+          fi
+
       # Dogfood invocation for monorepo development.
       # When extracted to standalone nimbus-action, replace with globally-installed CLI:
       # nimbus review create --commit <sha> --base <ref>
@@ -231,9 +240,7 @@ jobs:
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          set -o pipefail
-          node packages/cli/dist/index.js review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>&1 | tee "$GITHUB_WORKSPACE/nimbus-review-create.log"
-          exit "${PIPESTATUS[0]}"
+          node packages/cli/dist/index.js review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
 
       - name: Read review ID
         id: parse_review_id
