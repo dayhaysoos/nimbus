@@ -98,6 +98,10 @@ jobs:
         working-directory: .nimbus-trusted-cli
         run: pnpm install --frozen-lockfile
 
+      - name: Build Nimbus CLI
+        working-directory: .nimbus-trusted-cli
+        run: pnpm --filter @dayhaysoos/nimbus build
+
       # Dogfood invocation for monorepo development.
       # When extracted to standalone nimbus-action, replace with globally-installed CLI:
       # nimbus review create --commit <sha> --base <ref>
@@ -233,7 +237,7 @@ jobs:
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
+          node packages/cli/dist/index.js review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
 
       - name: Read review ID
         id: parse_review_id
@@ -262,7 +266,7 @@ jobs:
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
+          node packages/cli/dist/index.js review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
 
       - name: Report skipped findings publication
         if: always() && steps.pr_context.outputs.trusted_pr == 'true' && (steps.runtime_guard.outputs.trusted_runtime != 'true' || steps.create_review.outcome != 'success' || steps.parse_review_id.outputs.review_id == '' || steps.export_review.outcome != 'success')
