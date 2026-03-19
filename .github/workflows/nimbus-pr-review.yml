@@ -136,6 +136,11 @@ jobs:
             exit 1
           fi
 
+          if ! git merge-base --is-ancestor "${RAW_BASE_SHA}" "${RAW_HEAD_SHA}"; then
+            echo "::error::Base commit ${RAW_BASE_SHA} is not an ancestor of head ${RAW_HEAD_SHA}."
+            exit 1
+          fi
+
           echo "head_sha=${RAW_HEAD_SHA}" >> "$GITHUB_OUTPUT"
           echo "base_ref=${RAW_BASE_SHA}" >> "$GITHUB_OUTPUT"
 
@@ -147,6 +152,7 @@ jobs:
           script: |
             const pr = context.payload.pull_request;
             const expectedHead = pr?.head?.sha;
+            const expectedBase = pr?.base?.sha;
             const repoFullName = `${context.repo.owner}/${context.repo.repo}`;
 
             let trustedRuntime = false;
@@ -161,6 +167,7 @@ jobs:
 
               const latestPr = latest.data;
               const latestHead = latestPr?.head?.sha;
+              const latestBase = latestPr?.base?.sha;
               const authorLogin = latestPr?.user?.login;
 
               let hasWriteLikeAccess = false;
@@ -183,12 +190,15 @@ jobs:
                 latestPr?.head?.repo?.full_name === repoFullName &&
                 latestPr?.head?.repo?.owner?.login === context.repo.owner &&
                 hasWriteLikeAccess &&
-                latestHead === expectedHead;
+                latestHead === expectedHead &&
+                latestBase === expectedBase;
 
               reason = trustedRuntime
                 ? 'ok'
                 : latestHead !== expectedHead
                   ? `stale_head:${expectedHead}->${latestHead}`
+                  : latestBase !== expectedBase
+                    ? `stale_base:${expectedBase}->${latestBase}`
                   : 'runtime_trust_check_failed';
             } catch (error) {
               reason = `runtime_check_error:${error.message}`;
@@ -400,15 +410,30 @@ jobs:
               per_page: 100,
             });
 
-            const existingForHead = comments.find(comment =>
-              comment.user?.login === 'github-actions[bot]' &&
-              typeof comment.body === 'string' &&
-              comment.body.includes(marker) &&
-              comment.body.includes(commitMarker)
-            );
+            const nimbusComments = comments
+              .filter(comment =>
+                comment.user?.login === 'github-actions[bot]' &&
+                typeof comment.body === 'string' &&
+                comment.body.includes(marker)
+              )
+              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+            const existingForHead = nimbusComments.find(comment => comment.body.includes(commitMarker));
 
             if (existingForHead) {
               core.info(`Skipping duplicate findings comment for ${headSha}; existing comment ${existingForHead.id}.`);
+              return;
+            }
+
+            const latestNimbusComment = nimbusComments[0];
+            if (latestNimbusComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: latestNimbusComment.id,
+                body,
+              });
+              core.info(`Updated Nimbus findings comment ${latestNimbusComment.id} for ${headSha}.`);
               return;
             }
 
@@ -418,33 +443,6 @@ jobs:
               issue_number,
               body,
             });
-            const freshComments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100,
-            });
-
-            const commentsForHead = freshComments
-              .filter(comment =>
-                comment.user?.login === 'github-actions[bot]' &&
-                typeof comment.body === 'string' &&
-                comment.body.includes(marker) &&
-                comment.body.includes(commitMarker)
-              )
-              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-
-            const keeper = commentsForHead[0];
-            if (keeper && keeper.id !== created.data.id) {
-              await github.rest.issues.deleteComment({
-                owner,
-                repo,
-                comment_id: created.data.id,
-              });
-              core.info(`Removed duplicate findings comment ${created.data.id}; kept ${keeper.id} for ${headSha}.`);
-              return;
-            }
-
             core.info(`Created Nimbus findings comment: ${created.data.id} for ${headSha}`);
 
       - name: Finalize as informational check

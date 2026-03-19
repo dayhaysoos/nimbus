@@ -457,12 +457,10 @@ export async function createReviewFromCommitCommand(
       }
       if (outputReviewIdPath) {
         try {
-          let baseDir = process.cwd();
-          try {
-            baseDir = new GitRepo(process.cwd()).getRepoRoot();
-          } catch {
-            p.log.warning('Could not resolve git repository root; resolving --output-review-id relative to current working directory.');
-          }
+          const workspaceDir = typeof process.env.GITHUB_WORKSPACE === 'string' && process.env.GITHUB_WORKSPACE.trim()
+            ? process.env.GITHUB_WORKSPACE.trim()
+            : null;
+          const baseDir = workspaceDir ?? new GitRepo(process.cwd()).getRepoRoot();
           const absolutePath = isAbsolute(outputReviewIdPath)
             ? outputReviewIdPath
             : resolve(baseDir, outputReviewIdPath);
