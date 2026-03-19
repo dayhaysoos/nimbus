@@ -383,8 +383,6 @@ export async function validateReviewEntireIntentContext(
 }
 
 export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed' | 'legacy_unknown'> {
-  const missingTokenMessage =
-    "co-change retrieval requires a GitHub token with repo read access to your repository. This must be your own GitHub PAT and should be supplied per run (for CLI usage, set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env or shell environment).";
   const localToken =
     typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
       ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
@@ -396,12 +394,12 @@ export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed
   if (resolveTokenReadinessForTests) {
     const ready = await resolveTokenReadinessForTests();
     if (!ready) {
-      throw new Error(missingTokenMessage);
+      return 'legacy_unknown';
     }
     return 'confirmed';
   }
 
-  throw new Error(missingTokenMessage);
+  return 'legacy_unknown';
 }
 
 export async function reviewPreflightCommand(
