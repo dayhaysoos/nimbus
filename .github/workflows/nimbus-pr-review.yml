@@ -233,10 +233,7 @@ jobs:
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review create \
-            --commit "${HEAD_SHA}" \
-            --base "${BASE_REF}" \
-            --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
+          pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
 
       - name: Read review ID
         id: parse_review_id
