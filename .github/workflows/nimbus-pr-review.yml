@@ -1,0 +1,422 @@
+name: Nimbus PR Review
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+concurrency:
+  group: nimbus-pr-review-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  nimbus-review:
+    if: github.event_name == 'pull_request'
+    name: Nimbus Review (informational)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Detect trusted PR context
+        id: pr_context
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const repoFullName = `${context.repo.owner}/${context.repo.repo}`;
+            const headRepoId = pr?.head?.repo?.id;
+            const baseRepoId = context.payload.repository?.id;
+            const authorLogin = pr?.user?.login;
+
+            let hasWriteLikeAccess = false;
+            if (authorLogin) {
+              try {
+                const permission = await github.rest.repos.getCollaboratorPermissionLevel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  username: authorLogin,
+                });
+                const level = permission.data.permission;
+                hasWriteLikeAccess = level === 'admin' || level === 'maintain' || level === 'write';
+              } catch (error) {
+                core.warning(`Could not resolve collaborator permission for ${authorLogin}; treating PR as untrusted.`);
+              }
+            }
+
+            const trusted =
+              pr?.head?.repo?.fork === false &&
+              Number.isInteger(headRepoId) &&
+              Number.isInteger(baseRepoId) &&
+              headRepoId === baseRepoId &&
+              pr?.head?.repo?.full_name === repoFullName &&
+              pr?.head?.repo?.owner?.login === context.repo.owner &&
+              hasWriteLikeAccess;
+
+            core.setOutput('trusted_pr', trusted ? 'true' : 'false');
+            if (!trusted) {
+              core.warning('Untrusted PR context detected (fork/repository mismatch or missing write permissions). Nimbus review steps requiring repository secrets will be skipped.');
+            }
+
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch Entire checkpoint branch
+        continue-on-error: true
+        run: |
+          # Required for local Entire context/co-change resolution in CI.
+          # If this branch doesn't exist yet, the review will still run
+          # but without local co-change context.
+          CHECKPOINTS_OID=$(git ls-remote --exit-code origin "refs/heads/entire/checkpoints/v1" | awk '{print $1}' || true)
+
+          if [ -z "${CHECKPOINTS_OID}" ]; then
+            echo "ENTIRE_CHECKPOINTS_FETCHED=false" >> "$GITHUB_ENV"
+            echo "::warning::Could not resolve origin/entire/checkpoints/v1. Continuing without local Entire co-change context."
+          elif git fetch --no-tags origin "${CHECKPOINTS_OID}:refs/remotes/origin/entire/checkpoints/v1" && [ "$(git rev-parse refs/remotes/origin/entire/checkpoints/v1)" = "${CHECKPOINTS_OID}" ]; then
+            echo "ENTIRE_CHECKPOINTS_FETCHED=true" >> "$GITHUB_ENV"
+          else
+            echo "ENTIRE_CHECKPOINTS_FETCHED=false" >> "$GITHUB_ENV"
+            echo "::warning::Could not fetch/verify origin/entire/checkpoints/v1 at expected OID. Continuing without local Entire co-change context."
+          fi
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      - name: Build Nimbus CLI
+        run: pnpm --filter @dayhaysoos/nimbus build
+
+      - name: Mask hosted API key
+        if: steps.pr_context.outputs.trusted_pr == 'true'
+        env:
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+        run: |
+          if [ -n "${NIMBUS_API_KEY}" ]; then
+            echo "::add-mask::${NIMBUS_API_KEY}"
+          fi
+
+      # Dogfood invocation for monorepo development.
+      # When extracted to standalone nimbus-action, replace with globally-installed CLI:
+      # nimbus review create --commit <sha> --base <ref>
+      - name: Validate and fetch review refs
+        id: review_refs
+        if: steps.pr_context.outputs.trusted_pr == 'true'
+        env:
+          RAW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          RAW_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          sha_re='^[0-9a-f]{40}$'
+
+          if ! [[ "${RAW_HEAD_SHA}" =~ ${sha_re} ]]; then
+            echo "::error::Invalid PR head SHA: ${RAW_HEAD_SHA}"
+            exit 1
+          fi
+
+          if ! [[ "${RAW_BASE_SHA}" =~ ${sha_re} ]]; then
+            echo "::error::Invalid PR base SHA: ${RAW_BASE_SHA}"
+            exit 1
+          fi
+
+          HEAD_SHA="${RAW_HEAD_SHA}"
+          BASE_SHA="${RAW_BASE_SHA}"
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "${BASE_SHA}"
+          fi
+
+          if ! git cat-file -e "${HEAD_SHA}^{commit}" 2>/dev/null; then
+            git fetch --no-tags origin "${HEAD_SHA}"
+          fi
+
+          if ! git cat-file -e "${BASE_SHA}^{commit}"; then
+            echo "::error::Base commit is unavailable locally: ${BASE_SHA}"
+            exit 1
+          fi
+
+          if ! git cat-file -e "${HEAD_SHA}^{commit}"; then
+            echo "::error::Head commit is unavailable locally: ${HEAD_SHA}"
+            exit 1
+          fi
+
+          if ! git merge-base "${BASE_SHA}" "${HEAD_SHA}" >/dev/null; then
+            echo "::error::No merge base found between base ${BASE_SHA} and head ${HEAD_SHA}."
+            exit 1
+          fi
+
+          if ! git merge-base --is-ancestor "${BASE_SHA}" "${HEAD_SHA}"; then
+            echo "::error::Base commit ${BASE_SHA} is not an ancestor of head ${HEAD_SHA}."
+            exit 1
+          fi
+
+          echo "head_sha=${HEAD_SHA}" >> "$GITHUB_OUTPUT"
+          echo "base_ref=${BASE_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Revalidate PR trust at runtime
+        id: runtime_guard
+        if: steps.pr_context.outputs.trusted_pr == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const pr = context.payload.pull_request;
+            const expectedHead = pr?.head?.sha;
+            const expectedBase = pr?.base?.sha;
+            const repoFullName = `${context.repo.owner}/${context.repo.repo}`;
+
+            let trustedRuntime = false;
+            let reason = 'unknown';
+
+            try {
+              const latest = await github.rest.pulls.get({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                pull_number: pr.number,
+              });
+
+              const latestPr = latest.data;
+              const latestHead = latestPr?.head?.sha;
+              const latestBase = latestPr?.base?.sha;
+              const authorLogin = latestPr?.user?.login;
+
+              let hasWriteLikeAccess = false;
+              if (authorLogin) {
+                try {
+                  const permission = await github.rest.repos.getCollaboratorPermissionLevel({
+                    owner: context.repo.owner,
+                    repo: context.repo.repo,
+                    username: authorLogin,
+                  });
+                  const level = permission.data.permission;
+                  hasWriteLikeAccess = level === 'admin' || level === 'maintain' || level === 'write';
+                } catch (error) {
+                  core.warning(`Runtime permission check failed for ${authorLogin}; treating PR as untrusted.`);
+                }
+              }
+
+              trustedRuntime =
+                latestPr?.head?.repo?.fork === false &&
+                latestPr?.head?.repo?.full_name === repoFullName &&
+                latestPr?.head?.repo?.owner?.login === context.repo.owner &&
+                hasWriteLikeAccess &&
+                latestHead === expectedHead &&
+                latestBase === expectedBase;
+
+              reason = trustedRuntime
+                ? 'ok'
+                : latestHead !== expectedHead
+                  ? `stale_head:${expectedHead}->${latestHead}`
+                  : latestBase !== expectedBase
+                    ? `stale_base:${expectedBase}->${latestBase}`
+                  : 'runtime_trust_check_failed';
+            } catch (error) {
+              reason = `runtime_check_error:${error.message}`;
+              core.warning(`Runtime trust revalidation failed: ${error.message}`);
+            }
+
+            core.setOutput('trusted_runtime', trustedRuntime ? 'true' : 'false');
+            core.setOutput('reason', reason);
+
+            if (!trustedRuntime) {
+              core.warning(`Skipping review creation because runtime trust check failed (${reason}).`);
+            }
+
+      - name: Run Nimbus review create
+        id: create_review
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
+        env:
+          HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
+          BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+        run: |
+          node packages/cli/dist/index.js review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
+
+      - name: Read review ID
+        id: parse_review_id
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
+        run: |
+          REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
+
+          if [ -z "${REVIEW_ID}" ]; then
+            echo "::error::Review ID file was not produced by review create."
+            exit 1
+          fi
+
+          case "${REVIEW_ID}" in
+            rev_[a-z0-9]*) ;;
+            *)
+              echo "::error::Invalid review ID format: ${REVIEW_ID}"
+              exit 1
+              ;;
+          esac
+
+          echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
+          echo "Parsed review_id=${REVIEW_ID}"
+
+      - name: Export review JSON
+        id: export_review
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.parse_review_id.outputs.review_id != ''
+        env:
+          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+        run: |
+          node packages/cli/dist/index.js review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
+
+      - name: Post PR findings comment
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != '' && steps.export_review.outcome == 'success'
+        uses: actions/github-script@v7
+        env:
+          REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
+        with:
+          script: |
+            const fs = require('fs');
+
+            const marker = '<!-- nimbus-findings-comment -->';
+            const reviewId = process.env.REVIEW_ID || '';
+            const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
+            const reviewPath = `${workspace}/nimbus-review.json`;
+
+            const pr = context.payload.pull_request;
+            const headSha = pr.head.sha;
+            const { owner, repo } = context.repo;
+            const issue_number = pr.number;
+
+            function buildWhyMatters(severity, type) {
+              const severityPrefix =
+                severity === 'high' || severity === 'critical'
+                  ? 'High impact if triggered. '
+                  : severity === 'medium'
+                    ? 'Moderate impact on review reliability. '
+                    : '';
+
+              if (type === 'security') {
+                return `${severityPrefix}Potentially exposes credentials or weakens trust boundaries.`;
+              }
+
+              return `${severityPrefix}Can cause inconsistent automation behavior or noisy PR signals.`;
+            }
+
+            function buildLocationMarkdown(rawLocation) {
+              if (!rawLocation) {
+                return '`(location unavailable)`';
+              }
+
+              const trimmed = rawLocation.trim();
+              const match = trimmed.match(/^(.+?):(\d+)(?:-(\d+))?$/);
+
+              if (!match) {
+                return `\`${trimmed}\``;
+              }
+
+              const filePath = match[1].replace(/^\.\//, '');
+              const start = match[2];
+              const end = match[3];
+              const anchor = end ? `#L${start}-L${end}` : `#L${start}`;
+              const encodedPath = filePath
+                .split('/')
+                .map(segment => encodeURIComponent(segment))
+                .join('/');
+              const url = `${context.serverUrl}/${owner}/${repo}/blob/${headSha}/${encodedPath}${anchor}`;
+              return `[${filePath}${anchor}](${url})`;
+            }
+
+            function locationToRaw(location) {
+              if (!location || typeof location !== 'object') {
+                return '';
+              }
+
+              const path =
+                (typeof location.filePath === 'string' && location.filePath) ||
+                (typeof location.path === 'string' && location.path) ||
+                '';
+              const start =
+                Number.isInteger(location.startLine) ? String(location.startLine) :
+                Number.isInteger(location.line) ? String(location.line) :
+                '';
+              const end = Number.isInteger(location.endLine) ? String(location.endLine) : '';
+
+              if (!path) {
+                return '';
+              }
+
+              if (!start) {
+                return path;
+              }
+
+              return end ? `${path}:${start}-${end}` : `${path}:${start}`;
+            }
+
+            function buildCardsFromStructuredReview(review) {
+              if (!review || typeof review !== 'object' || !Array.isArray(review.findings) || review.findings.length === 0) {
+                return null;
+              }
+
+              const cards = review.findings.map((finding, index) => {
+                const severity = typeof finding?.severity === 'string' ? finding.severity : 'unknown';
+                const type = typeof finding?.category === 'string' ? finding.category : 'unknown';
+                const scope = typeof finding?.passType === 'string' ? finding.passType : 'single';
+                const summary =
+                  (typeof finding?.description === 'string' && finding.description.trim()) ||
+                  (typeof finding?.title === 'string' && finding.title.trim()) ||
+                  'No summary provided.';
+
+                const firstLocation = Array.isArray(finding?.locations) ? finding.locations[0] : null;
+                const locationRaw = locationToRaw(firstLocation);
+
+                return [
+                  `### F-${String(index + 1).padStart(3, '0')}`,
+                  `- Severity: ${severity}`,
+                  `- Type: ${type}`,
+                  `- Scope: ${scope}`,
+                  `- Summary: ${summary}`,
+                  `- Why this matters: ${buildWhyMatters(severity, type)}`,
+                  `- Location: ${buildLocationMarkdown(locationRaw)}`,
+                ].join('\n');
+              });
+
+              return cards.join('\n\n');
+            }
+
+            let findingsBody = 'No findings report was produced for this run.';
+
+            if (reviewId && fs.existsSync(reviewPath)) {
+              const exported = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
+              const review = exported && typeof exported === 'object' && exported.review ? exported.review : exported;
+
+              const structuredCards = buildCardsFromStructuredReview(review);
+              if (structuredCards) {
+                findingsBody = structuredCards;
+              } else if (review && Array.isArray(review.findings) && review.findings.length === 0) {
+                findingsBody = 'No actionable findings.';
+              }
+            }
+
+            let body = `${marker}\n## Nimbus Findings\n\n- Review ID: \`${reviewId || 'unknown'}\`\n- Head SHA: \`${headSha}\`\n- Schema version: \`v1\`\n\n${findingsBody}`;
+
+            if (body.length > 65536) {
+              body = `${body.slice(0, 65520)}\n\n... (truncated)`;
+            }
+
+            const created = await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number,
+              body,
+            });
+            core.info(`Created Nimbus findings comment: ${created.data.id} for ${headSha}`);
+
+      - name: Finalize as informational check
+        if: always()
+        run: |
+          echo "Nimbus PR review completed (informational mode)."
+          exit 0

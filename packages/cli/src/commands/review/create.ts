@@ -1,5 +1,7 @@
 import * as p from '@clack/prompts';
 import { createHash } from 'crypto';
+import { mkdir, writeFile } from 'fs/promises';
+import { dirname, isAbsolute, resolve } from 'path';
 import {
   createReview,
   getReview,
@@ -17,6 +19,7 @@ import {
   validateReviewCommitCheckpoint,
   validateReviewEntireIntentContext,
 } from './preflight.js';
+import { GitRepo } from '../../lib/checkpoint/git.js';
 import type {
   WorkspaceDeploymentResponse,
   WorkspaceResponse,
@@ -153,7 +156,9 @@ let streamReviewEventsForCommitFlow: typeof streamReviewEvents = streamReviewEve
 let getReviewForCommitFlow: typeof getReview = getReview;
 let resolveLocalCochangeForCommitFlow: typeof resolveCochangeFromLocalGit = resolveCochangeFromLocalGit;
 
-export function setReviewCommitResolverForTests(resolver: ((commitish: string) => CommitResolution) | null): void {
+export function setReviewCommitResolverForTests(
+  resolver: ((commitish: string, options?: { baseRef?: string }) => CommitResolution) | null
+): void {
   setReviewPreflightCommitResolverForTests(resolver);
 }
 
@@ -223,6 +228,8 @@ function normalizeCommitDiffPatch(patch: string): {
 export async function createReviewFromCommitCommand(
   options?: {
     commitish?: string;
+    baseRef?: string;
+    outputReviewIdPath?: string;
     projectRoot?: string;
     idempotencyKey?: string;
     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
@@ -268,7 +275,9 @@ export async function createReviewFromCommitCommand(
   try {
     spinner.start('Resolving checkpoint...');
     try {
-      const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd());
+      const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
+        baseRef: options?.baseRef,
+      });
       commitSha = resolvedCommit.commitSha;
       checkpointId = resolvedCommit.checkpointId;
       changedPaths = parseChangedPathsFromDiff(resolvedCommit.commitDiffPatch);
@@ -332,12 +341,8 @@ export async function createReviewFromCommitCommand(
       if (localCochange) {
         spinner.stop('Co-change token check skipped (using local co-change context)');
       } else {
-        const readiness = await validateReviewCochangeTokenReadiness();
-        if (readiness === 'legacy_unknown') {
-          spinner.stop('Co-change token readiness unknown on legacy worker (continuing)');
-        } else {
-          spinner.stop('Co-change token readiness confirmed');
-        }
+        await validateReviewCochangeTokenReadiness();
+        spinner.stop('Co-change token readiness confirmed');
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -440,6 +445,45 @@ export async function createReviewFromCommitCommand(
       reviewId = response.reviewId;
       reviewResultUrl = normalizeResultUrl(workerUrl, response.resultUrl);
       spinner.stop(`Review queued: ${reviewId}`);
+
+      const outputReviewIdRaw = options?.outputReviewIdPath;
+      const outputReviewIdPath = outputReviewIdRaw?.trim();
+      if (outputReviewIdRaw !== undefined && !outputReviewIdPath) {
+        p.log.warning('Ignoring --output-review-id because the provided path is empty.');
+      }
+      if (outputReviewIdPath) {
+        try {
+          const repoRoot = new GitRepo(process.cwd()).getRepoRoot();
+          const workspaceDir = typeof process.env.GITHUB_WORKSPACE === 'string' && process.env.GITHUB_WORKSPACE.trim()
+            ? process.env.GITHUB_WORKSPACE.trim()
+            : null;
+          let baseDir = repoRoot;
+          if (workspaceDir) {
+            const resolvedWorkspaceDir = resolve(workspaceDir);
+            const resolvedRepoRoot = resolve(repoRoot);
+            if (
+              resolvedWorkspaceDir === resolvedRepoRoot ||
+              resolvedWorkspaceDir.startsWith(`${resolvedRepoRoot}/`)
+            ) {
+              baseDir = resolvedWorkspaceDir;
+            } else {
+              p.log.warning(
+                `Ignoring GITHUB_WORKSPACE=${workspaceDir} because it is outside the repository root; resolving --output-review-id from repo root instead.`
+              );
+            }
+          }
+          const absolutePath = isAbsolute(outputReviewIdPath)
+            ? outputReviewIdPath
+            : resolve(baseDir, outputReviewIdPath);
+          await mkdir(dirname(absolutePath), { recursive: true });
+          await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          throw new Error(
+            `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review creation failed because downstream automation expects this file.`
+          );
+        }
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Review creation failed');
@@ -473,6 +517,7 @@ export async function createReviewFromCommitCommand(
     }
 
     console.log(`Report URL: ${reviewResultUrl}`);
+
   } catch (error) {
     throw error;
   }

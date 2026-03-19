@@ -31,11 +31,15 @@ export NIMBUS_WORKER_URL="https://<your-worker>.workers.dev"
 
 ## Review runtime requirements
 
-Review create/readiness requires all of:
+Review runtime requires:
 
 - `REVIEWS_QUEUE` binding
 - `ReviewRunner` Durable Object binding + migration
-- `REVIEW_CONTEXT_GITHUB_TOKEN` configured on the worker
+
+Co-change context token model:
+
+- Preferred: provide `REVIEW_CONTEXT_GITHUB_TOKEN` per user (local `.env`/shell env for CLI)
+- Optional fallback: set `REVIEW_CONTEXT_GITHUB_TOKEN` on the worker for system-initiated retries
 
 Quick check:
 
@@ -48,6 +52,8 @@ Expected checks include:
 - `queue_binding_reviews`
 - `durable_object_binding_review_runner`
 - `review_context_github_token_configured`
+
+Readiness `ok` is based on queue + durable object bindings. The GitHub token check is advisory.
 
 ## Cloud flow smoke commands
 

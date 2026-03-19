@@ -118,12 +118,17 @@ export async function handleGetReviewReadiness(env: Env): Promise<Response> {
     {
       code: 'review_context_github_token_configured',
       ok: hasWorkerGithubToken,
-      details: hasWorkerGithubToken ? 'configured' : 'missing',
+      details: hasWorkerGithubToken
+        ? 'configured (optional fallback for retries/system-initiated runs)'
+        : 'missing (optional: per-request user token is supported)',
     },
   ];
+  const requiredChecks = checks.filter(
+    (check) => check.code === 'queue_binding_reviews' || check.code === 'durable_object_binding_review_runner'
+  );
 
   return jsonResponse({
-    ok: checks.every((check) => check.ok),
+    ok: requiredChecks.every((check) => check.ok),
     checks,
   });
 }

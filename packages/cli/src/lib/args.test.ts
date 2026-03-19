@@ -52,6 +52,10 @@ export function runArgsParsingTests(): void {
       'review',
       '--commit',
       'main~1',
+      '--base',
+      'origin/main',
+      '--output-review-id',
+      'review-id.txt',
       '--workspace',
       'ws_abc12345',
       '--deployment',
@@ -73,6 +77,8 @@ export function runArgsParsingTests(): void {
     ]);
     assert.equal(parsed.flags.workspace, 'ws_abc12345');
     assert.equal(parsed.flags.commit, 'main~1');
+    assert.equal(parsed.flags.base, 'origin/main');
+    assert.equal(parsed.flags['output-review-id'], 'review-id.txt');
     assert.equal(parsed.flags.deployment, 'dep_abcd1234');
     assert.equal(parsed.flags['severity-threshold'], 'medium');
     assert.equal(parsed.flags['max-findings'], '12');
@@ -87,6 +93,11 @@ export function runArgsParsingTests(): void {
     const parsed = parseArgs(['review', 'create', '--commit']);
     assert.equal(parsed.flags.commit, true);
     assert.deepEqual(parsed.positional, ['create']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'create', '--output-review-id']);
+    assert.equal(parsed.flags['output-review-id'], true);
   }
 
   assert.throws(
