@@ -226,7 +226,7 @@ jobs:
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
           if [ -z "${REVIEW_ID}" ]; then
-            echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}). Markdown export will be skipped. Re-run this workflow if review creation failed unexpectedly."
+            echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}). Review export will be skipped. Re-run this workflow if review creation failed unexpectedly."
             echo "review_id_missing=true" >> "$GITHUB_OUTPUT"
           else
             echo "review_id_missing=false" >> "$GITHUB_OUTPUT"
@@ -235,17 +235,17 @@ jobs:
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
           echo "Parsed review_id='${REVIEW_ID}'"
 
-      - name: Export review markdown (non-blocking)
-        id: export_markdown
+      - name: Export review JSON (non-blocking)
+        id: export_review
         if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != ''
         continue-on-error: true
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
-          pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format markdown --out "$GITHUB_WORKSPACE/nimbus-review.md"
+          pnpm --filter @dayhaysoos/nimbus dev review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
 
       - name: Report skipped findings publication
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && (steps.runtime_guard.outputs.trusted_runtime != 'true' || steps.create_review.outcome != 'success' || steps.parse_review_id.outputs.review_id == '' || steps.export_markdown.outcome != 'success')
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && (steps.runtime_guard.outputs.trusted_runtime != 'true' || steps.create_review.outcome != 'success' || steps.parse_review_id.outputs.review_id == '' || steps.export_review.outcome != 'success')
         run: |
           if [ "${{ steps.runtime_guard.outputs.trusted_runtime }}" != "true" ]; then
             echo "::warning::Nimbus findings publication skipped: runtime trust revalidation failed (${{ steps.runtime_guard.outputs.reason }})."
@@ -253,12 +253,12 @@ jobs:
             echo "::warning::Nimbus findings publication skipped: review creation outcome was '${{ steps.create_review.outcome }}'."
           elif [ -z "${{ steps.parse_review_id.outputs.review_id }}" ]; then
             echo "::warning::Nimbus findings publication skipped: review ID was empty."
-          elif [ "${{ steps.export_markdown.outcome }}" != "success" ]; then
-            echo "::warning::Nimbus findings publication skipped: markdown export outcome was '${{ steps.export_markdown.outcome }}'."
+          elif [ "${{ steps.export_review.outcome }}" != "success" ]; then
+            echo "::warning::Nimbus findings publication skipped: review export outcome was '${{ steps.export_review.outcome }}'."
           fi
 
       - name: Post PR findings comment
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != '' && steps.export_markdown.outcome == 'success'
+        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != '' && steps.export_review.outcome == 'success'
         uses: actions/github-script@v7
         env:
           REVIEW_ID: ${{ steps.parse_review_id.outputs.review_id }}
@@ -269,7 +269,7 @@ jobs:
             const marker = '<!-- nimbus-findings-comment -->';
             const reviewId = process.env.REVIEW_ID || '';
             const workspace = process.env.GITHUB_WORKSPACE || process.cwd();
-            const markdownPath = `${workspace}/nimbus-review.md`;
+            const reviewPath = `${workspace}/nimbus-review.json`;
 
             const pr = context.payload.pull_request;
             const headSha = pr.head.sha;
@@ -315,36 +315,48 @@ jobs:
               return `[${filePath}${anchor}](${url})`;
             }
 
-            function formatFindingsAsCards(findingsText) {
-              const lines = findingsText
-                .split('\n')
-                .map(line => line.trim())
-                .filter(line => line.startsWith('- ['));
+            function locationToRaw(location) {
+              if (!location || typeof location !== 'object') {
+                return '';
+              }
 
-              if (lines.length === 0) {
+              const path =
+                (typeof location.filePath === 'string' && location.filePath) ||
+                (typeof location.path === 'string' && location.path) ||
+                '';
+              const start =
+                Number.isInteger(location.startLine) ? String(location.startLine) :
+                Number.isInteger(location.line) ? String(location.line) :
+                '';
+              const end = Number.isInteger(location.endLine) ? String(location.endLine) : '';
+
+              if (!path) {
+                return '';
+              }
+
+              if (!start) {
+                return path;
+              }
+
+              return end ? `${path}:${start}-${end}` : `${path}:${start}`;
+            }
+
+            function buildCardsFromStructuredReview(review) {
+              if (!review || typeof review !== 'object' || !Array.isArray(review.findings) || review.findings.length === 0) {
                 return null;
               }
 
-              const cards = lines.map((line, index) => {
-                const match = line.match(/^- \[([^/\]]+)\/([^/\]]+)\/([^\]]+)\]\s+(.+?)(?:\s+\(([^()]+)\))?$/);
+              const cards = review.findings.map((finding, index) => {
+                const severity = typeof finding?.severity === 'string' ? finding.severity : 'unknown';
+                const type = typeof finding?.category === 'string' ? finding.category : 'unknown';
+                const scope = typeof finding?.passType === 'string' ? finding.passType : 'single';
+                const summary =
+                  (typeof finding?.description === 'string' && finding.description.trim()) ||
+                  (typeof finding?.title === 'string' && finding.title.trim()) ||
+                  'No summary provided.';
 
-                if (!match) {
-                  return [
-                    `### F-${String(index + 1).padStart(3, '0')}`,
-                    '- Severity: unknown',
-                    '- Type: unknown',
-                    '- Scope: unknown',
-                    `- Summary: ${line.replace(/^-\s*/, '')}`,
-                    '- Why this matters: Can cause inconsistent automation behavior or noisy PR signals.',
-                    '- Location: `(location unavailable)`',
-                  ].join('\n');
-                }
-
-                const severity = match[1].trim();
-                const type = match[2].trim();
-                const scope = match[3].trim();
-                const summary = match[4].trim();
-                const location = match[5] ? match[5].trim() : '';
+                const firstLocation = Array.isArray(finding?.locations) ? finding.locations[0] : null;
+                const locationRaw = locationToRaw(firstLocation);
 
                 return [
                   `### F-${String(index + 1).padStart(3, '0')}`,
@@ -353,7 +365,7 @@ jobs:
                   `- Scope: ${scope}`,
                   `- Summary: ${summary}`,
                   `- Why this matters: ${buildWhyMatters(severity, type)}`,
-                  `- Location: ${buildLocationMarkdown(location)}`,
+                  `- Location: ${buildLocationMarkdown(locationRaw)}`,
                 ].join('\n');
               });
 
@@ -362,20 +374,20 @@ jobs:
 
             let findingsBody = 'No findings report was produced for this run.';
 
-            if (reviewId && fs.existsSync(markdownPath)) {
-              const markdown = fs.readFileSync(markdownPath, 'utf8').trim();
-              const findingsSection = markdown.match(/## Findings\n\n([\s\S]*?)(\n##\s|$)/);
+            if (reviewId && fs.existsSync(reviewPath)) {
+              const exported = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
+              const review = exported && typeof exported === 'object' && exported.review ? exported.review : exported;
 
-              if (findingsSection && findingsSection[1].trim()) {
-                const formatted = formatFindingsAsCards(findingsSection[1].trim());
-                findingsBody = formatted || findingsSection[1].trim();
-              } else if (/- Findings:\s*0\b/.test(markdown)) {
+              const structuredCards = buildCardsFromStructuredReview(review);
+              if (structuredCards) {
+                findingsBody = structuredCards;
+              } else if (review && Array.isArray(review.findings) && review.findings.length === 0) {
                 findingsBody = 'No actionable findings.';
               }
             }
 
             const commitMarker = `<!-- nimbus-findings-head:${headSha} -->`;
-            let body = `${marker}\n${commitMarker}\n## Nimbus Findings\n\n${findingsBody}`;
+            let body = `${marker}\n${commitMarker}\n## Nimbus Findings\n\n- Review ID: \`${reviewId || 'unknown'}\`\n- Head SHA: \`${headSha}\`\n- Schema version: \`v1\`\n\n${findingsBody}`;
 
             if (body.length > 65536) {
               body = `${body.slice(0, 65520)}\n\n... (truncated)`;
