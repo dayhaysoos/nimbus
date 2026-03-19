@@ -61,16 +61,13 @@ jobs:
               core.warning('Untrusted PR context detected (fork/repository mismatch or missing write permissions). Nimbus review steps requiring repository secrets will be skipped.');
             }
 
-      - name: Checkout trusted base CLI
+      - name: Checkout
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.base.sha }}
-          path: .nimbus-trusted-cli
           fetch-depth: 0
 
       - name: Fetch Entire checkpoint branch
         continue-on-error: true
-        working-directory: .nimbus-trusted-cli
         run: |
           # Required for local Entire context/co-change resolution in CI.
           # If this branch doesn't exist yet, the review will still run
@@ -92,14 +89,11 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
-          cache-dependency-path: .nimbus-trusted-cli/pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: .nimbus-trusted-cli
         run: pnpm install --frozen-lockfile
 
       - name: Build Nimbus CLI
-        working-directory: .nimbus-trusted-cli
         run: pnpm --filter @dayhaysoos/nimbus build
 
       # Dogfood invocation for monorepo development.
@@ -108,7 +102,6 @@ jobs:
       - name: Validate and fetch review refs
         id: review_refs
         if: steps.pr_context.outputs.trusted_pr == 'true'
-        working-directory: .nimbus-trusted-cli
         env:
           RAW_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
           RAW_BASE_SHA: ${{ github.event.pull_request.base.sha }}
@@ -227,11 +220,9 @@ jobs:
               core.warning(`Skipping review creation because runtime trust check failed (${reason}).`);
             }
 
-      - name: Run Nimbus review create (non-blocking)
+      - name: Run Nimbus review create
         id: create_review
         if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
-        continue-on-error: true
-        working-directory: .nimbus-trusted-cli
         env:
           HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
@@ -241,47 +232,25 @@ jobs:
 
       - name: Read review ID
         id: parse_review_id
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
-        env:
-          CREATE_OUTCOME: ${{ steps.create_review.outcome }}
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
         run: |
-          # Try file first (reliable)
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
           if [ -z "${REVIEW_ID}" ]; then
-            echo "::warning::Review ID file was not produced (create step outcome: ${CREATE_OUTCOME:-unknown}). Review export will be skipped. Re-run this workflow if review creation failed unexpectedly."
-            echo "review_id_missing=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "review_id_missing=false" >> "$GITHUB_OUTPUT"
+            echo "::error::Review ID file was not produced by review create."
+            exit 1
           fi
 
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
-          echo "Parsed review_id='${REVIEW_ID}'"
+          echo "Parsed review_id=${REVIEW_ID}"
 
-      - name: Export review JSON (non-blocking)
+      - name: Export review JSON
         id: export_review
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != ''
-        continue-on-error: true
-        working-directory: .nimbus-trusted-cli
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.parse_review_id.outputs.review_id != ''
         env:
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
         run: |
           node packages/cli/dist/index.js review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
-
-      - name: Report skipped findings publication
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && (steps.runtime_guard.outputs.trusted_runtime != 'true' || steps.create_review.outcome != 'success' || steps.parse_review_id.outputs.review_id == '' || steps.export_review.outcome != 'success')
-        run: |
-          REASON="unknown"
-          if [ "${{ steps.runtime_guard.outputs.trusted_runtime }}" != "true" ]; then
-            REASON="runtime trust revalidation failed (${{ steps.runtime_guard.outputs.reason }})"
-          elif [ "${{ steps.create_review.outcome }}" != "success" ]; then
-            REASON="review creation outcome was '${{ steps.create_review.outcome }}'"
-          elif [ -z "${{ steps.parse_review_id.outputs.review_id }}" ]; then
-            REASON="review ID was empty"
-          elif [ "${{ steps.export_review.outcome }}" != "success" ]; then
-            REASON="review export outcome was '${{ steps.export_review.outcome }}'"
-          fi
-          echo "::warning::Nimbus findings publication skipped (first unmet gate): ${REASON}."
 
       - name: Post PR findings comment
         if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.create_review.outcome == 'success' && steps.parse_review_id.outputs.review_id != '' && steps.export_review.outcome == 'success'
@@ -412,8 +381,7 @@ jobs:
               }
             }
 
-            const commitMarker = `<!-- nimbus-findings-head:${headSha} -->`;
-            let body = `${marker}\n${commitMarker}\n## Nimbus Findings\n\n- Review ID: \`${reviewId || 'unknown'}\`\n- Head SHA: \`${headSha}\`\n- Schema version: \`v1\`\n\n${findingsBody}`;
+            let body = `${marker}\n## Nimbus Findings\n\n- Review ID: \`${reviewId || 'unknown'}\`\n- Head SHA: \`${headSha}\`\n- Schema version: \`v1\`\n\n${findingsBody}`;
 
             if (body.length > 65536) {
               body = `${body.slice(0, 65520)}\n\n... (truncated)`;
@@ -434,13 +402,6 @@ jobs:
               )
               .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-            const existingForHead = nimbusComments.find(comment => comment.body.includes(commitMarker));
-
-            if (existingForHead) {
-              core.info(`Skipping duplicate findings comment for ${headSha}; existing comment ${existingForHead.id}.`);
-              return;
-            }
-
             const latestNimbusComment = nimbusComments[0];
             if (latestNimbusComment) {
               await github.rest.issues.updateComment({
@@ -460,26 +421,6 @@ jobs:
               body,
             });
             core.info(`Created Nimbus findings comment: ${created.data.id} for ${headSha}`);
-
-      - name: Enforce successful review publication
-        if: always() && steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
-        run: |
-          if [ "${{ steps.create_review.outcome }}" != "success" ]; then
-            echo "::error::Nimbus review creation failed (outcome=${{ steps.create_review.outcome }})."
-            exit 1
-          fi
-
-          if [ -z "${{ steps.parse_review_id.outputs.review_id }}" ]; then
-            echo "::error::Nimbus review ID missing after successful review creation."
-            exit 1
-          fi
-
-          if [ "${{ steps.export_review.outcome }}" != "success" ]; then
-            echo "::error::Nimbus review export failed (outcome=${{ steps.export_review.outcome }})."
-            exit 1
-          fi
-
-          echo "Nimbus review publication checks passed."
 
       - name: Finalize as informational check
         if: always()
