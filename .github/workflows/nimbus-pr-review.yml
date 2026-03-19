@@ -385,33 +385,6 @@ jobs:
               body = `${body.slice(0, 65520)}\n\n... (truncated)`;
             }
 
-            const comments = await github.paginate(github.rest.issues.listComments, {
-              owner,
-              repo,
-              issue_number,
-              per_page: 100,
-            });
-
-            const nimbusComments = comments
-              .filter(comment =>
-                comment.user?.login === 'github-actions[bot]' &&
-                typeof comment.body === 'string' &&
-                comment.body.includes(marker)
-              )
-              .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
-
-            const latestNimbusComment = nimbusComments[0];
-            if (latestNimbusComment) {
-              await github.rest.issues.updateComment({
-                owner,
-                repo,
-                comment_id: latestNimbusComment.id,
-                body,
-              });
-              core.info(`Updated Nimbus findings comment ${latestNimbusComment.id} for ${headSha}.`);
-              return;
-            }
-
             const created = await github.rest.issues.createComment({
               owner,
               repo,
