@@ -241,10 +241,6 @@ jobs:
         run: |
           REVIEW_ID=$(cat "$GITHUB_WORKSPACE/nimbus-review-id.txt" 2>/dev/null || echo "")
 
-          if [ -z "${REVIEW_ID}" ] && [ -f "$GITHUB_WORKSPACE/nimbus-review-create.log" ]; then
-            REVIEW_ID=$(python3 -c 'import re,sys,pathlib; text=pathlib.Path(sys.argv[1]).read_text(errors="ignore"); m=re.search(r"Review queued:\\s*(rev_[A-Za-z0-9]+)", text); print(m.group(1) if m else "")' "$GITHUB_WORKSPACE/nimbus-review-create.log")
-          fi
-
           if [ -z "${REVIEW_ID}" ]; then
             echo "::error::Review ID file was not produced by review create."
             exit 1

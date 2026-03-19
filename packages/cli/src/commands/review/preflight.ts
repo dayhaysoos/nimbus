@@ -3,6 +3,7 @@ import { GitRepo } from '../../lib/checkpoint/git.js';
 import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';
 import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 import type { EntireIntentContext } from '../../lib/entire/context.js';
+import { getReviewReadiness, getWorkerUrl } from '../../lib/api.js';
 
 interface CommitResolution {
   commitSha: string;
@@ -397,6 +398,20 @@ export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed
       return 'legacy_unknown';
     }
     return 'confirmed';
+  }
+
+  try {
+    const readiness = await getReviewReadiness(getWorkerUrl());
+    if (readiness.ok) {
+      return 'confirmed';
+    }
+
+    const tokenReadyCheck = readiness.checks.find((check) => /token|github/i.test(check.code));
+    if (tokenReadyCheck?.ok) {
+      return 'confirmed';
+    }
+  } catch {
+    // Keep legacy fallback behavior when worker readiness cannot be resolved.
   }
 
   return 'legacy_unknown';
