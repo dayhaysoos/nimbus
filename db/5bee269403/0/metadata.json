@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "db5bee269403",
+  "session_id": "ses_30923b961ffeNT0MbjVtd2LiNf",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-19T19:59:22.541391Z",
+  "branch": "auth-architecture-hardening",
+  "checkpoints_count": 7,
+  "files_touched": [
+    "llm-docs/phase-6-toolchain-parity-agent-prompt.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "9ff4c281466c",
+  "token_usage": {
+    "input_tokens": 2215174,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 28735360,
+    "output_tokens": 114849,
+    "api_call_count": 312
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-19T19:59:20.142569Z",
+    "agent_lines": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 0,
+    "agent_percentage": 0
+  }
+}
