@@ -210,7 +210,6 @@ jobs:
           HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
           NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
-          REVIEW_CONTEXT_GITHUB_TOKEN: ${{ secrets.REVIEW_CONTEXT_GITHUB_TOKEN }}
         run: |
           pnpm --filter @dayhaysoos/nimbus dev review create \
             --commit "${HEAD_SHA}" \
@@ -274,6 +273,93 @@ jobs:
 
             const pr = context.payload.pull_request;
             const headSha = pr.head.sha;
+            const { owner, repo } = context.repo;
+            const issue_number = pr.number;
+
+            function buildWhyMatters(severity, type) {
+              const severityPrefix =
+                severity === 'high' || severity === 'critical'
+                  ? 'High impact if triggered. '
+                  : severity === 'medium'
+                    ? 'Moderate impact on review reliability. '
+                    : '';
+
+              if (type === 'security') {
+                return `${severityPrefix}Potentially exposes credentials or weakens trust boundaries.`;
+              }
+
+              return `${severityPrefix}Can cause inconsistent automation behavior or noisy PR signals.`;
+            }
+
+            function buildLocationMarkdown(rawLocation) {
+              if (!rawLocation) {
+                return '`(location unavailable)`';
+              }
+
+              const trimmed = rawLocation.trim();
+              const match = trimmed.match(/^(.+?):(\d+)(?:-(\d+))?$/);
+
+              if (!match) {
+                return `\`${trimmed}\``;
+              }
+
+              const filePath = match[1].replace(/^\.\//, '');
+              const start = match[2];
+              const end = match[3];
+              const anchor = end ? `#L${start}-L${end}` : `#L${start}`;
+              const encodedPath = filePath
+                .split('/')
+                .map(segment => encodeURIComponent(segment))
+                .join('/');
+              const url = `${context.serverUrl}/${owner}/${repo}/blob/${headSha}/${encodedPath}${anchor}`;
+              return `[${filePath}${anchor}](${url})`;
+            }
+
+            function formatFindingsAsCards(findingsText) {
+              const lines = findingsText
+                .split('\n')
+                .map(line => line.trim())
+                .filter(line => line.startsWith('- ['));
+
+              if (lines.length === 0) {
+                return null;
+              }
+
+              const cards = lines.map((line, index) => {
+                const match = line.match(/^- \[([^/\]]+)\/([^/\]]+)\/([^\]]+)\]\s+(.+?)(?:\s+\(([^()]+)\))?$/);
+
+                if (!match) {
+                  return [
+                    `### F-${String(index + 1).padStart(3, '0')}`,
+                    '- Severity: unknown',
+                    '- Type: unknown',
+                    '- Scope: unknown',
+                    `- Summary: ${line.replace(/^-\s*/, '')}`,
+                    '- Why this matters: Can cause inconsistent automation behavior or noisy PR signals.',
+                    '- Location: `(location unavailable)`',
+                  ].join('\n');
+                }
+
+                const severity = match[1].trim();
+                const type = match[2].trim();
+                const scope = match[3].trim();
+                const summary = match[4].trim();
+                const location = match[5] ? match[5].trim() : '';
+
+                return [
+                  `### F-${String(index + 1).padStart(3, '0')}`,
+                  `- Severity: ${severity}`,
+                  `- Type: ${type}`,
+                  `- Scope: ${scope}`,
+                  `- Summary: ${summary}`,
+                  `- Why this matters: ${buildWhyMatters(severity, type)}`,
+                  `- Location: ${buildLocationMarkdown(location)}`,
+                ].join('\n');
+              });
+
+              return cards.join('\n\n');
+            }
+
             let findingsBody = 'No findings report was produced for this run.';
 
             if (reviewId && fs.existsSync(markdownPath)) {
@@ -281,7 +367,8 @@ jobs:
               const findingsSection = markdown.match(/## Findings\n\n([\s\S]*?)(\n##\s|$)/);
 
               if (findingsSection && findingsSection[1].trim()) {
-                findingsBody = findingsSection[1].trim();
+                const formatted = formatFindingsAsCards(findingsSection[1].trim());
+                findingsBody = formatted || findingsSection[1].trim();
               } else if (/- Findings:\s*0\b/.test(markdown)) {
                 findingsBody = 'No actionable findings.';
               }
@@ -293,9 +380,6 @@ jobs:
             if (body.length > 65536) {
               body = `${body.slice(0, 65520)}\n\n... (truncated)`;
             }
-
-            const { owner, repo } = context.repo;
-            const issue_number = pr.number;
 
             const comments = await github.paginate(github.rest.issues.listComments, {
               owner,
@@ -322,6 +406,33 @@ jobs:
               issue_number,
               body,
             });
+            const freshComments = await github.paginate(github.rest.issues.listComments, {
+              owner,
+              repo,
+              issue_number,
+              per_page: 100,
+            });
+
+            const commentsForHead = freshComments
+              .filter(comment =>
+                comment.user?.login === 'github-actions[bot]' &&
+                typeof comment.body === 'string' &&
+                comment.body.includes(marker) &&
+                comment.body.includes(commitMarker)
+              )
+              .sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+
+            const keeper = commentsForHead[0];
+            if (keeper && keeper.id !== created.data.id) {
+              await github.rest.issues.deleteComment({
+                owner,
+                repo,
+                comment_id: created.data.id,
+              });
+              core.info(`Removed duplicate findings comment ${created.data.id}; kept ${keeper.id} for ${headSha}.`);
+              return;
+            }
+
             core.info(`Created Nimbus findings comment: ${created.data.id} for ${headSha}`);
 
       - name: Finalize as informational check
