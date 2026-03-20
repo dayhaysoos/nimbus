@@ -327,3 +327,14 @@ export interface AdminApiKeyCreateResponse {
   label: string;
   isAdmin: boolean;
 }
+
+export interface RepoRegisterResponse {
+  repoSlug: string;
+  accountId: string;
+  status: 'registered' | 'already_registered';
+}
+
+export interface AuthExchangeResponse {
+  token: string;
+  expiresInSeconds: number;
+}

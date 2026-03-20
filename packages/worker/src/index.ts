@@ -46,6 +46,8 @@ import { ReviewRunner } from './review-runner-do.js';
 import { handleReviewQueueDispatch } from './lib/review-dispatch.js';
 import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';
 import { handleCreateAdminApiKey } from './api/admin.js';
+import { handleAuthExchange } from './api/auth.js';
+import { handleRegisterRepo } from './api/repos.js';
 import { authenticateRequest } from './lib/auth.js';
 import { enforceRequestBodySizeCap } from './lib/request-size.js';
 import type { AuthContext, Env } from './types.js';
@@ -104,6 +106,16 @@ export default {
     // Route: POST /api/admin/keys - Provision hosted API key
     if (url.pathname === '/api/admin/keys' && request.method === 'POST') {
       return handleCreateAdminApiKey(request, env, authContext);
+    }
+
+    // Route: POST /api/auth/exchange - Exchange GitHub OIDC token for Nimbus JWT
+    if (url.pathname === '/api/auth/exchange' && request.method === 'POST') {
+      return handleAuthExchange(request, env);
+    }
+
+    // Route: POST /api/repos/register - Register repository to account
+    if (url.pathname === '/api/repos/register' && request.method === 'POST') {
+      return handleRegisterRepo(request, env, authContext);
     }
 
     // Route: GET /api/reviews/:id/events - Review event stream

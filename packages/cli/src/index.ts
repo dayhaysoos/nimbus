@@ -37,6 +37,8 @@ import { reviewPreflightCommand } from './commands/review/preflight.js';
 import { parseArgs } from './lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
 import { provisionAdminKeyCommand } from './commands/admin/provision-key.js';
+import { registerRepoCommand } from './commands/repo/register.js';
+import { authExchangeCommand } from './commands/auth/exchange.js';
 
 const VERSION = '0.1.0';
 
@@ -121,6 +123,8 @@ Commands:
   review export <review-id>
                        Export a review as markdown or json
   admin provision-key  Provision a hosted API key (admin only)
+  repo register       Register current repository for OIDC exchange
+  auth exchange       Exchange GitHub OIDC token for Nimbus JWT (GitHub Actions)
   list               List all past jobs
   watch <job-id>     Watch a job's progress
 
@@ -152,8 +156,9 @@ Options:
   --deployment <id>   Deployment ID for review create
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
   --base <ref>        Diff base ref for review create (uses <base>...<commit>)
+  --repo <owner/repo> Repository slug override for repo register
   --output-review-id [path]
-                      Write queued review ID to a file (machine-readable)
+                       Write queued review ID to a file (machine-readable)
   --severity-threshold <level>
                       Review finding floor (low|medium|high|critical)
   --max-findings <n>  Maximum findings to include in report
@@ -195,6 +200,9 @@ Examples:
   nimbus review events rev_abcd1234
   nimbus review export rev_abcd1234 --format markdown --out review.md
   nimbus admin provision-key --label "Beta User Key"
+  nimbus repo register
+  nimbus repo register --repo owner/repo
+  nimbus auth exchange
   nimbus doctor
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
   nimbus list
@@ -546,6 +554,30 @@ async function main(): Promise<void> {
         }
 
         p.log.error('Unknown admin command. Use: provision-key');
+        process.exit(1);
+      }
+
+      case 'repo': {
+        const repoAction = positional[0];
+        if (repoAction === 'register') {
+          const repoFlag = flags.repo;
+          const repo = typeof repoFlag === 'string' ? repoFlag : undefined;
+          await registerRepoCommand({ repo });
+          break;
+        }
+
+        p.log.error('Unknown repo command. Use: register');
+        process.exit(1);
+      }
+
+      case 'auth': {
+        const authAction = positional[0];
+        if (authAction === 'exchange') {
+          await authExchangeCommand();
+          break;
+        }
+
+        p.log.error('Unknown auth command. Use: exchange');
         process.exit(1);
       }
 
