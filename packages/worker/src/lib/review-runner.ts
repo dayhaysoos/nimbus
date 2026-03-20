@@ -6,6 +6,7 @@ import type {
   ReviewFindingSeverityV2,
   ReviewRecommendation,
   ReviewReport,
+  ReviewSessionIntentSummary,
   ReviewRunResponse,
   ReviewSeverity,
 } from '../types.js';
@@ -30,9 +31,11 @@ import {
 } from './db.js';
 import { extractPolicyItemsFromIntentContext, redactReviewText } from './review-redaction.js';
 import {
+  extractJsonObject,
   formatReviewAnalysisError,
   readWorkspaceFilesFromSourceBundle,
   runWorkspaceDeploymentAgentAnalysis,
+  stripCodeFences,
 } from './review-analysis.js';
 
 class QueueRetryError extends Error {
@@ -68,6 +71,33 @@ const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
 const LARGE_DIFF_ADVISORY_THRESHOLD = 30;
 const DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const REVIEW_STALE_GRACE_MS = 60 * 1000;
+const INTENT_SUMMARY_MODEL = 'anthropic/claude-haiku-4-5';
+const INTENT_SUMMARY_MAX_TOKENS = 512;
+const INTENT_SUMMARY_SYSTEM_PROMPT = `You are an intent extraction assistant. You will be given
+raw notes and prompts written by a software developer
+during a coding session. Your job is to extract their
+stated intent as structured data.
+
+Return only a JSON object with no surrounding prose:
+{
+  "goal": string or null (the developer's primary objective,
+          in one sentence, or null if unclear),
+  "prohibitions": string[] (things the developer explicitly
+                  said must not happen, max 5 items),
+  "riskFocus": string[] (areas the developer flagged as
+               risky or needing attention, max 5 items),
+  "constraints": string[] (preferences or requirements the
+                 developer stated, max 5 items)
+}
+
+Rules:
+- Extract only what the developer explicitly stated
+- Do not infer or invent intent not present in the text
+- Keep each item concise, one sentence max
+- If a category has nothing clear to extract, return
+  an empty array or null
+- Omit questions, instructions to AI assistants, and
+  implementation details`;
 
 interface ReviewRunExecutionOptions {
   cochangeGithubToken?: string | null;
@@ -80,6 +110,121 @@ function asRecord(value: unknown): Record<string, unknown> {
 
 function parseStringArray(value: unknown): string[] {
   return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
+function parseOpenRouterMessageContent(payload: unknown): string {
+  const record = asRecord(payload);
+  const choices = Array.isArray(record.choices) ? record.choices : [];
+  const first = choices[0];
+  const choiceRecord = asRecord(first);
+  const messageRecord = asRecord(choiceRecord.message);
+  const content = messageRecord.content;
+  if (typeof content === 'string') {
+    return content.trim();
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map((part) => {
+        const partRecord = asRecord(part);
+        return typeof partRecord.text === 'string' ? partRecord.text : '';
+      })
+      .join('')
+      .trim();
+  }
+  return '';
+}
+
+function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummary | null {
+  const record = asRecord(value);
+  if (Object.keys(record).length === 0) {
+    return null;
+  }
+
+  const normalizeList = (input: unknown): string[] =>
+    Array.isArray(input)
+      ? Array.from(
+          new Set(
+            input
+              .filter((item): item is string => typeof item === 'string')
+              .map((item) => item.trim())
+              .filter(Boolean)
+          )
+        ).slice(0, 5)
+      : [];
+
+  const goalRaw = typeof record.goal === 'string' ? record.goal.trim() : null;
+  const goal = goalRaw && goalRaw.length > 0 ? goalRaw : null;
+
+  const summary: ReviewSessionIntentSummary = {
+    goal,
+    prohibitions: normalizeList(record.prohibitions),
+    riskFocus: normalizeList(record.riskFocus),
+    constraints: normalizeList(record.constraints),
+  };
+
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.riskFocus.length === 0 && summary.constraints.length === 0) {
+    return null;
+  }
+
+  return summary;
+}
+
+async function runIntentSummarizationPrePass(
+  env: Env,
+  rawSessionPrompts: string,
+  options?: { openrouterApiKey?: string | null }
+): Promise<ReviewSessionIntentSummary | null> {
+  const envApiKey = typeof env.OPENROUTER_API_KEY === 'string' ? env.OPENROUTER_API_KEY.trim() : '';
+  const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';
+  const apiKey = envApiKey || requestApiKey;
+  if (!apiKey) {
+    console.warn('[intent-summary] skipped: OPENROUTER_API_KEY not configured');
+    return null;
+  }
+
+  try {
+    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({
+        model: INTENT_SUMMARY_MODEL,
+        max_tokens: INTENT_SUMMARY_MAX_TOKENS,
+        messages: [
+          { role: 'system', content: INTENT_SUMMARY_SYSTEM_PROMPT },
+          { role: 'user', content: rawSessionPrompts },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      const body = await response.text();
+      console.warn(`[intent-summary] openrouter request failed (${response.status}): ${redactReviewText(body) ?? ''}`);
+      return null;
+    }
+
+    const payload = (await response.json()) as unknown;
+    const content = parseOpenRouterMessageContent(payload);
+    if (!content) {
+      console.warn('[intent-summary] openrouter response content was empty');
+      return null;
+    }
+
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(stripCodeFences(content));
+    } catch {
+      parsed = JSON.parse(extractJsonObject(content));
+    }
+
+    return validateIntentSummaryPayload(parsed);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[intent-summary] pre-pass failed: ${message}`);
+    return null;
+  }
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -1410,6 +1555,15 @@ async function buildWorkspaceDeploymentReport(
   const requestValidation = asRecord(deploymentRequest.validation);
   const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
   const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
+  const rawSessionPrompts =
+    typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim()
+      ? requestProvenance.rawSessionPrompts.trim()
+      : null;
+  const derivedIntentSummary = rawSessionPrompts
+    ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
+        openrouterApiKey: readOptionalString(options?.openrouterApiKey),
+      })
+    : null;
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
     : typeof requestProvenance.taskId === 'string'
@@ -1517,6 +1671,7 @@ async function buildWorkspaceDeploymentReport(
       constraints: baseConstraints,
       decisions: baseDecisions.filter(Boolean),
       intentSessionContext,
+      intentSummary: derivedIntentSummary,
       evidenceCatalog: analysisEvidence.map((item) => ({
         id: item.id,
         type: item.type,
@@ -1657,6 +1812,8 @@ async function buildWorkspaceDeploymentReport(
         ? {
           sessionIds: parseStringArray(requestProvenance.sessionIds),
           policyItems,
+          ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
+          ...(derivedIntentSummary ? { intentSummary: derivedIntentSummary } : {}),
           promptSummary,
           transcriptUrl,
           reviewContextRef: {

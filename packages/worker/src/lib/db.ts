@@ -739,6 +739,24 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
   const rawIntentSessionContext = Array.isArray(requestProvenance.intentSessionContext)
     ? requestProvenance.intentSessionContext
     : [];
+  const intentSummaryFromReport = report?.provenance?.intentSummary;
+  const intentSummary = intentSummaryFromReport
+    ? {
+        goal:
+          typeof intentSummaryFromReport.goal === 'string' && intentSummaryFromReport.goal.trim()
+            ? intentSummaryFromReport.goal.trim()
+            : null,
+        prohibitions: Array.isArray(intentSummaryFromReport.prohibitions)
+          ? intentSummaryFromReport.prohibitions.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+          : [],
+        riskFocus: Array.isArray(intentSummaryFromReport.riskFocus)
+          ? intentSummaryFromReport.riskFocus.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+          : [],
+        constraints: Array.isArray(intentSummaryFromReport.constraints)
+          ? intentSummaryFromReport.constraints.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+          : [],
+      }
+    : undefined;
   const policyItems = extractPolicyItemsFromIntentContext(
     rawIntentSessionContext.filter((item): item is string => typeof item === 'string')
   );
@@ -766,7 +784,8 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
     provenance: {
       sessionIds:
         report?.provenance && Array.isArray(report.provenance.sessionIds) ? report.provenance.sessionIds : [],
-      policyItems,
+      policyItems: intentSummary ? [] : policyItems,
+      ...(intentSummary ? { intentSummary } : {}),
       promptSummary:
         report?.provenance && typeof report.provenance.promptSummary === 'string'
           ? report.provenance.promptSummary

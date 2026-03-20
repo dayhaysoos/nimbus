@@ -370,6 +370,7 @@ export async function createWorkspaceDeployment(
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
+      rawSessionPrompts?: string | null;
       contextResolution?: 'direct' | 'branch_fallback';
       contextResolutionOriginalCheckpointId?: string;
       contextResolutionResolvedCheckpointId?: string;
@@ -448,6 +449,7 @@ export async function createReview(
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
+      rawSessionPrompts?: string | null;
       commitSha?: string;
       commitDiffPatch?: string;
       commitDiffPatchSha256?: string;

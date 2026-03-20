@@ -1,6 +1,7 @@
 import type { Sandbox } from '@cloudflare/sandbox';
 import type {
   Env,
+  ReviewSessionIntentSummary,
   ReviewAnalysisOutputV2,
   ReviewContext,
   ReviewFinding,
@@ -106,6 +107,7 @@ interface ReviewAgentPromptInput {
   constraints: string[];
   decisions: string[];
   intentSessionContext: string[];
+  intentSummary?: ReviewSessionIntentSummary | null;
   evidenceCatalog: Array<{ id: string; type: string; label: string; status: string }>;
   deploymentSummary: {
     provider: string;
@@ -172,13 +174,13 @@ function boundedJson(value: unknown, maxBytes: number): string {
   return clamped.truncated ? `${clamped.text} [TRUNCATED]` : clamped.text;
 }
 
-function stripCodeFences(value: string): string {
+export function stripCodeFences(value: string): string {
   const trimmed = value.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return fenced ? fenced[1].trim() : trimmed;
 }
 
-function extractJsonObject(value: string): string {
+export function extractJsonObject(value: string): string {
   const stripped = stripCodeFences(value);
   const start = stripped.indexOf('{');
   const end = stripped.lastIndexOf('}');
@@ -338,6 +340,16 @@ async function hydrateReviewSandbox(sandbox: SandboxClient, sourceBytes: ArrayBu
 }
 
 function sanitizePromptInput(input: ReviewAgentPromptInput): ReviewAgentPromptInput {
+  const rawIntentSummary = input.intentSummary;
+  const sanitizedIntentSummary = rawIntentSummary
+    ? {
+        goal: rawIntentSummary.goal ? redactReviewText(rawIntentSummary.goal) : null,
+        prohibitions: rawIntentSummary.prohibitions.map((item) => redactReviewText(item) ?? '').filter(Boolean),
+        riskFocus: rawIntentSummary.riskFocus.map((item) => redactReviewText(item) ?? '').filter(Boolean),
+        constraints: rawIntentSummary.constraints.map((item) => redactReviewText(item) ?? '').filter(Boolean),
+      }
+    : null;
+
   return {
     ...input,
     goal: redactReviewText(input.goal) ?? input.goal,
@@ -346,6 +358,7 @@ function sanitizePromptInput(input: ReviewAgentPromptInput): ReviewAgentPromptIn
     intentSessionContext: input.intentSessionContext
       .map((item) => redactReviewText(item) ?? '')
       .filter(Boolean),
+    intentSummary: sanitizedIntentSummary,
   };
 }
 
@@ -372,6 +385,21 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     content: file.content,
     byteSize: file.byteSize,
   }));
+  const intentSummaryBlock = input.intentSummary
+    ? [
+        'Developer intent summary (derived from session context):',
+        `Goal: ${input.intentSummary.goal ?? 'Not specified'}`,
+        input.intentSummary.prohibitions.length > 0
+          ? `Prohibitions:\n${input.intentSummary.prohibitions.map((item) => `- ${item}`).join('\n')}`
+          : 'Prohibitions: None stated',
+        input.intentSummary.riskFocus.length > 0
+          ? `Risk focus areas:\n${input.intentSummary.riskFocus.map((item) => `- ${item}`).join('\n')}`
+          : 'Risk focus areas: None stated',
+        input.intentSummary.constraints.length > 0
+          ? `Constraints:\n${input.intentSummary.constraints.map((item) => `- ${item}`).join('\n')}`
+          : 'Constraints: None stated',
+      ].join('\n')
+    : `Intent session context excerpts: ${JSON.stringify(input.intentSessionContext)}`;
 
   return [
     'You are a senior engineer conducting a pre-merge code review.',
@@ -416,8 +444,8 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     '- Changed files are directly modified in this diff. Weight them highest.',
     '- Related files are historical co-change context. Use them to understand',
     '  coupling and downstream impact, not as direct evidence of a defect.',
-    '- Intent context excerpts describe the developer\'s stated goals, constraints,',
-    '  and risk areas from their session history. Use them to prioritize findings',
+    '- Intent context describes the developer\'s stated goals, constraints,',
+    '  prohibitions, and risk areas from their session history. Use it to prioritize findings',
     '  and assess relevance. Do not generate a finding from intent alone —',
     '  intent must be corroborated by code evidence.',
     '',
@@ -430,7 +458,7 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     `Goal: ${input.goal}`,
     `Constraints: ${JSON.stringify(input.constraints)}`,
     `Decisions: ${JSON.stringify(input.decisions)}`,
-    `Intent session context excerpts: ${JSON.stringify(input.intentSessionContext)}`,
+    intentSummaryBlock,
     `Deployment summary: ${JSON.stringify(input.deploymentSummary)}`,
     `Evidence catalog: ${JSON.stringify(input.evidenceCatalog)}`,
     '',

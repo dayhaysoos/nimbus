@@ -296,6 +296,13 @@ export interface ReviewRunResponse {
   provenance: {
     sessionIds: string[];
     policyItems: string[];
+    rawSessionPrompts?: string | null;
+    intentSummary?: {
+      goal: string | null;
+      prohibitions: string[];
+      riskFocus: string[];
+      constraints: string[];
+    };
     promptSummary: string | null;
     transcriptUrl?: string | null;
   };

@@ -418,6 +418,7 @@ export async function createReviewFromCommitCommand(
             note: `Review with Entire checkpoint intent context (${entireContextResolution?.resolvedCheckpointId ?? checkpointId}).`,
             sessionIds: entireContextResolution?.context.sessionIds ?? [],
             intentSessionContext: entireContextResolution?.context.intentSessionContext ?? [],
+            rawSessionPrompts: entireContextResolution?.context.rawSessionPrompts ?? null,
             commitSha,
             commitDiffPatch,
             commitDiffPatchSha256,

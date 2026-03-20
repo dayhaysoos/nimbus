@@ -342,6 +342,10 @@ function buildReviewRequestPayload(input: {
         )
       )
     : [];
+  const rawSessionPrompts =
+    typeof input.provenance.rawSessionPrompts === 'string' && input.provenance.rawSessionPrompts.trim()
+      ? input.provenance.rawSessionPrompts.trim().slice(0, 6000)
+      : null;
   const commitSha = typeof input.provenance.commitSha === 'string' && input.provenance.commitSha.trim()
     ? input.provenance.commitSha.trim()
     : undefined;
@@ -412,6 +416,7 @@ function buildReviewRequestPayload(input: {
       ...(transcriptUrl ? { transcriptUrl } : {}),
       ...(sessionIds.length > 0 ? { sessionIds } : {}),
       ...(intentSessionContext.length > 0 ? { intentSessionContext } : {}),
+      ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
       ...(commitSha ? { commitSha } : {}),
       ...(commitDiffPatch ? { commitDiffPatch } : {}),
       ...(commitDiffPatchSha256 ? { commitDiffPatchSha256 } : {}),

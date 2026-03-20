@@ -333,6 +333,20 @@ jobs:
                 return [];
               }
               const provenance = review?.provenance && typeof review.provenance === 'object' ? review.provenance : {};
+              const intentSummary = provenance?.intentSummary && typeof provenance.intentSummary === 'object'
+                ? provenance.intentSummary
+                : null;
+
+              if (intentSummary) {
+                const prohibitions = asStringList(intentSummary.prohibitions).map((item) => `Must not: ${item}`);
+                const riskFocus = asStringList(intentSummary.riskFocus).map((item) => `Risk: ${item}`);
+                const constraints = asStringList(intentSummary.constraints).map((item) => `Prefer: ${item}`);
+                const combined = [...prohibitions, ...riskFocus, ...constraints];
+                if (combined.length > 0) {
+                  return combined;
+                }
+              }
+
               return asStringList(provenance?.policyItems);
             }
 
@@ -394,9 +408,19 @@ jobs:
               const review = exported && typeof exported === 'object' && exported.review ? exported.review : exported;
 
               if (review && typeof review === 'object') {
+                const intentSummary =
+                  review?.provenance &&
+                  typeof review.provenance === 'object' &&
+                  review.provenance.intentSummary &&
+                  typeof review.provenance.intentSummary === 'object'
+                    ? review.provenance.intentSummary
+                    : null;
+                const summaryGoal = intentSummary && typeof intentSummary.goal === 'string' ? intentSummary.goal.trim() : '';
                 const intent = review.intent && typeof review.intent === 'object' ? review.intent : {};
                 const extractedGoal = typeof intent.goal === 'string' ? intent.goal.trim() : '';
-                if (extractedGoal && !/^Review with Entire checkpoint intent context/i.test(extractedGoal)) {
+                if (summaryGoal) {
+                  goal = summaryGoal;
+                } else if (extractedGoal && !/^Review with Entire checkpoint intent context/i.test(extractedGoal)) {
                   goal = extractedGoal;
                 }
 
