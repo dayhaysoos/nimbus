@@ -614,6 +614,7 @@ export interface ReviewIntentSummary {
 
 export interface ReviewProvenanceSummary {
   sessionIds: string[];
+  policyItems: string[];
   promptSummary: string | null;
   transcriptUrl?: string | null;
   reviewContextRef?: ReviewContextRef | null;

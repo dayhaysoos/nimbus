@@ -295,6 +295,7 @@ export interface ReviewRunResponse {
   evidence: ReviewEvidenceItem[];
   provenance: {
     sessionIds: string[];
+    policyItems: string[];
     promptSummary: string | null;
     transcriptUrl?: string | null;
   };

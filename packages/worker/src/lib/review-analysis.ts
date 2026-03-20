@@ -6,6 +6,7 @@ import type {
   ReviewFinding,
 } from '../types.js';
 import { validateAndNormalizeReviewAnalysisOutputV2 } from './review-output-v2.js';
+import { redactReviewText } from './review-redaction.js';
 
 const WORKSPACE_ROOT = '/workspace';
 const BUNDLE_BASE64_PATH = '/tmp/review-source.tar.gz.base64';
@@ -23,7 +24,6 @@ const PROMPT_RELATED_FILES_MAX_BYTES = 36_000;
 const PROMPT_CONVENTION_FILES_MAX_BYTES = 20_000;
 const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
 const REVIEW_PROVIDER_TIMEOUT_MS = 120_000;
-const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
 
 interface SandboxClient {
   exec(
@@ -297,19 +297,6 @@ function isTimeoutLikeError(error: unknown): boolean {
   }
   const message = error.message.toLowerCase();
   return message.includes('timeout') || message.includes('timed out') || message.includes('aborted');
-}
-
-function redactReviewText(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const redacted = value
-    .replace(/(authorization:\s*bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
-    .replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]')
-    .replace(/((?:"|')?api[_-]?key(?:"|')?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[REDACTED]')
-    .replace(/((?:"|')?token(?:"|')?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[REDACTED]');
-  return redacted.length > 600 ? `${redacted.slice(0, 597)}...` : redacted;
 }
 
 function toBase64(buffer: ArrayBuffer): string {

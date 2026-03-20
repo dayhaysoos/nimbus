@@ -28,6 +28,7 @@ import {
   upsertReviewCochangeCacheBatch,
   updateReviewRunStatus,
 } from './db.js';
+import { redactReviewText } from './review-redaction.js';
 import {
   formatReviewAnalysisError,
   readWorkspaceFilesFromSourceBundle,
@@ -125,19 +126,6 @@ function toTimestampMs(value: string | null): number | null {
   }
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
-}
-
-function redactReviewText(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const redacted = value
-    .replace(/(authorization:\s*bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
-    .replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]')
-    .replace(/(api[_-]?key\s*[:=]\s*)([^\s,]+)/gi, '$1[REDACTED]')
-    .replace(/(token\s*[:=]\s*)([^\s,]+)/gi, '$1[REDACTED]');
-  return redacted.length > 600 ? `${redacted.slice(0, 597)}...` : redacted;
 }
 
 function transientReviewFailure(message: string): boolean {
@@ -1656,6 +1644,11 @@ async function buildWorkspaceDeploymentReport(
     requestProvenance.contextResolutionResolvedCommitMessage.trim()
       ? requestProvenance.contextResolutionResolvedCommitMessage.trim()
       : null;
+  const policyItems = parseStringArray(requestProvenance.intentSessionContext)
+    .filter((item) => /^(prohibition|risk focus)\s*:/i.test(item))
+    .map((item) => redactReviewText(item) ?? '')
+    .map((item) => item.trim())
+    .filter(Boolean);
 
   const report: ReviewReport = {
     summary,
@@ -1665,8 +1658,9 @@ async function buildWorkspaceDeploymentReport(
     intent,
     evidence,
     provenance: includeProvenance
-      ? {
+        ? {
           sessionIds: parseStringArray(requestProvenance.sessionIds),
+          policyItems,
           promptSummary,
           transcriptUrl,
           reviewContextRef: {
@@ -1713,6 +1707,7 @@ async function buildWorkspaceDeploymentReport(
         }
       : {
           sessionIds: [],
+          policyItems: [],
           promptSummary: null,
           transcriptUrl: null,
         },

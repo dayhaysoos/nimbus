@@ -34,6 +34,7 @@ import type {
   WorkspacePackageManager,
   WorkspaceToolchainProfile,
 } from '../types.js';
+import { redactReviewText } from './review-redaction.js';
 
 export interface CreateCheckpointJobInput {
   id: string;
@@ -730,6 +731,21 @@ function toReviewFindingRecord(value: unknown): ReviewFinding[] {
 function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
   const provenance = parseJsonOrFallback(record.provenance_json, {});
   const report = parseJsonOrFallback(record.report_json, null) as ReviewReport | null;
+  const requestPayload = parseJsonOrFallback(record.request_payload_json, {}) as Record<string, unknown>;
+  const requestProvenance =
+    requestPayload && typeof requestPayload.provenance === 'object' && requestPayload.provenance !== null
+      ? (requestPayload.provenance as Record<string, unknown>)
+      : {};
+  const rawIntentSessionContext = Array.isArray(requestProvenance.intentSessionContext)
+    ? requestProvenance.intentSessionContext
+    : [];
+  const policyItems = rawIntentSessionContext
+    .filter((item): item is string => typeof item === 'string')
+    .map((item) => item.trim())
+    .filter((item) => /^(prohibition|risk focus)\s*:/i.test(item))
+    .map((item) => redactReviewText(item) ?? '')
+    .map((item) => item.trim())
+    .filter(Boolean);
   const reportHasProvenance = Boolean(report?.provenance);
 
   const response: ReviewRunResponse = {
@@ -754,6 +770,7 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
     provenance: {
       sessionIds:
         report?.provenance && Array.isArray(report.provenance.sessionIds) ? report.provenance.sessionIds : [],
+      policyItems,
       promptSummary:
         report?.provenance && typeof report.provenance.promptSummary === 'string'
           ? report.provenance.promptSummary

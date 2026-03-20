@@ -330,21 +330,10 @@ jobs:
 
             function buildPolicyItems(review) {
               if (!review || typeof review !== 'object') {
-                return ['No policy excerpts captured.'];
+                return [];
               }
-              const intent = review.intent && typeof review.intent === 'object' ? review.intent : {};
-              const candidates = [
-                ...asStringList(intent.intentSessionContext),
-                ...asStringList(intent.constraints),
-                ...asStringList(intent.decisions),
-              ];
-
-              const policy = candidates.filter((item) => /^(prohibition|risk focus)\s*:/i.test(item));
-              if (policy.length > 0) {
-                return policy;
-              }
-
-              return candidates.length > 0 ? candidates : ['No policy excerpts captured.'];
+              const provenance = review.provenance && typeof review.provenance === 'object' ? review.provenance : {};
+              return asStringList(provenance.policyItems);
             }
 
             function buildLocationLines(finding) {
@@ -398,7 +387,7 @@ jobs:
             let findingsBody = 'No actionable findings.';
             let findingsCount = 0;
             let goal = 'Goal signal unavailable.';
-            let policyItems = ['No policy excerpts captured.'];
+            let policyItems = [];
 
             if (reviewId && fs.existsSync(reviewPath)) {
               const exported = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
@@ -424,9 +413,12 @@ jobs:
               }
             }
 
-            const policyBlock = policyItems.map((item) => `- ${item}`).join('\n');
+            const policyBlock =
+              policyItems.length > 0
+                ? `\n**Policy:**\n${policyItems.map((item) => `- ${item}`).join('\n')}`
+                : '';
 
-            let body = `${marker}\n## Nimbus Findings\n\n\`${reviewId || 'unknown'}\` · \`${shortSha}\` · ${findingsCount} findings\n**Goal:** ${goal}\n**Policy:**\n${policyBlock}\n\n---\n\n${findingsBody}`;
+            let body = `${marker}\n## Nimbus Findings\n\n\`${reviewId || 'unknown'}\` · \`${shortSha}\` · ${findingsCount} findings\n**Goal:** ${goal}${policyBlock}\n\n---\n\n${findingsBody}`;
 
             if (body.length > 65536) {
               body = `${body.slice(0, 65520)}\n\n... (truncated)`;
