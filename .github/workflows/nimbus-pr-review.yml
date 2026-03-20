@@ -332,8 +332,8 @@ jobs:
               if (!review || typeof review !== 'object') {
                 return [];
               }
-              const provenance = review.provenance && typeof review.provenance === 'object' ? review.provenance : {};
-              return asStringList(provenance.policyItems);
+              const provenance = review?.provenance && typeof review.provenance === 'object' ? review.provenance : {};
+              return asStringList(provenance?.policyItems);
             }
 
             function buildLocationLines(finding) {
@@ -418,7 +418,7 @@ jobs:
                 ? `\n**Policy:**\n${policyItems.map((item) => `- ${item}`).join('\n')}`
                 : '';
 
-            let body = `${marker}\n## Nimbus Findings\n\n\`${reviewId || 'unknown'}\` · \`${shortSha}\` · ${findingsCount} findings\n**Goal:** ${goal}${policyBlock}\n\n---\n\n${findingsBody}`;
+            let body = `${marker}\n## Nimbus Findings\n\n\`${reviewId || 'unknown'}\` · \`${shortSha}\` · ${findingsCount} findings\n\n**Goal:** ${goal}${policyBlock}\n\n---\n\n${findingsBody}`;
 
             if (body.length > 65536) {
               body = `${body.slice(0, 65520)}\n\n... (truncated)`;
