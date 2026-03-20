@@ -46,7 +46,7 @@ import { ReviewRunner } from './review-runner-do.js';
 import { handleReviewQueueDispatch } from './lib/review-dispatch.js';
 import { handleGetDeployReadiness, handleGetReviewReadiness } from './api/system.js';
 import { handleCreateAdminApiKey } from './api/admin.js';
-import { handleAuthExchange } from './api/auth.js';
+import { handleAuthExchange, handleAuthExchangeHealth } from './api/auth.js';
 import { handleRegisterRepo } from './api/repos.js';
 import { authenticateRequest } from './lib/auth.js';
 import { enforceRequestBodySizeCap } from './lib/request-size.js';
@@ -111,6 +111,11 @@ export default {
     // Route: POST /api/auth/exchange - Exchange GitHub OIDC token for Nimbus JWT
     if (url.pathname === '/api/auth/exchange' && request.method === 'POST') {
       return handleAuthExchange(request, env);
+    }
+
+    // Route: GET /api/auth/exchange/health - Exchange endpoint readiness
+    if (url.pathname === '/api/auth/exchange/health' && request.method === 'GET') {
+      return handleAuthExchangeHealth(request, env);
     }
 
     // Route: POST /api/repos/register - Register repository to account

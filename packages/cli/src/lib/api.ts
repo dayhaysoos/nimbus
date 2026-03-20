@@ -18,6 +18,7 @@ import type {
   AdminApiKeyCreateResponse,
   RepoRegisterResponse,
   AuthExchangeResponse,
+  AuthExchangeHealthResponse,
 } from './types.js';
 
 const DEFAULT_WORKER_URL = 'https://nimbus-worker.ndejesus1227.workers.dev';
@@ -558,6 +559,19 @@ export async function exchangeOidcToken(workerUrl: string, token: string): Promi
   }
 
   return response.json() as Promise<AuthExchangeResponse>;
+}
+
+export async function getAuthExchangeHealth(workerUrl: string): Promise<AuthExchangeHealthResponse> {
+  const response = await workerFetchWithoutAuth(`${workerUrl}/api/auth/exchange/health`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<AuthExchangeHealthResponse>;
 }
 
 function parseSseChunk(chunk: string): ReviewEventEnvelope[] {

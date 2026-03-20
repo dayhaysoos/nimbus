@@ -45,11 +45,22 @@ function detectRepoSlugFromGitOrigin(): string {
   return slug;
 }
 
-export async function registerRepoCommand(options?: { repo?: string; dryRun?: boolean }): Promise<void> {
+export async function registerRepoCommand(options?: { repo?: string; dryRun?: boolean; json?: boolean }): Promise<void> {
   const workerUrl = getWorkerUrl();
   const repoSlug = typeof options?.repo === 'string' && options.repo.trim() ? options.repo.trim() : detectRepoSlugFromGitOrigin();
 
   if (options?.dryRun === true) {
+    if (options?.json === true) {
+      console.log(
+        JSON.stringify({
+          status: 'dry_run',
+          repoSlug,
+          workerUrl,
+          networkRequestSent: false,
+        })
+      );
+      return;
+    }
     p.log.success('Repo registration dry run passed.');
     p.log.message(`Repository slug: ${repoSlug}`);
     p.log.message(`Worker URL: ${workerUrl}`);
@@ -59,6 +70,10 @@ export async function registerRepoCommand(options?: { repo?: string; dryRun?: bo
 
   try {
     const response = await registerRepo(workerUrl, repoSlug);
+    if (options?.json === true) {
+      console.log(JSON.stringify(response));
+      return;
+    }
     if (response.status === 'already_registered') {
       p.log.success(`Repository already registered: ${response.repoSlug}`);
       p.log.message(`Account ID: ${response.accountId}`);

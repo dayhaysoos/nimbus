@@ -338,3 +338,12 @@ export interface AuthExchangeResponse {
   token: string;
   expiresInSeconds: number;
 }
+
+export interface AuthExchangeHealthResponse {
+  exchangeReady: boolean;
+  tokenSecretConfigured: boolean;
+  oidcCacheBindingConfigured: boolean;
+  oidcCacheWarm: boolean | null;
+  jwksCacheTtlSeconds: number;
+  tokenTtlSeconds: number;
+}

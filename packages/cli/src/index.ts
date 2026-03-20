@@ -39,6 +39,7 @@ import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/revi
 import { provisionAdminKeyCommand } from './commands/admin/provision-key.js';
 import { registerRepoCommand } from './commands/repo/register.js';
 import { authExchangeCommand } from './commands/auth/exchange.js';
+import { authHealthCommand } from './commands/auth/health.js';
 
 const VERSION = '0.1.0';
 
@@ -125,6 +126,7 @@ Commands:
   admin provision-key  Provision a hosted API key (admin only)
   repo register       Register current repository for OIDC exchange
   auth exchange       Exchange GitHub OIDC token for Nimbus JWT (GitHub Actions)
+  auth health         Show auth exchange readiness and cache status
   list               List all past jobs
   watch <job-id>     Watch a job's progress
 
@@ -158,6 +160,7 @@ Options:
   --base <ref>        Diff base ref for review create (uses <base>...<commit>)
   --repo <owner/repo> Repository slug override for repo register
   --dry-run           Validate repo register inputs without API call
+  --json              Emit machine-readable JSON output for supported commands
   --output-review-id [path]
                        Write queued review ID to a file (machine-readable)
   --severity-threshold <level>
@@ -203,7 +206,9 @@ Examples:
   nimbus admin provision-key --label "Beta User Key"
   nimbus repo register
   nimbus repo register --repo owner/repo
+  nimbus repo register --repo owner/repo --dry-run --json
   nimbus auth exchange
+  nimbus auth health
   nimbus doctor
   nimbus deploy checkpoint main~1 --project-root apps/web --env API_URL=https://api.example.com
   nimbus list
@@ -563,7 +568,7 @@ async function main(): Promise<void> {
         if (repoAction === 'register') {
           const repoFlag = flags.repo;
           const repo = typeof repoFlag === 'string' ? repoFlag : undefined;
-          await registerRepoCommand({ repo, dryRun: Boolean(flags['dry-run']) });
+          await registerRepoCommand({ repo, dryRun: Boolean(flags['dry-run']), json: Boolean(flags.json) });
           break;
         }
 
@@ -574,11 +579,15 @@ async function main(): Promise<void> {
       case 'auth': {
         const authAction = positional[0];
         if (authAction === 'exchange') {
-          await authExchangeCommand();
+          await authExchangeCommand({ json: Boolean(flags.json) });
+          break;
+        }
+        if (authAction === 'health') {
+          await authHealthCommand({ json: Boolean(flags.json) });
           break;
         }
 
-        p.log.error('Unknown auth command. Use: exchange');
+        p.log.error('Unknown auth command. Use: exchange, health');
         process.exit(1);
       }
 
