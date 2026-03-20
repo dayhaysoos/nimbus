@@ -744,6 +744,7 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
     .map((item) => item.trim())
     .filter((item) => /^(prohibition|risk focus)\s*:/i.test(item))
     .map((item) => redactReviewText(item) ?? '')
+    .map((item) => (item.length > 200 ? `${item.slice(0, 197)}...` : item))
     .map((item) => item.trim())
     .filter(Boolean);
   const reportHasProvenance = Boolean(report?.provenance);

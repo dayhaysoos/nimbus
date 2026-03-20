@@ -386,7 +386,7 @@ jobs:
 
             let findingsBody = 'No actionable findings.';
             let findingsCount = 0;
-            let goal = 'Goal signal unavailable.';
+            let goal = 'Not specified';
             let policyItems = [];
 
             if (reviewId && fs.existsSync(reviewPath)) {
@@ -396,7 +396,7 @@ jobs:
               if (review && typeof review === 'object') {
                 const intent = review.intent && typeof review.intent === 'object' ? review.intent : {};
                 const extractedGoal = typeof intent.goal === 'string' ? intent.goal.trim() : '';
-                if (extractedGoal) {
+                if (extractedGoal && !/^Review with Entire checkpoint intent context/i.test(extractedGoal)) {
                   goal = extractedGoal;
                 }
 
