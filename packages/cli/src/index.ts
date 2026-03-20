@@ -157,6 +157,7 @@ Options:
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
   --base <ref>        Diff base ref for review create (uses <base>...<commit>)
   --repo <owner/repo> Repository slug override for repo register
+  --dry-run           Validate repo register inputs without API call
   --output-review-id [path]
                        Write queued review ID to a file (machine-readable)
   --severity-threshold <level>
@@ -562,7 +563,7 @@ async function main(): Promise<void> {
         if (repoAction === 'register') {
           const repoFlag = flags.repo;
           const repo = typeof repoFlag === 'string' ? repoFlag : undefined;
-          await registerRepoCommand({ repo });
+          await registerRepoCommand({ repo, dryRun: Boolean(flags['dry-run']) });
           break;
         }
 

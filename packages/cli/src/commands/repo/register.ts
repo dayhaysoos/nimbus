@@ -45,9 +45,17 @@ function detectRepoSlugFromGitOrigin(): string {
   return slug;
 }
 
-export async function registerRepoCommand(options?: { repo?: string }): Promise<void> {
+export async function registerRepoCommand(options?: { repo?: string; dryRun?: boolean }): Promise<void> {
   const workerUrl = getWorkerUrl();
   const repoSlug = typeof options?.repo === 'string' && options.repo.trim() ? options.repo.trim() : detectRepoSlugFromGitOrigin();
+
+  if (options?.dryRun === true) {
+    p.log.success('Repo registration dry run passed.');
+    p.log.message(`Repository slug: ${repoSlug}`);
+    p.log.message(`Worker URL: ${workerUrl}`);
+    p.log.message('No network request was sent.');
+    return;
+  }
 
   try {
     const response = await registerRepo(workerUrl, repoSlug);
