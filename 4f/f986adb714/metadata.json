@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "4ff986adb714",
+  "strategy": "manual-commit",
+  "branch": "review-quality-take-2",
+  "checkpoints_count": 3,
+  "files_touched": [
+    ".github/workflows/nimbus-pr-review.yml",
+    "packages/cli/src/commands/auth/exchange.ts",
+    "packages/cli/src/commands/repo/register.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/worker/src/lib/auth.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/4f/f986adb714/0/metadata.json",
+      "transcript": "/4f/f986adb714/0/full.jsonl",
+      "context": "/4f/f986adb714/0/context.md",
+      "content_hash": "/4f/f986adb714/0/content_hash.txt",
+      "prompt": "/4f/f986adb714/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 3148735,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 37878912,
+    "output_tokens": 106647,
+    "api_call_count": 345
+  }
+}

@@ -1,0 +1,938 @@
+I want to release the review tool, however, due to the nature of how I built this so far, I can’t share publicly due to security errors. I want you to read the llm-docs directory. There are 3 files all around security and auth. Read them and summarize to me your understanding of them
+
+---
+
+What does the current token/key model look like in the worker — how are NIMBUS_API_KEY and REVIEW_CONTEXT_GITHUB_TOKEN validated today?
+Is there already a D1 table for keys/sessions, or is auth currently purely env-var based?
+Does the worker have a concept of scoped permissions, or is a valid key currently all-or-nothing?
+Is multi-repo support a near-term requirement, or is this single-repo for now?
+
+Those answers would tell me whether the broker is a standalone new endpoint or needs to plug into an existing auth layer, and how stateful the issued tokens need to be.
+
+---
+
+1. What review data is already persisted in D1 after a review runs?
+Look at the current D1 schema — specifically any tables related to 
+reviews, findings, workspaces, and accounts. List the table names, 
+key columns, and whether findings are stored durably after a review 
+completes, or whether they only exist transiently during the review run.
+Also check: is there any existing API route that returns review results 
+by reviewId?
+
+
+2. What does the worker currently expose that a frontend could consume?
+List all existing /api/* routes in the worker that return review-related 
+data — review status, findings, workspace info, account info. For each, 
+note what auth it requires and what it returns. I want to know what a 
+minimal read-only frontend could display today without any new endpoints.
+
+3. What's the current deployment setup — is there any frontend infrastructure at all?
+Is there any existing frontend code, static site, or Pages deployment 
+in this repo? Check for any wrangler.toml pages config, /frontend, 
+/web, or /app directories, or any Cloudflare Pages setup. Also check 
+if the worker serves any HTML directly.
+
+4. What account/key data is queryable without admin privileges?
+In the current auth model, what can a non-admin authenticated request 
+see about its own account? Specifically: can a valid API key holder 
+query their own accountId, their own key metadata, and any resources 
+scoped to their account? Check authz.ts and any /api/account* routes.
+Those four answers will tell me whether the site needs new backend work first, or whether there's already enough to build a minimal read-only review viewer on top of today.
+
+---
+
+1. What does report-ui actually render today?
+Look at packages/report-ui in detail — specifically:
+- What does ReportPage.tsx render from the GET /api/reviews/:reviewId response?
+  List every field it currently consumes (findings, summary, status, etc.)
+- How does it currently handle auth — does it expect an API key anywhere,
+  or does it rely entirely on the Vite proxy in dev?
+- What's the current build output config in vite.config.ts and package.json?
+- Are there any components beyond ReportPage — list the full component tree.
+
+2. What would a Cloudflare Pages deployment of report-ui actually require?
+Given that report-ui is a Vite React app currently proxying to the worker in dev:
+- What changes are needed in vite.config.ts for a production build that
+  hits the real worker URL?
+- Is there any environment variable setup needed for the API base URL?
+- What would a minimal wrangler.toml or pages config look like to deploy
+  this as a Cloudflare Pages site?
+- Does the worker need any CORS changes to accept requests from a Pages domain?
+
+3. What's the safest way to handle auth in the browser for the report viewer?
+The current API requires X-Nimbus-Api-Key on GET /api/reviews/:reviewId.
+Exposing a raw API key in a browser is not acceptable.
+
+Look at the worker and tell me:
+- Is there any existing concept of a read-only or scoped key type,
+  or are all keys currently full-access within their account scope?
+- What would it take to add a GET /api/auth/whoami route that returns
+  { accountId } for a valid key — what auth.ts changes would be needed?
+- Is there an existing session/cookie mechanism anywhere, or would
+  a minimal BFF (Cloudflare Pages Function proxying requests) be the
+  cleanest path to avoid exposing keys in the browser?
+
+Those three answers will tell us whether the site is a one-day deploy or needs a week of backend work first. My guess based on what we already know: the deploy is fast, the auth layer for browser safety is the real work. But let's confirm before assuming
+
+---
+
+I need to implement a GitHub OIDC broker for Nimbus. 
+Scope is strictly CLI + worker, no frontend.
+
+Three things to assess:
+
+1. For POST /api/auth/exchange in the worker:
+   - What's the right place to add this route in index.ts?
+   - What D1 migration is needed for nimbus_repo_registrations?
+   - Does the existing auth middleware need changes or does this 
+     route sit outside it entirely (since it's issuing, not consuming)?
+   - What does JWKS caching in KV look like given current env bindings?
+
+2. For nimbus repo register in the CLI:
+   - Where do existing CLI commands live and what's the pattern 
+     for adding a new top-level command?
+   - What config/env vars does the CLI already read for API URL 
+     and key — so register can follow the same pattern?
+
+3. For nimbus auth exchange in the CLI:
+   - How does the CLI currently write output — stdout, a file, 
+     env var? What's the right pattern for writing to 
+     $GITHUB_OUTPUT in an Actions context?
+
+Don't write any implementation yet — just assess the insertion 
+points so we can design before we build.
+
+---
+
+Before you draft anything, do you have questions or any areas you would push back on?
+
+---
+
+## Context for this task
+
+We've been designing a GitHub OIDC broker for Nimbus. Here's the reframe 
+before you answer anything:
+
+### The problem we're solving
+The current workflow exposes NIMBUS_API_KEY as an env var in a job that 
+also builds CLI code from PR branches. A malicious PR contributor could 
+exfiltrate the key during the build step. This is a structural problem — 
+trust checks can't fully close the window. OIDC eliminates the long-lived 
+key from CI entirely.
+
+### The two credentials involved
+1. Nimbus API key — provisioned manually by me for each user. 
+   Authenticates the user to the Nimbus worker. Used locally only, 
+   never in CI after OIDC is in place.
+2. GitHub PAT — user-created, scoped to their repo. Gives the Nimbus 
+   worker permission to read repo contents and post PR comments. 
+   Passed as REVIEW_CONTEXT_GITHUB_TOKEN. Untouched by this change.
+
+### The intended end-to-end flow
+User does once, locally:
+  nimbus repo register
+  (authenticates with their Nimbus API key, links their repo to 
+  their account in nimbus_repo_registrations)
+
+Every PR run in CI:
+  Workflow requests GitHub OIDC token automatically (no user action)
+  → POST /api/auth/exchange
+  → worker verifies OIDC token against GitHub JWKS
+  → worker checks repo is registered in nimbus_repo_registrations
+  → worker issues short-lived Nimbus JWT (15 min, stateless, signed)
+  → workflow uses JWT for nimbus review create
+  → NIMBUS_API_KEY never enters the workflow environment
+
+### What the user has to do
+1. Receive Nimbus API key from me
+2. Run nimbus repo register once locally
+3. Add GitHub PAT as repo secret (REVIEW_CONTEXT_GITHUB_TOKEN)
+4. Copy the workflow file
+
+### Scope
+CLI + worker only. No frontend. No per-repo policy fields, 
+no allowed_ref constraints, no complex RBAC. Keep it minimal.
+One account per repo. Admin-only registration is not required — 
+any valid key holder can register repos under their own account.
+
+### Before drafting the implementation plan, please answer:
+
+1. What does the CLI currently use for auth on outbound API requests —
+   env var, config file, or both? Specifically what the pattern is in 
+   packages/cli/src/lib/api.ts so nimbus repo register can follow it exactly.
+
+2. What should the exchange endpoint return when a repo is not registered —
+   what HTTP status and body shape fits the existing worker error response 
+   patterns?
+
+3. Is there an existing signing secret or JWT utility in the worker 
+   (env var, KV, or lib) that minted tokens could use, or does 
+   NIMBUS_TOKEN_SECRET need to be added as a new env var in wrangler.toml?
+
+4. Is REVIEW_CONTEXT_GITHUB_TOKEN currently passed as a workflow env var, 
+   a repo secret, or read from the worker env? Just confirm it stays 
+   completely untouched by this change.
+
+Don't write any implementation yet. Just answer these four questions 
+so we can write a clean implementation plan.
+
+---
+
+## Implementation plan: GitHub OIDC broker for Nimbus
+
+No code yet. This is the plan for you to confirm before building.
+Implement in this exact order — each phase is a discrete, testable unit.
+
+---
+
+### Phase 1 — Worker: database foundation
+
+Add one new D1 migration with a single new table: nimbus_repo_registrations.
+
+Fields needed:
+- repo_slug (primary key, "owner/repo" format)
+- account_id (foreign reference to the account that registered it)
+- created_at
+- registered_by_key_hash (audit trail — which key performed the registration)
+
+No other schema changes. No sessions table, no token revocation table yet.
+
+---
+
+### Phase 2 — Worker: new env secret
+
+Add NIMBUS_TOKEN_SECRET as a new Wrangler secret (not a plain var).
+Add it to the Env type so it's accessible in handlers.
+This is the signing key for all minted Nimbus JWTs.
+
+---
+
+### Phase 3 — Worker: POST /api/auth/exchange
+
+New route, sits outside the existing auth middleware entirely —
+it is an issuance endpoint, not a consumption endpoint.
+
+Behavior in order:
+1. Parse the GitHub OIDC JWT from the request body
+2. Fetch GitHub's JWKS from https://token.actions.githubusercontent.com
+   Cache the JWKS response in KV with a reasonable TTL (1 hour is fine)
+3. Verify the JWT signature against the fetched JWKS
+4. Validate required claims:
+   - iss must equal https://token.actions.githubusercontent.com
+   - aud must equal "nimbus"
+   - repository claim must be present and non-empty
+   - exp must not be in the past
+   - Clock skew tolerance: 60 seconds
+5. Look up repository claim in nimbus_repo_registrations
+   If not found: return 403 with { error: "...", code: "repo_not_registered" }
+6. If found: mint a short-lived Nimbus JWT signed with NIMBUS_TOKEN_SECRET
+   Claims to include: accountId, repo, iat, exp (15 minutes from now)
+   Token prefix: "nmb_jwt_" so middleware can identify it later
+7. Return the minted token in the response body
+
+No D1 write on exchange. Stateless issuance only. No audit log in phase 1.
+
+---
+
+### Phase 4 — Worker: POST /api/repos/register
+
+New route, sits inside existing auth middleware (requires valid X-Nimbus-Api-Key).
+Any valid key holder can call this — no admin restriction.
+
+Behavior:
+1. Auth middleware runs normally, yields accountId from the key
+2. Parse repo_slug from request body, validate "owner/repo" format
+3. Check if repo_slug already exists in nimbus_repo_registrations
+   If already registered to a different account: return 409
+   If already registered to the same account: return 200 (idempotent)
+4. Insert into nimbus_repo_registrations with accountId and key_hash
+5. Return 201 with the registered repo_slug and accountId
+
+---
+
+### Phase 5 — CLI: nimbus repo register command
+
+New top-level command following the exact same pattern as existing commands:
+- Reads NIMBUS_WORKER_URL via getWorkerUrl()
+- Reads NIMBUS_API_KEY via process.env and injects as X-Nimbus-Api-Key
+- Uses the shared workerFetch() utility
+
+Behavior:
+- Auto-detect repo slug from git remote origin if not explicitly provided
+- Accept optional --repo flag to override
+- POST to /api/repos/register with the repo slug
+- On success: print confirmation and tell the user they're done
+- On 409 (already registered to another account): print a clear, 
+  actionable error message
+- On 200 (already registered to same account): print confirmation, 
+  treat as success
+
+This is a human-run, one-time local command. No CI context detection needed.
+
+---
+
+### Phase 6 — CLI: nimbus auth exchange command
+
+New top-level command. Designed to run inside GitHub Actions as a workflow step.
+No Nimbus API key needed — GitHub provides the OIDC token automatically.
+
+Behavior:
+1. Detect GitHub Actions environment via ACTIONS_ID_TOKEN_REQUEST_URL
+   If not present: exit with a clear error 
+   ("this command requires a GitHub Actions environment")
+2. Request GitHub OIDC token using ACTIONS_ID_TOKEN_REQUEST_URL 
+   and ACTIONS_ID_TOKEN_REQUEST_TOKEN
+   Set aud claim to "nimbus" in the request
+3. POST the GitHub OIDC token to /api/auth/exchange on the Nimbus worker
+   Worker URL read from NIMBUS_WORKER_URL as usual
+   No API key header on this request
+4. Receive the short-lived Nimbus JWT from the response
+5. Write to $GITHUB_OUTPUT automatically 
+   (key name: "token", format: "token=<value>")
+6. On any error: exit non-zero with a descriptive message that 
+   tells the operator exactly what went wrong
+
+---
+
+### Phase 7 — Workflow update
+
+Three changes to the GitHub Actions workflow file:
+
+1. Add permissions block at the job level:
+   id-token: write
+   contents: read
+
+2. Add nimbus auth exchange as a step before nimbus review create
+   Capture the output token from that step
+
+3. Pass the minted token as NIMBUS_API_KEY env var to the review create step
+   Remove any existing long-lived NIMBUS_API_KEY secret reference
+
+REVIEW_CONTEXT_GITHUB_TOKEN is completely untouched.
+
+---
+
+### What is explicitly out of scope for this implementation
+
+- No allowed_ref or allowed_workflow_ref policy enforcement
+- No token revocation table or jti denylist
+- No audit log of exchanges
+- No middleware changes to accept JWT tokens on existing routes
+  (existing hash-based key auth is unchanged)
+- No frontend changes
+- No account management changes
+
+---
+
+Please confirm this plan looks correct before writing any code.
+Flag anything that conflicts with existing patterns in the codebase.
+
+---
+
+Confirmed: include minimal JWT consumption in worker auth middleware now.
+F-001 is not fixed without it — the long-lived key stays in CI if we defer.
+
+Please revise the plan with these adjustments before any code is written:
+
+1. Add a new phase before the current Phase 2:
+   Add a KV namespace binding to the worker for JWKS caching.
+   This needs a new KV namespace in wrangler.toml, a binding name
+   (e.g. OIDC_CACHE), and the corresponding Env type field.
+
+2. Phase 1 schema adjustment:
+   Remove the foreign key assumption on account_id in 
+   nimbus_repo_registrations — there is no accounts table, 
+   accounts are implicit via key ownership. Plain TEXT column only.
+   For registered_by_key_hash: since AuthContext does not expose 
+   key hash today, the handler should re-hash the raw 
+   X-Nimbus-Api-Key header value using the same SHA-256 pattern 
+   as existing auth. Do not change AuthContext for this.
+
+3. Phase 3 adjustment:
+   Use the actual JWKS URI for GitHub Actions OIDC:
+   https://token.actions.githubusercontent.com/.well-known/jwks
+   Cache the JWKS response in the new KV namespace binding, not 
+   an assumed existing KV. TTL: 1 hour.
+   Add /api/auth/exchange to isPublicApiPath() in auth.ts —
+   consistent with existing public route pattern rather than 
+   bypassing middleware entirely.
+
+4. New phase — minimal JWT consumption in worker auth middleware:
+   In authenticateRequest() in auth.ts, before the existing 
+   hash lookup path, add a branch:
+   - If the key string starts with "nmb_jwt_", treat it as a 
+     Nimbus-issued JWT
+   - Verify signature using NIMBUS_TOKEN_SECRET
+   - Validate exp claim (reject if expired)
+   - Extract accountId and repo claims
+   - Return an AuthContext with that accountId
+   - On any verification failure: return 401, same shape as 
+     existing auth failures
+   Existing hash-based path is completely unchanged.
+   No other middleware changes.
+
+5. Phase 7 is now fully unblocked:
+   The workflow exchanges the GitHub OIDC token for a Nimbus JWT,
+   then passes that JWT as NIMBUS_API_KEY to review create.
+   The middleware JWT branch handles it transparently.
+   Long-lived NIMBUS_API_KEY secret is removed from the workflow.
+   REVIEW_CONTEXT_GITHUB_TOKEN remains completely untouched.
+
+6. CLI output adjustment for auth exchange:
+   Write to $GITHUB_OUTPUT by appending, not overwriting.
+   Follow the existing file-write pattern from 
+   packages/cli/src/commands/review/create.ts:449.
+
+Please produce the fully revised plan with these adjustments 
+incorporated and phases renumbered cleanly.
+Do not write any code yet — revised plan only.
+
+---
+
+Yes — convert this into a concrete file-by-file task checklist.
+
+For each phase, list:
+- Exact file path being modified or created
+- What changes in that file (one line per change, no code)
+- Any new files being created (migration filename, new CLI command 
+  file, new worker handler file)
+
+Also flag any phases where the order of file changes within that 
+phase matters — for example if a type change in types.ts must land 
+before a handler that references it.
+
+No code yet. Checklist only.
+
+---
+
+The checklist is approved. Start implementation now, beginning with 
+Phase 1 and working through phases in order.
+
+Two constraints before you start:
+
+1. Work in a single branch. Do not split phases across separate PRs.
+   Phase 9 (workflow update) must not merge until Phases 4, 5, and 8 
+   are deployed and verified — a partial merge would break CI.
+
+2. Skip test file generation for now. Implement the feature code only.
+   We will validate end-to-end manually once the full chain is wired.
+
+Start with Phase 1: create the migration file for 
+nimbus_repo_registrations. Show me the file when done, then 
+proceed to Phase 2 without waiting for confirmation unless 
+you hit something unexpected.
+
+---
+
+Yes — run the manual smoke checklist. Cover these scenarios in order:
+
+1. Worker exchange endpoint — unhappy paths first:
+   - POST /api/auth/exchange with a missing or malformed body
+     → expect 400 with a clear error
+   - POST /api/auth/exchange with a valid JWT structure but wrong issuer
+     → expect 401
+   - POST /api/auth/exchange with a valid GitHub OIDC JWT for a repo
+     that is NOT registered
+     → expect 403 with code: "repo_not_registered"
+
+2. Repo registration — local CLI:
+   - Run nimbus repo register with NIMBUS_API_KEY set to a valid 
+     provisioned key and NIMBUS_WORKER_URL pointing to local worker
+     → expect 201 and confirmation message
+   - Run it again immediately (same repo, same key)
+     → expect 200 and idempotent success message, not an error
+   - Run it with a different account's key for the same repo
+     → expect 409 and a clear actionable error message
+
+3. Auth exchange — GitHub Actions context simulation:
+   - Run nimbus auth exchange WITHOUT ACTIONS_ID_TOKEN_REQUEST_URL set
+     → expect non-zero exit with clear message about requiring 
+       GitHub Actions environment
+   - Confirm the command does not attempt any network calls in this case
+
+4. Full happy path — if you have a way to get a real GitHub OIDC token
+   locally (e.g. via act or a test workflow run):
+   - nimbus auth exchange writes token= to $GITHUB_OUTPUT
+   - That token is accepted by the worker on a subsequent 
+     GET /api/reviews/:reviewId call
+   - Token is rejected after expiry (or simulate by minting with 
+     a 1-second TTL temporarily)
+
+5. Middleware JWT branch — confirm existing hash-based auth is untouched:
+   - Make any authenticated request using a normal NIMBUS_API_KEY 
+     (not nmb_jwt_ prefixed)
+     → expect it works exactly as before with no regressions
+
+Report what passed, what failed, and any unexpected behavior.
+Do not fix anything yet — just report.
+
+---
+
+Yes — run the manual smoke checklist. Cover these scenarios in order:
+
+1. Worker exchange endpoint — unhappy paths first:
+   - POST /api/auth/exchange with a missing or malformed body
+     → expect 400 with a clear error
+   - POST /api/auth/exchange with a valid JWT structure but wrong issuer
+     → expect 401
+   - POST /api/auth/exchange with a valid GitHub OIDC JWT for a repo
+     that is NOT registered
+     → expect 403 with code: "repo_not_registered"
+
+2. Repo registration — local CLI:
+   - Run nimbus repo register with NIMBUS_API_KEY set to a valid 
+     provisioned key and NIMBUS_WORKER_URL pointing to local worker
+     → expect 201 and confirmation message
+   - Run it again immediately (same repo, same key)
+     → expect 200 and idempotent success message, not an error
+   - Run it with a different account's key for the same repo
+     → expect 409 and a clear actionable error message
+
+3. Auth exchange — GitHub Actions context simulation:
+   - Run nimbus auth exchange WITHOUT ACTIONS_ID_TOKEN_REQUEST_URL set
+     → expect non-zero exit with clear message about requiring 
+       GitHub Actions environment
+   - Confirm the command does not attempt any network calls in this case
+
+4. Full happy path — if you have a way to get a real GitHub OIDC token
+   locally (e.g. via act or a test workflow run):
+   - nimbus auth exchange writes token= to $GITHUB_OUTPUT
+   - That token is accepted by the worker on a subsequent 
+     GET /api/reviews/:reviewId call
+   - Token is rejected after expiry (or simulate by minting with 
+     a 1-second TTL temporarily)
+
+5. Middleware JWT branch — confirm existing hash-based auth is untouched:
+   - Make any authenticated request using a normal NIMBUS_API_KEY 
+     (not nmb_jwt_ prefixed)
+     → expect it works exactly as before with no regressions
+
+Report what passed, what failed, and any unexpected behavior.
+Do not fix anything yet — just report.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Give me a summary of all the bugs that you found and fixed, and include the natural next steps as well
+
+---
+
+Smoke checklist results are acceptable. Commit this branch and open a PR.
+
+Before you do, three things:
+
+1. PR description should clearly state:
+   - What this implements (GitHub OIDC broker — phases 1-9)
+   - What was smoke tested locally and passed
+   - What requires a real Actions run to fully validate:
+     * POST /api/auth/exchange with a real GitHub OIDC token
+     * 403 repo_not_registered response for an unregistered repo
+     * Full workflow run using exchanged token for review create
+   - The dual auth exchange pattern in the workflow: one exchange 
+     before review create, one before review export. Explain why —
+     30-minute TTL is the buffer but long runs need a fresh token 
+     for the export step. This is intentional, not redundant.
+   - The pre-existing migration friction on 0012 (not introduced here)
+
+2. After the PR is open, trigger a real workflow run against it.
+   Watch for these specific things in the Actions log:
+   - The auth exchange step completes and writes to $GITHUB_OUTPUT
+   - The review create step receives the exchanged token and 
+     authenticates successfully
+   - No NIMBUS_API_KEY secret reference appears anywhere in the logs
+   - The review findings are posted as a PR comment as expected
+
+3. Do not merge until the real Actions run passes end-to-end.
+   If the run fails, report the exact step and error before fixing anything.
+
+One operational reminder: NIMBUS_TOKEN_SECRET must be set as a 
+Wrangler secret in the deployed worker environment before the 
+Actions run will work. Confirm this is done before triggering the run.
+
+---
+
+The workflow failure is expected and correct — the OIDC exchange 
+is working. The worker verified the GitHub token successfully and 
+returned repo_not_registered because nimbus repo register has not 
+been run yet for this repo.
+
+Do not change any code. Run this locally:
+
+  nimbus repo register --repo dayhaysoos/nimbus
+
+Expected outcome:
+- CLI returns 201 with registration confirmation
+- Re-trigger the workflow run after this completes
+
+Report the full workflow result after the re-run.
+
+---
+
+Quick scoping question before we decide whether to configure 
+OIDC_CACHE KV now or defer.
+
+What is the actual effort to wire up a real KV namespace for 
+OIDC_CACHE across all environments (local, deployed)?
+
+Specifically:
+- How many wrangler.toml entries need real KV IDs?
+- Is there already a pattern in wrangler.toml for 
+  environment-specific KV bindings we can follow?
+- What commands need to be run to create the namespaces?
+- Any code changes needed beyond wrangler.toml, or is it 
+  purely operational/config?
+
+Just effort estimate and what's involved. No implementation yet.
+
+---
+
+Do the single namespace setup now. No env-specific sections.
+
+Steps:
+1. Run: wrangler kv namespace create OIDC_CACHE
+2. Run: wrangler kv namespace create OIDC_CACHE --preview
+3. Add the returned IDs to packages/worker/wrangler.toml 
+   under a single [[kv_namespaces]] entry for OIDC_CACHE
+4. Redeploy the worker
+5. Confirm the next auth exchange in a real workflow run 
+   hits KV cache on the second call (JWKS fetch should 
+   not go to GitHub on a warm cache hit)
+
+No other changes. Single commit, message: 
+"chore: configure OIDC_CACHE KV namespace for JWKS caching"
+
+Report the wrangler output and confirm deploy succeeded.
+
+---
+
+Two things to wrap this up:
+
+1. Merge PR #21 (auth-architecture-hardening branch).
+   Both commits should go in together:
+   - 1ce1165 (OIDC broker implementation, phases 1-9)
+   - 10fb815 (OIDC_CACHE KV namespace configuration)
+
+2. After merge, remove NIMBUS_API_KEY from GitHub repository 
+   secrets in repo settings. It is no longer used in CI and 
+   should not exist as an active secret.
+
+After both are done, write a clean step-by-step onboarding guide 
+for a new external user who wants Nimbus reviews on their repo.
+
+The guide should cover:
+- What they need before they start
+- How to get a Nimbus API key from me
+- How to run nimbus repo register
+- How to add the GitHub PAT to their repo secrets
+- How to add the workflow file to their repo
+- What a successful first run looks like
+
+Write it as if you are handing it directly to that user.
+Plain language, no internal implementation details, 
+no mention of OIDC internals. Just what they need to do.
+
+---
+
+okay so I’m gonna need the pnpm version of these commands to test in this repo, but we should def make sure this works with nimbus repo register commands when we release the package
+
+---
+
+why doesn’t this work?
+
+
+nickdejesus@MacBook-Pro-6 nimbus % pnpm --filter @dayhaysoos/nimbus exec nimbus repo register --repo dayhaysoos/nimbus
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command "nimbus" not found
+nickdejesus@MacBook-Pro-6 nimbus %
+
+---
+
+why would this fail if my .env file has an API key?
+
+ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command "nimbus" not found
+nickdejesus@MacBook-Pro-6 nimbus % node packages/cli/dist/index.js repo register --repo dayhaysoos/nimbus
+[dotenv@17.2.3] injecting env (5) from .env -- tip: 🔄  add secrets lifecycle management: https://dotenvx.com/ops
+┌  @dayhaysoos/nimbus
+│
+■  Worker error (401): {"error":"API key required","code":"unauthorized"}
+nickdejesus@MacBook-Pro-6 nimbus %
+
+---
+
+you fix it. You’re the one that did that. I can’t even type in Open Code
+
+---
+
+so after registration, what’s next? Give me all the steps again
+
+---
+
+yeah maybe update the readme so we can onboard users from it
+
+---
+
+yes commit and push to main.
+
+---
+
+considering the history we just went through, what do you think is next?
+
+---
+
+Hmm now that we know nimbus works end to end, I want to improve the overall experience and quality of code reviews. I made a new branch for this. Pull up the system prompt so I can look at it, make sure I can copy/paste it
+
+---
+
+Replace the current system prompt for the code reviews with this:
+
+
+You are a senior engineer conducting a pre-merge code review.
+Your job is to identify real issues that matter before code ships.
+You are thorough, direct, and conservative — you do not invent problems.
+
+A finding must be actionable and supported by direct code evidence.
+If you are not confident a finding is real, omit it entirely.
+Prefer an empty findings array over weak or speculative findings.
+
+You may use these tools when needed: list_files, read_file, diff_summary.
+Never propose edits or run mutating commands.
+
+Return your final answer as raw JSON with no surrounding prose:
+{
+  "findings": [
+    {
+      "severity": "info|low|medium|high|critical",
+      "category": "security|logic|style|breaking-change",
+      "passType": "single",
+      "locations": [{ "filePath": string, "startLine": number|null, "endLine": number|null }],
+      "description": string,
+      "suggestedFix": string
+    }
+  ],
+  "summary": string,
+  "furtherPassesLowYield": boolean
+}
+
+Field requirements:
+- summary must be a plain string. State what the diff does, the overall
+  risk level in one word (none/low/medium/high), and whether further
+  review is warranted. Do not return summary as an object or nested structure.
+- furtherPassesLowYield must be exactly true or false. No strings, no null.
+- passType must be "single" on every finding.
+- category must be one of: security, logic, style, breaking-change.
+- locations must contain at least one entry. Line numbers may be null
+  if the issue is file-level rather than line-level.
+- findings must be self-contained and actionable without rereading the diff.
+
+Context weighting rules:
+- Changed files are directly modified in this diff. Weight them highest.
+- Related files are historical co-change context. Use them to understand
+  coupling and downstream impact, not as direct evidence of a defect.
+- Intent context excerpts describe the developer's stated goals, constraints,
+  and risk areas from their session history. Use them to prioritize findings
+  and assess relevance. Do not generate a finding from intent alone —
+  intent must be corroborated by code evidence.
+
+Review Context ID: ${context.id}
+Review ID: ${input.reviewId}
+Workspace ID: ${input.workspaceId}
+Deployment ID: ${input.deploymentId}
+Checkpoint: ${context.checkpoint.checkpointId} (${context.checkpoint.branch})
+Checkpoint Session ID: ${context.checkpoint.session.sessionId}
+Goal: ${input.goal}
+Constraints: ${JSON.stringify(input.constraints)}
+Decisions: ${JSON.stringify(input.decisions)}
+Intent session context excerpts: ${JSON.stringify(input.intentSessionContext)}
+Deployment summary: ${JSON.stringify(input.deploymentSummary)}
+Evidence catalog: ${JSON.stringify(input.evidenceCatalog)}
+
+Diff hunks (direct changes): ${boundedJson(context.retrieval.diffHunks, ...)}
+Changed files (directly modified): ${boundedJson(changedFiles, ...)}
+Related files (historical co-change context only): ${boundedJson(relatedFiles, ...)}
+Convention/config files: ${boundedJson(conventionFiles, ...)}
+Co-change retrieval stats: ${JSON.stringify(context.retrieval.coChange)}
+Review context stats: ${JSON.stringify(context.stats)}
+Authoritative deployed diff snapshot: ${JSON.stringify(promptDiffSnapshot)}
+Initial root listing: ${JSON.stringify(input.rootListing)}
+Initial diff snapshot: ${JSON.stringify(input.diffSnapshot)}
+
+If you cannot justify a concrete issue, return an empty findings array
+with a concise summary.
+
+---
+
+I’d like to do that, however we don’t have much to review since this a new branch. Maybe we can add a small feature for now to really test it? What feature could we do?
+
+---
+
+Yeah do #1 right now
+
+---
+
+Great, so Entire works best if I manually do the commits myself. So give me a command that does git add . and give me the commit command with it so I can create it and push
+
+---
+
+I want you to open the PR for it now so we can see the reviews happen in action
+
+---
+
+this is the report:
+
+Nimbus Findings
+Review ID: rev_zm4pvnlh
+Head SHA: 0eeece48aa14196134163ba850ec61d9bfcec5f2
+Schema version: v1
+No actionable findings.
+
+
+I guess it was a very small thing you did so there was no actionable feedback huh?
+
+---
+
+Can you explain what those are in the context of this tool?
+
+---
+
+No fake bug needed. Besides it will read this conversation so that whole thing will be compromised
+
+---
+
+yeah why don'
+
+---
+
+t
+
+---
+
+Why don’t you do all those things in one shot. Give me the command to add and commit. We’ll see if nimbus has feedback
+
+---
+
+Update the PR comment format in the workflow/comment generation code 
+to match this exact template:
+
+---
+
+## Nimbus Findings
+
+`{reviewId}` · `{shortSha}` · {count} findings
+**Goal:** {goal}
+**Policy:**
+- {policy item}
+- {policy item}
+- {policy item}
+
+---
+
+**F-001 · 🟡 medium · security:** Auth exchange health endpoint exposes 
+internal configuration details without authentication. May aid 
+reconnaissance by revealing whether the exchange endpoint is configured 
+and whether JWKS caching is active.
+**Fix:** Require authentication on the health endpoint or remove internal 
+configuration details from the response entirely.
+- `packages/worker/src/api/auth.ts` L299–325
+
+---
+
+**F-002 · 🔵 low · logic:** `--json` mode bypasses the GitHub Actions 
+environment check, allowing the command to appear to succeed outside 
+Actions even though the OIDC token request will fail.
+**Fix:** Apply the Actions environment check regardless of `--json` mode.
+- `packages/cli/src/commands/auth/exchange.ts` L37–40
+
+---
+
+Rules for building this template:
+
+1. Header block:
+   - reviewId in backticks
+   - first 8 chars of headSha in backticks
+   - finding count as plain text
+   - Goal comes from the intent context goal signal
+   - Policy items are the Prohibition and Risk focus excerpts from 
+     intentSessionContext, each as its own list item, all of them included
+
+2. Each finding:
+   - Bold header line with colon: **F-00X · {emoji+severity} · {category}:**
+     followed immediately by the description on the same line
+   - Severity emoji mapping:
+     🔵 info
+     🔵 low
+     🟡 medium
+     🔴 high
+     🚨 critical
+   - Fix on its own line, bold label: **Fix:** {suggestedFix}
+   - Locations as list items with backtick file path and line range
+   - Horizontal rule between every finding
+
+3. No summary section, no finding IDs in the footer, no extra metadata.
+   Keep it compact — everything a developer needs, nothing they don't.
+
+Find where the PR comment markdown is currently being generated and 
+update it to match this format exactly. Show me the before and after 
+of the relevant code section before making changes.
+
+---
+
+Actually what I want you to do is apply the fixes for this report from nimbus:
+
+Nimbus Findings
+Review ID: rev_wksccsds
+Head SHA: 20aa19e17f4a5051a17a265e0c6cc2078ab123af
+Schema version: v1
+F-001
+Severity: medium
+Type: security
+Scope: single
+Summary: Auth exchange health endpoint exposes internal configuration details (NIMBUS_TOKEN_SECRET presence, OIDC_CACHE binding status, cache warmth) without authentication. This information disclosure may aid attackers in reconnaissance, revealing whether the exchange endpoint is configured and whether JWKS caching is active.
+Why this matters: Moderate impact on review reliability. Potentially exposes credentials or weakens trust boundaries.
+Location: packages/worker/src/api/auth.ts#L299-L325
+F-002
+Severity: low
+Type: logic
+Scope: single
+Summary: When --json mode is enabled, authExchangeCommand no longer enforces the GITHUB_OUTPUT environment variable check. This allows the command to succeed in non-GitHub Actions environments when --json is passed, even though the OIDC token request will fail. The behavior change is inconsistent with the command's documented requirement of running in GitHub Actions.
+Why this matters: Can cause inconsistent automation behavior or noisy PR signals.
+Location: packages/cli/src/commands/auth/exchange.ts#L37-L40
+F-003
+Severity: low
+Type: logic
+Scope: single
+Summary: Dry-run mode for repo register returns early without validating the parsed repoSlug format. If detectRepoSlugFromGitOrigin() or the --repo flag produces an invalid slug format, dry-run will report success but the real request would fail validation at the worker. This undermines the dry-run's value as a preflight check.
+Why this matters: Can cause inconsistent automation behavior or noisy PR signals.
+Location: packages/cli/src/commands/repo/register.ts#L48-L69
+
+Then we’ll see the layout you just did on the next review
