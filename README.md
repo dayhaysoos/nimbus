@@ -2,14 +2,14 @@
 
 Nimbus runs checkpoint-aware cloud review workflows so you can review code at a known Entire commit state with one command.
 
-## Quick Start (Beta Users)
+## Quick Start (Hosted Nimbus)
 
 Prereqs:
 
 - Node 20+
 - A repo tracked with Entire checkpoints
-- `NIMBUS_API_KEY`
-- `REVIEW_CONTEXT_GITHUB_TOKEN` (recommended for CI/CD and PR reviews to enable co-change context)
+- Nimbus API key (provided by Nimbus admin)
+- GitHub PAT for your repo (used as `REVIEW_CONTEXT_GITHUB_TOKEN`)
 
 Install:
 
@@ -17,19 +17,39 @@ Install:
 npm install -g @dayhaysoos/nimbus
 ```
 
-Set environment variables:
+Set local environment variables:
 
 ```bash
+export NIMBUS_WORKER_URL="https://nimbus-worker.ndejesus1227.workers.dev"
 export NIMBUS_API_KEY="nmb_live_..."
-export OPENROUTER_API_KEY="..."
-export REVIEW_CONTEXT_GITHUB_TOKEN="ghp_..."
 ```
 
-CI/CD note: for pull request reviews, provide `REVIEW_CONTEXT_GITHUB_TOKEN` as a GitHub Actions secret in the target repository. For PRs from forks, repository secrets are not exposed by default.
+### Onboard a New Repository (one-time)
 
-Caution: reviews can still run without `REVIEW_CONTEXT_GITHUB_TOKEN`, but co-change context may be unavailable and overall review quality/relevance can drop.
+1. Register your repo to your Nimbus account:
 
-Run your first review:
+```bash
+nimbus repo register --repo owner/repo
+```
+
+2. Add your GitHub PAT to repository secrets:
+   - Secret name: `REVIEW_CONTEXT_GITHUB_TOKEN`
+   - Location: Repo Settings -> Secrets and variables -> Actions
+
+3. Add the Nimbus PR workflow file to your repo:
+   - `.github/workflows/nimbus-pr-review.yml`
+
+4. Open or update a PR.
+   - Nimbus runs automatically.
+   - A successful run posts a Nimbus findings comment on the PR.
+
+Notes:
+
+- `NIMBUS_API_KEY` is for local CLI use (for example, `repo register`).
+- CI uses short-lived runtime tokens and should not require storing a long-lived Nimbus API key secret.
+- Reviews can still run without `REVIEW_CONTEXT_GITHUB_TOKEN`, but co-change context may be unavailable and review quality can drop.
+
+Run your first local review:
 
 ```bash
 nimbus review create --commit HEAD
