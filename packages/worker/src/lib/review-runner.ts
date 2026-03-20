@@ -28,7 +28,7 @@ import {
   upsertReviewCochangeCacheBatch,
   updateReviewRunStatus,
 } from './db.js';
-import { redactReviewText } from './review-redaction.js';
+import { extractPolicyItemsFromIntentContext, redactReviewText } from './review-redaction.js';
 import {
   formatReviewAnalysisError,
   readWorkspaceFilesFromSourceBundle,
@@ -1644,11 +1644,7 @@ async function buildWorkspaceDeploymentReport(
     requestProvenance.contextResolutionResolvedCommitMessage.trim()
       ? requestProvenance.contextResolutionResolvedCommitMessage.trim()
       : null;
-  const policyItems = parseStringArray(requestProvenance.intentSessionContext)
-    .filter((item) => /^(prohibition|risk focus)\s*:/i.test(item))
-    .map((item) => redactReviewText(item) ?? '')
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const policyItems = extractPolicyItemsFromIntentContext(parseStringArray(requestProvenance.intentSessionContext));
 
   const report: ReviewReport = {
     summary,

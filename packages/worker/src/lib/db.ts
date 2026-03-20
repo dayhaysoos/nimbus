@@ -34,7 +34,7 @@ import type {
   WorkspacePackageManager,
   WorkspaceToolchainProfile,
 } from '../types.js';
-import { redactReviewText } from './review-redaction.js';
+import { extractPolicyItemsFromIntentContext } from './review-redaction.js';
 
 export interface CreateCheckpointJobInput {
   id: string;
@@ -739,14 +739,9 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
   const rawIntentSessionContext = Array.isArray(requestProvenance.intentSessionContext)
     ? requestProvenance.intentSessionContext
     : [];
-  const policyItems = rawIntentSessionContext
-    .filter((item): item is string => typeof item === 'string')
-    .map((item) => item.trim())
-    .filter((item) => /^(prohibition|risk focus)\s*:/i.test(item))
-    .map((item) => redactReviewText(item) ?? '')
-    .map((item) => (item.length > 200 ? `${item.slice(0, 197)}...` : item))
-    .map((item) => item.trim())
-    .filter(Boolean);
+  const policyItems = extractPolicyItemsFromIntentContext(
+    rawIntentSessionContext.filter((item): item is string => typeof item === 'string')
+  );
   const reportHasProvenance = Boolean(report?.provenance);
 
   const response: ReviewRunResponse = {
