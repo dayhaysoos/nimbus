@@ -1,9 +1,11 @@
 {
   "cli_version": "0.4.9",
   "checkpoint_id": "7fe9e55f8d67",
+  "session_id": "ses_2f6fe8b19ffeguAQlv95ITTe4R",
   "strategy": "manual-commit",
+  "created_at": "2026-03-20T02:32:58.496534Z",
   "branch": "auth-architecture-hardening",
-  "checkpoints_count": 2,
+  "checkpoints_count": 1,
   "files_touched": [
     ".github/workflows/nimbus-pr-review.yml",
     "packages/cli/src/commands/auth/exchange.ts",
@@ -20,27 +22,22 @@
     "packages/worker/src/types.ts",
     "packages/worker/wrangler.toml"
   ],
-  "sessions": [
-    {
-      "metadata": "/7f/e9e55f8d67/0/metadata.json",
-      "transcript": "/7f/e9e55f8d67/0/full.jsonl",
-      "context": "/7f/e9e55f8d67/0/context.md",
-      "content_hash": "/7f/e9e55f8d67/0/content_hash.txt",
-      "prompt": "/7f/e9e55f8d67/0/prompt.txt"
-    },
-    {
-      "metadata": "/7f/e9e55f8d67/1/metadata.json",
-      "transcript": "/7f/e9e55f8d67/1/full.jsonl",
-      "context": "/7f/e9e55f8d67/1/context.md",
-      "content_hash": "/7f/e9e55f8d67/1/content_hash.txt",
-      "prompt": "/7f/e9e55f8d67/1/prompt.txt"
-    }
-  ],
+  "agent": "OpenCode",
+  "turn_id": "1aa453a6c3b4",
   "token_usage": {
-    "input_tokens": 114948,
+    "input_tokens": 49872,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 629632,
-    "output_tokens": 10661,
-    "api_call_count": 20
+    "cache_read_tokens": 138112,
+    "output_tokens": 5348,
+    "api_call_count": 7
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-20T02:32:58.332181Z",
+    "agent_lines": 749,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 749,
+    "agent_percentage": 100
   }
 }
