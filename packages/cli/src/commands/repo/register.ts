@@ -2,6 +2,8 @@ import * as p from '@clack/prompts';
 import { execFileSync } from 'child_process';
 import { getWorkerUrl, registerRepo } from '../../lib/api.js';
 
+const REPO_SLUG_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
 function parseRepoSlug(remoteUrl: string): string | null {
   const trimmed = remoteUrl.trim();
   if (!trimmed) {
@@ -48,6 +50,9 @@ function detectRepoSlugFromGitOrigin(): string {
 export async function registerRepoCommand(options?: { repo?: string; dryRun?: boolean; json?: boolean }): Promise<void> {
   const workerUrl = getWorkerUrl();
   const repoSlug = typeof options?.repo === 'string' && options.repo.trim() ? options.repo.trim() : detectRepoSlugFromGitOrigin();
+  if (!REPO_SLUG_PATTERN.test(repoSlug)) {
+    throw new Error(`Invalid repository slug: ${repoSlug}. Use owner/repo format.`);
+  }
 
   if (options?.dryRun === true) {
     if (options?.json === true) {

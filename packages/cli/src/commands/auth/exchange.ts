@@ -36,7 +36,7 @@ async function requestGithubOidcToken(audience: string): Promise<string> {
 
 export async function authExchangeCommand(options?: { json?: boolean }): Promise<void> {
   const githubOutputPath = typeof process.env.GITHUB_OUTPUT === 'string' ? process.env.GITHUB_OUTPUT.trim() : '';
-  if (!githubOutputPath && options?.json !== true) {
+  if (!githubOutputPath) {
     throw new Error('GITHUB_OUTPUT is required for nimbus auth exchange output in GitHub Actions');
   }
 

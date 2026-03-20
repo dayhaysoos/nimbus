@@ -562,7 +562,7 @@ export async function exchangeOidcToken(workerUrl: string, token: string): Promi
 }
 
 export async function getAuthExchangeHealth(workerUrl: string): Promise<AuthExchangeHealthResponse> {
-  const response = await workerFetchWithoutAuth(`${workerUrl}/api/auth/exchange/health`, {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/auth/exchange/health`, {
     method: 'GET',
   });
 

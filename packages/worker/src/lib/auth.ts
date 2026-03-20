@@ -57,8 +57,7 @@ function isPublicApiPath(pathname: string): boolean {
   return (
     pathname === '/api/system/deploy-readiness' ||
     pathname === '/api/system/review-readiness' ||
-    pathname === '/api/auth/exchange' ||
-    pathname === '/api/auth/exchange/health'
+    pathname === '/api/auth/exchange'
   );
 }
 
