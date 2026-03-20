@@ -46,8 +46,10 @@ binding = "DB"
 database_name = "nimbus-db"
 database_id = "b0c22993-0a1a-4117-8ffb-f243e7487c05"
 
-# OIDC JWKS caching KV is optional at runtime.
-# Configure OIDC_CACHE per environment with a real namespace id where available.
+[[kv_namespaces]]
+binding = "OIDC_CACHE"
+id = "8b8d62d1aafb49f88898aaf5acbedabc"
+preview_id = "76b42fdf50db4041aafecbee47784b08"
 
 [[r2_buckets]]
 binding = "SOURCE_BUNDLES"
