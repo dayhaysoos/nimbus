@@ -19,6 +19,11 @@ jobs:
     name: Nimbus Review (informational)
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      id-token: write
+      contents: read
+      pull-requests: write
+      issues: write
 
     steps:
       - name: Detect trusted PR context
@@ -98,15 +103,6 @@ jobs:
 
       - name: Build Nimbus CLI
         run: pnpm --filter @dayhaysoos/nimbus build
-
-      - name: Mask hosted API key
-        if: steps.pr_context.outputs.trusted_pr == 'true'
-        env:
-          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
-        run: |
-          if [ -n "${NIMBUS_API_KEY}" ]; then
-            echo "::add-mask::${NIMBUS_API_KEY}"
-          fi
 
       # Dogfood invocation for monorepo development.
       # When extracted to standalone nimbus-action, replace with globally-installed CLI:
@@ -232,13 +228,19 @@ jobs:
               core.warning(`Skipping review creation because runtime trust check failed (${reason}).`);
             }
 
+      - name: Run Nimbus auth exchange
+        id: auth_exchange
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
+        run: |
+          node packages/cli/dist/index.js auth exchange
+
       - name: Run Nimbus review create
         id: create_review
         if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
         env:
           HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
           BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
-          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+          NIMBUS_API_KEY: ${{ steps.auth_exchange.outputs.token }}
         run: |
           node packages/cli/dist/index.js review create --commit "${HEAD_SHA}" --base "${BASE_REF}" --output-review-id "$GITHUB_WORKSPACE/nimbus-review-id.txt"
 
@@ -264,11 +266,17 @@ jobs:
           echo "review_id=${REVIEW_ID}" >> "$GITHUB_OUTPUT"
           echo "Parsed review_id=${REVIEW_ID}"
 
+      - name: Run Nimbus auth exchange (export)
+        id: auth_exchange_export
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.parse_review_id.outputs.review_id != ''
+        run: |
+          node packages/cli/dist/index.js auth exchange
+
       - name: Export review JSON
         id: export_review
         if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true' && steps.parse_review_id.outputs.review_id != ''
         env:
-          NIMBUS_API_KEY: ${{ secrets.NIMBUS_API_KEY }}
+          NIMBUS_API_KEY: ${{ steps.auth_exchange_export.outputs.token }}
         run: |
           node packages/cli/dist/index.js review export "${{ steps.parse_review_id.outputs.review_id }}" --format json --out "$GITHUB_WORKSPACE/nimbus-review.json"
 

@@ -5,6 +5,7 @@ export interface Env {
   Sandbox: DurableObjectNamespace<Sandbox>;
   ReviewRunner?: DurableObjectNamespace;
   DB: D1Database;
+  OIDC_CACHE?: KVNamespace;
   SOURCE_BUNDLES?: R2Bucket;
   WORKSPACE_ARTIFACTS?: R2Bucket;
   REVIEW_CONTEXTS?: R2Bucket;
@@ -66,6 +67,7 @@ export interface Env {
   REVIEW_CONTEXT_GITHUB_TOKEN?: string;
   REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET?: string;
   NIMBUS_HOSTED?: string;
+  NIMBUS_TOKEN_SECRET?: string;
 }
 
 export interface AuthContext {

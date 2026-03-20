@@ -16,6 +16,8 @@ import type {
   DeployReadinessResponse,
   ReviewReadinessResponse,
   AdminApiKeyCreateResponse,
+  RepoRegisterResponse,
+  AuthExchangeResponse,
 } from './types.js';
 
 const DEFAULT_WORKER_URL = 'https://nimbus-worker.ndejesus1227.workers.dev';
@@ -83,6 +85,10 @@ async function workerFetch(workerUrl: string, url: string, init?: RequestInit): 
     ...init,
     headers,
   });
+}
+
+async function workerFetchWithoutAuth(url: string, init?: RequestInit): Promise<Response> {
+  return fetch(url, init);
 }
 
 function withReviewHeaders(baseHeaders?: RequestInit['headers']): Record<string, string> {
@@ -518,6 +524,40 @@ export async function getReview(workerUrl: string, reviewId: string): Promise<Re
   }
 
   return response.json() as Promise<ReviewGetResponse>;
+}
+
+export async function registerRepo(workerUrl: string, repoSlug: string): Promise<RepoRegisterResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/repos/register`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ repo_slug: repoSlug }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<RepoRegisterResponse>;
+}
+
+export async function exchangeOidcToken(workerUrl: string, token: string): Promise<AuthExchangeResponse> {
+  const response = await workerFetchWithoutAuth(`${workerUrl}/api/auth/exchange`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ token }),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<AuthExchangeResponse>;
 }
 
 function parseSseChunk(chunk: string): ReviewEventEnvelope[] {
