@@ -416,6 +416,8 @@ export async function createReviewFromCommitCommand(
           model: options?.model,
           provenance: {
             note: `Review with Entire checkpoint intent context (${entireContextResolution?.resolvedCheckpointId ?? checkpointId}).`,
+            sessionIds: entireContextResolution?.context.sessionIds ?? [],
+            intentSessionContext: entireContextResolution?.context.intentSessionContext ?? [],
             commitSha,
             commitDiffPatch,
             commitDiffPatchSha256,
