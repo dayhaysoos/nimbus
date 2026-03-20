@@ -3,7 +3,7 @@
   "checkpoint_id": "7fe9e55f8d67",
   "strategy": "manual-commit",
   "branch": "auth-architecture-hardening",
-  "checkpoints_count": 4,
+  "checkpoints_count": 5,
   "files_touched": [
     ".github/workflows/nimbus-pr-review.yml",
     "packages/cli/src/commands/auth/exchange.ts",
@@ -48,13 +48,20 @@
       "context": "/7f/e9e55f8d67/3/context.md",
       "content_hash": "/7f/e9e55f8d67/3/content_hash.txt",
       "prompt": "/7f/e9e55f8d67/3/prompt.txt"
+    },
+    {
+      "metadata": "/7f/e9e55f8d67/4/metadata.json",
+      "transcript": "/7f/e9e55f8d67/4/full.jsonl",
+      "context": "/7f/e9e55f8d67/4/context.md",
+      "content_hash": "/7f/e9e55f8d67/4/content_hash.txt",
+      "prompt": "/7f/e9e55f8d67/4/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 237056,
+    "input_tokens": 299362,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 1047168,
-    "output_tokens": 18189,
-    "api_call_count": 36
+    "cache_read_tokens": 1159808,
+    "output_tokens": 22348,
+    "api_call_count": 42
   }
 }
