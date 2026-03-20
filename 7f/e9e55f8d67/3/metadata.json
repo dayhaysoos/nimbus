@@ -1,0 +1,43 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "7fe9e55f8d67",
+  "session_id": "ses_2f70fedfcffep7Xyz5TDYlio3C",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-20T02:32:58.874255Z",
+  "branch": "auth-architecture-hardening",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/nimbus-pr-review.yml",
+    "packages/cli/src/commands/auth/exchange.ts",
+    "packages/cli/src/commands/repo/register.ts",
+    "packages/cli/src/index.ts",
+    "packages/cli/src/lib/api.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/migrations/0013_repo_registrations.sql",
+    "packages/worker/src/api/auth.ts",
+    "packages/worker/src/api/repos.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/auth.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/wrangler.toml"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "08a5c4939279",
+  "token_usage": {
+    "input_tokens": 66809,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 194304,
+    "output_tokens": 4046,
+    "api_call_count": 8
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-20T02:32:58.715028Z",
+    "agent_lines": 749,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 749,
+    "agent_percentage": 100
+  }
+}
