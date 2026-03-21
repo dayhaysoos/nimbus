@@ -460,7 +460,30 @@ export async function runReviewApiTests(): Promise<void> {
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-missing-token' },
     });
     const response = await handleCreateReview(request, env as never, ctx);
+    // Missing scoped token is accepted at create time; execution may fail asynchronously
+    // with review_context_github_token_missing when local co-change provenance is unavailable.
     assert.equal(response.status, 202);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ workerReviewGithubToken: '' });
+    const createRequest = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-missing-token-async' },
+    });
+    const createResponse = await handleCreateReview(createRequest, env as never, ctx);
+    assert.equal(createResponse.status, 202);
+    const created = (await createResponse.json()) as { reviewId: string };
+    state.reviewStatus = 'failed';
+    const getResponse = await handleGetReview(
+      created.reviewId,
+      new Request(`https://example.com/api/reviews/${created.reviewId}`),
+      env as never
+    );
+    assert.equal(getResponse.status, 200);
+    const body = (await getResponse.json()) as { review?: { status?: string } };
+    assert.equal(body.review?.status, 'failed');
   }
 
   {

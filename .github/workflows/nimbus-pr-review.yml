@@ -338,9 +338,13 @@ jobs:
                 : null;
 
               if (intentSummary) {
-                const prohibitions = asStringList(intentSummary.prohibitions).map((item) => `Must not: ${item}`);
-                const riskFocus = asStringList(intentSummary.riskFocus).map((item) => `Risk: ${item}`);
-                const constraints = asStringList(intentSummary.constraints).map((item) => `Prefer: ${item}`);
+                const prohibitionsSource = Array.isArray(intentSummary.prohibitions) ? intentSummary.prohibitions : [];
+                const riskFocusSource = Array.isArray(intentSummary.riskFocus) ? intentSummary.riskFocus : [];
+                const constraintsSource = Array.isArray(intentSummary.constraints) ? intentSummary.constraints : [];
+
+                const prohibitions = asStringList(prohibitionsSource).map((item) => `Must not: ${item}`);
+                const riskFocus = asStringList(riskFocusSource).map((item) => `Risk: ${item}`);
+                const constraints = asStringList(constraintsSource).map((item) => `Prefer: ${item}`);
                 const combined = [...prohibitions, ...riskFocus, ...constraints];
                 return combined;
               }
