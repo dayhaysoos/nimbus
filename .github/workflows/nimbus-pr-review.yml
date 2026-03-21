@@ -342,9 +342,7 @@ jobs:
                 const riskFocus = asStringList(intentSummary.riskFocus).map((item) => `Risk: ${item}`);
                 const constraints = asStringList(intentSummary.constraints).map((item) => `Prefer: ${item}`);
                 const combined = [...prohibitions, ...riskFocus, ...constraints];
-                if (combined.length > 0) {
-                  return combined;
-                }
+                return combined;
               }
 
               return asStringList(provenance?.policyItems);

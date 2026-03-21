@@ -16,13 +16,13 @@ function parseRepoSlug(remoteUrl: string): string | null {
       return null;
     }
     const path = trimmed.slice(idx + 1).replace(/\.git$/i, '');
-    return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(path) ? path : null;
+    return REPO_SLUG_PATTERN.test(path) ? path : null;
   }
 
   try {
     const parsed = new URL(trimmed);
     const path = parsed.pathname.replace(/^\//, '').replace(/\.git$/i, '');
-    return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(path) ? path : null;
+    return REPO_SLUG_PATTERN.test(path) ? path : null;
   } catch {
     return null;
   }

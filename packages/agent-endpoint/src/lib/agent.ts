@@ -299,6 +299,14 @@ export async function nextAgentActionWithInference(
   const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';
   const envApiKey = (env.OPENROUTER_API_KEY ?? '').trim();
   const apiKey = requestApiKey || envApiKey;
+  console.warn(
+    `[agent-openrouter] key ${JSON.stringify({
+      source: requestApiKey ? 'request' : 'env',
+      apiKeyPrefix: apiKey.slice(0, 8),
+      apiKeySuffix: apiKey.slice(-4),
+      url: 'https://openrouter.ai/api/v1/chat/completions',
+    })}`
+  );
   if (!apiKey) {
     throw new AgentEndpointError('missing_openrouter_api_key', 500, {
       message: 'OPENROUTER_API_KEY is required',
