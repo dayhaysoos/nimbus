@@ -220,9 +220,13 @@ async function runIntentSummarizationPrePass(
   }
 
   try {
+    const openRouterUrl = 'https://openrouter.ai/api/v1/chat/completions';
+    const apiKeyPrefix = apiKey.slice(0, 8);
     console.warn(
       `[intent-summary] start ${JSON.stringify({
         rawSessionPromptsLength: rawSessionPrompts.length,
+        apiKeyPrefix,
+        url: openRouterUrl,
       })}`
     );
 
@@ -230,7 +234,7 @@ async function runIntentSummarizationPrePass(
     const timeout = setTimeout(() => controller.abort(), INTENT_SUMMARY_TIMEOUT_MS);
     const response = await (async () => {
       try {
-        return await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        return await fetch(openRouterUrl, {
           method: 'POST',
           signal: controller.signal,
           headers: {
