@@ -79,3 +79,9 @@ This helps catch checkpoint/session-context issues and token readiness problems 
 ## API behavior note
 
 When using the worker API directly (`POST /api/reviews`) without CLI preflight, review creation can return queued/accepted even if GitHub co-change auth is missing. In that case, the run may fail later with `review_context_github_token_missing` unless local co-change provenance is available.
+
+## Checkpoint trailer-only commits
+
+If CI blocks on missing `Entire-Checkpoint` trailer, you can add an empty commit that only carries a valid trailer to restore checkpoint context resolution.
+
+When running review with a base ref (for example `nimbus review create --commit HEAD --base origin/main`), review coverage still comes from the full `base...HEAD` diff, not just the latest commit. That means a trailer-only commit does not limit findings to that empty commit; Nimbus still analyzes the real file changes in the PR range.
