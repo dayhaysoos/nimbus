@@ -73,31 +73,44 @@ const DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const REVIEW_STALE_GRACE_MS = 60 * 1000;
 const INTENT_SUMMARY_MODEL = 'anthropic/claude-haiku-4-5';
 const INTENT_SUMMARY_MAX_TOKENS = 512;
-const INTENT_SUMMARY_SYSTEM_PROMPT = `You are an intent extraction assistant. You will be given
-raw notes and prompts written by a software developer
-during a coding session. Your job is to extract their
-stated intent as structured data.
+const INTENT_SUMMARY_SYSTEM_PROMPT = `You are a staff engineer reviewing a colleague's session notes
+before conducting a code review. Your job is to extract the
+key intent signals from their notes so the reviewer understands
+what the developer was trying to do, what they were worried
+about, and what constraints they were working within.
 
 Return only a JSON object with no surrounding prose:
 {
-  "goal": string or null (the developer's primary objective,
-          in one sentence, or null if unclear),
-  "prohibitions": string[] (things the developer explicitly
-                  said must not happen, max 5 items),
-  "riskFocus": string[] (areas the developer flagged as
-               risky or needing attention, max 5 items),
-  "constraints": string[] (preferences or requirements the
-                 developer stated, max 5 items)
+  "goal": string or null,
+  "prohibitions": string[],
+  "riskFocus": string[],
+  "constraints": string[]
 }
 
+Field guidance:
+- goal: the developer's primary objective in one sentence.
+  If unclear, return null.
+- prohibitions: things the developer explicitly said must
+  not happen. Max 5 items.
+- riskFocus: areas the developer flagged as risky or
+  concerning, either explicitly or by returning to them
+  repeatedly. Max 5 items. Prefer explicit statements but
+  include recurring themes even if not labeled as risks.
+- constraints: preferences, requirements, or boundaries
+  the developer stated they were working within. Max 5 items.
+
 Rules:
-- Extract only what the developer explicitly stated
-- Do not infer or invent intent not present in the text
-- Keep each item concise, one sentence max
-- If a category has nothing clear to extract, return
-  an empty array or null
-- Omit questions, instructions to AI assistants, and
-  implementation details`;
+- Skip any line phrased as a question.
+- Skip any line that is directing an AI tool to do something.
+- Skip implementation details and step-by-step instructions.
+- Keep each extracted item to one concise sentence.
+- If a category has nothing clear to extract, return an
+  empty array or null.
+- When more than 5 candidates exist for a category,
+  prioritize the most explicitly stated items over
+  inferred ones.
+- Do not invent intent that is not present or implied
+  in the notes.`;
 
 interface ReviewRunExecutionOptions {
   cochangeGithubToken?: string | null;
