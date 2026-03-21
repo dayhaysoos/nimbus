@@ -7,6 +7,7 @@ import {
   getReviewRun,
   getReviewRunAccountId,
   getReviewRunByIdempotency,
+  getReviewRunRequestPayload,
   getWorkspaceAccountId,
   getWorkspace,
   getWorkspaceDeployment,
@@ -30,6 +31,7 @@ const REVIEW_STREAM_HEARTBEAT_INTERVAL_MS = 1000;
 const REVIEW_TERMINAL_EVENT_GRACE_MS = 1000;
 const REVIEW_STREAM_STATUS_REFRESH_POLLS = 5;
 const REVIEW_STALE_RUNNING_GRACE_MS = 60_000;
+const REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS = 120_000;
 
 function parseTimeoutMs(value: string | undefined, fallback: number): number {
   if (typeof value !== 'string') {
@@ -48,17 +50,43 @@ function parseMaxRetryCount(value: string | undefined, fallbackAttempts: number)
   return Math.max(0, attempts - 1);
 }
 
-function readWorkerReviewGithubToken(env: Env): string | null {
-  return typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-    ? env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-    : null;
+function hasLocalCochangeProvenance(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return false;
+  }
+  const record = payload as Record<string, unknown>;
+  const provenance = record.provenance;
+  if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    return false;
+  }
+  const localCochange = (provenance as Record<string, unknown>).localCochange;
+  if (!localCochange || typeof localCochange !== 'object' || Array.isArray(localCochange)) {
+    return false;
+  }
+  const candidate = localCochange as Record<string, unknown>;
+  if (candidate.source !== 'local_git') {
+    return false;
+  }
+  if (typeof candidate.lookbackSessions !== 'number' || !Number.isFinite(candidate.lookbackSessions)) {
+    return false;
+  }
+  if (typeof candidate.topN !== 'number' || !Number.isFinite(candidate.topN)) {
+    return false;
+  }
+  if (typeof candidate.sessionsScanned !== 'number' || !Number.isFinite(candidate.sessionsScanned)) {
+    return false;
+  }
+  const relatedByChangedPath = candidate.relatedByChangedPath;
+  return Boolean(relatedByChangedPath && typeof relatedByChangedPath === 'object' && !Array.isArray(relatedByChangedPath));
 }
 
 async function recoverStaleRunningReviewIfNeeded(
   env: Env,
   reviewId: string,
   review: { status: ReviewRunStatus; startedAt: string | null; updatedAt: string; createdAt: string; attemptCount: number },
-  openrouterApiKey?: string | null
+  cochangeGithubToken?: string | null,
+  openrouterApiKey?: string | null,
+  options?: { markFailedWhenRetryUnavailable?: boolean; noAuthTerminalGraceMs?: number }
 ): Promise<void> {
   if (review.status !== 'running') {
     return;
@@ -75,8 +103,10 @@ async function recoverStaleRunningReviewIfNeeded(
   }
 
   const maxRetries = parseMaxRetryCount(env.MAX_ATTEMPTS, 3);
-  const workerGithubToken = readWorkerReviewGithubToken(env);
-  if (review.attemptCount <= maxRetries && env.REVIEWS_QUEUE && workerGithubToken) {
+  const requestPayload = await getReviewRunRequestPayload(env.DB, reviewId);
+  const canRetryWithoutGithubToken = hasLocalCochangeProvenance(requestPayload);
+  const scopedGithubToken = typeof cochangeGithubToken === 'string' && cochangeGithubToken.trim() ? cochangeGithubToken.trim() : null;
+  if (review.attemptCount <= maxRetries && env.REVIEWS_QUEUE && (scopedGithubToken || canRetryWithoutGithubToken)) {
     await updateReviewRunStatus(env.DB, reviewId, 'queued', {
       report: null,
       markdownSummary: null,
@@ -93,16 +123,29 @@ async function recoverStaleRunningReviewIfNeeded(
         maxRetries,
         reason: 'stale_running_timeout',
         staleForSeconds: Math.floor(staleForMs / 1000),
+        authMode: scopedGithubToken ? 'scoped_request_token' : 'local_cochange_only',
       },
     });
-    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, workerGithubToken, openrouterApiKey));
+    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, scopedGithubToken, openrouterApiKey));
     return;
   }
 
-  const missingTokenSuffix = !workerGithubToken
-    ? ' Automatic stale-run retry requires REVIEW_CONTEXT_GITHUB_TOKEN and cannot reuse per-request header tokens.'
-    : '';
-  const message = `Review execution timed out after ${Math.floor(staleForMs / 1000)}s in running state.${missingTokenSuffix}`;
+  if (options?.markFailedWhenRetryUnavailable === false) {
+    const noAuthTerminalGraceMs =
+      typeof options.noAuthTerminalGraceMs === 'number' && options.noAuthTerminalGraceMs >= 0
+        ? options.noAuthTerminalGraceMs
+        : REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS;
+    if (staleForMs < staleThresholdMs + noAuthTerminalGraceMs) {
+      return;
+    }
+  }
+
+  const missingTokenSuffix =
+    !scopedGithubToken && !canRetryWithoutGithubToken
+      ? ' No retry was scheduled because a fresh scoped GitHub token was not provided. Re-run review creation with X-Review-Github-Token (CLI: set REVIEW_CONTEXT_GITHUB_TOKEN).'
+      : '';
+  const retriesExhaustedSuffix = review.attemptCount > maxRetries ? ' No retry was scheduled because max retry attempts were exhausted.' : '';
+  const message = `Review execution timed out after ${Math.floor(staleForMs / 1000)}s in running state.${missingTokenSuffix}${retriesExhaustedSuffix}`;
   await updateReviewRunStatus(env.DB, reviewId, 'failed', {
     report: null,
     markdownSummary: null,
@@ -117,6 +160,31 @@ async function recoverStaleRunningReviewIfNeeded(
       message,
     },
   });
+}
+
+async function validateRecoveredReviewRetryAuth(
+  env: Env,
+  reviewId: string,
+  shouldReenqueueRecoveredReview: boolean,
+  reviewGithubToken: string | null
+): Promise<Response | null> {
+  if (!shouldReenqueueRecoveredReview || reviewGithubToken) {
+    return null;
+  }
+
+  const storedRequestPayload = await getReviewRunRequestPayload(env.DB, reviewId);
+  if (hasLocalCochangeProvenance(storedRequestPayload)) {
+    return null;
+  }
+
+  return jsonResponse(
+    {
+      error:
+        'Scoped GitHub token required for retry. Provide X-Review-Github-Token (CLI: set REVIEW_CONTEXT_GITHUB_TOKEN) when re-queueing recovered reviews without local co-change provenance.',
+      code: 'review_context_github_token_missing',
+    },
+    409
+  );
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -629,7 +697,6 @@ export async function handleCreateReview(
     }
     const reviewGithubToken = readReviewGithubTokenHeader(request);
     const openrouterApiKey = readOpenrouterApiKeyHeader(request);
-    const workerGithubToken = readWorkerReviewGithubToken(env);
 
     const payloadRaw = await request.text();
     const payload = payloadRaw.trim() ? (JSON.parse(payloadRaw) as unknown) : {};
@@ -704,14 +771,6 @@ export async function handleCreateReview(
       provenance,
       model,
     });
-    const requestProvenance: Record<string, unknown> = isRecord(requestPayload.provenance) ? requestPayload.provenance : {};
-    const hasLocalCochange = isRecord(requestProvenance.localCochange);
-    if (!reviewGithubToken && !workerGithubToken && !hasLocalCochange) {
-      return jsonResponse(
-        { error: 'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env' },
-        400
-      );
-    }
     const sanitizedRequestPayload = stripSensitiveTokenFields(requestPayload) as Record<string, unknown>;
 
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));
@@ -740,6 +799,15 @@ export async function handleCreateReview(
           created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
         const requiresOpenrouterRetryKey = created.review.error?.code === 'missing_openrouter_api_key';
         if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
+          const authRetryError = await validateRecoveredReviewRetryAuth(
+            env,
+            created.review.id,
+            shouldReenqueueRecoveredReview,
+            reviewGithubToken
+          );
+          if (authRetryError) {
+            return authRetryError;
+          }
           if (shouldReenqueueRecoveredReview && requiresOpenrouterRetryKey && !openrouterApiKey) {
             return jsonResponse(
               {
@@ -834,6 +902,15 @@ export async function handleCreateReview(
         created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
       const requiresOpenrouterRetryKey = created.review.error?.code === 'missing_openrouter_api_key';
       if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
+        const authRetryError = await validateRecoveredReviewRetryAuth(
+          env,
+          created.review.id,
+          shouldReenqueueRecoveredReview,
+          reviewGithubToken
+        );
+        if (authRetryError) {
+          return authRetryError;
+        }
         if (shouldReenqueueRecoveredReview && requiresOpenrouterRetryKey && !openrouterApiKey) {
           return jsonResponse(
             {
@@ -905,7 +982,14 @@ export async function handleGetReview(
     return jsonResponse({ error: 'Review not found' }, 404);
   }
 
-  await recoverStaleRunningReviewIfNeeded(env, reviewId, review, readOpenrouterApiKeyHeader(request));
+  await recoverStaleRunningReviewIfNeeded(
+    env,
+    reviewId,
+    review,
+    readReviewGithubTokenHeader(request),
+    readOpenrouterApiKeyHeader(request),
+    { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
+  );
   review = await getReviewRun(env.DB, reviewId);
   if (!review) {
     return jsonResponse({ error: 'Review not found' }, 404);
@@ -1013,7 +1097,14 @@ export async function handleGetReviewEvents(
                 );
                 break;
               }
-              await recoverStaleRunningReviewIfNeeded(env, reviewId, latest, readOpenrouterApiKeyHeader(request));
+              await recoverStaleRunningReviewIfNeeded(
+                env,
+                reviewId,
+                latest,
+                readReviewGithubTokenHeader(request),
+                readOpenrouterApiKeyHeader(request),
+                { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
+              );
               const refreshed = await getReviewRun(env.DB, reviewId);
               currentStatus = refreshed?.status ?? latest.status;
             }

@@ -110,7 +110,17 @@ function withReviewHeaders(baseHeaders?: RequestInit['headers']): Record<string,
   if (openrouterApiKey) {
     headers['X-Openrouter-Api-Key'] = openrouterApiKey;
   }
+  const reviewGithubToken = readReviewGithubToken();
+  if (reviewGithubToken) {
+    headers['X-Review-Github-Token'] = reviewGithubToken;
+  }
   return headers;
+}
+
+function readReviewGithubToken(): string | null {
+  return typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+    ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+    : null;
 }
 
 /**
@@ -471,16 +481,11 @@ export async function createReview(
     };
   }
 ): Promise<ReviewCreateResponse> {
-  const reviewGithubToken =
-    typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-      ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-      : null;
   const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews`, {
     method: 'POST',
     headers: withReviewHeaders({
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
-      ...(reviewGithubToken ? { 'X-Review-Github-Token': reviewGithubToken } : {}),
     }),
     body: JSON.stringify(payload),
   });

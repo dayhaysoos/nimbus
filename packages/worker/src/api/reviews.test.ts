@@ -21,6 +21,7 @@ function createReviewApiEnv(options?: {
   existingRequestPayloadSha256?: string;
   workerReviewGithubToken?: string;
   workspaceAccountId?: string | null;
+  storedReviewRequestPayload?: Record<string, unknown>;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -324,6 +325,20 @@ function createReviewApiEnv(options?: {
           };
         }
 
+        if (/SELECT request_payload_json FROM review_runs WHERE id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    request_payload_json: JSON.stringify(options?.storedReviewRequestPayload ?? {}),
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
         if (/SELECT seq, event_type, payload_json, created_at\s+FROM review_events/i.test(sql)) {
           return {
             bind() {
@@ -445,7 +460,7 @@ export async function runReviewApiTests(): Promise<void> {
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-missing-token' },
     });
     const response = await handleCreateReview(request, env as never, ctx);
-    assert.equal(response.status, 400);
+    assert.equal(response.status, 202);
   }
 
   {
@@ -824,6 +839,7 @@ export async function runReviewApiTests(): Promise<void> {
       headers: {
         'Content-Type': 'application/json',
         'Idempotency-Key': 'idem-review-4b',
+        'X-Review-Github-Token': 'ghp_user_retry_token',
         'X-Openrouter-Api-Key': 'or_user_retry_key',
       },
     });
@@ -843,13 +859,38 @@ export async function runReviewApiTests(): Promise<void> {
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
       body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
-      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-4b-no-openrouter' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Idempotency-Key': 'idem-review-4b-no-openrouter',
+        'X-Review-Github-Token': 'ghp_user_retry_token',
+      },
     });
     const response = await handleCreateReview(request, env as never, ctx);
     assert.equal(response.status, 409);
     const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.error, 'OpenRouter API key required for retry');
     assert.equal(body.code, 'missing_openrouter_api_key');
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reused: true,
+      reviewExists: true,
+      existingEventTypes: ['review_enqueued'],
+      reviewErrorCode: 'retry_scheduled',
+      reviewAttemptCount: 1,
+      workerReviewGithubToken: '',
+    });
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify({ target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-recovered-no-scoped-token' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'review_context_github_token_missing');
     assert.equal(state.queueSendCount, 0);
   }
 
@@ -867,6 +908,21 @@ export async function runReviewApiTests(): Promise<void> {
     const response = await handleGetReview('rev_abcd1234', new Request('https://example.com/api/reviews/rev_abcd1234'), env as never);
     assert.equal(response.status, 200);
     assert.equal(state.queueSendCount, 0);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({ reviewExists: true, workerReviewGithubToken: '' });
+    state.reviewStatus = 'running';
+    (env as { ATTEMPT_TIMEOUT_MS?: string }).ATTEMPT_TIMEOUT_MS = '1';
+    const response = await handleGetReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234', {
+        headers: { 'X-Review-Github-Token': 'ghp_user_scoped_token' },
+      }),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 1);
   }
 
   {

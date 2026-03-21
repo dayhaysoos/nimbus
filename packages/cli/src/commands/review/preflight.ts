@@ -1,9 +1,8 @@
 import * as p from '@clack/prompts';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';
-import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
+import { resolveCochangeFromLocalGit, resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 import type { EntireIntentContext } from '../../lib/entire/context.js';
-import { getReviewReadiness, getWorkerUrl } from '../../lib/api.js';
 
 interface CommitResolution {
   commitSha: string;
@@ -47,6 +46,25 @@ export interface ReviewEntireContextResolution {
   commitsAgo: number;
 }
 
+function parseChangedPathsFromDiff(patch: string): string[] {
+  const paths = new Set<string>();
+  for (const line of patch.split('\n')) {
+    if (!line.startsWith('+++ ')) {
+      continue;
+    }
+    const raw = line.slice(4).trim();
+    if (!raw || raw === '/dev/null') {
+      continue;
+    }
+    const normalized = raw.replace(/^b\//, '').replace(/^\.\//, '').trim();
+    if (!normalized || normalized === '/dev/null') {
+      continue;
+    }
+    paths.add(normalized);
+  }
+  return Array.from(paths);
+}
+
 let resolveCommitForTests: ((commitish: string, options?: ResolveCommitContextOptions) => CommitResolution) | null = null;
 let resolveEntireContextForTests: typeof resolveEntireIntentContextForCommit | null = null;
 let resolveLastCheckpointOnBranchForTests: ((commitSha: string, cwd: string) => LastCheckpointOnBranch | null) | null = null;
@@ -61,6 +79,7 @@ let resolveLastValidContextOnBranchForTests:
     ) => Promise<LastCheckpointOnBranch | null>)
   | null = null;
 let resolveTokenReadinessForTests: (() => Promise<boolean>) | null = null;
+let resolveLocalCochangeAvailabilityForTests: ((changedPaths: string[], cwd: string) => boolean) | null = null;
 
 export function setReviewPreflightCommitResolverForTests(
   resolver: ((commitish: string, options?: ResolveCommitContextOptions) => CommitResolution) | null
@@ -99,6 +118,12 @@ export function setReviewPreflightTokenReadinessResolverForTests(
   resolver: (() => Promise<boolean>) | null
 ): void {
   resolveTokenReadinessForTests = resolver;
+}
+
+export function setReviewPreflightLocalCochangeResolverForTests(
+  resolver: ((changedPaths: string[], cwd: string) => boolean) | null
+): void {
+  resolveLocalCochangeAvailabilityForTests = resolver;
 }
 
 function commitSubject(message: string): string {
@@ -383,9 +408,15 @@ export async function validateReviewEntireIntentContext(
   }
 }
 
-export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed' | 'legacy_unknown'> {
+export async function validateReviewCochangeTokenReadiness(options?: {
+  localCochangeAvailable?: boolean;
+}): Promise<'confirmed' | 'legacy_unknown'> {
+  if (options?.localCochangeAvailable) {
+    return 'confirmed';
+  }
+
   const missingTokenMessage =
-    'REVIEW_CONTEXT_GITHUB_TOKEN is not ready. Set REVIEW_CONTEXT_GITHUB_TOKEN locally or configure worker review readiness with a valid GitHub token.';
+    'REVIEW_CONTEXT_GITHUB_TOKEN is required for GitHub co-change retrieval when local co-change context is unavailable. Set a scoped token in your shell before running review create (the worker no longer uses a global fallback token).';
 
   const localToken =
     typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
@@ -403,21 +434,7 @@ export async function validateReviewCochangeTokenReadiness(): Promise<'confirmed
     return 'confirmed';
   }
 
-  try {
-    const readiness = await getReviewReadiness(getWorkerUrl());
-    if (readiness.ok) {
-      return 'confirmed';
-    }
-
-    const tokenReadyCheck = readiness.checks.find((check) => /token|github/i.test(check.code));
-    if (tokenReadyCheck?.ok) {
-      return 'confirmed';
-    }
-    throw new Error(missingTokenMessage);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    throw new Error(`${missingTokenMessage} (${message})`);
-  }
+  throw new Error(missingTokenMessage);
 }
 
 export async function reviewPreflightCommand(
@@ -469,8 +486,27 @@ export async function reviewPreflightCommand(
 
   spinner.start('Checking co-change token readiness...');
   try {
-    await validateReviewCochangeTokenReadiness();
-    spinner.stop('Co-change token readiness confirmed');
+    const changedPaths = parseChangedPathsFromDiff(resolved.commitDiffPatch);
+    let hasLocalCochange = false;
+    try {
+      if (resolveLocalCochangeAvailabilityForTests) {
+        hasLocalCochange = resolveLocalCochangeAvailabilityForTests(changedPaths, process.cwd());
+      } else {
+        hasLocalCochange = Boolean(
+          resolveCochangeFromLocalGit(changedPaths, process.cwd(), {
+            lookbackSessions: 5,
+            topN: 20,
+          })
+        );
+      }
+    } catch {
+      hasLocalCochange = false;
+    }
+
+    await validateReviewCochangeTokenReadiness({
+      localCochangeAvailable: hasLocalCochange,
+    });
+    spinner.stop(hasLocalCochange ? 'Co-change token check skipped (using local co-change context)' : 'Co-change token readiness confirmed');
     p.log.success('Review preflight passed');
     p.log.message(`Commit: ${resolved.commitSha}`);
     p.log.message(`Checkpoint: ${contextResolution.resolvedCheckpointId}`);

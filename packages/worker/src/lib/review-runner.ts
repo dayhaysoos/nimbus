@@ -357,7 +357,7 @@ function buildReviewMarkdown(report: ReviewReport): string {
   if (report.provenance.coChange) {
     if (report.provenance.coChange.coChangeSkipped) {
       provenanceLines.push(
-        `Co-change context skipped (${report.provenance.coChange.coChangeSkipReason ?? 'unknown_reason'}). Baseline review only; set REVIEW_CONTEXT_GITHUB_TOKEN for full quality review context.`
+        `Co-change context skipped (${report.provenance.coChange.coChangeSkipReason ?? 'unknown_reason'}). Baseline review only; provide X-Review-Github-Token (CLI: set REVIEW_CONTEXT_GITHUB_TOKEN) for full quality review context.`
       );
     } else if (report.provenance.coChange.coChangeAvailable) {
       provenanceLines.push(`Co-change context included (${report.provenance.coChange.relatedFileCount} related files).`);
@@ -1206,7 +1206,7 @@ async function assembleReviewContextBootstrap(
   let coChangeLookbackSessions = COCHANGE_LOOKBACK_SESSIONS;
   let coChangeTopN = COCHANGE_TOP_N;
   const localCochange = parseLocalCochangeFromProvenance(requestProvenance.localCochange);
-  const githubToken = readOptionalString(options?.cochangeGithubToken) ?? readOptionalString(env.REVIEW_CONTEXT_GITHUB_TOKEN);
+  const githubToken = readOptionalString(options?.cochangeGithubToken);
 
   try {
     const effectiveLookback = localCochange?.lookbackSessions ?? COCHANGE_LOOKBACK_SESSIONS;
@@ -1236,7 +1236,7 @@ async function assembleReviewContextBootstrap(
       if (!githubToken) {
         throw new ReviewContextAssemblyError(
           'review_context_github_token_missing',
-          'co-change retrieval requires a GitHub token - set REVIEW_CONTEXT_GITHUB_TOKEN in your local .env'
+          'co-change retrieval requires a scoped GitHub token - provide X-Review-Github-Token (CLI: set REVIEW_CONTEXT_GITHUB_TOKEN) when creating the review request.'
         );
       }
 

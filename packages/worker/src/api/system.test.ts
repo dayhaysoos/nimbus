@@ -35,7 +35,7 @@ export async function runSystemApiTests(): Promise<void> {
     assert.equal(payload.ok, true);
     assert.equal(payload.checks.find((check) => check.code === 'queue_binding_reviews')?.ok, true);
     assert.equal(payload.checks.find((check) => check.code === 'durable_object_binding_review_runner')?.ok, true);
-    assert.equal(payload.checks.find((check) => check.code === 'review_context_github_token_configured')?.ok, false);
+    assert.equal(payload.checks.find((check) => check.code === 'review_context_github_token_configured')?.ok, true);
   }
 
   {
@@ -51,6 +51,6 @@ export async function runSystemApiTests(): Promise<void> {
     assert.equal(payload.ok, false);
     assert.equal(payload.checks.find((check) => check.code === 'queue_binding_reviews')?.ok, false);
     assert.equal(payload.checks.find((check) => check.code === 'durable_object_binding_review_runner')?.ok, false);
-    assert.equal(payload.checks.find((check) => check.code === 'review_context_github_token_configured')?.ok, false);
+    assert.equal(payload.checks.find((check) => check.code === 'review_context_github_token_configured')?.ok, true);
   }
 }
