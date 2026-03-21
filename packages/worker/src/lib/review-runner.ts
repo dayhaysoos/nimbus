@@ -174,6 +174,7 @@ async function runIntentSummarizationPrePass(
   rawSessionPrompts: string,
   options?: { openrouterApiKey?: string | null }
 ): Promise<ReviewSessionIntentSummary | null> {
+  const INTENT_SUMMARY_TIMEOUT_MS = 15_000;
   const envApiKey = typeof env.OPENROUTER_API_KEY === 'string' ? env.OPENROUTER_API_KEY.trim() : '';
   const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';
   const apiKey = envApiKey || requestApiKey;
@@ -183,21 +184,30 @@ async function runIntentSummarizationPrePass(
   }
 
   try {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: INTENT_SUMMARY_MODEL,
-        max_tokens: INTENT_SUMMARY_MAX_TOKENS,
-        messages: [
-          { role: 'system', content: INTENT_SUMMARY_SYSTEM_PROMPT },
-          { role: 'user', content: rawSessionPrompts },
-        ],
-      }),
-    });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), INTENT_SUMMARY_TIMEOUT_MS);
+    const response = await (async () => {
+      try {
+        return await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          signal: controller.signal,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${apiKey}`,
+          },
+          body: JSON.stringify({
+            model: INTENT_SUMMARY_MODEL,
+            max_tokens: INTENT_SUMMARY_MAX_TOKENS,
+            messages: [
+              { role: 'system', content: INTENT_SUMMARY_SYSTEM_PROMPT },
+              { role: 'user', content: rawSessionPrompts },
+            ],
+          }),
+        });
+      } finally {
+        clearTimeout(timeout);
+      }
+    })();
 
     if (!response.ok) {
       const body = await response.text();
@@ -221,6 +231,10 @@ async function runIntentSummarizationPrePass(
 
     return validateIntentSummaryPayload(parsed);
   } catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') {
+      console.warn(`[intent-summary] skipped: request timed out after ${INTENT_SUMMARY_TIMEOUT_MS}ms`);
+      return null;
+    }
     const message = error instanceof Error ? error.message : String(error);
     console.warn(`[intent-summary] pre-pass failed: ${message}`);
     return null;
