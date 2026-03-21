@@ -67,17 +67,19 @@ function hasLocalCochangeProvenance(payload: unknown): boolean {
   if (candidate.source !== 'local_git') {
     return false;
   }
-  if (typeof candidate.lookbackSessions !== 'number' || !Number.isFinite(candidate.lookbackSessions)) {
-    return false;
-  }
-  if (typeof candidate.topN !== 'number' || !Number.isFinite(candidate.topN)) {
-    return false;
-  }
-  if (typeof candidate.sessionsScanned !== 'number' || !Number.isFinite(candidate.sessionsScanned)) {
+  if (!Object.prototype.hasOwnProperty.call(candidate, 'relatedByChangedPath')) {
     return false;
   }
   const relatedByChangedPath = candidate.relatedByChangedPath;
-  return Boolean(relatedByChangedPath && typeof relatedByChangedPath === 'object' && !Array.isArray(relatedByChangedPath));
+  return Boolean(relatedByChangedPath !== null && typeof relatedByChangedPath === 'object' && !Array.isArray(relatedByChangedPath));
+}
+
+function isValidScopedGithubToken(value: string): boolean {
+  const token = value.trim();
+  if (!token) {
+    return false;
+  }
+  return /^(ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})$/.test(token);
 }
 
 async function recoverStaleRunningReviewIfNeeded(
@@ -105,7 +107,9 @@ async function recoverStaleRunningReviewIfNeeded(
   const maxRetries = parseMaxRetryCount(env.MAX_ATTEMPTS, 3);
   const requestPayload = await getReviewRunRequestPayload(env.DB, reviewId);
   const canRetryWithoutGithubToken = hasLocalCochangeProvenance(requestPayload);
-  const scopedGithubToken = typeof cochangeGithubToken === 'string' && cochangeGithubToken.trim() ? cochangeGithubToken.trim() : null;
+  const rawScopedToken = typeof cochangeGithubToken === 'string' && cochangeGithubToken.trim() ? cochangeGithubToken.trim() : null;
+  const scopedGithubToken = rawScopedToken && isValidScopedGithubToken(rawScopedToken) ? rawScopedToken : null;
+  const hasInvalidScopedToken = Boolean(rawScopedToken) && !scopedGithubToken;
   if (review.attemptCount <= maxRetries && env.REVIEWS_QUEUE && (scopedGithubToken || canRetryWithoutGithubToken)) {
     await updateReviewRunStatus(env.DB, reviewId, 'queued', {
       report: null,
@@ -144,8 +148,11 @@ async function recoverStaleRunningReviewIfNeeded(
     !scopedGithubToken && !canRetryWithoutGithubToken
       ? ' No retry was scheduled because a fresh scoped GitHub token was not provided. Re-run review creation with X-Review-Github-Token (CLI: set REVIEW_CONTEXT_GITHUB_TOKEN).'
       : '';
+  const invalidTokenSuffix = hasInvalidScopedToken
+    ? ' No retry was scheduled because the provided scoped GitHub token format is invalid.'
+    : '';
   const retriesExhaustedSuffix = review.attemptCount > maxRetries ? ' No retry was scheduled because max retry attempts were exhausted.' : '';
-  const message = `Review execution timed out after ${Math.floor(staleForMs / 1000)}s in running state.${missingTokenSuffix}${retriesExhaustedSuffix}`;
+  const message = `Review execution timed out after ${Math.floor(staleForMs / 1000)}s in running state.${missingTokenSuffix}${invalidTokenSuffix}${retriesExhaustedSuffix}`;
   await updateReviewRunStatus(env.DB, reviewId, 'failed', {
     report: null,
     markdownSummary: null,
@@ -168,7 +175,21 @@ async function validateRecoveredReviewRetryAuth(
   shouldReenqueueRecoveredReview: boolean,
   reviewGithubToken: string | null
 ): Promise<Response | null> {
-  if (!shouldReenqueueRecoveredReview || reviewGithubToken) {
+  if (!shouldReenqueueRecoveredReview) {
+    return null;
+  }
+
+  if (reviewGithubToken && !isValidScopedGithubToken(reviewGithubToken)) {
+    return jsonResponse(
+      {
+        error: 'Scoped GitHub token format is invalid for retry. Expected ghp_* or github_pat_* token.',
+        code: 'invalid_token_format',
+      },
+      409
+    );
+  }
+
+  if (reviewGithubToken) {
     return null;
   }
 

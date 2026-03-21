@@ -29,6 +29,16 @@ const MAX_COMMIT_DIFF_PATCH_CHARS = 120_000;
 const COCHANGE_LOOKBACK_SESSIONS = 5;
 const COCHANGE_TOP_N = 20;
 
+function isExpectedLocalCochangeResolutionError(message: string): boolean {
+  return (
+    /not a git repository/i.test(message) ||
+    /unable to resolve entire checkpoints branch reference/i.test(message) ||
+    /failed to resolve git repository/i.test(message) ||
+    /unknown revision/i.test(message) ||
+    /bad revision/i.test(message)
+  );
+}
+
 function parseChangedPathsFromDiff(patch: string): string[] {
   const paths = new Set<string>();
   for (const line of patch.split('\n')) {
@@ -331,8 +341,12 @@ export async function createReviewFromCommitCommand(
       } else {
         spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
       }
-    } catch {
+    } catch (error) {
       localCochange = null;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!isExpectedLocalCochangeResolutionError(message)) {
+        p.log.warning(`Local co-change resolution error: ${message}`);
+      }
       spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
     }
 
