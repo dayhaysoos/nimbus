@@ -12,12 +12,17 @@ interface CommitResolution {
 
 interface ResolveCommitContextOptions {
   baseRef?: string;
+  allowBranchCheckpointFallback?: boolean;
 }
 
 export interface ReviewCommitValidationResult {
   commitSha: string;
   checkpointId: string;
   commitDiffPatch: string;
+  checkpointResolution?: 'direct' | 'branch_fallback';
+  checkpointResolvedFromCommitSha?: string;
+  checkpointResolvedFromSubject?: string;
+  checkpointResolvedCommitsAgo?: number;
 }
 
 interface LastCheckpointOnBranch {
@@ -344,7 +349,17 @@ export function validateReviewCommitCheckpoint(
   const normalizedCommitish = commitish.trim() || 'HEAD';
   const resolved = resolveCommitContext(normalizedCommitish, cwd, options);
   const checkpointId = resolved.checkpointId ?? '';
-  if (!checkpointId) {
+  let effectiveCheckpointId = checkpointId;
+  let checkpointResolution: 'direct' | 'branch_fallback' = 'direct';
+  let fallback: LastCheckpointOnBranch | null = null;
+  if (!effectiveCheckpointId && options?.allowBranchCheckpointFallback) {
+    fallback = findLastCheckpointOnBranch(resolved.commitSha, cwd);
+    if (fallback?.checkpointId) {
+      effectiveCheckpointId = fallback.checkpointId;
+      checkpointResolution = 'branch_fallback';
+    }
+  }
+  if (!effectiveCheckpointId) {
     throw new Error(buildMissingCheckpointTrailerMessage(resolved.commitSha, cwd));
   }
   if (!resolved.commitDiffPatch.trim()) {
@@ -354,8 +369,12 @@ export function validateReviewCommitCheckpoint(
   }
   return {
     commitSha: resolved.commitSha,
-    checkpointId,
+    checkpointId: effectiveCheckpointId,
     commitDiffPatch: resolved.commitDiffPatch,
+    checkpointResolution,
+    checkpointResolvedFromCommitSha: fallback?.commitSha,
+    checkpointResolvedFromSubject: fallback?.subject,
+    checkpointResolvedCommitsAgo: fallback?.commitsAgo,
   };
 }
 

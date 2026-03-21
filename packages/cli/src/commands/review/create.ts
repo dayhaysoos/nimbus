@@ -287,6 +287,7 @@ export async function createReviewFromCommitCommand(
     try {
       const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
         baseRef: options?.baseRef,
+        allowBranchCheckpointFallback: Boolean(options?.baseRef),
       });
       commitSha = resolvedCommit.commitSha;
       checkpointId = resolvedCommit.checkpointId;
@@ -296,7 +297,14 @@ export async function createReviewFromCommitCommand(
       commitDiffPatchSha256 = normalizedPatch.sha256;
       commitDiffPatchTruncated = normalizedPatch.truncated;
       commitDiffPatchOriginalChars = normalizedPatch.originalChars;
-      spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
+      if (resolvedCommit.checkpointResolution === 'branch_fallback') {
+        const fallbackSha = (resolvedCommit.checkpointResolvedFromCommitSha ?? '').slice(0, 12);
+        const commitsAgo = resolvedCommit.checkpointResolvedCommitsAgo;
+        const suffix = Number.isInteger(commitsAgo) ? ` (${commitsAgo} commits ago)` : '';
+        spinner.stop(`Resolved checkpoint ${checkpointId} via branch fallback from ${fallbackSha}${suffix}`);
+      } else {
+        spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Checkpoint resolution failed');
