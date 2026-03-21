@@ -134,6 +134,42 @@ function parseOpenRouterMessageContent(payload: unknown): string {
   return '';
 }
 
+function summarizeIntentSummaryValidation(value: unknown): string[] {
+  const record = asRecord(value);
+  const issues: string[] = [];
+
+  if (Object.keys(record).length === 0) {
+    return ['payload_not_object'];
+  }
+
+  const goal = record.goal;
+  if (goal !== null && goal !== undefined && typeof goal !== 'string') {
+    issues.push('goal_not_string_or_null');
+  }
+
+  const checkStringArray = (field: 'prohibitions' | 'riskFocus' | 'constraints'): void => {
+    const valueAtField = record[field];
+    if (valueAtField === undefined) {
+      issues.push(`${field}_missing`);
+      return;
+    }
+    if (!Array.isArray(valueAtField)) {
+      issues.push(`${field}_not_array`);
+      return;
+    }
+    const nonStringIndex = valueAtField.findIndex((item) => typeof item !== 'string');
+    if (nonStringIndex >= 0) {
+      issues.push(`${field}_contains_non_string`);
+    }
+  };
+
+  checkStringArray('prohibitions');
+  checkStringArray('riskFocus');
+  checkStringArray('constraints');
+
+  return issues;
+}
+
 function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummary | null {
   const record = asRecord(value);
   if (Object.keys(record).length === 0) {
@@ -184,6 +220,12 @@ async function runIntentSummarizationPrePass(
   }
 
   try {
+    console.warn(
+      `[intent-summary] start ${JSON.stringify({
+        rawSessionPromptsLength: rawSessionPrompts.length,
+      })}`
+    );
+
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), INTENT_SUMMARY_TIMEOUT_MS);
     const response = await (async () => {
@@ -209,6 +251,13 @@ async function runIntentSummarizationPrePass(
       }
     })();
 
+    console.warn(
+      `[intent-summary] fetch_result ${JSON.stringify({
+        status: response.status,
+        ok: response.ok,
+      })}`
+    );
+
     if (!response.ok) {
       const body = await response.text();
       console.warn(`[intent-summary] openrouter request failed (${response.status}): ${redactReviewText(body) ?? ''}`);
@@ -217,19 +266,74 @@ async function runIntentSummarizationPrePass(
 
     const payload = (await response.json()) as unknown;
     const content = parseOpenRouterMessageContent(payload);
+    console.warn(
+      `[intent-summary] raw_content ${JSON.stringify({
+        preview: content.slice(0, 500),
+        length: content.length,
+      })}`
+    );
     if (!content) {
       console.warn('[intent-summary] openrouter response content was empty');
       return null;
     }
 
     let parsed: unknown;
+    let parseSucceeded = false;
+    let parseMethod: 'strip_code_fences' | 'extract_json_object' | null = null;
+    let parseError: string | null = null;
     try {
       parsed = JSON.parse(stripCodeFences(content));
-    } catch {
-      parsed = JSON.parse(extractJsonObject(content));
+      parseSucceeded = true;
+      parseMethod = 'strip_code_fences';
+    } catch (firstError) {
+      try {
+        parsed = JSON.parse(extractJsonObject(content));
+        parseSucceeded = true;
+        parseMethod = 'extract_json_object';
+      } catch (secondError) {
+        const firstMessage = firstError instanceof Error ? firstError.message : String(firstError);
+        const secondMessage = secondError instanceof Error ? secondError.message : String(secondError);
+        parseError = `stripCodeFences=${firstMessage}; extractJsonObject=${secondMessage}`;
+        console.warn(
+          `[intent-summary] json_parse ${JSON.stringify({
+            success: false,
+            error: parseError,
+          })}`
+        );
+        throw secondError;
+      }
     }
 
-    return validateIntentSummaryPayload(parsed);
+    console.warn(
+      `[intent-summary] json_parse ${JSON.stringify({
+        success: parseSucceeded,
+        method: parseMethod,
+        error: parseError,
+      })}`
+    );
+
+    const validationIssues = summarizeIntentSummaryValidation(parsed);
+    const summary = validateIntentSummaryPayload(parsed);
+    if (summary) {
+      console.warn(
+        `[intent-summary] schema_validation ${JSON.stringify({
+          valid: true,
+          hasGoal: Boolean(summary.goal),
+          prohibitions: summary.prohibitions.length,
+          riskFocus: summary.riskFocus.length,
+          constraints: summary.constraints.length,
+        })}`
+      );
+      return summary;
+    }
+
+    console.warn(
+      `[intent-summary] schema_validation ${JSON.stringify({
+        valid: false,
+        issues: validationIssues,
+      })}`
+    );
+    return null;
   } catch (error) {
     if (error instanceof Error && error.name === 'AbortError') {
       console.warn(`[intent-summary] skipped: request timed out after ${INTENT_SUMMARY_TIMEOUT_MS}ms`);
