@@ -101,7 +101,6 @@ export async function handleGetDeployReadiness(env: Env): Promise<Response> {
 }
 
 export async function handleGetReviewReadiness(env: Env): Promise<Response> {
-  const hasWorkerGithubToken = typeof env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && env.REVIEW_CONTEXT_GITHUB_TOKEN.trim().length > 0;
   const hasReviewsQueue = Boolean(env.REVIEWS_QUEUE);
   const hasReviewRunner = Boolean(env.ReviewRunner);
   const checks = [
@@ -117,10 +116,8 @@ export async function handleGetReviewReadiness(env: Env): Promise<Response> {
     },
     {
       code: 'review_context_github_token_configured',
-      ok: hasWorkerGithubToken,
-      details: hasWorkerGithubToken
-        ? 'configured (optional fallback for retries/system-initiated runs)'
-        : 'missing (optional: per-request user token is supported)',
+      ok: true,
+      details: 'not required on worker; provide per-request X-Review-Github-Token for GitHub co-change retrieval',
     },
   ];
   const requiredChecks = checks.filter(

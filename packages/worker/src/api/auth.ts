@@ -296,3 +296,29 @@ export async function handleAuthExchange(request: Request, env: Env): Promise<Re
   const mintedToken = await mintNimbusJwt(registration.account_id, tokenSecret);
   return jsonResponse({ token: mintedToken, expiresInSeconds: getNimbusTokenTtlSeconds() }, 200);
 }
+
+export async function handleAuthExchangeHealth(_request: Request, env: Env): Promise<Response> {
+  const tokenSecretConfigured = typeof env.NIMBUS_TOKEN_SECRET === 'string' && env.NIMBUS_TOKEN_SECRET.trim().length > 0;
+  const oidcCacheBindingConfigured = Boolean(env.OIDC_CACHE);
+
+  let oidcCacheWarm: boolean | null = null;
+  if (env.OIDC_CACHE) {
+    try {
+      oidcCacheWarm = (await env.OIDC_CACHE.get(JWKS_CACHE_KEY)) !== null;
+    } catch {
+      oidcCacheWarm = null;
+    }
+  }
+
+  return jsonResponse(
+    {
+      exchangeReady: tokenSecretConfigured,
+      tokenSecretConfigured,
+      oidcCacheBindingConfigured,
+      oidcCacheWarm,
+      jwksCacheTtlSeconds: JWKS_CACHE_TTL_SECONDS,
+      tokenTtlSeconds: getNimbusTokenTtlSeconds(),
+    },
+    200
+  );
+}

@@ -295,6 +295,14 @@ export interface ReviewRunResponse {
   evidence: ReviewEvidenceItem[];
   provenance: {
     sessionIds: string[];
+    policyItems: string[];
+    rawSessionPrompts?: string | null;
+    intentSummary?: {
+      goal: string | null;
+      prohibitions: string[];
+      riskFocus: string[];
+      constraints: string[];
+    };
     promptSummary: string | null;
     transcriptUrl?: string | null;
   };
@@ -337,4 +345,13 @@ export interface RepoRegisterResponse {
 export interface AuthExchangeResponse {
   token: string;
   expiresInSeconds: number;
+}
+
+export interface AuthExchangeHealthResponse {
+  exchangeReady: boolean;
+  tokenSecretConfigured: boolean;
+  oidcCacheBindingConfigured: boolean;
+  oidcCacheWarm: boolean | null;
+  jwksCacheTtlSeconds: number;
+  tokenTtlSeconds: number;
 }

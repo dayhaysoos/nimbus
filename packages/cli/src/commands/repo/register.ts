@@ -2,6 +2,8 @@ import * as p from '@clack/prompts';
 import { execFileSync } from 'child_process';
 import { getWorkerUrl, registerRepo } from '../../lib/api.js';
 
+const REPO_SLUG_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
+
 function parseRepoSlug(remoteUrl: string): string | null {
   const trimmed = remoteUrl.trim();
   if (!trimmed) {
@@ -14,13 +16,13 @@ function parseRepoSlug(remoteUrl: string): string | null {
       return null;
     }
     const path = trimmed.slice(idx + 1).replace(/\.git$/i, '');
-    return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(path) ? path : null;
+    return REPO_SLUG_PATTERN.test(path) ? path : null;
   }
 
   try {
     const parsed = new URL(trimmed);
     const path = parsed.pathname.replace(/^\//, '').replace(/\.git$/i, '');
-    return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(path) ? path : null;
+    return REPO_SLUG_PATTERN.test(path) ? path : null;
   } catch {
     return null;
   }
@@ -45,12 +47,38 @@ function detectRepoSlugFromGitOrigin(): string {
   return slug;
 }
 
-export async function registerRepoCommand(options?: { repo?: string }): Promise<void> {
+export async function registerRepoCommand(options?: { repo?: string; dryRun?: boolean; json?: boolean }): Promise<void> {
   const workerUrl = getWorkerUrl();
   const repoSlug = typeof options?.repo === 'string' && options.repo.trim() ? options.repo.trim() : detectRepoSlugFromGitOrigin();
+  if (!REPO_SLUG_PATTERN.test(repoSlug)) {
+    throw new Error(`Invalid repository slug: ${repoSlug}. Use owner/repo format.`);
+  }
+
+  if (options?.dryRun === true) {
+    if (options?.json === true) {
+      console.log(
+        JSON.stringify({
+          status: 'dry_run',
+          repoSlug,
+          workerUrl,
+          networkRequestSent: false,
+        })
+      );
+      return;
+    }
+    p.log.success('Repo registration dry run passed.');
+    p.log.message(`Repository slug: ${repoSlug}`);
+    p.log.message(`Worker URL: ${workerUrl}`);
+    p.log.message('No network request was sent.');
+    return;
+  }
 
   try {
     const response = await registerRepo(workerUrl, repoSlug);
+    if (options?.json === true) {
+      console.log(JSON.stringify(response));
+      return;
+    }
     if (response.status === 'already_registered') {
       p.log.success(`Repository already registered: ${response.repoSlug}`);
       p.log.message(`Account ID: ${response.accountId}`);

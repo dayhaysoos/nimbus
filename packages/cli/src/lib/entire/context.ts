@@ -5,6 +5,7 @@ export interface EntireIntentContext {
   note: string | null;
   transcriptUrl: string | null;
   intentSessionContext: string[];
+  rawSessionPrompts?: string | null;
 }
 
 export interface EntireIntentContextOptions {
@@ -471,6 +472,75 @@ function extractContextExcerpts(markdown: string, options: Required<EntireIntent
   return summarized;
 }
 
+function extractRawUserPrompts(markdown: string): string | null {
+  const lines = markdown.split(/\r?\n/);
+  let inUserPromptsSection = false;
+  let inPromptBlock = false;
+  const promptBlocks: string[] = [];
+  let currentBlockLines: string[] = [];
+
+  const flushBlock = () => {
+    if (currentBlockLines.length === 0) {
+      return;
+    }
+    const blockText = compactWhitespace(currentBlockLines.join(' '));
+    if (blockText) {
+      promptBlocks.push(blockText);
+    }
+    currentBlockLines = [];
+  };
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (/^##\s+User Prompts\s*$/i.test(line)) {
+      flushBlock();
+      inUserPromptsSection = true;
+      inPromptBlock = false;
+      continue;
+    }
+
+    if (inUserPromptsSection && /^##\s+/.test(line) && !/^##\s+User Prompts\s*$/i.test(line)) {
+      flushBlock();
+      inUserPromptsSection = false;
+      inPromptBlock = false;
+      continue;
+    }
+
+    if (!inUserPromptsSection) {
+      continue;
+    }
+
+    if (/^###\s+Prompt\b/i.test(line)) {
+      flushBlock();
+      inPromptBlock = true;
+      continue;
+    }
+
+    if (!inPromptBlock) {
+      continue;
+    }
+
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    currentBlockLines.push(line);
+  }
+
+  flushBlock();
+
+  if (promptBlocks.length === 0) {
+    return null;
+  }
+
+  const joined = promptBlocks.join('\n\n').trim();
+  if (!joined) {
+    return null;
+  }
+
+  return joined.length > 6000 ? `${joined.slice(0, 5997)}...` : joined;
+}
+
 export async function resolveEntireIntentContextForCommit(
   commitSha: string,
   cwd = process.cwd(),
@@ -531,6 +601,7 @@ export async function resolveEntireIntentContextForCommit(
         note: `Review with Entire checkpoint intent context (${checkpointId}).`,
         transcriptUrl: null,
         intentSessionContext: excerpts,
+        rawSessionPrompts: extractRawUserPrompts(selectedSession.contextMarkdown),
       };
     }
   }

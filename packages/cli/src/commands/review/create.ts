@@ -29,6 +29,16 @@ const MAX_COMMIT_DIFF_PATCH_CHARS = 120_000;
 const COCHANGE_LOOKBACK_SESSIONS = 5;
 const COCHANGE_TOP_N = 20;
 
+function isExpectedLocalCochangeResolutionError(message: string): boolean {
+  return (
+    /not a git repository/i.test(message) ||
+    /unable to resolve entire checkpoints branch reference/i.test(message) ||
+    /failed to resolve git repository/i.test(message) ||
+    /unknown revision/i.test(message) ||
+    /bad revision/i.test(message)
+  );
+}
+
 function parseChangedPathsFromDiff(patch: string): string[] {
   const paths = new Set<string>();
   for (const line of patch.split('\n')) {
@@ -277,6 +287,7 @@ export async function createReviewFromCommitCommand(
     try {
       const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
         baseRef: options?.baseRef,
+        allowBranchCheckpointFallback: Boolean(options?.baseRef),
       });
       commitSha = resolvedCommit.commitSha;
       checkpointId = resolvedCommit.checkpointId;
@@ -286,7 +297,14 @@ export async function createReviewFromCommitCommand(
       commitDiffPatchSha256 = normalizedPatch.sha256;
       commitDiffPatchTruncated = normalizedPatch.truncated;
       commitDiffPatchOriginalChars = normalizedPatch.originalChars;
-      spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
+      if (resolvedCommit.checkpointResolution === 'branch_fallback') {
+        const fallbackSha = (resolvedCommit.checkpointResolvedFromCommitSha ?? '').slice(0, 12);
+        const commitsAgo = resolvedCommit.checkpointResolvedCommitsAgo;
+        const suffix = Number.isInteger(commitsAgo) ? ` (${commitsAgo} commits ago)` : '';
+        spinner.stop(`Resolved checkpoint ${checkpointId} via branch fallback from ${fallbackSha}${suffix}`);
+      } else {
+        spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Checkpoint resolution failed');
@@ -331,8 +349,12 @@ export async function createReviewFromCommitCommand(
       } else {
         spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
       }
-    } catch {
+    } catch (error) {
       localCochange = null;
+      const message = error instanceof Error ? error.message : String(error);
+      if (!isExpectedLocalCochangeResolutionError(message)) {
+        p.log.warning(`Local co-change resolution error: ${message}`);
+      }
       spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
     }
 
@@ -416,6 +438,9 @@ export async function createReviewFromCommitCommand(
           model: options?.model,
           provenance: {
             note: `Review with Entire checkpoint intent context (${entireContextResolution?.resolvedCheckpointId ?? checkpointId}).`,
+            sessionIds: entireContextResolution?.context.sessionIds ?? [],
+            intentSessionContext: entireContextResolution?.context.intentSessionContext ?? [],
+            rawSessionPrompts: entireContextResolution?.context.rawSessionPrompts ?? null,
             commitSha,
             commitDiffPatch,
             commitDiffPatchSha256,

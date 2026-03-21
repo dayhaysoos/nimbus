@@ -18,6 +18,7 @@ import type {
   AdminApiKeyCreateResponse,
   RepoRegisterResponse,
   AuthExchangeResponse,
+  AuthExchangeHealthResponse,
 } from './types.js';
 
 const DEFAULT_WORKER_URL = 'https://nimbus-worker.ndejesus1227.workers.dev';
@@ -109,7 +110,17 @@ function withReviewHeaders(baseHeaders?: RequestInit['headers']): Record<string,
   if (openrouterApiKey) {
     headers['X-Openrouter-Api-Key'] = openrouterApiKey;
   }
+  const reviewGithubToken = readReviewGithubToken();
+  if (reviewGithubToken) {
+    headers['X-Review-Github-Token'] = reviewGithubToken;
+  }
   return headers;
+}
+
+function readReviewGithubToken(): string | null {
+  return typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+    ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
+    : null;
 }
 
 /**
@@ -369,6 +380,7 @@ export async function createWorkspaceDeployment(
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
+      rawSessionPrompts?: string | null;
       contextResolution?: 'direct' | 'branch_fallback';
       contextResolutionOriginalCheckpointId?: string;
       contextResolutionResolvedCheckpointId?: string;
@@ -447,6 +459,7 @@ export async function createReview(
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
+      rawSessionPrompts?: string | null;
       commitSha?: string;
       commitDiffPatch?: string;
       commitDiffPatchSha256?: string;
@@ -468,16 +481,11 @@ export async function createReview(
     };
   }
 ): Promise<ReviewCreateResponse> {
-  const reviewGithubToken =
-    typeof process.env.REVIEW_CONTEXT_GITHUB_TOKEN === 'string' && process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-      ? process.env.REVIEW_CONTEXT_GITHUB_TOKEN.trim()
-      : null;
   const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews`, {
     method: 'POST',
     headers: withReviewHeaders({
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
-      ...(reviewGithubToken ? { 'X-Review-Github-Token': reviewGithubToken } : {}),
     }),
     body: JSON.stringify(payload),
   });
@@ -558,6 +566,19 @@ export async function exchangeOidcToken(workerUrl: string, token: string): Promi
   }
 
   return response.json() as Promise<AuthExchangeResponse>;
+}
+
+export async function getAuthExchangeHealth(workerUrl: string): Promise<AuthExchangeHealthResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/auth/exchange/health`, {
+    method: 'GET',
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<AuthExchangeHealthResponse>;
 }
 
 function parseSseChunk(chunk: string): ReviewEventEnvelope[] {

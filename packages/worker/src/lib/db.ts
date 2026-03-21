@@ -34,6 +34,7 @@ import type {
   WorkspacePackageManager,
   WorkspaceToolchainProfile,
 } from '../types.js';
+import { extractPolicyItemsFromIntentContext } from './review-redaction.js';
 
 export interface CreateCheckpointJobInput {
   id: string;
@@ -730,6 +731,35 @@ function toReviewFindingRecord(value: unknown): ReviewFinding[] {
 function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
   const provenance = parseJsonOrFallback(record.provenance_json, {});
   const report = parseJsonOrFallback(record.report_json, null) as ReviewReport | null;
+  const requestPayload = parseJsonOrFallback(record.request_payload_json, {}) as Record<string, unknown>;
+  const requestProvenance =
+    requestPayload && typeof requestPayload.provenance === 'object' && requestPayload.provenance !== null
+      ? (requestPayload.provenance as Record<string, unknown>)
+      : {};
+  const rawIntentSessionContext = Array.isArray(requestProvenance.intentSessionContext)
+    ? requestProvenance.intentSessionContext
+    : [];
+  const intentSummaryFromReport = report?.provenance?.intentSummary;
+  const intentSummary = intentSummaryFromReport
+    ? {
+        goal:
+          typeof intentSummaryFromReport.goal === 'string' && intentSummaryFromReport.goal.trim()
+            ? intentSummaryFromReport.goal.trim()
+            : null,
+        prohibitions: Array.isArray(intentSummaryFromReport.prohibitions)
+          ? intentSummaryFromReport.prohibitions.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+          : [],
+        riskFocus: Array.isArray(intentSummaryFromReport.riskFocus)
+          ? intentSummaryFromReport.riskFocus.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+          : [],
+        constraints: Array.isArray(intentSummaryFromReport.constraints)
+          ? intentSummaryFromReport.constraints.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
+          : [],
+      }
+    : undefined;
+  const policyItems = extractPolicyItemsFromIntentContext(
+    rawIntentSessionContext.filter((item): item is string => typeof item === 'string')
+  );
   const reportHasProvenance = Boolean(report?.provenance);
 
   const response: ReviewRunResponse = {
@@ -754,6 +784,8 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
     provenance: {
       sessionIds:
         report?.provenance && Array.isArray(report.provenance.sessionIds) ? report.provenance.sessionIds : [],
+      policyItems: intentSummary ? [] : policyItems,
+      ...(intentSummary ? { intentSummary } : {}),
       promptSummary:
         report?.provenance && typeof report.provenance.promptSummary === 'string'
           ? report.provenance.promptSummary

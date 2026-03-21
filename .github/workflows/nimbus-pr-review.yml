@@ -299,117 +299,152 @@ jobs:
             const { owner, repo } = context.repo;
             const issue_number = pr.number;
 
-            function buildWhyMatters(severity, type) {
-              const severityPrefix =
-                severity === 'high' || severity === 'critical'
-                  ? 'High impact if triggered. '
-                  : severity === 'medium'
-                    ? 'Moderate impact on review reliability. '
-                    : '';
+            const shortSha = typeof headSha === 'string' ? headSha.slice(0, 8) : 'unknown';
 
-              if (type === 'security') {
-                return `${severityPrefix}Potentially exposes credentials or weakens trust boundaries.`;
+            function severityBadge(rawSeverity) {
+              const severity = typeof rawSeverity === 'string' ? rawSeverity.toLowerCase() : '';
+              if (severity === 'critical') {
+                return '🚨 critical';
               }
-
-              return `${severityPrefix}Can cause inconsistent automation behavior or noisy PR signals.`;
+              if (severity === 'high') {
+                return '🔴 high';
+              }
+              if (severity === 'medium') {
+                return '🟡 medium';
+              }
+              if (severity === 'info') {
+                return '🔵 info';
+              }
+              return '🔵 low';
             }
 
-            function buildLocationMarkdown(rawLocation) {
-              if (!rawLocation) {
-                return '`(location unavailable)`';
+            function asStringList(value) {
+              if (!Array.isArray(value)) {
+                return [];
               }
-
-              const trimmed = rawLocation.trim();
-              const match = trimmed.match(/^(.+?):(\d+)(?:-(\d+))?$/);
-
-              if (!match) {
-                return `\`${trimmed}\``;
-              }
-
-              const filePath = match[1].replace(/^\.\//, '');
-              const start = match[2];
-              const end = match[3];
-              const anchor = end ? `#L${start}-L${end}` : `#L${start}`;
-              const encodedPath = filePath
-                .split('/')
-                .map(segment => encodeURIComponent(segment))
-                .join('/');
-              const url = `${context.serverUrl}/${owner}/${repo}/blob/${headSha}/${encodedPath}${anchor}`;
-              return `[${filePath}${anchor}](${url})`;
+              return value
+                .filter((item) => typeof item === 'string')
+                .map((item) => item.trim())
+                .filter(Boolean);
             }
 
-            function locationToRaw(location) {
-              if (!location || typeof location !== 'object') {
-                return '';
+            function buildPolicyItems(review) {
+              if (!review || typeof review !== 'object') {
+                return [];
+              }
+              const provenance = review?.provenance && typeof review.provenance === 'object' ? review.provenance : {};
+              const intentSummary = provenance?.intentSummary && typeof provenance.intentSummary === 'object'
+                ? provenance.intentSummary
+                : null;
+
+              if (intentSummary) {
+                const prohibitionsSource = Array.isArray(intentSummary.prohibitions) ? intentSummary.prohibitions : [];
+                const riskFocusSource = Array.isArray(intentSummary.riskFocus) ? intentSummary.riskFocus : [];
+                const constraintsSource = Array.isArray(intentSummary.constraints) ? intentSummary.constraints : [];
+
+                const prohibitions = asStringList(prohibitionsSource).map((item) => `Must not: ${item}`);
+                const riskFocus = asStringList(riskFocusSource).map((item) => `Risk: ${item}`);
+                const constraints = asStringList(constraintsSource).map((item) => `Prefer: ${item}`);
+                const combined = [...prohibitions, ...riskFocus, ...constraints];
+                return combined;
               }
 
-              const path =
-                (typeof location.filePath === 'string' && location.filePath) ||
-                (typeof location.path === 'string' && location.path) ||
-                '';
-              const start =
-                Number.isInteger(location.startLine) ? String(location.startLine) :
-                Number.isInteger(location.line) ? String(location.line) :
-                '';
-              const end = Number.isInteger(location.endLine) ? String(location.endLine) : '';
-
-              if (!path) {
-                return '';
-              }
-
-              if (!start) {
-                return path;
-              }
-
-              return end ? `${path}:${start}-${end}` : `${path}:${start}`;
+              return asStringList(provenance?.policyItems);
             }
 
-            function buildCardsFromStructuredReview(review) {
-              if (!review || typeof review !== 'object' || !Array.isArray(review.findings) || review.findings.length === 0) {
-                return null;
+            function buildLocationLines(finding) {
+              const locations = Array.isArray(finding?.locations) ? finding.locations : [];
+              if (locations.length === 0) {
+                return ['- `(location unavailable)`'];
               }
 
-              const cards = review.findings.map((finding, index) => {
-                const severity = typeof finding?.severity === 'string' ? finding.severity : 'unknown';
-                const type = typeof finding?.category === 'string' ? finding.category : 'unknown';
-                const scope = typeof finding?.passType === 'string' ? finding.passType : 'single';
-                const summary =
-                  (typeof finding?.description === 'string' && finding.description.trim()) ||
-                  (typeof finding?.title === 'string' && finding.title.trim()) ||
-                  'No summary provided.';
+              return locations.map((location) => {
+                const filePath =
+                  (location && typeof location.filePath === 'string' && location.filePath.trim()) ||
+                  (location && typeof location.path === 'string' && location.path.trim()) ||
+                  '(location unavailable)';
 
-                const firstLocation = Array.isArray(finding?.locations) ? finding.locations[0] : null;
-                const locationRaw = locationToRaw(firstLocation);
+                const startLine =
+                  location && Number.isInteger(location.startLine)
+                    ? location.startLine
+                    : location && Number.isInteger(location.line)
+                      ? location.line
+                      : null;
+                const endLine = location && Number.isInteger(location.endLine) ? location.endLine : null;
 
-                return [
-                  `### F-${String(index + 1).padStart(3, '0')}`,
-                  `- Severity: ${severity}`,
-                  `- Type: ${type}`,
-                  `- Scope: ${scope}`,
-                  `- Summary: ${summary}`,
-                  `- Why this matters: ${buildWhyMatters(severity, type)}`,
-                  `- Location: ${buildLocationMarkdown(locationRaw)}`,
-                ].join('\n');
+                if (startLine === null) {
+                  return `- \`${filePath}\``;
+                }
+                if (endLine !== null && endLine !== startLine) {
+                  return `- \`${filePath}\` L${startLine}–${endLine}`;
+                }
+                return `- \`${filePath}\` L${startLine}`;
               });
-
-              return cards.join('\n\n');
             }
 
-            let findingsBody = 'No findings report was produced for this run.';
+            function buildFindingBlock(finding, index) {
+              const severity = typeof finding?.severity === 'string' ? finding.severity.toLowerCase() : 'low';
+              const category = typeof finding?.category === 'string' ? finding.category.toLowerCase() : 'logic';
+              const description =
+                (typeof finding?.description === 'string' && finding.description.trim()) ||
+                'No description provided.';
+              const suggestedFix =
+                (typeof finding?.suggestedFix === 'string' && finding.suggestedFix.trim()) ||
+                'No suggested fix provided.';
+              const locations = buildLocationLines(finding);
+
+              return [
+                `**F-${String(index + 1).padStart(3, '0')} · ${severityBadge(severity)} · ${category}:** ${description}`,
+                `**Fix:** ${suggestedFix}`,
+                ...locations,
+              ].join('\n');
+            }
+
+            let findingsBody = 'No actionable findings.';
+            let findingsCount = 0;
+            let goal = 'Not specified';
+            let policyItems = [];
 
             if (reviewId && fs.existsSync(reviewPath)) {
               const exported = JSON.parse(fs.readFileSync(reviewPath, 'utf8'));
               const review = exported && typeof exported === 'object' && exported.review ? exported.review : exported;
 
-              const structuredCards = buildCardsFromStructuredReview(review);
-              if (structuredCards) {
-                findingsBody = structuredCards;
-              } else if (review && Array.isArray(review.findings) && review.findings.length === 0) {
-                findingsBody = 'No actionable findings.';
+              if (review && typeof review === 'object') {
+                const intentSummary =
+                  review?.provenance &&
+                  typeof review.provenance === 'object' &&
+                  review.provenance.intentSummary &&
+                  typeof review.provenance.intentSummary === 'object'
+                    ? review.provenance.intentSummary
+                    : null;
+                const summaryGoal = intentSummary && typeof intentSummary.goal === 'string' ? intentSummary.goal.trim() : '';
+                const intent = review.intent && typeof review.intent === 'object' ? review.intent : {};
+                const extractedGoal = typeof intent.goal === 'string' ? intent.goal.trim() : '';
+                if (summaryGoal) {
+                  goal = summaryGoal;
+                } else if (extractedGoal && !/^Review with Entire checkpoint intent context/i.test(extractedGoal)) {
+                  goal = extractedGoal;
+                }
+
+                policyItems = buildPolicyItems(review);
+
+                if (Array.isArray(review.findings)) {
+                  findingsCount = review.findings.length;
+                  if (review.findings.length > 0) {
+                    findingsBody = review.findings
+                      .map((finding, index) => buildFindingBlock(finding, index))
+                      .join('\n\n---\n\n');
+                  }
+                }
               }
             }
 
-            let body = `${marker}\n## Nimbus Findings\n\n- Review ID: \`${reviewId || 'unknown'}\`\n- Head SHA: \`${headSha}\`\n- Schema version: \`v1\`\n\n${findingsBody}`;
+            const policyBlock =
+              policyItems.length > 0
+                ? `\n**Policy:**\n${policyItems.map((item) => `- ${item}`).join('\n')}`
+                : '';
+
+            let body = `${marker}\n## Nimbus Findings\n\n\`${reviewId || 'unknown'}\` · \`${shortSha}\` · ${findingsCount} findings\n\n**Goal:** ${goal}${policyBlock}\n\n---\n\n${findingsBody}`;
 
             if (body.length > 65536) {
               body = `${body.slice(0, 65520)}\n\n... (truncated)`;

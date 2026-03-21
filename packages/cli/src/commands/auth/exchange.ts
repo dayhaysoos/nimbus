@@ -34,9 +34,10 @@ async function requestGithubOidcToken(audience: string): Promise<string> {
   return token;
 }
 
-export async function authExchangeCommand(): Promise<void> {
+export async function authExchangeCommand(options?: { json?: boolean }): Promise<void> {
   const githubOutputPath = typeof process.env.GITHUB_OUTPUT === 'string' ? process.env.GITHUB_OUTPUT.trim() : '';
-  if (!githubOutputPath) {
+  const isJson = options?.json === true;
+  if (!githubOutputPath && !isJson) {
     throw new Error('GITHUB_OUTPUT is required for nimbus auth exchange output in GitHub Actions');
   }
 
@@ -44,6 +45,16 @@ export async function authExchangeCommand(): Promise<void> {
   const oidcToken = await requestGithubOidcToken('nimbus');
   const exchanged = await exchangeOidcToken(workerUrl, oidcToken);
 
-  await appendFile(githubOutputPath, `token=${exchanged.token}\n`, 'utf8');
+  let wroteGithubOutput = false;
+  if (!isJson && githubOutputPath) {
+    await appendFile(githubOutputPath, `token=${exchanged.token}\n`, 'utf8');
+    wroteGithubOutput = true;
+  }
+
+  if (isJson) {
+    console.log(JSON.stringify({ ...exchanged, wroteGithubOutput }));
+    return;
+  }
+
   p.log.success('Exchanged GitHub OIDC token for Nimbus token.');
 }

@@ -17,6 +17,7 @@ import {
   reviewPreflightCommand,
   setReviewPreflightCommitResolverForTests,
   setReviewPreflightContextResolverForTests,
+  setReviewPreflightLocalCochangeResolverForTests,
   setReviewPreflightLastCheckpointResolverForTests,
   setReviewPreflightLastValidContextResolverForTests,
   setReviewPreflightTokenReadinessResolverForTests,
@@ -143,13 +144,15 @@ export async function runReviewCommandTests(): Promise<void> {
         intentSessionContext: ['Constraint: Keep scope narrow.'],
       }));
       setReviewPreflightTokenReadinessResolverForTests(async () => false);
+      setReviewPreflightLocalCochangeResolverForTests(() => false);
       await assert.rejects(
         () => reviewPreflightCommand('HEAD'),
-        /Review preflight failed: co-change retrieval requires a GitHub token with repo read access to your repository/
+        /Review preflight failed: REVIEW_CONTEXT_GITHUB_TOKEN is required for GitHub co-change retrieval when local co-change context is unavailable/
       );
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightTokenReadinessResolverForTests(async () => true);
+      setReviewPreflightLocalCochangeResolverForTests(null);
     }
 
     {
@@ -1430,7 +1433,7 @@ export async function runReviewCommandTests(): Promise<void> {
 
       await assert.rejects(
         () => createReviewCommand('ws_abc12345', 'dep_abcd1234', { idempotencyKey: 'idem-review-token-missing' }),
-        /co-change retrieval requires a GitHub token with repo read access to your repository/
+        /REVIEW_CONTEXT_GITHUB_TOKEN is required for GitHub co-change retrieval when local co-change context is unavailable/
       );
       assert.equal(fetchCount, 0);
       setReviewPreflightTokenReadinessResolverForTests(async () => true);

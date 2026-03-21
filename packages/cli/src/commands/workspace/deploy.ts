@@ -220,6 +220,7 @@ export async function workspaceDeployCommand(
       sessionIds: [],
       transcriptUrl: null,
       intentSessionContext: [],
+      rawSessionPrompts: null,
     };
   } else {
     try {
@@ -267,6 +268,7 @@ export async function workspaceDeployCommand(
       sessionIds: entireIntentContext?.sessionIds ?? [],
       transcriptUrl: entireIntentContext?.transcriptUrl ?? null,
       intentSessionContext: entireIntentContext?.intentSessionContext ?? [],
+      rawSessionPrompts: entireIntentContext?.rawSessionPrompts ?? null,
       repo: repositorySlug,
       contextResolution: contextOverride?.contextResolution,
       contextResolutionOriginalCheckpointId: contextOverride?.originalCheckpointId,

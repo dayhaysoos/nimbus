@@ -68,6 +68,7 @@ export interface Env {
   REVIEW_CONTEXT_DEFAULT_TOKEN_BUDGET?: string;
   NIMBUS_HOSTED?: string;
   NIMBUS_TOKEN_SECRET?: string;
+  OPENROUTER_API_KEY?: string;
 }
 
 export interface AuthContext {
@@ -612,8 +613,18 @@ export interface ReviewIntentSummary {
   decisions: string[];
 }
 
+export interface ReviewSessionIntentSummary {
+  goal: string | null;
+  prohibitions: string[];
+  riskFocus: string[];
+  constraints: string[];
+}
+
 export interface ReviewProvenanceSummary {
   sessionIds: string[];
+  policyItems: string[];
+  rawSessionPrompts?: string | null;
+  intentSummary?: ReviewSessionIntentSummary;
   promptSummary: string | null;
   transcriptUrl?: string | null;
   reviewContextRef?: ReviewContextRef | null;

@@ -1,11 +1,13 @@
 import type { Sandbox } from '@cloudflare/sandbox';
 import type {
   Env,
+  ReviewSessionIntentSummary,
   ReviewAnalysisOutputV2,
   ReviewContext,
   ReviewFinding,
 } from '../types.js';
 import { validateAndNormalizeReviewAnalysisOutputV2 } from './review-output-v2.js';
+import { redactReviewText } from './review-redaction.js';
 
 const WORKSPACE_ROOT = '/workspace';
 const BUNDLE_BASE64_PATH = '/tmp/review-source.tar.gz.base64';
@@ -23,7 +25,6 @@ const PROMPT_RELATED_FILES_MAX_BYTES = 36_000;
 const PROMPT_CONVENTION_FILES_MAX_BYTES = 20_000;
 const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
 const REVIEW_PROVIDER_TIMEOUT_MS = 120_000;
-const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
 
 interface SandboxClient {
   exec(
@@ -106,6 +107,7 @@ interface ReviewAgentPromptInput {
   constraints: string[];
   decisions: string[];
   intentSessionContext: string[];
+  intentSummary?: ReviewSessionIntentSummary | null;
   evidenceCatalog: Array<{ id: string; type: string; label: string; status: string }>;
   deploymentSummary: {
     provider: string;
@@ -172,13 +174,13 @@ function boundedJson(value: unknown, maxBytes: number): string {
   return clamped.truncated ? `${clamped.text} [TRUNCATED]` : clamped.text;
 }
 
-function stripCodeFences(value: string): string {
+export function stripCodeFences(value: string): string {
   const trimmed = value.trim();
   const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i);
   return fenced ? fenced[1].trim() : trimmed;
 }
 
-function extractJsonObject(value: string): string {
+export function extractJsonObject(value: string): string {
   const stripped = stripCodeFences(value);
   const start = stripped.indexOf('{');
   const end = stripped.lastIndexOf('}');
@@ -299,19 +301,6 @@ function isTimeoutLikeError(error: unknown): boolean {
   return message.includes('timeout') || message.includes('timed out') || message.includes('aborted');
 }
 
-function redactReviewText(value: string | null): string | null {
-  if (!value) {
-    return null;
-  }
-
-  const redacted = value
-    .replace(/(authorization:\s*bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
-    .replace(GITHUB_TOKEN_PATTERN, '[REDACTED_TOKEN]')
-    .replace(/((?:"|')?api[_-]?key(?:"|')?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[REDACTED]')
-    .replace(/((?:"|')?token(?:"|')?\s*[:=]\s*)("[^"]*"|'[^']*'|[^\s,}]+)/gi, '$1[REDACTED]');
-  return redacted.length > 600 ? `${redacted.slice(0, 597)}...` : redacted;
-}
-
 function toBase64(buffer: ArrayBuffer): string {
   const bytes = new Uint8Array(buffer);
   let binary = '';
@@ -351,6 +340,16 @@ async function hydrateReviewSandbox(sandbox: SandboxClient, sourceBytes: ArrayBu
 }
 
 function sanitizePromptInput(input: ReviewAgentPromptInput): ReviewAgentPromptInput {
+  const rawIntentSummary = input.intentSummary;
+  const sanitizedIntentSummary = rawIntentSummary
+    ? {
+        goal: rawIntentSummary.goal ? redactReviewText(rawIntentSummary.goal) : null,
+        prohibitions: rawIntentSummary.prohibitions.map((item) => redactReviewText(item) ?? '').filter(Boolean),
+        riskFocus: rawIntentSummary.riskFocus.map((item) => redactReviewText(item) ?? '').filter(Boolean),
+        constraints: rawIntentSummary.constraints.map((item) => redactReviewText(item) ?? '').filter(Boolean),
+      }
+    : null;
+
   return {
     ...input,
     goal: redactReviewText(input.goal) ?? input.goal,
@@ -359,6 +358,7 @@ function sanitizePromptInput(input: ReviewAgentPromptInput): ReviewAgentPromptIn
     intentSessionContext: input.intentSessionContext
       .map((item) => redactReviewText(item) ?? '')
       .filter(Boolean),
+    intentSummary: sanitizedIntentSummary,
   };
 }
 
@@ -385,12 +385,33 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     content: file.content,
     byteSize: file.byteSize,
   }));
+  const intentSummaryBlock = input.intentSummary
+    ? [
+        'Developer intent summary (derived from session context):',
+        `Goal: ${input.intentSummary.goal ?? 'Not specified'}`,
+        input.intentSummary.prohibitions.length > 0
+          ? `Prohibitions:\n${input.intentSummary.prohibitions.map((item) => `- ${item}`).join('\n')}`
+          : 'Prohibitions: None stated',
+        input.intentSummary.riskFocus.length > 0
+          ? `Risk focus areas:\n${input.intentSummary.riskFocus.map((item) => `- ${item}`).join('\n')}`
+          : 'Risk focus areas: None stated',
+        input.intentSummary.constraints.length > 0
+          ? `Constraints:\n${input.intentSummary.constraints.map((item) => `- ${item}`).join('\n')}`
+          : 'Constraints: None stated',
+      ].join('\n')
+    : `Intent session context excerpts: ${JSON.stringify(input.intentSessionContext)}`;
 
   return [
-    'You are Nimbus Review, a non-mutating code review agent.',
-    'Analyze the provided full ReviewContext and return only actionable findings supported by code context.',
-    'Never propose edits or run mutating commands. Prefer no findings over weak findings.',
+    'You are a senior engineer conducting a pre-merge code review.',
+    'Your job is to identify real issues that matter before code ships.',
+    'You are thorough, direct, and conservative — you do not invent problems.',
+    '',
+    'A finding must be actionable and supported by direct code evidence.',
+    'If you are not confident a finding is real, omit it entirely.',
+    'Prefer an empty findings array over weak or speculative findings.',
+    '',
     'Use only these tools when needed: list_files, read_file, diff_summary.',
+    'Never propose edits or run mutating commands.',
     '',
     'Return your final answer as raw JSON with this shape and no surrounding prose:',
     '{',
@@ -398,32 +419,35 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     '    {',
     '      "severity": "info|low|medium|high|critical",',
     '      "category": "security|logic|style|breaking-change",',
-    '      "passType": "single|security|logic|style|breaking-change",',
-    '      "locations": [{ "filePath": string, "startLine": number|null, "endLine": number|null }],',
-    '      "description": string,',
-    '      "suggestedFix": string',
+      '      "passType": "single",',
+      '      "locations": [{ "filePath": string, "startLine": number|null, "endLine": number|null }],',
+      '      "description": string,',
+      '      "suggestedFix": string',
     '    }',
     '  ],',
     '  "summary": string,',
     '  "furtherPassesLowYield": boolean',
     '}',
     '',
-    'Critical field typing requirements:',
-    '- summary must be a plain JSON string value (not an object, array, number, or nested structure).',
-    '- furtherPassesLowYield must be exactly true or false (JSON boolean only; do not use strings like "true"/"false" and do not use null).',
-    '- Do not return summary as an object (for example with riskLevel/recommendation).',
-    '- Do not return summaryText or any alternate summary field; only return summary.',
-    '',
-    'Phase 2 constraints:',
-    '- passType must be set explicitly on every finding and be "single" in this phase.',
-    '- category must be one of security, logic, style, breaking-change.',
-    '- locations must contain at least one location; file-only location is allowed with null line values.',
+    'Field requirements:',
+    '- summary must be a plain string. State what the diff does, the overall',
+    '  risk level in one word (none/low/medium/high), and whether further',
+    '  review is warranted. Do not return summary as an object or nested structure.',
+    '- furtherPassesLowYield must be exactly true or false. No strings, no null.',
+    '- passType must be "single" on every finding.',
+    '- category must be one of: security, logic, style, breaking-change.',
+    '- locations must contain at least one entry. Line numbers may be null',
+    '  if the issue is file-level rather than line-level.',
     '- findings must be self-contained and actionable without rereading the diff.',
     '',
     'Context weighting rules:',
-    '- Changed files are directly modified in this commit and should get highest weight.',
-    '- Related files are historical co-change context from Entire checkpoint session history and are not directly modified in this commit.',
-    '- Use related files to understand coupling/impact, but do not treat them as direct modified evidence.',
+    '- Changed files are directly modified in this diff. Weight them highest.',
+    '- Related files are historical co-change context. Use them to understand',
+    '  coupling and downstream impact, not as direct evidence of a defect.',
+    '- Intent context describes the developer\'s stated goals, constraints,',
+    '  prohibitions, and risk areas from their session history. Use it to prioritize findings',
+    '  and assess relevance. Do not generate a finding from intent alone —',
+    '  intent must be corroborated by code evidence.',
     '',
     `Review Context ID: ${context.id}`,
     `Review ID: ${input.reviewId}`,
@@ -434,9 +458,7 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     `Goal: ${input.goal}`,
     `Constraints: ${JSON.stringify(input.constraints)}`,
     `Decisions: ${JSON.stringify(input.decisions)}`,
-    input.intentSessionContext.length > 0
-      ? `Intent session context excerpts: ${JSON.stringify(input.intentSessionContext)}`
-      : 'Intent session context excerpts: []',
+    intentSummaryBlock,
     `Deployment summary: ${JSON.stringify(input.deploymentSummary)}`,
     `Evidence catalog: ${JSON.stringify(input.evidenceCatalog)}`,
     '',
@@ -446,13 +468,12 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     `Convention/config files: ${boundedJson(conventionFiles, PROMPT_CONVENTION_FILES_MAX_BYTES)}`,
     `Co-change retrieval stats: ${JSON.stringify(context.retrieval.coChange)}`,
     `Review context stats: ${JSON.stringify(context.stats)}`,
-    promptDiffSnapshot !== undefined
-      ? `Authoritative deployed diff snapshot: ${JSON.stringify(promptDiffSnapshot)}`
-      : 'Authoritative deployed diff snapshot: unavailable',
+    `Authoritative deployed diff snapshot: ${JSON.stringify(promptDiffSnapshot)}`,
     `Initial root listing: ${JSON.stringify(input.rootListing)}`,
     `Initial diff snapshot: ${JSON.stringify(input.diffSnapshot)}`,
     '',
-    'If you cannot justify a concrete issue, return an empty findings array with a concise summary.',
+    'If you cannot justify a concrete issue, return an empty findings array',
+    'with a concise summary.',
   ].join('\n');
 }
 
