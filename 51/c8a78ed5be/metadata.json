@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "51c8a78ed5be",
+  "strategy": "manual-commit",
+  "branch": "review-quality-take-2",
+  "checkpoints_count": 13,
+  "files_touched": [
+    "packages/agent-endpoint/src/lib/agent.ts",
+    "packages/worker/src/lib/review-runner.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/51/c8a78ed5be/0/metadata.json",
+      "transcript": "/51/c8a78ed5be/0/full.jsonl",
+      "context": "/51/c8a78ed5be/0/context.md",
+      "content_hash": "/51/c8a78ed5be/0/content_hash.txt",
+      "prompt": "/51/c8a78ed5be/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6266344,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 88249728,
+    "output_tokens": 192509,
+    "api_call_count": 696
+  }
+}
