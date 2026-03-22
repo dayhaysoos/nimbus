@@ -1,0 +1,20 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "f0559520754a",
+  "strategy": "manual-commit",
+  "branch": "finding-id-awareness",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/review/create.ts",
+    "packages/worker/src/api/reviews.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/f0/559520754a/0/metadata.json",
+      "transcript": "/f0/559520754a/0/full.jsonl",
+      "context": "",
+      "content_hash": "/f0/559520754a/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
