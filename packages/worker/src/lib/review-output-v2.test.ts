@@ -15,6 +15,9 @@ function basePayload(): any {
         locations: [{ filePath: 'src/main.ts', startLine: 10, endLine: 12 }],
         description: 'Potential null access in request handling.',
         suggestedFix: 'Guard against null before dereferencing.',
+        failingScenario: 'When request.auth is null and handler dereferences request.auth.userId.',
+        evidence: 'src/main.ts:10-12 dereferences request.auth.userId without null guard.',
+        guardGap: 'No preceding null check exists on request.auth in this code path.',
       },
     ],
     summary: 'One actionable finding found.',
@@ -110,6 +113,30 @@ export function runReviewOutputV2Tests(): void {
   }
 
   {
+    const payload = basePayload();
+    delete payload.findings[0].failingScenario;
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, false);
+    assert.equal(result.errors.some((error) => error.path.endsWith('.failingScenario')), true);
+  }
+
+  {
+    const payload = basePayload();
+    payload.findings[0].evidence = '   ';
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, false);
+    assert.equal(result.errors.some((error) => error.path.endsWith('.evidence')), true);
+  }
+
+  {
+    const payload = basePayload();
+    delete payload.findings[0].guardGap;
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, false);
+    assert.equal(result.errors.some((error) => error.path.endsWith('.guardGap')), true);
+  }
+
+  {
     const payload = {
       findings: [
         {
@@ -119,6 +146,9 @@ export function runReviewOutputV2Tests(): void {
           locations: [{ filePath: 'src\\auth.ts', startLine: 7, endLine: 7 }],
           description: '  Token leakage in logs.  ',
           suggestedFix: '  Redact token before logging.  ',
+          failingScenario: '  Logging auth payload with token included in production path.  ',
+          evidence: '  src/auth.ts:7 writes token field to logger.  ',
+          guardGap: '  No redaction helper is invoked before log write.  ',
         },
         {
           severity: 'high',
@@ -127,6 +157,9 @@ export function runReviewOutputV2Tests(): void {
           locations: [{ filePath: 'src/auth.ts', startLine: 7, endLine: 7 }],
           description: 'Token leakage in logs.',
           suggestedFix: 'Redact token before logging.',
+          failingScenario: 'Logging auth payload with token included in production path.',
+          evidence: 'src/auth.ts:7 writes token field to logger.',
+          guardGap: 'No redaction helper is invoked before log write.',
         },
         {
           severity: 'high',
@@ -135,6 +168,9 @@ export function runReviewOutputV2Tests(): void {
           locations: [{ filePath: 'src/auth.ts', startLine: 8, endLine: 8 }],
           description: 'Token leakage in logs.',
           suggestedFix: 'Redact token before logging.',
+          failingScenario: 'Logging auth payload with token included in production path.',
+          evidence: 'src/auth.ts:8 writes token field to logger.',
+          guardGap: 'No redaction helper is invoked before log write.',
         },
       ],
       summary: '  Security issues found. ',

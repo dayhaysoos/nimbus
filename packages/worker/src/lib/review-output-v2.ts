@@ -141,6 +141,24 @@ export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): Va
           `${findingPath}.suggestedFix`,
           'suggestedFix'
         );
+        const failingScenario = validateNonEmptyString(
+          findingValue.failingScenario,
+          errors,
+          `${findingPath}.failingScenario`,
+          'failingScenario'
+        );
+        const evidence = validateNonEmptyString(
+          findingValue.evidence,
+          errors,
+          `${findingPath}.evidence`,
+          'evidence'
+        );
+        const guardGap = validateNonEmptyString(
+          findingValue.guardGap,
+          errors,
+          `${findingPath}.guardGap`,
+          'guardGap'
+        );
 
         const locationsValue = findingValue.locations;
         if (!Array.isArray(locationsValue)) {
@@ -197,7 +215,17 @@ export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): Va
           ];
         });
 
-        if (!severity || !category || !passType || !description || !suggestedFix || locations.length === 0) {
+        if (
+          !severity ||
+          !category ||
+          !passType ||
+          !description ||
+          !suggestedFix ||
+          !failingScenario ||
+          !evidence ||
+          !guardGap ||
+          locations.length === 0
+        ) {
           return [];
         }
 
@@ -209,6 +237,9 @@ export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): Va
             locations,
             description,
             suggestedFix,
+            failingScenario,
+            evidence,
+            guardGap,
           },
         ];
       })

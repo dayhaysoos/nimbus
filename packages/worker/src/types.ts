@@ -512,6 +512,9 @@ export interface ReviewFinding {
   locations: ReviewFindingLocation[];
   description: string;
   suggestedFix: string;
+  failingScenario?: string;
+  evidence?: string;
+  guardGap?: string;
 }
 
 export interface ReviewFindingLocationV2 {
@@ -528,6 +531,9 @@ export interface ReviewFindingV2 {
   locations: ReviewFindingLocationV2[];
   description: string;
   suggestedFix: string;
+  failingScenario?: string;
+  evidence?: string;
+  guardGap?: string;
 }
 
 export interface ReviewAnalysisOutputV2 {
