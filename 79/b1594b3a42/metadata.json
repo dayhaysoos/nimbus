@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "79b1594b3a42",
+  "strategy": "manual-commit",
+  "branch": "finding-id-awareness",
+  "checkpoints_count": 2,
+  "files_touched": [
+    "packages/worker/src/lib/review-output-v2.test.ts",
+    "packages/worker/src/lib/review-output-v2.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/79/b1594b3a42/0/metadata.json",
+      "transcript": "/79/b1594b3a42/0/full.jsonl",
+      "content_hash": "/79/b1594b3a42/0/content_hash.txt",
+      "prompt": "/79/b1594b3a42/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1557731,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 44212096,
+    "output_tokens": 100281,
+    "api_call_count": 377
+  }
+}
