@@ -382,10 +382,20 @@ jobs:
               });
             }
 
+            const usedSequences = new Set();
+
             function buildFindingBlock(finding, index) {
               const severity = typeof finding?.severity === 'string' ? finding.severity.toLowerCase() : 'low';
               const category = typeof finding?.category === 'string' ? finding.category.toLowerCase() : 'logic';
-              const sequence = Number.isInteger(finding?.sequence) && finding.sequence > 0 ? finding.sequence : index + 1;
+              let sequence = Number.isInteger(finding?.sequence) && finding.sequence > 0 ? finding.sequence : index + 1;
+              if (usedSequences.has(sequence)) {
+                core.warning(`Duplicate finding sequence ${sequence} detected in review ${reviewId || 'unknown'}; using fallback numbering.`);
+                sequence = index + 1;
+                while (usedSequences.has(sequence)) {
+                  sequence += 1;
+                }
+              }
+              usedSequences.add(sequence);
               const description =
                 (typeof finding?.description === 'string' && finding.description.trim()) ||
                 'No description provided.';

@@ -75,6 +75,18 @@ function normalizeBranchRefForProvenance(value: string): string | null {
   if (!/^[A-Za-z0-9._\/-]+$/.test(normalized)) {
     return null;
   }
+  if (
+    normalized.startsWith('/') ||
+    normalized.endsWith('/') ||
+    normalized.startsWith('.') ||
+    normalized.endsWith('.') ||
+    normalized.includes('//') ||
+    normalized.includes('/.') ||
+    normalized.includes('./') ||
+    normalized.endsWith('.lock')
+  ) {
+    return null;
+  }
   return normalized;
 }
 
@@ -100,7 +112,9 @@ function resolveReviewGitProvenance(): { repo: string; branch: string } {
   }
 
   if (!branch) {
-    throw new Error('Could not resolve current git branch (symbolic-ref and GITHUB_HEAD_REF both unavailable).');
+    throw new Error(
+      'Could not resolve current git branch (git branch detection failed and GITHUB_HEAD_REF not set). In GitHub Actions, ensure GITHUB_HEAD_REF is available in the workflow environment.'
+    );
   }
 
   let repo = '';
