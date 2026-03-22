@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "e6a81d5b4a53",
+  "strategy": "manual-commit",
+  "branch": "finding-id-awareness",
+  "checkpoints_count": 2,
+  "files_touched": [
+    ".github/workflows/nimbus-pr-review.yml",
+    "packages/cli/src/commands/review/create.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e6/a81d5b4a53/0/metadata.json",
+      "transcript": "/e6/a81d5b4a53/0/full.jsonl",
+      "content_hash": "/e6/a81d5b4a53/0/content_hash.txt",
+      "prompt": "/e6/a81d5b4a53/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1237515,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 40119808,
+    "output_tokens": 93779,
+    "api_call_count": 347
+  }
+}
