@@ -76,7 +76,10 @@ export async function reviewPolicyCommand(options?: {
     throw new Error(`Review policy failed at Entire prompt-history resolution: ${message}`);
   }
 
-  const rawSessionPrompts = contextResolution.context.rawSessionPrompts.trim();
+  const rawSessionPrompts =
+    typeof contextResolution.context.rawSessionPrompts === 'string'
+      ? contextResolution.context.rawSessionPrompts.trim()
+      : '';
   if (!rawSessionPrompts) {
     throw new Error('Entire prompt history is empty for this checkpoint.');
   }
