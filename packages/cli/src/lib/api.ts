@@ -454,8 +454,10 @@ export async function createReview(
       includeValidationEvidence?: boolean;
     };
     model?: string;
-    provenance?: {
+    provenance: {
       note?: string | null;
+      repo: string;
+      branch: string;
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];

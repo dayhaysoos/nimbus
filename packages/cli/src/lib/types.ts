@@ -294,6 +294,8 @@ export interface ReviewRunResponse {
   };
   evidence: ReviewEvidenceItem[];
   provenance: {
+    repo: string;
+    branch: string;
     sessionIds: string[];
     policyItems: string[];
     rawSessionPrompts?: string | null;

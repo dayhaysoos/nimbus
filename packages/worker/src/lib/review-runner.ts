@@ -17,6 +17,7 @@ import {
   generateReviewContextId,
   getReviewRun,
   getReviewCochangeCacheBatch,
+  getHighestFindingNumberForBranch,
   getReviewRunRequestPayload,
   getWorkspace,
   getWorkspaceArtifactById,
@@ -1838,6 +1839,11 @@ async function buildWorkspaceDeploymentReport(
     requestProvenance.contextResolutionResolvedCommitMessage.trim()
       ? requestProvenance.contextResolutionResolvedCommitMessage.trim()
       : null;
+  const provenanceRepo = readOptionalString(requestProvenance.repo);
+  const provenanceBranch = readOptionalString(requestProvenance.branch);
+  if (!provenanceRepo || !provenanceBranch) {
+    throw new Error('Review provenance must include repo and branch.');
+  }
   const policyItems = extractPolicyItemsFromIntentContext(parseStringArray(requestProvenance.intentSessionContext));
 
   const report: ReviewReport = {
@@ -1849,6 +1855,8 @@ async function buildWorkspaceDeploymentReport(
     evidence,
     provenance: includeProvenance
         ? {
+          repo: provenanceRepo,
+          branch: provenanceBranch,
           sessionIds: parseStringArray(requestProvenance.sessionIds),
           policyItems,
           ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
@@ -1898,6 +1906,8 @@ async function buildWorkspaceDeploymentReport(
           advisories: advisories.length > 0 ? advisories : undefined,
         }
       : {
+          repo: provenanceRepo,
+          branch: provenanceBranch,
           sessionIds: [],
           policyItems: [],
           promptSummary: null,
@@ -2050,6 +2060,22 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
 
     const reviewContext = await assembleReviewContextBootstrap(env, review, payload, options);
     const report = await executeReviewRun(env, review, payload, reviewContext, options);
+    const payloadRecord = asRecord(payload);
+    const requestProvenance = asRecord(payloadRecord.provenance);
+    const reviewRepo = readOptionalString(requestProvenance.repo);
+    const reviewBranch = readOptionalString(requestProvenance.branch);
+    if (!reviewRepo || !reviewBranch) {
+      throw new Error('Review request payload missing required provenance.repo or provenance.branch.');
+    }
+    const findingSequenceStart = (await getHighestFindingNumberForBranch(env.DB, reviewRepo, reviewBranch)) + 1;
+    const findingsWithSequence = report.findings.map((finding, index) => ({
+      ...finding,
+      sequence: findingSequenceStart + index,
+    }));
+    const reportWithSequence: ReviewReport = {
+      ...report,
+      findings: findingsWithSequence,
+    };
     await appendReviewEvent(env.DB, {
       reviewId,
       eventType: 'review_finalize_started',
@@ -2057,7 +2083,7 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
         findingCount: report.findings.length,
       },
     });
-    await replaceReviewFindings(env.DB, reviewId, report.findings);
+    await replaceReviewFindings(env.DB, reviewId, findingsWithSequence, { startNumber: findingSequenceStart });
     await appendReviewEvent(env.DB, {
       reviewId,
       eventType: 'review_analysis_findings_persisted',
@@ -2066,8 +2092,8 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
       },
     });
     await updateReviewRunStatus(env.DB, reviewId, 'succeeded', {
-      report,
-      markdownSummary: report.markdownSummary,
+      report: reportWithSequence,
+      markdownSummary: reportWithSequence.markdownSummary,
       errorCode: null,
       errorMessage: null,
     });

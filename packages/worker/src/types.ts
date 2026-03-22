@@ -505,6 +505,7 @@ export interface ReviewFindingLocation {
 }
 
 export interface ReviewFinding {
+  sequence?: number;
   severity: ReviewFindingSeverityV2;
   category: ReviewFindingCategory;
   passType: ReviewFindingPassType;
@@ -520,6 +521,7 @@ export interface ReviewFindingLocationV2 {
 }
 
 export interface ReviewFindingV2 {
+  sequence?: number;
   severity: ReviewFindingSeverityV2;
   category: ReviewFindingCategory;
   passType: ReviewFindingPassType;
@@ -621,6 +623,8 @@ export interface ReviewSessionIntentSummary {
 }
 
 export interface ReviewProvenanceSummary {
+  repo: string;
+  branch: string;
   sessionIds: string[];
   policyItems: string[];
   rawSessionPrompts?: string | null;
@@ -688,6 +692,8 @@ export interface ReviewRunRecord {
   request_payload_json: string;
   request_payload_sha256: string;
   provenance_json: string;
+  repo: string;
+  branch: string;
   last_event_seq: number;
   attempt_count: number;
   started_at: string | null;

@@ -67,6 +67,8 @@ function createReviewRunnerEnv(options?: {
     provenance: {
       trigger: 'manual_cli',
       note: 'Initial review placeholder',
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
     },
     ...(options?.payload ?? {}),
   };
@@ -614,11 +616,13 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const { env, state } = createReviewRunnerEnv({
-      payload: {
-        provenance: {
-          trigger: 'manual_cli',
+        payload: {
+          provenance: {
+            trigger: 'manual_cli',
+            repo: 'dayhaysoos/nimbus',
+            branch: 'main',
+          },
         },
-      },
       deploymentRequestProvenance: {
         note: null,
       },
@@ -1203,6 +1207,8 @@ export async function runReviewRunnerTests(): Promise<void> {
         payload: {
           provenance: {
             trigger: 'manual_cli',
+            repo: 'dayhaysoos/nimbus',
+            branch: 'main',
             taskId: 'tsk_123',
             note: 'Review against Entire intent history for auth hardening.',
             sessionIds: ['ses_review_1'],

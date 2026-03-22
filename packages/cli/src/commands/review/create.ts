@@ -8,6 +8,7 @@ import {
   getWorkerUrl,
   streamReviewEvents,
 } from '../../lib/api.js';
+import { detectRepoSlugFromGitOrigin } from '../../lib/git.js';
 import { workspaceDeployCommand } from '../workspace/deploy.js';
 import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../workspace/create.js';
 import { resolveCochangeFromLocalGit } from '../../lib/entire/context.js';
@@ -63,6 +64,37 @@ function buildIdempotencyKey(workspaceId: string, deploymentId: string): string 
   return `review-${createHash('sha256').update(seed).digest('hex').slice(0, 20)}`;
 }
 
+function resolveReviewGitProvenance(): { repo: string; branch: string } {
+  let branch = '';
+  try {
+    branch = new GitRepo(process.cwd()).getCurrentBranchRef() ?? '';
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not resolve current git branch: ${details}`);
+  }
+
+  if (!branch.trim()) {
+    const githubHeadRef = typeof process.env.GITHUB_HEAD_REF === 'string' ? process.env.GITHUB_HEAD_REF.trim() : '';
+    if (githubHeadRef) {
+      branch = githubHeadRef;
+    }
+  }
+
+  if (!branch.trim()) {
+    throw new Error('Could not resolve current git branch (symbolic-ref and GITHUB_HEAD_REF both unavailable).');
+  }
+
+  let repo = '';
+  try {
+    repo = detectRepoSlugFromGitOrigin();
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not resolve git repo slug from origin: ${details}`);
+  }
+
+  return { repo: repo.trim(), branch: branch.trim() };
+}
+
 export async function createReviewCommand(
   workspaceId: string,
   deploymentId: string,
@@ -82,6 +114,8 @@ export async function createReviewCommand(
 
   await validateReviewCochangeTokenReadiness();
 
+  const gitProvenance = resolveReviewGitProvenance();
+
   const response = await createReview(workerUrl, options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId, deploymentId), {
     target: {
       type: 'workspace_deployment',
@@ -96,6 +130,10 @@ export async function createReviewCommand(
       includeValidationEvidence: options?.includeValidationEvidence ?? true,
     },
     model: options?.model,
+    provenance: {
+      repo: gitProvenance.repo,
+      branch: gitProvenance.branch,
+    },
   });
 
   p.log.success(`Review queued: ${response.reviewId}`);
@@ -281,10 +319,12 @@ export async function createReviewFromCommitCommand(
       }
     | null = null;
   let changedPaths: string[] = [];
+  let gitProvenance: { repo: string; branch: string } = { repo: '', branch: '' };
 
   try {
     spinner.start('Resolving checkpoint...');
     try {
+      gitProvenance = resolveReviewGitProvenance();
       const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
         baseRef: options?.baseRef,
         allowBranchCheckpointFallback: Boolean(options?.baseRef),
@@ -454,6 +494,8 @@ export async function createReviewFromCommitCommand(
               entireContextResolution?.contextResolution === 'branch_fallback'
                 ? entireContextResolution.resolvedCommitSubject
                 : undefined,
+            repo: gitProvenance.repo,
+            branch: gitProvenance.branch,
             localCochange: localCochange
               ? {
                   source: localCochange.source,

@@ -385,6 +385,7 @@ jobs:
             function buildFindingBlock(finding, index) {
               const severity = typeof finding?.severity === 'string' ? finding.severity.toLowerCase() : 'low';
               const category = typeof finding?.category === 'string' ? finding.category.toLowerCase() : 'logic';
+              const sequence = Number.isInteger(finding?.sequence) && finding.sequence > 0 ? finding.sequence : index + 1;
               const description =
                 (typeof finding?.description === 'string' && finding.description.trim()) ||
                 'No description provided.';
@@ -394,7 +395,7 @@ jobs:
               const locations = buildLocationLines(finding);
 
               return [
-                `**F-${String(index + 1).padStart(3, '0')} · ${severityBadge(severity)} · ${category}:** ${description}`,
+                `**F-${String(sequence).padStart(3, '0')} · ${severityBadge(severity)} · ${category}:** ${description}`,
                 `**Fix:** ${suggestedFix}`,
                 ...locations,
               ].join('\n');

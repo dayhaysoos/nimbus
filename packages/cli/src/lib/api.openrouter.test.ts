@@ -31,6 +31,10 @@ export async function runApiOpenrouterHeaderTests(): Promise<void> {
           deploymentId: 'dep_abc12345',
         },
         mode: 'report_only',
+        provenance: {
+          repo: 'dayhaysoos/nimbus',
+          branch: 'main',
+        },
       });
 
       assert.equal(capturedHeader, 'or-test-key-123');
