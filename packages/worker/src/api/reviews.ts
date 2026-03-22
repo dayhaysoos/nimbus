@@ -358,6 +358,9 @@ function normalizeRepoSlug(value: unknown): string | undefined {
     return undefined;
   }
   const trimmed = value.trim().slice(0, 255);
+  if (!trimmed) {
+    return undefined;
+  }
   return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed) ? trimmed : undefined;
 }
 
@@ -365,7 +368,8 @@ function normalizeBranchRef(value: unknown): string | undefined {
   if (typeof value !== 'string' || !value.trim()) {
     return undefined;
   }
-  return value.trim().slice(0, 255);
+  const trimmed = value.trim().slice(0, 255);
+  return trimmed ? trimmed : undefined;
 }
 
 function readReviewGithubTokenHeader(request: Request): string | null {
@@ -540,10 +544,17 @@ function buildReviewRequestPayload(input: {
     ...(model ? { model } : {}),
   };
 
+  const normalizedProvenance = normalized.provenance as Record<string, unknown> & { repo: string; branch: string };
+  const { repo, branch, ...idempotencyProvenanceRest } = normalizedProvenance;
+
   const idempotencyPayload: Record<string, unknown> = {
     target: normalized.target,
     mode: normalized.mode,
-    provenance: normalized.provenance,
+    provenance: {
+      repo,
+      branch,
+      ...idempotencyProvenanceRest,
+    },
   };
 
   if (normalized.policy.severityThreshold !== 'low') {

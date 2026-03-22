@@ -64,23 +64,42 @@ function buildIdempotencyKey(workspaceId: string, deploymentId: string): string 
   return `review-${createHash('sha256').update(seed).digest('hex').slice(0, 20)}`;
 }
 
+function normalizeBranchRefForProvenance(value: string): string | null {
+  const normalized = value.trim().replace(/^refs\/heads\//, '');
+  if (!normalized) {
+    return null;
+  }
+  if (/[\s~^:?*\[\\]/.test(normalized) || normalized.includes('..') || normalized.includes('@{')) {
+    return null;
+  }
+  if (!/^[A-Za-z0-9._\/-]+$/.test(normalized)) {
+    return null;
+  }
+  return normalized;
+}
+
 function resolveReviewGitProvenance(): { repo: string; branch: string } {
-  let branch = '';
+  let branchCandidate = '';
   try {
-    branch = new GitRepo(process.cwd()).getCurrentBranchRef() ?? '';
+    branchCandidate = new GitRepo(process.cwd()).getCurrentBranchRef() ?? '';
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     throw new Error(`Could not resolve current git branch: ${details}`);
   }
 
-  if (!branch.trim()) {
+  let branch = normalizeBranchRefForProvenance(branchCandidate);
+
+  if (!branch) {
     const githubHeadRef = typeof process.env.GITHUB_HEAD_REF === 'string' ? process.env.GITHUB_HEAD_REF.trim() : '';
     if (githubHeadRef) {
-      branch = githubHeadRef;
+      branch = normalizeBranchRefForProvenance(githubHeadRef);
+      if (!branch) {
+        throw new Error(`GITHUB_HEAD_REF is present but invalid for branch provenance: ${githubHeadRef}`);
+      }
     }
   }
 
-  if (!branch.trim()) {
+  if (!branch) {
     throw new Error('Could not resolve current git branch (symbolic-ref and GITHUB_HEAD_REF both unavailable).');
   }
 
@@ -92,7 +111,7 @@ function resolveReviewGitProvenance(): { repo: string; branch: string } {
     throw new Error(`Could not resolve git repo slug from origin: ${details}`);
   }
 
-  return { repo: repo.trim(), branch: branch.trim() };
+  return { repo: repo.trim(), branch };
 }
 
 export async function createReviewCommand(
