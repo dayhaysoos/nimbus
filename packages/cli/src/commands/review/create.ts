@@ -275,6 +275,37 @@ function deriveIdempotencyKey(base: string, scope: 'deploy' | 'review'): string 
   return `${scope}-${createHash('sha256').update(`${base}:${scope}`).digest('hex').slice(0, 20)}`;
 }
 
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollReviewUntilTerminalStatus(
+  workerUrl: string,
+  reviewId: string,
+  options?: { intervalMs?: number; timeoutMs?: number }
+): Promise<Awaited<ReturnType<typeof getReviewForCommitFlow>>> {
+  const intervalMs =
+    typeof options?.intervalMs === 'number' && Number.isFinite(options.intervalMs)
+      ? Math.max(1_000, Math.min(10_000, Math.floor(options.intervalMs)))
+      : 2_000;
+  const timeoutMs =
+    typeof options?.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
+      ? Math.max(10_000, Math.min(30 * 60_000, Math.floor(options.timeoutMs)))
+      : 10 * 60_000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const latest = await getReviewForCommitFlow(workerUrl, reviewId);
+    if (latest.review.status !== 'queued' && latest.review.status !== 'running') {
+      return latest;
+    }
+    if (Date.now() >= deadline) {
+      return latest;
+    }
+    await sleep(intervalMs);
+  }
+}
+
 function normalizeResultUrl(workerUrl: string, resultUrl: string): string {
   try {
     return new URL(resultUrl, workerUrl).toString();
@@ -599,26 +630,42 @@ export async function createReviewFromCommitCommand(
     p.log.info(`Streaming review events for ${reviewId}`);
     let terminalStatus: string | null = null;
     let lastFailureEvent: Record<string, unknown> | null = null;
-    await streamReviewEventsForCommitFlow(workerUrl, reviewId, async (event) => {
-      const line = formatEvent(event);
-      if (line) {
-        console.log(line);
-      }
-      if (
-        event.data.type === 'review_context_cochange_failed' ||
-        event.data.type === 'review_context_assembly_failed' ||
-        event.data.type === 'review_failed'
-      ) {
-        lastFailureEvent = event.data;
-      }
-      if (event.data.type === 'terminal' && typeof event.data.status === 'string') {
-        terminalStatus = event.data.status;
-      }
-    });
+    let streamErrorMessage: string | null = null;
+    try {
+      await streamReviewEventsForCommitFlow(workerUrl, reviewId, async (event) => {
+        const line = formatEvent(event);
+        if (line) {
+          console.log(line);
+        }
+        if (
+          event.data.type === 'review_context_cochange_failed' ||
+          event.data.type === 'review_context_assembly_failed' ||
+          event.data.type === 'review_failed'
+        ) {
+          lastFailureEvent = event.data;
+        }
+        if (event.data.type === 'terminal' && typeof event.data.status === 'string') {
+          terminalStatus = event.data.status;
+        }
+      });
+    } catch (error) {
+      streamErrorMessage = error instanceof Error ? error.message : String(error);
+      p.log.warning(`Event stream interrupted before terminal status: ${streamErrorMessage}`);
+    }
 
-    const final = await getReviewForCommitFlow(workerUrl, reviewId);
+    let final = await getReviewForCommitFlow(workerUrl, reviewId);
+    if (!terminalStatus && (final.review.status === 'queued' || final.review.status === 'running')) {
+      p.log.warning('Review still in progress after event stream ended; falling back to status polling.');
+      final = await pollReviewUntilTerminalStatus(workerUrl, reviewId, {
+        intervalMs: options?.pollIntervalMs,
+      });
+    }
+
     const status = typeof terminalStatus === 'string' ? terminalStatus : final.review.status;
     if (status !== 'succeeded') {
+      if (streamErrorMessage) {
+        p.log.warning(`Latest stream interruption detail: ${streamErrorMessage}`);
+      }
       throw new Error(formatReviewExecutionFailure(status, final.review, lastFailureEvent));
     }
 
