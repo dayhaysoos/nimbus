@@ -209,4 +209,56 @@ export function runReviewOutputV2Tests(): void {
     assert.equal(result.ok, false);
     assert.equal(result.errors.some((error) => error.path === '$.furtherPassesLowYield'), true);
   }
+
+  {
+    const payload = basePayload();
+    payload.findings[0].description = 'Branch normalization regex is too permissive.';
+    payload.findings[0].failingScenario = 'Branch validation fails unexpectedly.';
+    payload.findings[0].evidence = 'Validation logic appears incorrect in create.ts.';
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, false);
+    assert.equal(
+      result.errors.some(
+        (error) =>
+          error.path.endsWith('.evidence') && error.message.includes('validation/regex findings require concrete sample input')
+      ),
+      true
+    );
+  }
+
+  {
+    const payload = basePayload();
+    payload.findings[0].description = 'Branch normalization regex is too permissive.';
+    payload.findings[0].failingScenario = "Input 'feature~1' is passed to normalizeBranchRefForProvenance.";
+    payload.findings[0].evidence =
+      "For input 'feature~1', the function returns accepted status instead of rejected result in current path.";
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, true);
+  }
+
+  {
+    const payload = basePayload();
+    payload.findings[0].description = 'Polling timeout can terminate one interval early.';
+    payload.findings[0].failingScenario = 'Polling loop reaches deadline boundary.';
+    payload.findings[0].evidence = 'Loop may stop early due to condition check.';
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, false);
+    assert.equal(
+      result.errors.some(
+        (error) =>
+          error.path.endsWith('.evidence') && error.message.includes('timeout/retry findings require explicit boundary values')
+      ),
+      true
+    );
+  }
+
+  {
+    const payload = basePayload();
+    payload.findings[0].description = 'Polling timeout can terminate one interval early.';
+    payload.findings[0].failingScenario =
+      'With interval 2000ms and deadline 10000ms, when Date.now() == deadline the loop exits.';
+    payload.findings[0].evidence = 'At boundary equality, resulting status remains running instead of terminal succeeded.';
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, true);
+  }
 }
