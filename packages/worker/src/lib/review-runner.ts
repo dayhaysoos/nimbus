@@ -247,11 +247,14 @@ function deriveIntentSummaryFallback(
 async function runIntentSummarizationPrePass(
   env: Env,
   rawSessionPrompts: string,
-  options?: { openrouterApiKey?: string | null }
+  options?: { openrouterApiKey?: string | null; intentSummaryModel?: string | null }
 ): Promise<ReviewSessionIntentSummary | null> {
   const INTENT_SUMMARY_TIMEOUT_MS = 15_000;
   const envApiKey = typeof env.OPENROUTER_API_KEY === 'string' ? env.OPENROUTER_API_KEY.trim() : '';
   const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';
+  const requestModel = typeof options?.intentSummaryModel === 'string' ? options.intentSummaryModel.trim() : '';
+  const envModel = typeof env.REVIEW_INTENT_SUMMARY_MODEL === 'string' ? env.REVIEW_INTENT_SUMMARY_MODEL.trim() : '';
+  const summaryModel = requestModel || envModel || INTENT_SUMMARY_MODEL;
   const apiKey = envApiKey || requestApiKey;
   if (!apiKey) {
     console.warn('[intent-summary] pre-pass failed: OPENROUTER_API_KEY not configured');
@@ -273,7 +276,7 @@ async function runIntentSummarizationPrePass(
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: INTENT_SUMMARY_MODEL,
+            model: summaryModel,
             max_tokens: INTENT_SUMMARY_MAX_TOKENS,
             messages: [
               { role: 'system', content: INTENT_SUMMARY_SYSTEM_PROMPT },
@@ -326,6 +329,31 @@ async function runIntentSummarizationPrePass(
     console.warn(`[intent-summary] pre-pass failed: ${message}`);
     return null;
   }
+}
+
+export async function summarizeReviewIntentPolicy(
+  env: Env,
+  input: {
+    rawSessionPrompts: string;
+    intentSessionContext?: string[];
+    openrouterApiKey?: string | null;
+    intentSummaryModel?: string | null;
+  }
+): Promise<ReviewSessionIntentSummary | null> {
+  const rawSessionPrompts = input.rawSessionPrompts.trim();
+  const intentSessionContext = uniqueStrings(
+    Array.isArray(input.intentSessionContext)
+      ? input.intentSessionContext.filter((item): item is string => typeof item === 'string').map((item) => item.trim())
+      : []
+  );
+  if (!rawSessionPrompts) {
+    return null;
+  }
+  const modelSummary = await runIntentSummarizationPrePass(env, rawSessionPrompts, {
+    openrouterApiKey: input.openrouterApiKey,
+    intentSummaryModel: input.intentSummaryModel,
+  });
+  return modelSummary ?? deriveIntentSummaryFallback(rawSessionPrompts, intentSessionContext);
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -1664,6 +1692,7 @@ async function buildWorkspaceDeploymentReport(
   const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
   const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
   const rawSessionPromptsFromProvenance = readOptionalString(requestProvenance.rawSessionPrompts);
+  const intentSummaryModelFromProvenance = readOptionalString(requestProvenance.intentSummaryModel);
   const rawSessionPrompts = rawSessionPromptsFromProvenance ?? (intentSessionContext.length > 0 ? intentSessionContext.join('\n') : null);
   if (!rawSessionPrompts) {
     throw new ReviewContextAssemblyError(
@@ -1674,6 +1703,7 @@ async function buildWorkspaceDeploymentReport(
   const modelDerivedIntentSummary = rawSessionPrompts
     ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
         openrouterApiKey: readOptionalString(options?.openrouterApiKey),
+        intentSummaryModel: intentSummaryModelFromProvenance,
       })
     : null;
   const derivedIntentSummary =

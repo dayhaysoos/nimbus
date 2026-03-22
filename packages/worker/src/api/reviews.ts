@@ -17,6 +17,7 @@ import {
 } from '../lib/db.js';
 import { createReviewQueueMessage } from '../lib/review-queue.js';
 import { canAccessAccount } from '../lib/authz.js';
+import { summarizeReviewIntentPolicy } from '../lib/review-runner.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -378,6 +379,17 @@ function normalizeBranchRef(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+function normalizeIntentSummaryModel(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 120) {
+    return undefined;
+  }
+  return trimmed;
+}
+
 function readReviewGithubTokenHeader(request: Request): string | null {
   const value = request.headers.get('X-Review-Github-Token');
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -462,6 +474,7 @@ function buildReviewRequestPayload(input: {
     typeof input.provenance.rawSessionPrompts === 'string' && input.provenance.rawSessionPrompts.trim()
       ? input.provenance.rawSessionPrompts.trim().slice(0, 6000)
       : null;
+  const intentSummaryModel = normalizeIntentSummaryModel(input.provenance.intentSummaryModel);
   const commitSha = typeof input.provenance.commitSha === 'string' && input.provenance.commitSha.trim()
     ? input.provenance.commitSha.trim()
     : undefined;
@@ -533,6 +546,7 @@ function buildReviewRequestPayload(input: {
       ...(sessionIds.length > 0 ? { sessionIds } : {}),
       ...(intentSessionContext.length > 0 ? { intentSessionContext } : {}),
       ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
+      ...(intentSummaryModel ? { intentSummaryModel } : {}),
       ...(commitSha ? { commitSha } : {}),
       ...(commitDiffPatch ? { commitDiffPatch } : {}),
       ...(commitDiffPatchSha256 ? { commitDiffPatchSha256 } : {}),
@@ -907,6 +921,62 @@ export async function handleCreateReview(
     const message = error instanceof Error ? error.message : String(error);
     return jsonResponse({ error: `Failed to create review: ${message}` }, 500);
   }
+}
+
+export async function handleCreateReviewPolicy(
+  request: Request,
+  env: Env,
+  authContext: AuthContext
+): Promise<Response> {
+  if (authContext.isHostedMode && !authContext.isAuthenticated) {
+    return jsonResponse({ error: 'Authentication required' }, 401);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON body' }, 400);
+  }
+
+  if (!isRecord(payload)) {
+    return jsonResponse({ error: 'Request body must be an object' }, 400);
+  }
+
+  const rawSessionPrompts =
+    typeof payload.rawSessionPrompts === 'string' && payload.rawSessionPrompts.trim()
+      ? payload.rawSessionPrompts.trim().slice(0, 24000)
+      : '';
+  if (!rawSessionPrompts) {
+    return jsonResponse({ error: 'rawSessionPrompts is required', code: 'invalid_review_policy_input' }, 400);
+  }
+
+  const intentSessionContext = Array.isArray(payload.intentSessionContext)
+    ? payload.intentSessionContext
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 50)
+    : [];
+  const intentSummaryModel = normalizeIntentSummaryModel(payload.model) ?? normalizeIntentSummaryModel(payload.intentSummaryModel);
+  const openrouterApiKey = readOpenrouterApiKeyHeader(request);
+
+  const summary = await summarizeReviewIntentPolicy(env, {
+    rawSessionPrompts,
+    intentSessionContext,
+    openrouterApiKey,
+    intentSummaryModel,
+  });
+
+  return jsonResponse({
+    policy: summary ?? {
+      goal: null,
+      prohibitions: [],
+      riskFocus: [],
+      constraints: [],
+    },
+    source: summary ? 'model_or_fallback' : 'empty',
+  });
 }
 
 export async function handleGetReview(

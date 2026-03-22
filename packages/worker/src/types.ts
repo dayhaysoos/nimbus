@@ -58,6 +58,7 @@ export interface Env {
   AGENT_PROVIDER?: string;
   AGENT_MODEL?: string;
   REVIEW_MODEL?: string;
+  REVIEW_INTENT_SUMMARY_MODEL?: string;
   AGENT_SDK_URL?: string;
   AGENT_SDK_AUTH_TOKEN?: string;
   AGENT_ENDPOINT?: Fetcher;

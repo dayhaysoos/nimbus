@@ -136,6 +136,7 @@ export async function createReviewCommand(
     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
     maxFindings?: number;
     model?: string;
+    intentSummaryModel?: string;
     includeProvenance?: boolean;
     includeValidationEvidence?: boolean;
   }
@@ -166,6 +167,7 @@ export async function createReviewCommand(
     provenance: {
       repo: gitProvenance.repo,
       branch: gitProvenance.branch,
+      ...(options?.intentSummaryModel?.trim() ? { intentSummaryModel: options.intentSummaryModel.trim() } : {}),
     },
   });
 
@@ -316,6 +318,7 @@ export async function createReviewFromCommitCommand(
     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
     maxFindings?: number;
     model?: string;
+    intentSummaryModel?: string;
     includeProvenance?: boolean;
     includeValidationEvidence?: boolean;
     pollIntervalMs?: number;
@@ -529,6 +532,9 @@ export async function createReviewFromCommitCommand(
                 : undefined,
             repo: gitProvenance.repo,
             branch: gitProvenance.branch,
+            ...(options?.intentSummaryModel?.trim()
+              ? { intentSummaryModel: options.intentSummaryModel.trim() }
+              : {}),
             localCochange: localCochange
               ? {
                   source: localCochange.source,
