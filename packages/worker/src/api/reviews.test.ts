@@ -761,6 +761,46 @@ export async function runReviewApiTests(): Promise<void> {
     const { env } = createReviewApiEnv();
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
+      body: JSON.stringify(
+        withRequiredProvenance({
+          target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+          provenance: {
+            repo: `owner/${'r'.repeat(260)}`,
+          },
+        })
+      ),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-invalid-repo-length' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'invalid_review_provenance');
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify(
+        withRequiredProvenance({
+          target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+          provenance: {
+            branch: 'b'.repeat(256),
+          },
+        })
+      ),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-invalid-branch-length' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'invalid_review_provenance');
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
       body: JSON.stringify({ target: { type: 'git_diff', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' } }),
       headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-1' },
     });

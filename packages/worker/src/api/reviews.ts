@@ -357,7 +357,10 @@ function normalizeRepoSlug(value: unknown): string | undefined {
   if (typeof value !== 'string' || !value.trim()) {
     return undefined;
   }
-  const trimmed = value.trim().slice(0, 255);
+  if (value.length > 255) {
+    return undefined;
+  }
+  const trimmed = value.trim();
   if (!trimmed) {
     return undefined;
   }
@@ -368,7 +371,10 @@ function normalizeBranchRef(value: unknown): string | undefined {
   if (typeof value !== 'string' || !value.trim()) {
     return undefined;
   }
-  const trimmed = value.trim().slice(0, 255);
+  if (value.length > 255) {
+    return undefined;
+  }
+  const trimmed = value.trim();
   return trimmed ? trimmed : undefined;
 }
 
