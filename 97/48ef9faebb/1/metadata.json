@@ -1,9 +1,11 @@
 {
   "cli_version": "0.5.1",
   "checkpoint_id": "9748ef9faebb",
+  "session_id": "ses_2e90a9604ffe0ElJenTSbf8tZ8",
   "strategy": "manual-commit",
+  "created_at": "2026-03-22T19:29:54.829804Z",
   "branch": "finding-id-awareness",
-  "checkpoints_count": 2,
+  "checkpoints_count": 1,
   "files_touched": [
     "packages/cli/src/commands/review/create.ts",
     "packages/cli/src/commands/review/policy.ts",
@@ -16,25 +18,25 @@
     "packages/worker/src/lib/review-runner.ts",
     "packages/worker/src/types.ts"
   ],
-  "sessions": [
-    {
-      "metadata": "/97/48ef9faebb/0/metadata.json",
-      "transcript": "/97/48ef9faebb/0/full.jsonl",
-      "content_hash": "/97/48ef9faebb/0/content_hash.txt",
-      "prompt": ""
-    },
-    {
-      "metadata": "/97/48ef9faebb/1/metadata.json",
-      "transcript": "/97/48ef9faebb/1/full.jsonl",
-      "content_hash": "/97/48ef9faebb/1/content_hash.txt",
-      "prompt": ""
-    }
-  ],
+  "agent": "OpenCode",
+  "turn_id": "b9fb2fe28a92",
   "token_usage": {
-    "input_tokens": 174546,
+    "input_tokens": 82406,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 841472,
-    "output_tokens": 8737,
-    "api_call_count": 18
+    "cache_read_tokens": 327296,
+    "output_tokens": 4229,
+    "api_call_count": 8
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-22T19:29:54.57854Z",
+    "agent_lines": 313,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 313,
+    "agent_percentage": 100
   }
 }
