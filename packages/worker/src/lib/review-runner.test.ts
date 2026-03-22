@@ -633,6 +633,53 @@ export async function runReviewRunnerTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createReviewRunnerEnv({
+      deploymentRequestProvenance: {
+        rawSessionPrompts: null,
+        intentSessionContext: [
+          'Goal: Harden auth checks for privileged API routes.',
+          'Prohibition: Do not introduce new unauthenticated paths.',
+          'Risk Focus: Token validation bypass during middleware refactors.',
+          'Constraint: Keep existing API response shapes stable.',
+        ],
+      },
+      envOverrides: {
+        OPENROUTER_API_KEY: '',
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    const report = JSON.parse(state.reportJson ?? '{}') as {
+      provenance?: {
+        intentSummary?: {
+          goal: string | null;
+          prohibitions: string[];
+          riskFocus: string[];
+          constraints: string[];
+        };
+      };
+    };
+    assert.equal(report.provenance?.intentSummary?.goal, 'Harden auth checks for privileged API routes.');
+    assert.deepEqual(report.provenance?.intentSummary?.prohibitions ?? [], ['Do not introduce new unauthenticated paths.']);
+    assert.deepEqual(report.provenance?.intentSummary?.riskFocus ?? [], ['Token validation bypass during middleware refactors.']);
+    assert.deepEqual(report.provenance?.intentSummary?.constraints ?? [], ['Keep existing API response shapes stable.']);
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv({
+      deploymentRequestProvenance: {
+        rawSessionPrompts: null,
+        intentSessionContext: [],
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'failed');
+    const failedEvent = state.events.find((event) => event.eventType === 'review_failed') as
+      | { eventType: string; payload: { code?: string } }
+      | undefined;
+    assert.equal(failedEvent?.payload?.code, 'review_context_prompt_history_missing');
+  }
+
+  {
     const largePatch = Array.from({ length: 31 }, (_value, index) => {
       const file = `src/feature-${index + 1}.ts`;
       return `diff --git a/${file} b/${file}\nindex 1111111..2222222 100644\n--- a/${file}\n+++ b/${file}\n@@ -1 +1 @@\n-a\n+b\n`;

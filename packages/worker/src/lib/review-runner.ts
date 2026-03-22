@@ -183,6 +183,61 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
   return summary;
 }
 
+function deriveIntentSummaryFallback(
+  rawSessionPrompts: string,
+  intentSessionContext: string[]
+): ReviewSessionIntentSummary | null {
+  const lines = [
+    ...rawSessionPrompts.split(/\r?\n/),
+    ...intentSessionContext,
+  ]
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let goal: string | null = null;
+  const prohibitions: string[] = [];
+  const riskFocus: string[] = [];
+  const constraints: string[] = [];
+
+  for (const line of lines) {
+    const goalMatch = line.match(/^goal\s*:\s*(.+)$/i);
+    if (!goal && goalMatch?.[1]?.trim()) {
+      goal = goalMatch[1].trim();
+      continue;
+    }
+
+    const prohibitionMatch = line.match(/^prohibition\s*:\s*(.+)$/i);
+    if (prohibitionMatch?.[1]?.trim()) {
+      prohibitions.push(prohibitionMatch[1].trim());
+      continue;
+    }
+
+    const riskMatch = line.match(/^risk\s*focus\s*:\s*(.+)$/i);
+    if (riskMatch?.[1]?.trim()) {
+      riskFocus.push(riskMatch[1].trim());
+      continue;
+    }
+
+    const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
+    if (constraintMatch?.[1]?.trim()) {
+      constraints.push(constraintMatch[1].trim());
+    }
+  }
+
+  const summary: ReviewSessionIntentSummary = {
+    goal,
+    prohibitions: uniqueStrings(prohibitions),
+    riskFocus: uniqueStrings(riskFocus),
+    constraints: uniqueStrings(constraints),
+  };
+
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.riskFocus.length === 0 && summary.constraints.length === 0) {
+    return null;
+  }
+
+  return summary;
+}
+
 async function runIntentSummarizationPrePass(
   env: Env,
   rawSessionPrompts: string,
@@ -764,6 +819,13 @@ function mergeProvenance(
   const mergedIntent = Array.from(new Set([...deploymentIntent, ...reviewIntent]));
   if (mergedIntent.length > 0) {
     merged.intentSessionContext = mergedIntent;
+  }
+
+  const deploymentRawPrompts = readOptionalString(deploymentProvenance.rawSessionPrompts);
+  const reviewRawPrompts = readOptionalString(reviewProvenance.rawSessionPrompts);
+  const mergedRawPrompts = reviewRawPrompts ?? deploymentRawPrompts;
+  if (mergedRawPrompts) {
+    merged.rawSessionPrompts = mergedRawPrompts;
   }
 
   return merged;
@@ -1595,15 +1657,21 @@ async function buildWorkspaceDeploymentReport(
   const requestValidation = asRecord(deploymentRequest.validation);
   const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
   const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
-  const rawSessionPrompts =
-    typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim()
-      ? requestProvenance.rawSessionPrompts.trim()
-      : null;
-  const derivedIntentSummary = rawSessionPrompts
+  const rawSessionPromptsFromProvenance = readOptionalString(requestProvenance.rawSessionPrompts);
+  const rawSessionPrompts = rawSessionPromptsFromProvenance ?? (intentSessionContext.length > 0 ? intentSessionContext.join('\n') : null);
+  if (!rawSessionPrompts) {
+    throw new ReviewContextAssemblyError(
+      'review_context_prompt_history_missing',
+      'Review prompt-history context is required for intent summarization. Ensure deployment/review provenance includes rawSessionPrompts.'
+    );
+  }
+  const modelDerivedIntentSummary = rawSessionPrompts
     ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
         openrouterApiKey: readOptionalString(options?.openrouterApiKey),
       })
     : null;
+  const derivedIntentSummary =
+    modelDerivedIntentSummary ?? deriveIntentSummaryFallback(rawSessionPrompts, intentSessionContext);
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
     : typeof requestProvenance.taskId === 'string'
