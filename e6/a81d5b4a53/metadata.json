@@ -3,7 +3,7 @@
   "checkpoint_id": "e6a81d5b4a53",
   "strategy": "manual-commit",
   "branch": "finding-id-awareness",
-  "checkpoints_count": 2,
+  "checkpoints_count": 8,
   "files_touched": [
     ".github/workflows/nimbus-pr-review.yml",
     "packages/cli/src/commands/review/create.ts"
@@ -14,6 +14,12 @@
       "transcript": "/e6/a81d5b4a53/0/full.jsonl",
       "content_hash": "/e6/a81d5b4a53/0/content_hash.txt",
       "prompt": "/e6/a81d5b4a53/0/prompt.txt"
+    },
+    {
+      "metadata": "/e6/a81d5b4a53/1/metadata.json",
+      "transcript": "/e6/a81d5b4a53/1/full.jsonl",
+      "content_hash": "/e6/a81d5b4a53/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
