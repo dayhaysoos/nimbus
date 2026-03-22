@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "5b61b7c0b5f6",
+  "session_id": "ses_2ed7a86aeffeasTPJBC1Y5ZE5T",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-22T00:45:41.573728Z",
+  "branch": "finding-id-awareness",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/commands/repo/register.ts",
+    "packages/cli/src/lib/git.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "dcce9044244d",
+  "token_usage": {
+    "input_tokens": 9237,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 15360,
+    "output_tokens": 786,
+    "api_call_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-22T00:45:41.56015Z",
+    "agent_lines": 48,
+    "human_added": 411,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 459,
+    "agent_percentage": 10.457516339869281
+  }
+}
