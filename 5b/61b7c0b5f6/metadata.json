@@ -3,7 +3,7 @@
   "checkpoint_id": "5b61b7c0b5f6",
   "strategy": "manual-commit",
   "branch": "finding-id-awareness",
-  "checkpoints_count": 5,
+  "checkpoints_count": 6,
   "files_touched": [
     "packages/cli/src/commands/repo/register.ts",
     "packages/cli/src/commands/review/create.ts",
@@ -51,13 +51,20 @@
       "context": "/5b/61b7c0b5f6/4/context.md",
       "content_hash": "/5b/61b7c0b5f6/4/content_hash.txt",
       "prompt": "/5b/61b7c0b5f6/4/prompt.txt"
+    },
+    {
+      "metadata": "/5b/61b7c0b5f6/5/metadata.json",
+      "transcript": "/5b/61b7c0b5f6/5/full.jsonl",
+      "context": "/5b/61b7c0b5f6/5/context.md",
+      "content_hash": "/5b/61b7c0b5f6/5/content_hash.txt",
+      "prompt": "/5b/61b7c0b5f6/5/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 465244,
+    "input_tokens": 493390,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 3288320,
-    "output_tokens": 27673,
-    "api_call_count": 55
+    "cache_read_tokens": 3401216,
+    "output_tokens": 30131,
+    "api_call_count": 62
   }
 }
