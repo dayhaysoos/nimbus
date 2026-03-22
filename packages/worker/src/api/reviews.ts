@@ -550,17 +550,10 @@ function buildReviewRequestPayload(input: {
     ...(model ? { model } : {}),
   };
 
-  const normalizedProvenance = normalized.provenance as Record<string, unknown> & { repo: string; branch: string };
-  const { repo, branch, ...idempotencyProvenanceRest } = normalizedProvenance;
-
   const idempotencyPayload: Record<string, unknown> = {
     target: normalized.target,
     mode: normalized.mode,
-    provenance: {
-      repo,
-      branch,
-      ...idempotencyProvenanceRest,
-    },
+    provenance: normalized.provenance,
   };
 
   if (normalized.policy.severityThreshold !== 'low') {
