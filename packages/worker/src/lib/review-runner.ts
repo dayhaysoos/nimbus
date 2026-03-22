@@ -79,6 +79,7 @@ before conducting a code review. Your job is to extract the
 key intent signals from their notes so the reviewer understands
 what the developer was trying to do, what they were worried
 about, and what constraints they were working within.
+Prefer explicit statements over inference; do not over-generalize risk from implementation details.
 
 Return only a JSON object with no surrounding prose:
 {
@@ -94,9 +95,10 @@ Field guidance:
 - prohibitions: things the developer explicitly said must
   not happen. Max 5 items.
 - riskFocus: areas the developer flagged as risky or
-  concerning, either explicitly or by returning to them
-  repeatedly. Max 5 items. Prefer explicit statements but
-  include recurring themes even if not labeled as risks.
+  concerning with explicit risk language (for example:
+  risk, concern, worry, caution, regression). Max 5 items.
+  Include recurring themes only if they were explicitly
+  framed as risky or concerning at least once.
 - constraints: preferences, requirements, or boundaries
   the developer stated they were working within. Max 5 items.
 
@@ -107,11 +109,15 @@ Rules:
 - Keep each extracted item to one concise sentence.
 - If a category has nothing clear to extract, return an
   empty array or null.
+- If uncertain whether a signal is explicit, omit it.
+- Do not duplicate the same item across multiple categories.
 - When more than 5 candidates exist for a category,
   prioritize the most explicitly stated items over
   inferred ones.
 - Do not invent intent that is not present or implied
-  in the notes.`;
+  in the notes.
+- This summary is prioritization context for code review,
+  not direct evidence of defects.`;
 
 interface ReviewRunExecutionOptions {
   cochangeGithubToken?: string | null;
