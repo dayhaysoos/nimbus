@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.4.9",
+  "checkpoint_id": "ca7d87e48807",
+  "session_id": "ses_2ed7d6f3dffeVXDzBr84bDXF42",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-22T01:23:39.876459Z",
+  "branch": "finding-id-awareness",
+  "checkpoints_count": 16,
+  "files_touched": [
+    "packages/worker/src/lib/review-runner.test.ts",
+    "packages/worker/src/lib/review-runner.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "56c306a939e4",
+  "token_usage": {
+    "input_tokens": 1017674,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 37503104,
+    "output_tokens": 85711,
+    "api_call_count": 324
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-22T01:23:29.301338Z",
+    "agent_lines": 159,
+    "human_added": 420,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 579,
+    "agent_percentage": 27.461139896373055
+  }
+}

@@ -1,0 +1,222 @@
+Context for this task:
+
+I am adding branch and repo as first-class fields on review_runs 
+in D1 to enable continuous finding IDs across reviews on the 
+same branch. The goal is: if a branch already has reviews with 
+findings F-001 through F-003, the next review on that branch 
+starts new findings at F-004 instead of resetting to F-001.
+
+Two things were already confirmed before implementation:
+
+1. There is an existing git branch helper:
+   GitRepo.getCurrentBranchRef() in 
+   packages/cli/src/lib/checkpoint/git.ts
+   (uses git symbolic-ref --short HEAD)
+
+2. detectRepoSlugFromGitOrigin is currently defined inside 
+   packages/cli/src/commands/repo/register.ts and is NOT 
+   exported. It needs to be moved to a shared utility 
+   before review create can use it.
+
+Implement in this exact order, showing me each file 
+change before moving to the next:
+
+Step 1 — Move detectRepoSlugFromGitOrigin to a shared location:
+   - Move it to packages/cli/src/lib/git.ts or nearest 
+     equivalent shared lib file
+   - Export it from there
+   - Update the import in repo/register.ts to use the 
+     new location
+
+Step 2 — Add a D1 migration:
+   - Add repo (TEXT) and branch (TEXT) columns to review_runs
+   - Both nullable for backward compatibility
+   - Migration filename: 0014_review_runs_branch.sql
+
+Step 3 — CLI review create:
+   - Resolve branch using GitRepo.getCurrentBranchRef()
+   - Resolve repo slug using the moved detectRepoSlugFromGitOrigin
+   - Add both to review request provenance
+
+Step 4 — Worker review create handler:
+   - Read repo and branch from incoming provenance
+   - Persist both to review_runs at create time
+   - Update packages/worker/src/types.ts and 
+     packages/cli/src/lib/types.ts to include repo and 
+     branch in provenance shapes
+
+Step 5 — New D1 query:
+   - Add getHighestFindingNumberForBranch(repo, branch) 
+     to packages/worker/src/lib/db.ts
+   - Returns the highest finding sequence number across 
+     all review_findings for reviews matching that 
+     repo + branch combination
+   - Returns 0 if no prior findings exist
+
+Step 6 — Finding sequence numbering:
+   - In packages/worker/src/lib/review-runner.ts, before 
+     persisting new findings, call 
+     getHighestFindingNumberForBranch
+   - Assign finding sequence numbers starting from 
+     (highest + 1) instead of always starting from 1
+   - If repo or branch is null (older reviews), fall back 
+     to current behavior (start from 1)
+
+Do not implement more than one step at a time without 
+showing me the output first. Start with Step 1.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Looks good, go ahead with step 3
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+Summarize the task tool output above and continue with your task.
+
+---
+
+I don’t care for backwards compatibility, we have 0 users.
+
+---
+
+do the strict clean up and also do the focused tests
+
+---
+
+yeah remove anythong legacy
+
+---
+
+Yeah do that please
+
+---
+
+Give a full summary of everything that happened in this branch so far.
+
+---
+
+Before committing, two quick checks:
+
+1. What does GitRepo.getCurrentBranchRef() return when 
+   running in a detached HEAD state — for example during 
+   a GitHub Actions checkout where HEAD is detached at 
+   a specific commit SHA? Does it throw, return null, 
+   or return something else? If it throws or returns 
+   null, what does the CLI do given strict fail-fast mode?
+
+2. In the PR comment rendering, does the finding ID 
+   show the full ${reviewId}_F-001 format or just F-001? 
+   Users should see F-001, not the full prefixed ID.
+
+Just answer for now.
+
+---
+
+Two fixes before committing:
+
+1. Detached HEAD fix in resolveReviewGitProvenance:
+   When GitRepo.getCurrentBranchRef() returns null, 
+   before throwing, check process.env.GITHUB_HEAD_REF 
+   as a fallback. GitHub Actions sets this to the PR 
+   head branch name even in detached HEAD.
+   If GITHUB_HEAD_REF is present and non-empty, use it.
+   Only throw if both are unavailable.
+
+2. Add finding ID to PR comment rendering:
+   In the workflow comment script, each finding already 
+   has a sequence number from the new numbering system.
+   Surface it in the comment header line as F-{number} 
+   zero-padded to 3 digits.
+   Format should match what we designed earlier:
+   **F-001 · 🟡 medium · security:** description here
+   
+   The number should come from the finding's sequence 
+   field in the review response. Confirm what field 
+   name the sequence number is stored under in the 
+   finding object returned by GET /api/reviews/:id, 
+   then wire it into the comment template.
+
+---
+
+Before we move forward, can you explain how Co-Change is much more efficient than just Diff Look up for reviewing?
+
+---
+
+is there a way we can prove that co-change is more efficient with what we have?
+
+---
+
+not write now, was just asking questions. How is it that co-change is allowed to know which files are relevant ?
+
+---
+
+ah okay. Diff only shows the changes happening right now. Just the changes, not the files themselves. Co-Change will look at the commit history to associate the new changes with the current diff to see if it’s relevant to be included in the review
+
+---
+
+have you deployed what you needed to the worker? If you have done that, create a commit and push.
+
+---
+
+I want you to run whatever migrations you need to run, then I want you to deploy to the worker with wrangler, then when everything is done. Test locally. If they are successful, commit and push.
+
+---
+
+Before I create the PR, can you confirm that the commit you made has an Entire Checkpoint? Sometimes those don’t go through
+
+---
+
+Here are the finding items from this review run from nimbus:
+
+F-001 · 🔴 high · logic: The idempotency conflict detection logic was changed to only check requestPayloadSha256 without the legacy aliases. This breaks backward compatibility: if a client retries a review that was created before this change (with the old payload hash), the system will not recognize it as a duplicate and will return 409 even though the review already exists. This can cause operational confusion and block legitimate retries.
+Fix: Restore the requestPayloadSha256Aliases array and pass it to getReviewRunByIdempotency. Maintain backward compatibility by checking both current and legacy payload hashes during the migration period. Document the deprecation timeline and provide a way for clients to re-normalize their idempotency keys after the transition period.
+
+packages/worker/src/api/reviews.ts L717–723
+F-002 · 🟡 medium · logic: Finding sequence numbering uses finding?.sequence but the type definition shows sequence is optional. If a finding lacks a sequence, it falls back to index + 1, which can cause duplicate F-numbers when some findings have explicit sequence values and others don't.
+Fix: Either make sequence required in the ReviewFinding type or ensure the worker always populates sequence. Current fallback logic (sequence || index + 1) can produce F-001, F-002 where the first finding has sequence=2 and the second has no sequence (defaulting to 2), causing display ambiguity.
+
+.github/workflows/nimbus-pr-review.yml L388
+F-003 · 🟡 medium · logic: When provenance.repo or provenance.branch is missing, the API returns a 400 error, but the error message says 'Missing required provenance.repo or provenance.branch' without specifying which one is actually missing. This makes debugging harder for API consumers.
+Fix: Provide a specific error message indicating which field is missing: if (!reviewRepo) return error 'Missing required provenance.repo'; if (!reviewBranch) return error 'Missing required provenance.branch'.
+
+packages/worker/src/api/reviews.ts L697–707
+F-004 · 🔵 low · logic: Migration adds repo and branch columns without NOT NULL constraints or default values. If the worker attempts to INSERT a review_run without providing these fields, the database will allow NULL values, which contradicts the provenance validation logic in reviews.ts that requires both fields.
+Fix: Add NOT NULL constraints to the migration: ALTER TABLE review_runs ADD COLUMN repo TEXT NOT NULL; and ALTER TABLE review_runs ADD COLUMN branch TEXT NOT NULL;. This requires a data migration strategy for existing rows or a default value. Alternatively, document that these columns are nullable for backward compatibility and update validation logic accordingly.
+
+packages/worker/migrations/0014_review_runs_branch.sql L1–5
+
+---
+
+This is pretty concerning. This tool should have been aware of the legacy removal of things. I also noticed in the review, it doesn’t have the Policy section with the constraints, goal etc etc.. is that data not making it over to nimbus? We need to troubleshoot this
+
+---
+
+It’s CRUCIAL for the prompt history/summarization makes it in this pipeline. To me, I see this as a regression. I need you to ensure that this never happens again. Don’t make any changes to address the concerns nimbus has. if you’re successful, it should respect the removal of legacy fall back items
+
+---
+
+I staged your changes, give me the commit command and message now
