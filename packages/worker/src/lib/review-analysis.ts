@@ -430,6 +430,7 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     '- disagreements with intentional backward-compatibility removal,',
     '- product-format decisions explicitly requested (e.g., display format choices),',
     '- generic hardening suggestions without a concrete failing scenario.',
+    '- design-contract ambiguities unless they clearly violate an explicit Goal/Policy requirement.',
     '',
     'Use only these tools when needed: list_files, read_file, diff_summary.',
     'Never propose edits or run mutating commands.',

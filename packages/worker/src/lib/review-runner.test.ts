@@ -2380,7 +2380,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       assert.equal(firstPrompt.includes('Authoritative deployed diff snapshot'), true);
       assert.equal(firstPrompt.includes('const deployed = true'), true);
       assert.equal(firstPrompt.length < 50000, true);
-      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 5000, true);
+      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 7000, true);
       assert.equal(JSON.stringify(secondCallBody ?? {}).includes('const deployed = true'), true);
     } finally {
       globalThis.fetch = originalFetch;
