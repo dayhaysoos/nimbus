@@ -72,7 +72,7 @@ const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
 const LARGE_DIFF_ADVISORY_THRESHOLD = 30;
 const DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const REVIEW_STALE_GRACE_MS = 60 * 1000;
-const INTENT_SUMMARY_MODEL = 'anthropic/claude-haiku-4-5';
+const INTENT_SUMMARY_MODEL = 'anthropic/claude-sonnet-4.5';
 const INTENT_SUMMARY_MAX_TOKENS = 512;
 const INTENT_SUMMARY_SYSTEM_PROMPT = `You are a staff engineer reviewing a colleague's session notes
 before conducting a code review. Your job is to extract the
