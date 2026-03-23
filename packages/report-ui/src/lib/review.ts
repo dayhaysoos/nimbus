@@ -41,10 +41,50 @@ function readOptionalString(value: unknown): string | null {
 }
 
 function readStatus(value: unknown): ReviewStatus {
-  if (value === 'queued' || value === 'running' || value === 'succeeded' || value === 'failed' || value === 'cancelled') {
+  if (
+    value === 'policy_pending' ||
+    value === 'policy_ready' ||
+    value === 'policy_approved' ||
+    value === 'queued' ||
+    value === 'running' ||
+    value === 'succeeded' ||
+    value === 'failed' ||
+    value === 'cancelled'
+  ) {
     return value;
   }
-  throw new Error('Invalid review payload: status must be queued, running, succeeded, failed, or cancelled.');
+  throw new Error('Invalid review payload: review status is invalid.');
+}
+
+function readPolicyDraft(value: unknown): { goal: string | null; prohibitions: string[]; constraints: string[] } | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  const goal = readOptionalString(record.goal);
+  const normalizeList = (input: unknown): string[] =>
+    Array.isArray(input)
+      ? Array.from(
+          new Set(
+            input
+              .filter((item): item is string => typeof item === 'string')
+              .map((item) => item.trim())
+              .filter(Boolean)
+          )
+        )
+      : [];
+
+  const prohibitions = normalizeList(record.prohibitions);
+  const constraints = normalizeList(record.constraints);
+  if (!goal && prohibitions.length === 0 && constraints.length === 0) {
+    return undefined;
+  }
+
+  return {
+    goal,
+    prohibitions,
+    constraints,
+  };
 }
 
 function readSeverity(value: unknown): ReviewSeverity {
@@ -175,6 +215,9 @@ export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
       status: readStatus(review.status),
       idempotencyKey: readString(review.idempotencyKey, 'idempotencyKey'),
       attemptCount: Number.isInteger(review.attemptCount) ? (review.attemptCount as number) : 0,
+      derivedPolicy: readPolicyDraft(review.derivedPolicy),
+      approvedPolicy: readPolicyDraft(review.approvedPolicy),
+      approvedPolicySha256: readOptionalString(review.approvedPolicySha256) ?? undefined,
       createdAt: readString(review.createdAt, 'createdAt'),
       updatedAt: readString(review.updatedAt, 'updatedAt'),
       startedAt: readNullableTimestamp(review.startedAt, 'startedAt'),
@@ -399,6 +442,24 @@ export function findingCount(review: ReviewResponse): number {
 }
 
 export function statusNarrative(review: ReviewResponse): { title: string; detail: string } {
+  if (review.status === 'policy_pending') {
+    return {
+      title: 'Policy derivation pending',
+      detail: 'Nimbus is deriving an initial policy draft from session context before review execution.',
+    };
+  }
+  if (review.status === 'policy_ready') {
+    return {
+      title: 'Policy ready',
+      detail: 'A review policy draft is ready for confirmation and edits.',
+    };
+  }
+  if (review.status === 'policy_approved') {
+    return {
+      title: 'Policy approved',
+      detail: 'The approved policy is queued for review execution.',
+    };
+  }
   if (review.status === 'queued') {
     const retryHint = review.error?.code === 'retry_scheduled'
       ? ' A transient failure was detected and Nimbus queued an automatic retry.'

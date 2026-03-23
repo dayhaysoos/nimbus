@@ -1,9 +1,11 @@
 import { Route, Routes } from 'react-router-dom';
 import { ReportPage } from './components/ReportPage';
+import { PolicyPage } from './components/PolicyPage';
 
 export function App(): JSX.Element {
   return (
     <Routes>
+      <Route path="/policy/:reviewId" element={<PolicyPage />} />
       <Route path="/reports/:reviewId" element={<ReportPage />} />
       <Route
         path="*"

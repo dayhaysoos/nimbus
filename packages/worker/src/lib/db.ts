@@ -9,6 +9,7 @@ import type {
   ReviewRunRecord,
   ReviewRunResponse,
   ReviewRunStatus,
+  ReviewApprovedPolicy,
   ReviewContext,
   ReviewContextRef,
   ReviewTargetType,
@@ -157,12 +158,16 @@ export interface CreateReviewRunInput {
   deploymentId: string;
   targetType: ReviewTargetType;
   mode: ReviewMode;
+  status?: ReviewRunStatus;
   idempotencyKey: string;
   requestPayload: unknown;
   requestPayloadSha256: string;
   requestPayloadSha256Aliases?: string[];
   provenance?: Record<string, unknown>;
   accountId?: string | null;
+  derivedPolicy?: ReviewApprovedPolicy | null;
+  approvedPolicy?: ReviewApprovedPolicy | null;
+  approvedPolicySha256?: string | null;
 }
 
 export interface WorkspaceTaskEventRecord {
@@ -509,6 +514,38 @@ function stripSensitiveTokenFields(value: unknown): unknown {
   }, {});
 }
 
+function normalizeReviewPolicy(value: unknown): ReviewApprovedPolicy | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+  const goal = typeof record.goal === 'string' && record.goal.trim() ? record.goal.trim() : null;
+  const normalizeList = (input: unknown): string[] =>
+    Array.isArray(input)
+      ? Array.from(
+          new Set(
+            input
+              .filter((item): item is string => typeof item === 'string')
+              .map((item) => item.trim())
+              .filter(Boolean)
+          )
+        )
+      : [];
+
+  const policy: ReviewApprovedPolicy = {
+    goal,
+    prohibitions: normalizeList(record.prohibitions),
+    constraints: normalizeList(record.constraints),
+  };
+
+  if (!policy.goal && policy.prohibitions.length === 0 && policy.constraints.length === 0) {
+    return null;
+  }
+
+  return policy;
+}
+
 function toWorkspaceOperationResponse(record: WorkspaceOperationRecord): WorkspaceOperationResponse {
   const warnings = parseJsonOrFallback(record.warnings_json, []);
   const result = parseJsonOrFallback(record.result_json, undefined);
@@ -761,6 +798,8 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
     rawIntentSessionContext.filter((item): item is string => typeof item === 'string')
   );
   const reportHasProvenance = Boolean(report?.provenance);
+  const derivedPolicy = normalizeReviewPolicy(parseJsonOrFallback(record.derived_policy_json, null));
+  const approvedPolicy = normalizeReviewPolicy(parseJsonOrFallback(record.approved_policy_json, null));
 
   const response: ReviewRunResponse = {
     id: record.id,
@@ -775,6 +814,11 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
     status: record.status,
     idempotencyKey: record.idempotency_key,
     attemptCount: record.attempt_count,
+    ...(derivedPolicy ? { derivedPolicy } : {}),
+    ...(approvedPolicy ? { approvedPolicy } : {}),
+    ...(typeof record.approved_policy_sha256 === 'string' && record.approved_policy_sha256
+      ? { approvedPolicySha256: record.approved_policy_sha256 }
+      : {}),
     startedAt: record.started_at,
     finishedAt: record.finished_at,
     createdAt: record.created_at,
@@ -2799,6 +2843,13 @@ export async function createReviewRun(
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
   const sanitizedRequestPayload = stripSensitiveTokenFields(input.requestPayload ?? {});
   const sanitizedProvenance = stripSensitiveTokenFields(input.provenance ?? {});
+  const initialStatus = input.status ?? 'queued';
+  const derivedPolicyJson = input.derivedPolicy ? JSON.stringify(stripSensitiveTokenFields(input.derivedPolicy)) : null;
+  const approvedPolicyJson = input.approvedPolicy ? JSON.stringify(stripSensitiveTokenFields(input.approvedPolicy)) : null;
+  const approvedPolicySha256 =
+    typeof input.approvedPolicySha256 === 'string' && input.approvedPolicySha256.trim()
+      ? input.approvedPolicySha256.trim()
+      : null;
   const reviewRecord = await db
     .prepare(
       `INSERT INTO review_runs (
@@ -2812,11 +2863,14 @@ export async function createReviewRun(
          request_payload_json,
          request_payload_sha256,
          account_id,
-         provenance_json,
-         created_at,
-         updated_at
-        )
-       VALUES (?, ?, ?, ?, ?, 'queued', ?, ?, ?, ?, ?, ?, ?)
+          provenance_json,
+         derived_policy_json,
+         approved_policy_json,
+         approved_policy_sha256,
+          created_at,
+          updated_at
+         )
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -2825,11 +2879,15 @@ export async function createReviewRun(
       input.deploymentId,
       input.targetType,
       input.mode,
+      initialStatus,
       input.idempotencyKey,
       JSON.stringify(sanitizedRequestPayload),
       input.requestPayloadSha256,
       input.accountId ?? null,
       JSON.stringify(sanitizedProvenance),
+      derivedPolicyJson,
+      approvedPolicyJson,
+      approvedPolicySha256,
       now,
       now
     )
@@ -3012,7 +3070,7 @@ export async function claimReviewRunForExecution(db: D1Database, reviewId: strin
            error_code = NULL,
            error_message = NULL,
            updated_at = ?
-       WHERE id = ? AND status = 'queued'`
+       WHERE id = ? AND status IN ('queued', 'policy_approved')`
     )
     .bind(now, now, reviewId)
     .run();
@@ -3063,6 +3121,37 @@ export async function updateReviewRunStatus(
   if (status === 'succeeded' || status === 'failed' || status === 'cancelled') {
     updates.push('finished_at = COALESCE(finished_at, ?)');
     values.push(new Date().toISOString());
+  }
+
+  values.push(reviewId);
+  await db.prepare(`UPDATE review_runs SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
+}
+
+export async function updateReviewRunPolicy(
+  db: D1Database,
+  reviewId: string,
+  options: {
+    derivedPolicy?: ReviewApprovedPolicy | null;
+    approvedPolicy?: ReviewApprovedPolicy | null;
+    approvedPolicySha256?: string | null;
+  }
+): Promise<void> {
+  const updates: string[] = ['updated_at = ?'];
+  const values: Array<string | null> = [new Date().toISOString()];
+
+  if (options.derivedPolicy !== undefined) {
+    updates.push('derived_policy_json = ?');
+    values.push(options.derivedPolicy ? JSON.stringify(stripSensitiveTokenFields(options.derivedPolicy)) : null);
+  }
+
+  if (options.approvedPolicy !== undefined) {
+    updates.push('approved_policy_json = ?');
+    values.push(options.approvedPolicy ? JSON.stringify(stripSensitiveTokenFields(options.approvedPolicy)) : null);
+  }
+
+  if (options.approvedPolicySha256 !== undefined) {
+    updates.push('approved_policy_sha256 = ?');
+    values.push(options.approvedPolicySha256 ?? null);
   }
 
   values.push(reviewId);

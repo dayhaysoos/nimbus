@@ -7,7 +7,9 @@
     "nimbus": "./dist/index.js"
   },
   "scripts": {
+    "prebuild": "pnpm run build:ui",
     "build": "tsc",
+    "build:ui": "pnpm --dir ../.. --filter @dayhaysoos/nimbus-report-ui build && rm -rf ./assets/report-ui && mkdir -p ./assets && cp -R ../report-ui/dist ./assets/report-ui",
     "dev": "tsx src/index.ts",
     "test": "tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js",
     "prepublishOnly": "npm run build"
@@ -25,7 +27,8 @@
     "node": ">=20.0.0"
   },
   "files": [
-    "dist"
+    "dist",
+    "assets"
   ],
   "keywords": [
     "cli",

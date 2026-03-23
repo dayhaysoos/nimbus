@@ -249,6 +249,7 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
         sessionIds: [],
         transcriptUrl: null,
         intentSessionContext: [],
+        rawSessionPrompts: null,
         repo: 'dayhaysoos/nimbus',
       });
     }

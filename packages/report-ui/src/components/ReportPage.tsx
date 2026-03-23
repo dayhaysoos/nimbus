@@ -205,16 +205,40 @@ export function ReportPage(): JSX.Element {
     if (state !== 'loaded' || !review) {
       return;
     }
-    if (review.status !== 'queued' && review.status !== 'running') {
+    if (review.status !== 'queued' && review.status !== 'running' && review.status !== 'policy_approved') {
       return;
     }
 
-    const timer = window.setTimeout(() => {
+    if (typeof EventSource === 'undefined') {
+      const timer = window.setTimeout(() => {
+        setRefreshCycle((value) => value + 1);
+      }, 3000);
+      return () => {
+        window.clearTimeout(timer);
+      };
+    }
+
+    const eventsUrl = `${API_BASE}/api/reviews/${encodeURIComponent(review.id)}/events`;
+    const stream = new EventSource(eventsUrl);
+
+    const onMessage = () => {
       setRefreshCycle((value) => value + 1);
-    }, 3000);
+    };
+
+    const onError = () => {
+      stream.close();
+      window.setTimeout(() => {
+        setRefreshCycle((value) => value + 1);
+      }, 1000);
+    };
+
+    stream.addEventListener('message', onMessage);
+    stream.addEventListener('error', onError);
 
     return () => {
-      window.clearTimeout(timer);
+      stream.removeEventListener('message', onMessage);
+      stream.removeEventListener('error', onError);
+      stream.close();
     };
   }, [review, state]);
 

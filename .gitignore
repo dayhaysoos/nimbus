@@ -5,6 +5,7 @@ node_modules/
 dist/
 .wrangler/
 .test-dist/
+packages/cli/assets/
 
 # Environment files
 .env

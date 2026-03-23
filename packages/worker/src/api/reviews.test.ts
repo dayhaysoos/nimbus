@@ -200,23 +200,26 @@ function createReviewApiEnv(options?: {
                 async first<T>() {
                   state.reviewExists = true;
                   try {
-                    state.createdRequestPayload = JSON.parse(String(values[6])) as Record<string, unknown>;
+                    state.createdRequestPayload = JSON.parse(String(values[7])) as Record<string, unknown>;
                   } catch {
                     state.createdRequestPayload = null;
                   }
-                  state.createdReviewAccountId = typeof values[8] === 'string' ? values[8] : null;
+                  state.createdReviewAccountId = typeof values[9] === 'string' ? values[9] : null;
                   return {
                     id: values[0],
                     workspace_id: values[1],
                     deployment_id: values[2],
                     target_type: values[3],
                     mode: values[4],
-                    status: 'queued',
-                    idempotency_key: values[5],
-                    request_payload_json: values[6],
-                    request_payload_sha256: values[7],
-                    account_id: values[8],
-                    provenance_json: values[9],
+                    status: values[5],
+                    idempotency_key: values[6],
+                    request_payload_json: values[7],
+                    request_payload_sha256: values[8],
+                    account_id: values[9],
+                    provenance_json: values[10],
+                    derived_policy_json: values[11],
+                    approved_policy_json: values[12],
+                    approved_policy_sha256: values[13],
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,

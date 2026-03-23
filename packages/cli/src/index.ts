@@ -34,6 +34,7 @@ import { reviewEventsCommand } from './commands/review/events.js';
 import { showReviewCommand } from './commands/review/show.js';
 import { exportReviewCommand } from './commands/review/export.js';
 import { reviewPreflightCommand } from './commands/review/preflight.js';
+import { openReviewCommand, startPolicyReviewOpenCommand } from './commands/review/open.js';
 import { parseArgs } from './lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
 import { provisionAdminKeyCommand } from './commands/admin/provision-key.js';
@@ -120,9 +121,11 @@ Commands:
   review show <review-id>
                        Show review status and summary
   review events <review-id>
-                      Stream review lifecycle events
+                       Stream review lifecycle events
+  review open [review-id]
+                       Open report UI or start policy-first review flow
   review export <review-id>
-                       Export a review as markdown or json
+                        Export a review as markdown or json
   admin provision-key  Provision a hosted API key (admin only)
   repo register       Register current repository for OIDC exchange
   auth exchange       Exchange GitHub OIDC token for Nimbus JWT (GitHub Actions)
@@ -175,6 +178,7 @@ Options:
                       Suppress validation/deploy evidence in report output
   --format <type>     Review export format (markdown|json)
   --out <path>        Review export output file path
+  --port <n>          Port for local report UI server (default: 2000)
   --preflight-only   Run deploy preflight only (do not queue deploy)
   --auto-fix         Allow safe preflight/deploy remediations
   --no-dry-run       Upload source bundle and create checkpoint job
@@ -202,6 +206,8 @@ Examples:
   nimbus review preflight HEAD~2
   nimbus review show rev_abcd1234
   nimbus review events rev_abcd1234
+   nimbus review open rev_abcd1234
+   nimbus review open --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review export rev_abcd1234 --format markdown --out review.md
   nimbus admin provision-key --label "Beta User Key"
   nimbus repo register
@@ -539,7 +545,28 @@ async function main(): Promise<void> {
           break;
         }
 
-        p.log.error('Unknown review command. Use: create, preflight, show, events, export');
+        if (reviewAction === 'open') {
+          const reviewId = positional[1];
+          const port = parsePositiveIntegerFlag(flags.port);
+          if (reviewId) {
+            await openReviewCommand(reviewId, { port });
+            break;
+          }
+
+          const workspaceFlag = flags.workspace;
+          const deploymentFlag = flags.deployment;
+          const workspaceId = typeof workspaceFlag === 'string' ? workspaceFlag : undefined;
+          const deploymentId = typeof deploymentFlag === 'string' ? deploymentFlag : undefined;
+          if (!workspaceId || !deploymentId) {
+            p.log.error('Usage: nimbus review open <review-id> [--port <n>] OR nimbus review open --workspace <workspace-id> --deployment <deployment-id> [--port <n>]');
+            process.exit(1);
+          }
+
+          await startPolicyReviewOpenCommand(workspaceId, deploymentId, { port });
+          break;
+        }
+
+        p.log.error('Unknown review command. Use: create, preflight, show, events, open, export');
         process.exit(1);
       }
 

@@ -4,6 +4,7 @@ import type {
   ReviewEvidenceItem,
   ReviewFinding,
   ReviewFindingSeverityV2,
+  ReviewApprovedPolicy,
   ReviewRecommendation,
   ReviewReport,
   ReviewSessionIntentSummary,
@@ -182,7 +183,16 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
   return summary;
 }
 
-async function runIntentSummarizationPrePass(
+function intentSummaryFromApprovedPolicy(policy: ReviewApprovedPolicy): ReviewSessionIntentSummary {
+  return {
+    goal: policy.goal,
+    prohibitions: policy.prohibitions,
+    constraints: policy.constraints,
+    riskFocus: [],
+  };
+}
+
+export async function runIntentSummarizationPrePass(
   env: Env,
   rawSessionPrompts: string,
   options?: { openrouterApiKey?: string | null }
@@ -1594,15 +1604,18 @@ async function buildWorkspaceDeploymentReport(
   const requestValidation = asRecord(deploymentRequest.validation);
   const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
   const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
+  const approvedPolicy = review.approvedPolicy ?? null;
   const rawSessionPrompts =
     typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim()
       ? requestProvenance.rawSessionPrompts.trim()
       : null;
-  const derivedIntentSummary = rawSessionPrompts
-    ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
-        openrouterApiKey: readOptionalString(options?.openrouterApiKey),
-      })
-    : null;
+  const derivedIntentSummary = approvedPolicy
+    ? intentSummaryFromApprovedPolicy(approvedPolicy)
+    : rawSessionPrompts
+      ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
+          openrouterApiKey: readOptionalString(options?.openrouterApiKey),
+        })
+      : null;
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
     : typeof requestProvenance.taskId === 'string'
@@ -1681,7 +1694,18 @@ async function buildWorkspaceDeploymentReport(
     typeof resultArtifact.sourceBundleKey === 'string' && resultArtifact.sourceBundleKey.trim()
       ? resultArtifact.sourceBundleKey.trim()
       : deployment.sourceBundleKey ?? null;
-  const promptGoal = provenanceTask?.prompt?.trim() || baseGoal;
+  const promptGoal = approvedPolicy?.goal?.trim() || provenanceTask?.prompt?.trim() || baseGoal;
+  const promptConstraints = approvedPolicy
+    ? Array.from(new Set([...approvedPolicy.constraints, ...baseConstraints]))
+    : baseConstraints;
+  const promptDecisions = approvedPolicy
+    ? Array.from(
+        new Set([
+          ...approvedPolicy.prohibitions.map((item) => `Must not: ${item}`),
+          ...baseDecisions,
+        ])
+      )
+    : baseDecisions;
   if (reviewAgentEnabled && deploymentSourceBundleKey) {
     await appendReviewEvent(env.DB, {
       reviewId: review.id,
@@ -1707,8 +1731,8 @@ async function buildWorkspaceDeploymentReport(
           }
         : undefined,
       goal: promptGoal,
-      constraints: baseConstraints,
-      decisions: baseDecisions.filter(Boolean),
+      constraints: promptConstraints,
+      decisions: promptDecisions.filter(Boolean),
       intentSessionContext,
       intentSummary: derivedIntentSummary,
       evidenceCatalog: analysisEvidence.map((item) => ({
@@ -1801,9 +1825,9 @@ async function buildWorkspaceDeploymentReport(
   };
 
   const intent = sanitizeIntentBlock({
-    goal: agentAnalysis?.intent?.goal ?? baseGoal,
-    constraints: Array.from(new Set([...(agentAnalysis?.intent?.constraints ?? []), ...baseConstraints])),
-    decisions: Array.from(new Set([...(agentAnalysis?.intent?.decisions ?? []), ...baseDecisions])),
+    goal: agentAnalysis?.intent?.goal ?? promptGoal,
+    constraints: Array.from(new Set([...(agentAnalysis?.intent?.constraints ?? []), ...promptConstraints])),
+    decisions: Array.from(new Set([...(agentAnalysis?.intent?.decisions ?? []), ...promptDecisions])),
   });
 
   const promptSummary = redactReviewText(

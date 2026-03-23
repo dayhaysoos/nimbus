@@ -15,7 +15,13 @@ import {
   handleGetWorkspaceDeploymentEvents,
   handleWorkspaceDeploymentPreflight,
 } from './api/workspace-deployments.js';
-import { handleCreateReview, handleGetReview, handleGetReviewEvents } from './api/reviews.js';
+import {
+  handleApproveReviewPolicy,
+  handleCreateReview,
+  handleDeriveReviewPolicy,
+  handleGetReview,
+  handleGetReviewEvents,
+} from './api/reviews.js';
 import {
   handleCreateWorkspace,
   handleCreateWorkspaceGithubFork,
@@ -103,6 +109,11 @@ export default {
       return handleCreateReview(request, env, ctx, authContext);
     }
 
+    // Route: POST /api/reviews/policy/derive - Derive review policy draft
+    if (url.pathname === '/api/reviews/policy/derive' && request.method === 'POST') {
+      return handleDeriveReviewPolicy(request, env, authContext);
+    }
+
     // Route: POST /api/admin/keys - Provision hosted API key
     if (url.pathname === '/api/admin/keys' && request.method === 'POST') {
       return handleCreateAdminApiKey(request, env, authContext);
@@ -127,6 +138,12 @@ export default {
     const reviewEventsMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)\/events$/);
     if (reviewEventsMatch && request.method === 'GET') {
       return handleGetReviewEvents(reviewEventsMatch[1], request, env, authContext);
+    }
+
+    // Route: POST /api/reviews/:id/policy/approve - Approve policy draft and enqueue review
+    const reviewPolicyApproveMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)\/policy\/approve$/);
+    if (reviewPolicyApproveMatch && request.method === 'POST') {
+      return handleApproveReviewPolicy(reviewPolicyApproveMatch[1], request, env, authContext);
     }
 
     // Route: GET /api/reviews/:id - Get review run

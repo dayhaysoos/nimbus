@@ -482,7 +482,15 @@ export interface WorkspaceDeploymentResponse {
   };
 }
 
-export type ReviewRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type ReviewRunStatus =
+  | 'policy_pending'
+  | 'policy_ready'
+  | 'policy_approved'
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
 export type ReviewTargetType = 'workspace_deployment';
 export type ReviewMode = 'report_only';
 export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
@@ -620,6 +628,12 @@ export interface ReviewSessionIntentSummary {
   constraints: string[];
 }
 
+export interface ReviewApprovedPolicy {
+  goal: string | null;
+  prohibitions: string[];
+  constraints: string[];
+}
+
 export interface ReviewProvenanceSummary {
   sessionIds: string[];
   policyItems: string[];
@@ -688,6 +702,9 @@ export interface ReviewRunRecord {
   request_payload_json: string;
   request_payload_sha256: string;
   provenance_json: string;
+  derived_policy_json: string | null;
+  approved_policy_json: string | null;
+  approved_policy_sha256: string | null;
   last_event_seq: number;
   attempt_count: number;
   started_at: string | null;
@@ -713,6 +730,9 @@ export interface ReviewRunResponse {
   status: ReviewRunStatus;
   idempotencyKey: string;
   attemptCount: number;
+  derivedPolicy?: ReviewApprovedPolicy;
+  approvedPolicy?: ReviewApprovedPolicy;
+  approvedPolicySha256?: string;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;

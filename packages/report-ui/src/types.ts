@@ -1,4 +1,12 @@
-export type ReviewStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type ReviewStatus =
+  | 'policy_pending'
+  | 'policy_ready'
+  | 'policy_approved'
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
 export type ReviewMode = 'report_only';
 export type ReviewTargetType = 'workspace_deployment';
 
@@ -40,6 +48,12 @@ export interface ReviewIntentSummary {
   goal: string | null;
   constraints: string[];
   decisions: string[];
+}
+
+export interface ReviewPolicyDraft {
+  goal: string | null;
+  prohibitions: string[];
+  constraints: string[];
 }
 
 export interface ReviewContextRef {
@@ -113,6 +127,9 @@ export interface ReviewResponse {
   status: ReviewStatus;
   idempotencyKey: string;
   attemptCount: number;
+  derivedPolicy?: ReviewPolicyDraft;
+  approvedPolicy?: ReviewPolicyDraft;
+  approvedPolicySha256?: string;
   createdAt: string;
   updatedAt: string;
   startedAt: string | null;
