@@ -1,0 +1,589 @@
+{
+  "info": {
+    "id": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+    "slug": "mighty-meadow",
+    "projectID": "e636a08f504c17bb94725f03ccc30ead67d304f9",
+    "directory": "/Users/nickdejesus/Code/nimbus",
+    "title": "Review local-review-ui-policy-workflow in llm-docs",
+    "version": "1.3.0",
+    "summary": {
+      "additions": 0,
+      "deletions": 0,
+      "files": 0
+    },
+    "time": {
+      "created": 1774232957707,
+      "updated": 1774237112424
+    }
+  },
+  "messages": [
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1774232957770
+        },
+        "summary": {
+          "diffs": []
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "gpt-5.3-codex"
+        },
+        "variant": "high",
+        "id": "msg_d18867326001RYBUG1gwYkz3t7",
+        "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "Look in the llm-docs directory and read the local-review-ui-policy-workflow. Review it and summarize it ",
+          "id": "prt_d18867328001E1v5d6Dh3DqCTb",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18867326001RYBUG1gwYkz3t7"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1774232957775,
+          "completed": 1774232961561
+        },
+        "parentID": "msg_d18867326001RYBUG1gwYkz3t7",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0191555,
+        "tokens": {
+          "total": 9416,
+          "input": 9290,
+          "output": 126,
+          "reasoning": 81,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "variant": "high",
+        "finish": "tool-calls",
+        "id": "msg_d1886734f001BR3evXlhQa4R3Q",
+        "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "id": "prt_d18867737001tojzvG53o0oIS0",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d1886734f001BR3evXlhQa4R3Q"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0ce1c8b4e2f9e3010169c0a57edcd4819b81010cff6f676371",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1774232958998,
+            "end": 1774232961100
+          },
+          "id": "prt_d18867816001geJrOP1R8cNdX5",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d1886734f001BR3evXlhQa4R3Q"
+        },
+        {
+          "type": "tool",
+          "callID": "call_Oh0apHXmWkj5MFIgJkMkd3BT",
+          "tool": "glob",
+          "state": {
+            "status": "completed",
+            "input": {
+              "path": "/Users/nickdejesus/Code/nimbus",
+              "pattern": "llm-docs/**/local-review-ui-policy-workflow*"
+            },
+            "output": "No files found",
+            "title": "",
+            "metadata": {
+              "count": 0,
+              "truncated": false
+            },
+            "time": {
+              "start": 1774232961336,
+              "end": 1774232961347
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0ce1c8b4e2f9e3010169c0a580e6ec819b81bc1eb891553631"
+            }
+          },
+          "id": "prt_d1886804e001UElzSYQmhQDXc3",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d1886734f001BR3evXlhQa4R3Q"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "cost": 0.0191555,
+          "tokens": {
+            "total": 9416,
+            "input": 9290,
+            "output": 126,
+            "reasoning": 81,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_d188681ae001xw4Zg39LBgAtq2",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d1886734f001BR3evXlhQa4R3Q"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1774232961562,
+          "completed": 1774232963361
+        },
+        "parentID": "msg_d18867326001RYBUG1gwYkz3t7",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.00302995,
+        "tokens": {
+          "total": 9491,
+          "input": 85,
+          "output": 62,
+          "reasoning": 27,
+          "cache": {
+            "read": 9344,
+            "write": 0
+          }
+        },
+        "variant": "high",
+        "finish": "tool-calls",
+        "id": "msg_d1886821a001tCrRe1KTsPJ3LQ",
+        "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "id": "prt_d188684a8001jJT2Ea0rwPIJkP",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d1886821a001tCrRe1KTsPJ3LQ"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_065c1c8f0efcf1e20169c0a58223488195ad123f90637bd56e",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1774232962217,
+            "end": 1774232963098
+          },
+          "id": "prt_d188684a9001dvfPq06IIqT95K",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d1886821a001tCrRe1KTsPJ3LQ"
+        },
+        {
+          "type": "tool",
+          "callID": "call_rF049zsLNidcTmZ8alc6AsTt",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/llm-docs"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/llm-docs</path>\n<type>directory</type>\n<entries>\nadmin-key-governance-and-recovery.md\narchive/\nauth-roadmap-for-shared-hosted-nimbus.md\nlocal-review-ui-policy-workflow.md\nreview-proof-tools-roadmap.md\nsecurity-checklist.md\n\n(6 entries)\n</entries>",
+            "title": "llm-docs",
+            "metadata": {
+              "preview": "admin-key-governance-and-recovery.md\narchive/\nauth-roadmap-for-shared-hosted-nimbus.md\nlocal-review-ui-policy-workflow.md\nreview-proof-tools-roadmap.md\nsecurity-checklist.md",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1774232963187,
+              "end": 1774232963188
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_065c1c8f0efcf1e20169c0a583141881959d461d4ce05588b4"
+            }
+          },
+          "id": "prt_d1886881b001EF0J25qHFdrYFc",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d1886821a001tCrRe1KTsPJ3LQ"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "cost": 0.00302995,
+          "tokens": {
+            "total": 9491,
+            "input": 85,
+            "output": 62,
+            "reasoning": 27,
+            "cache": {
+              "read": 9344,
+              "write": 0
+            }
+          },
+          "id": "prt_d188688ac001umHeGS2h7dF3Dh",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d1886821a001tCrRe1KTsPJ3LQ"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1774232963362,
+          "completed": 1774232964900
+        },
+        "parentID": "msg_d18867326001RYBUG1gwYkz3t7",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.00306145,
+        "tokens": {
+          "total": 9640,
+          "input": 239,
+          "output": 57,
+          "reasoning": 15,
+          "cache": {
+            "read": 9344,
+            "write": 0
+          }
+        },
+        "variant": "high",
+        "finish": "tool-calls",
+        "id": "msg_d18868922001Em1u4KJycel1Au",
+        "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "id": "prt_d18868b89001NwFRwYX0Aiqp7S",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18868922001Em1u4KJycel1Au"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0c5387c196c34c000169c0a584014881988d2e45baacf92bad",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1774232964056,
+            "end": 1774232964526
+          },
+          "id": "prt_d18868bd8001VAGi47xGff2Yzi",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18868922001Em1u4KJycel1Au"
+        },
+        {
+          "type": "tool",
+          "callID": "call_vO3VnOAQh2fpKEBf91yZjDkP",
+          "tool": "read",
+          "state": {
+            "status": "completed",
+            "input": {
+              "filePath": "/Users/nickdejesus/Code/nimbus/llm-docs/local-review-ui-policy-workflow.md"
+            },
+            "output": "<path>/Users/nickdejesus/Code/nimbus/llm-docs/local-review-ui-policy-workflow.md</path>\n<type>file</type>\n<content>1: # Local Review UI: Policy-First Workflow + Secure Local Auth\n2: \n3: ## Why this exists\n4: \n5: Nimbus review quality depends heavily on policy quality. Current CLI-first flow can produce noise when policy extraction is imperfect. This document defines a policy-first local UI workflow and a secure local authentication model so only the local runner can access the review UI session.\n6: \n7: ## Product goal\n8: \n9: Create a single guided experience:\n10: \n11: 1. User runs `nimbus review create`.\n12: 2. Local UI opens and shows policy derivation in progress.\n13: 3. User reviews/edits policy (goal, must-not, preferences/constraints).\n14: 4. User approves policy.\n15: 5. Review executes using approved policy.\n16: 6. UI streams lifecycle/events and final findings.\n17: \n18: This is intentionally not split into unrelated routes/commands from the user perspective; it should feel like one end-to-end wizard.\n19: \n20: ---\n21: \n22: ## Current state (context for implementer)\n23: \n24: - Existing review viewer app: `packages/report-ui/`\n25: - Existing review policy command: `nimbus review policy`\n26: - Existing worker policy endpoint: `POST /api/reviews/policy`\n27: - Intent summary model supports override (`--intent-summary-model`, env fallback)\n28: - Policy summarization currently includes: `goal`, `prohibitions`, `constraints` (riskFocus removed)\n29: \n30: Relevant code references:\n31: \n32: - CLI review create: `packages/cli/src/commands/review/create.ts`\n33: - CLI review policy: `packages/cli/src/commands/review/policy.ts`\n34: - Worker create review API: `packages/worker/src/api/reviews.ts`\n35: - Worker runner/policy summarization: `packages/worker/src/lib/review-runner.ts`\n36: - Review UI: `packages/report-ui/src/components/ReportPage.tsx`\n37: \n38: ---\n39: \n40: ## Non-negotiable security requirements\n41: \n42: ### Requirement A: local runner only\n43: \n44: Only the user/process that launched the local review session should be able to access that session UI.\n45: \n46: ### Requirement B: least privilege\n47: \n48: Session auth must be run-scoped by default. No historical review browsing unless explicitly implemented as a separate mode.\n49: \n50: ### Requirement C: no long-lived worker credentials in browser\n51: \n52: Browser must never store long-lived worker auth secrets. Browser talks to local server only; local server proxies upstream.\n53: \n54: ---\n55: \n56: ## Recommended local auth/session architecture\n57: \n58: ## 1) Local server binding\n59: \n60: - Bind local UI server to `127.0.0.1` only.\n61: - Do not bind to `0.0.0.0`.\n62: - Use configurable port (default can be 2000).\n63: \n64: ## 2) One-time bootstrap token\n65: \n66: - CLI generates a cryptographically random bootstrap token (>= 256-bit entropy).\n67: - Token is single-use and short TTL (e.g. 10-15 minutes).\n68: - CLI opens browser with bootstrap URL:\n69:   - `http://127.0.0.1:<port>/?bootstrap=<token>`\n70: \n71: ## 3) Session exchange\n72: \n73: - UI POSTs bootstrap token to local server exchange endpoint.\n74: - Server validates + invalidates bootstrap token immediately.\n75: - Server issues HttpOnly session cookie:\n76:   - `HttpOnly`, `SameSite=Strict`, `Path=/`\n77:   - `Secure` when applicable\n78: - Browser JS never sees the session secret.\n79: \n80: ## 4) Run-scoped authorization\n81: \n82: - Session scope must include only current run resources:\n83:   - allowed `runId`\n84:   - allowed `reviewId` (once created)\n85:   - allowed temporary policy draft id\n86: - Requests outside scope return 403.\n87: \n88: ## 5) Session lifecycle\n89: \n90: - Expire session on short inactivity window (e.g. 30-60 min) or when CLI exits.\n91: - Local server should revoke all session state when run completes or process terminates.\n92: \n93: ## 6) CSRF/origin protections\n94: \n95: - For mutating local endpoints (approve policy/start review), require CSRF token and Origin check.\n96: - Reject missing/invalid Origin for browser requests.\n97: \n98: ---\n99: \n100: ## UX workflow spec (policy-first)\n101: \n102: ## Step 1: derive\n103: \n104: UI state: \"Generating policy from prompt history...\"\n105: \n106: Data source: worker policy endpoint (or local server calling it).\n107: \n108: Render fields:\n109: \n110: - Goal (single)\n111: - Must Not list (prohibitions)\n112: - Preferences list (constraints)\n113: \n114: ## Step 2: edit\n115: \n116: User can:\n117: \n118: - edit goal\n119: - add/remove/reorder prohibitions\n120: - add/remove/reorder constraints\n121: \n122: Track both:\n123: \n124: - `derivedPolicy` (original output)\n125: - `approvedPolicyDraft` (user edits)\n126: \n127: ## Step 3: approve\n128: \n129: On approve:\n130: \n131: - freeze policy as `approvedPolicy`\n132: - compute `approvedPolicySha256`\n133: - persist policy + hash in run metadata/provenance\n134: \n135: ## Step 4: run review\n136: \n137: Start review with approved policy, then stream timeline in UI:\n138: \n139: - context assembly\n140: - analysis start\n141: - provider requests\n142: - validation/repair\n143: - persist/finalize\n144: \n145: ## Step 5: results\n146: \n147: Show findings + proof fields + raw events.\n148: \n149: ---\n150: \n151: ## API contract suggestions (local server)\n152: \n153: These are local-only endpoints (browser -> localhost server):\n154: \n155: - `POST /local/session/exchange`\n156:   - input: `{ bootstrapToken }`\n157:   - output: `204`, sets session cookie\n158: \n159: - `GET /local/run`\n160:   - output: current run metadata + state\n161: \n162: - `POST /local/policy/derive`\n163:   - output: `{ derivedPolicy, model, source }`\n164: \n165: - `POST /local/policy/approve`\n166:   - input: `{ approvedPolicy }`\n167:   - output: `{ approvedPolicySha256 }`\n168: \n169: - `POST /local/review/start`\n170:   - starts review using approved policy\n171:   - output: `{ reviewId }`\n172: \n173: - `GET /local/review/events`\n174:   - SSE stream for run-scoped review\n175: \n176: - `GET /local/review/result`\n177:   - final review payload when complete\n178: \n179: All endpoints must enforce run-scoped authorization from session claims.\n180: \n181: ---\n182: \n183: ## Idempotency and reproducibility rules\n184: \n185: - Include `approvedPolicySha256` in idempotency payload for review create.\n186: - If same idempotency key is reused with different approved policy hash, return conflict.\n187: - Persist both derived and approved policy for auditability.\n188: \n189: ---\n190: \n191: ## Explicit decision about previous sessions\n192: \n193: Default mode: **no previous session access**.\n194: \n195: - Run-scoped token cannot list or fetch historical reviews.\n196: - If history mode is desired later, implement as separate authenticated mode with broader scope.\n197: \n198: ---\n199: \n200: ## Threat model checklist\n201: \n202: - [ ] Local server binds loopback only.\n203: - [ ] Bootstrap token is random, single-use, short TTL.\n204: - [ ] Session cookie is HttpOnly + SameSite.\n205: - [ ] Browser never stores worker bearer tokens.\n206: - [ ] Mutating routes require CSRF + Origin checks.\n207: - [ ] Session scope enforces run-only resources.\n208: - [ ] Session revoked when CLI exits/run ends.\n209: \n210: ---\n211: \n212: ## MVP acceptance criteria\n213: \n214: 1. Running `nimbus review create` opens local UI and starts policy derivation state.\n215: 2. User can edit and approve policy before review starts.\n216: 3. Review starts only after approval and uses approved policy.\n217: 4. Event timeline updates live until terminal status.\n218: 5. Accessing local UI from another machine is impossible by default.\n219: 6. Historical review access is denied in run-scoped mode.\n220: \n221: ---\n222: \n223: ## Nice-to-have (post-MVP)\n224: \n225: - Side-by-side compare of default vs override policy model outputs.\n226: - Visual diff between derived and approved policy.\n227: - \"re-run with edited policy\" action.\n228: - Deterministic proof tools (`regex_probe`, `idempotency_simulator`, etc.) shown inline in findings.\n\n(End of file - total 228 lines)\n</content>",
+            "title": "llm-docs/local-review-ui-policy-workflow.md",
+            "metadata": {
+              "preview": "# Local Review UI: Policy-First Workflow + Secure Local Auth\n\n## Why this exists\n\nNimbus review quality depends heavily on policy quality. Current CLI-first flow can produce noise when policy extraction is imperfect. This document defines a policy-first local UI workflow and a secure local authentication model so only the local runner can access the review UI session.\n\n## Product goal\n\nCreate a single guided experience:\n\n1. User runs `nimbus review create`.\n2. Local UI opens and shows policy derivation in progress.\n3. User reviews/edits policy (goal, must-not, preferences/constraints).\n4. User approves policy.\n5. Review executes using approved policy.\n6. UI streams lifecycle/events and final findings.\n\nThis is intentionally not split into unrelated routes/commands from the user perspective; it should feel like one end-to-end wizard.\n\n---",
+              "truncated": false,
+              "loaded": []
+            },
+            "time": {
+              "start": 1774232964723,
+              "end": 1774232964727
+            }
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "fc_0c5387c196c34c000169c0a58472c08198b9cb9c2bf4beb465"
+            }
+          },
+          "id": "prt_d18868daf001AB2AusgX7lMb8B",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18868922001Em1u4KJycel1Au"
+        },
+        {
+          "type": "step-finish",
+          "reason": "tool-calls",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "cost": 0.00306145,
+          "tokens": {
+            "total": 9640,
+            "input": 239,
+            "output": 57,
+            "reasoning": 15,
+            "cache": {
+              "read": 9344,
+              "write": 0
+            }
+          },
+          "id": "prt_d18868eb00012Ry4VeJroCP2qs",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18868922001Em1u4KJycel1Au"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1774232964900,
+          "completed": 1774232974695
+        },
+        "parentID": "msg_d18867326001RYBUG1gwYkz3t7",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.0162631,
+        "tokens": {
+          "total": 12363,
+          "input": 2306,
+          "output": 585,
+          "reasoning": 170,
+          "cache": {
+            "read": 9472,
+            "write": 0
+          }
+        },
+        "variant": "high",
+        "finish": "stop",
+        "id": "msg_d18868f24001AiQM4nkbFk621m",
+        "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "id": "prt_d188691f3001cNAv8UQcb04Mu1",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18868f24001AiQM4nkbFk621m"
+        },
+        {
+          "type": "reasoning",
+          "text": "**Summarizing local-review-ui-policy-workflow.md**\n\n- Defines the main workflow for local review UI policy enforcement, detailing how policies are loaded, evaluated, and applied.\n- Describes integration with the API layer to fetch and update policy states dynamically.\n- Explains acceptance criteria for policy decisions, including user prompts and fallback behaviors.\n- Highlights security measures ensuring policy integrity and preventing unauthorized overrides.\n- Emphasizes logging and audit trails to track policy evaluation events for compliance.\n- Notes potential risks around timing delays in policy propagation affecting UI responsiveness.\n- Points out strong modular design allowing easy extension and customization of policies.\n- Suggests monitoring real-world policy impact to identify unforeseen gaps or conflicts early.",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0370c24342ce4f480169c0a585881c819a91c9338e9e793587",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1774232965619,
+            "end": 1774232971111
+          },
+          "id": "prt_d188691f3002q5VYI5s8xmpgtH",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18868f24001AiQM4nkbFk621m"
+        },
+        {
+          "type": "text",
+          "text": "I reviewed `llm-docs/local-review-ui-policy-workflow.md`.\n\n- It proposes a **single end-to-end “policy-first” local review flow** for `nimbus review create`: derive policy, let user edit, approve it, run review, then stream results in the same UI experience.\n- The main problem it addresses is **CLI noise from imperfect policy extraction**; solution is making policy approval an explicit gate before analysis starts.\n- It defines strict security requirements: **local-runner-only access**, **least-privilege run-scoped sessions**, and **no long-lived worker credentials in the browser**.\n- Recommended auth design is: bind server to `127.0.0.1`, generate a **single-use short-TTL bootstrap token**, exchange it for an **HttpOnly SameSite=Strict cookie**, scope session claims to current run/review only, revoke on exit/inactivity, and enforce **CSRF + Origin checks** on mutating routes.\n- UX spec is 5 steps:  \n  1) derive `goal`/`must not`/`preferences`,  \n  2) edit and track `derivedPolicy` vs `approvedPolicyDraft`,  \n  3) approve and hash policy (`approvedPolicySha256`),  \n  4) run review with live lifecycle events,  \n  5) show findings/proof/raw events.\n- It suggests local-only API endpoints for session exchange, run state, policy derive/approve, review start, events (SSE), and final result, with **run-scoped authorization on every endpoint**.\n- Reproducibility rules: include `approvedPolicySha256` in idempotency; same idempotency key + different policy hash must conflict; store both derived and approved policies for audit.\n- MVP acceptance criteria include: UI opens from `nimbus review create`, policy must be approved before run, live timeline works, localhost-only access by default, and **no historical review access** in default run-scoped mode.",
+          "time": {
+            "start": 1774232974513,
+            "end": 1774232974513
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "msg_0370c24342ce4f480169c0a58b0fbc819aa3bfdcdb80aaee46"
+            }
+          },
+          "id": "prt_d1886a768001xR6auRH7Y5szVb",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18868f24001AiQM4nkbFk621m"
+        },
+        {
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "cost": 0.0162631,
+          "tokens": {
+            "total": 12363,
+            "input": 2306,
+            "output": 585,
+            "reasoning": 170,
+            "cache": {
+              "read": 9472,
+              "write": 0
+            }
+          },
+          "id": "prt_d1886b4e40013SOH43ykTC3Fis",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18868f24001AiQM4nkbFk621m"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "user",
+        "time": {
+          "created": 1774237112336
+        },
+        "summary": {
+          "diffs": []
+        },
+        "agent": "build",
+        "model": {
+          "providerID": "opencode",
+          "modelID": "gpt-5.3-codex"
+        },
+        "variant": "high",
+        "id": "msg_d18c5d7f7001EFVbTscVA7HN3r",
+        "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7"
+      },
+      "parts": [
+        {
+          "type": "text",
+          "text": "I want you to interview me, ask as many questions as you need to lock this down and give you enough confidence to build this whole thing out on your own. I want you to break up everything in terms of vertical slices. Ask me questions about the experience, technical details, preferences etc etc. think deeply, do not ask obvious questions.\n\nI want to start off with the authentication layer. Getting that right the first time is the most important part to me",
+          "id": "prt_d18c5d7f9001fVBVC1dI1ZRrIL",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18c5d7f7001EFVbTscVA7HN3r"
+        }
+      ]
+    },
+    {
+      "info": {
+        "role": "assistant",
+        "time": {
+          "created": 1774237112351,
+          "completed": 1774237173735
+        },
+        "parentID": "msg_d18c5d7f7001EFVbTscVA7HN3r",
+        "modelID": "gpt-5.3-codex",
+        "providerID": "opencode",
+        "mode": "build",
+        "agent": "build",
+        "path": {
+          "cwd": "/Users/nickdejesus/Code/nimbus",
+          "root": "/Users/nickdejesus/Code/nimbus"
+        },
+        "cost": 0.09415,
+        "tokens": {
+          "total": 15330,
+          "input": 12160,
+          "output": 3170,
+          "reasoning": 2035,
+          "cache": {
+            "read": 0,
+            "write": 0
+          }
+        },
+        "variant": "high",
+        "finish": "stop",
+        "id": "msg_d18c5d81f001iK51187X0Oqse0",
+        "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7"
+      },
+      "parts": [
+        {
+          "type": "step-start",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "id": "prt_d18c5dc52001dKT1EiDYSAcu21",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18c5d81f001iK51187X0Oqse0"
+        },
+        {
+          "type": "reasoning",
+          "text": "",
+          "metadata": {
+            "opencode": {
+              "itemId": "rs_0efdbb21f659969a0169c0b5b978ac81989cef0a97f1377a65",
+              "reasoningEncryptedContent": "REDACTED"
+            }
+          },
+          "time": {
+            "start": 1774237113616,
+            "end": 1774237155594
+          },
+          "id": "prt_d18c5dd10001H2F3rtephqTqBn",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18c5d81f001iK51187X0Oqse0"
+        },
+        {
+          "type": "text",
+          "text": "Love this approach. If auth is right, everything else becomes easier to trust.\n\nI’ll run this as an auth interview in vertical slices. This is Round 1 (architecture-lock questions). After your answers, I’ll do a shorter Round 2 for edge cases only.\n\n**Slice 1 — Threat Boundary**\n- `S1.1` Are we protecting against only remote/network attackers, or also other local OS users on the same machine?\n- `S1.2` Should access through SSH port forwarding/tunnels be explicitly blocked, even if it still resolves to localhost?\n- `S1.3` Do you want browser extensions considered in-scope attackers, or out-of-scope (pragmatic trust in user’s browser)?\n- `S1.4` Is this expected to run in shared CI/devbox environments, or only personal developer machines?\n\n**Slice 2 — Bootstrap Token Design**\n- `S2.1` Should bootstrap token be opaque random only, or cryptographically signed with embedded claims (`runId`, expiry, nonce)?\n- `S2.2` Should token be bound to exact `runId + local port + CLI process identity`, so token reuse across restarted runs always fails?\n- `S2.3` If two tabs race the same bootstrap URL, should first win and all others hard-fail, or should others attach to same session?\n- `S2.4` If bootstrap expires before exchange, should UX require rerunning `nimbus review create`, or allow CLI to mint a fresh token in-place?\n\n**Slice 3 — Session Model**\n- `S3.1` Do you prefer server-side session state (opaque session ID cookie) vs stateless signed cookie with claims?\n- `S3.2` Should multiple tabs in same browser profile share one session (likely yes), or force single-tab semantics?\n- `S3.3` What exact timeouts do you want: inactivity timeout and absolute max lifetime?\n- `S3.4` Should sessions survive local server restart (persistent store), or always die on restart (memory-only)?\n\n**Slice 4 — Authorization Granularity**\n- `S4.1` Should we enforce phase-based capability transitions (e.g., after review starts, policy edit/approve endpoints become permanently forbidden)?\n- `S4.2` After run completion, should read-only result access remain until CLI exits, or revoke everything immediately on completion?\n- `S4.3` If future workflow supports retries/re-runs inside one CLI invocation, should that be same session scope or forced new auth handshake?\n- `S4.4` Do you want explicit authorization matrix per endpoint/state written now (deny-by-default), or inferred from code flow?\n\n**Slice 5 — CSRF, Origin, and Localhost Hardening**\n- `S5.1` Allowed origin policy: only exact `http://127.0.0.1:<port>`, or include `http://localhost:<port>` too?\n- `S5.2` CSRF strategy preference: synchronizer token (server-stored) or double-submit cookie token?\n- `S5.3` Should we strictly validate `Host` header to mitigate DNS rebinding tricks on `localhost` aliases?\n- `S5.4` Do you want CORS completely disabled for all local endpoints (same-origin only, no exceptions)?\n\n**Slice 6 — Upstream Credential Containment**\n- `S6.1` Confirm: browser must never receive worker/provider tokens even transiently in error payloads or debug endpoints.\n- `S6.2` Should local server response payloads redact sensitive upstream metadata (provider request IDs, model internals, file paths) by default?\n- `S6.3` For diagnostics, do you want a privileged “verbose mode” gated by CLI flag, or hard no verbose sensitive data in UI ever?\n- `S6.4` Should upstream auth material be loaded once at startup or resolved per request (better rotation, slightly more complexity)?\n\n**Slice 7 — Revocation and Process Lifecycle**\n- `S7.1` On `SIGINT`/normal CLI exit: immediate revoke + server shutdown, or grace period to let UI show final state?\n- `S7.2` On CLI crash: should browser session become invalid within heartbeat timeout (e.g., 5–10s) via runner liveness checks?\n- `S7.3` Do you want manual revocation (`nimbus review revoke` / UI “End session now”) in MVP or later?\n- `S7.4` If local server survives unexpectedly (orphan process), should it self-terminate unless runner heartbeat is present?\n\n**Slice 8 — Security Verification Gates**\n- `S8.1` What must block merge: unit tests only, integration tests with real browser flow, or adversarial security tests too?\n- `S8.2` Do you want a formal threat model doc + checklist signoff as required artifact for MVP?\n- `S8.3` Should we add abuse-rate controls on `/local/session/exchange` (attempt limits, jitter delays), even on localhost?\n- `S8.4` Any compliance/audit requirements now (event logs retained, PII constraints), or purely engineering-grade security?\n\nIf you answer in `Sx.y: ...` format, I can immediately convert your answers into:\n1) a locked auth spec,  \n2) endpoint auth matrix,  \n3) implementation plan as vertical slices with test gates.",
+          "time": {
+            "start": 1774237173545,
+            "end": 1774237173545
+          },
+          "metadata": {
+            "opencode": {
+              "itemId": "msg_0efdbb21f659969a0169c0b5e344708198ad042134eabde4b2"
+            }
+          },
+          "id": "prt_d18c6810d001aFQprkaF2XHDN2",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18c5d81f001iK51187X0Oqse0"
+        },
+        {
+          "type": "step-finish",
+          "reason": "stop",
+          "snapshot": "513076f6e1fc9d211a2a0e2b298609f91693c0dd",
+          "cost": 0.09415,
+          "tokens": {
+            "total": 15330,
+            "input": 12160,
+            "output": 3170,
+            "reasoning": 2035,
+            "cache": {
+              "read": 0,
+              "write": 0
+            }
+          },
+          "id": "prt_d18c6c75a001K0xDL8mqQYdKh9",
+          "sessionID": "ses_2e7798cf4ffe51qGR1tS3y3sM7",
+          "messageID": "msg_d18c5d81f001iK51187X0Oqse0"
+        }
+      ]
+    }
+  ]
+}
