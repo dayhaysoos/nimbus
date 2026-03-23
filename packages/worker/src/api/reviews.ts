@@ -972,7 +972,6 @@ export async function handleCreateReviewPolicy(
     policy: summary ?? {
       goal: null,
       prohibitions: [],
-      riskFocus: [],
       constraints: [],
     },
     source: summary ? 'model_or_fallback' : 'empty',

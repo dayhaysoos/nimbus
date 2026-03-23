@@ -85,7 +85,6 @@ Return only a JSON object with no surrounding prose:
 {
   "goal": string or null,
   "prohibitions": string[],
-  "riskFocus": string[],
   "constraints": string[]
 }
 
@@ -94,11 +93,6 @@ Field guidance:
   If unclear, return null.
 - prohibitions: things the developer explicitly said must
   not happen. Max 5 items.
-- riskFocus: areas the developer flagged as risky or
-  concerning with explicit risk language (for example:
-  risk, concern, worry, caution, regression). Max 5 items.
-  Include recurring themes only if they were explicitly
-  framed as risky or concerning at least once.
 - constraints: preferences, requirements, or boundaries
   the developer stated they were working within. Max 5 items.
 
@@ -178,11 +172,10 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
   const summary: ReviewSessionIntentSummary = {
     goal,
     prohibitions: normalizeList(record.prohibitions),
-    riskFocus: normalizeList(record.riskFocus),
     constraints: normalizeList(record.constraints),
   };
 
-  if (!summary.goal && summary.prohibitions.length === 0 && summary.riskFocus.length === 0 && summary.constraints.length === 0) {
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.constraints.length === 0) {
     return null;
   }
 
@@ -202,7 +195,6 @@ function deriveIntentSummaryFallback(
 
   let goal: string | null = null;
   const prohibitions: string[] = [];
-  const riskFocus: string[] = [];
   const constraints: string[] = [];
 
   for (const line of lines) {
@@ -218,12 +210,6 @@ function deriveIntentSummaryFallback(
       continue;
     }
 
-    const riskMatch = line.match(/^risk\s*focus\s*:\s*(.+)$/i);
-    if (riskMatch?.[1]?.trim()) {
-      riskFocus.push(riskMatch[1].trim());
-      continue;
-    }
-
     const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
     if (constraintMatch?.[1]?.trim()) {
       constraints.push(constraintMatch[1].trim());
@@ -233,11 +219,10 @@ function deriveIntentSummaryFallback(
   const summary: ReviewSessionIntentSummary = {
     goal,
     prohibitions: uniqueStrings(prohibitions),
-    riskFocus: uniqueStrings(riskFocus),
     constraints: uniqueStrings(constraints),
   };
 
-  if (!summary.goal && summary.prohibitions.length === 0 && summary.riskFocus.length === 0 && summary.constraints.length === 0) {
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.constraints.length === 0) {
     return null;
   }
 

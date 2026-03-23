@@ -661,14 +661,12 @@ export async function runReviewRunnerTests(): Promise<void> {
         intentSummary?: {
           goal: string | null;
           prohibitions: string[];
-          riskFocus: string[];
           constraints: string[];
         };
       };
     };
     assert.equal(report.provenance?.intentSummary?.goal, 'Harden auth checks for privileged API routes.');
     assert.deepEqual(report.provenance?.intentSummary?.prohibitions ?? [], ['Do not introduce new unauthenticated paths.']);
-    assert.deepEqual(report.provenance?.intentSummary?.riskFocus ?? [], ['Token validation bypass during middleware refactors.']);
     assert.deepEqual(report.provenance?.intentSummary?.constraints ?? [], ['Keep existing API response shapes stable.']);
   }
 

@@ -345,7 +345,6 @@ function sanitizePromptInput(input: ReviewAgentPromptInput): ReviewAgentPromptIn
     ? {
         goal: rawIntentSummary.goal ? redactReviewText(rawIntentSummary.goal) : null,
         prohibitions: rawIntentSummary.prohibitions.map((item) => redactReviewText(item) ?? '').filter(Boolean),
-        riskFocus: rawIntentSummary.riskFocus.map((item) => redactReviewText(item) ?? '').filter(Boolean),
         constraints: rawIntentSummary.constraints.map((item) => redactReviewText(item) ?? '').filter(Boolean),
       }
     : null;
@@ -392,9 +391,6 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
         input.intentSummary.prohibitions.length > 0
           ? `Prohibitions:\n${input.intentSummary.prohibitions.map((item) => `- ${item}`).join('\n')}`
           : 'Prohibitions: None stated',
-        input.intentSummary.riskFocus.length > 0
-          ? `Risk focus areas:\n${input.intentSummary.riskFocus.map((item) => `- ${item}`).join('\n')}`
-          : 'Risk focus areas: None stated',
         input.intentSummary.constraints.length > 0
           ? `Constraints:\n${input.intentSummary.constraints.map((item) => `- ${item}`).join('\n')}`
           : 'Constraints: None stated',

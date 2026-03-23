@@ -410,7 +410,7 @@ function annotateIntentLine(line: string): string {
     return `Constraint: ${line}`;
   }
   if (/(security|auth|token|secret|rollback|data loss|migration|breaking)/i.test(line)) {
-    return `Risk focus: ${line}`;
+    return `Constraint: ${line}`;
   }
   if (/(goal|intent|implement|fix|add|change)/i.test(line)) {
     return `Goal signal: ${line}`;

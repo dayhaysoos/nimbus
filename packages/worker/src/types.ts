@@ -625,7 +625,6 @@ export interface ReviewIntentSummary {
 export interface ReviewSessionIntentSummary {
   goal: string | null;
   prohibitions: string[];
-  riskFocus: string[];
   constraints: string[];
 }
 

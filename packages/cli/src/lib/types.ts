@@ -302,7 +302,6 @@ export interface ReviewRunResponse {
     intentSummary?: {
       goal: string | null;
       prohibitions: string[];
-      riskFocus: string[];
       constraints: string[];
     };
     promptSummary: string | null;
@@ -326,7 +325,6 @@ export interface ReviewPolicyResponse {
   policy: {
     goal: string | null;
     prohibitions: string[];
-    riskFocus: string[];
     constraints: string[];
   };
   source: 'model_or_fallback' | 'empty';

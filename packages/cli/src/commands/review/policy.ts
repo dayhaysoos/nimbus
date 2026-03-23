@@ -5,7 +5,6 @@ import { validateReviewCommitCheckpoint, validateReviewEntireIntentContext } fro
 function renderPolicyText(policy: {
   goal: string | null;
   prohibitions: string[];
-  riskFocus: string[];
   constraints: string[];
 }): string {
   const lines: string[] = [];
@@ -23,7 +22,6 @@ function renderPolicyText(policy: {
   };
 
   appendList('Prohibitions', policy.prohibitions);
-  appendList('Risk Focus', policy.riskFocus);
   appendList('Constraints', policy.constraints);
   return lines.join('\n');
 }
