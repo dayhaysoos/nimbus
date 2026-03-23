@@ -5,6 +5,7 @@ import type {
   ReviewCreateResponse,
   ReviewEventEnvelope,
   ReviewGetResponse,
+  ReviewPolicyResponse,
   WorkspaceCreateResponse,
   WorkspaceDiffResponse,
   WorkspaceFileListResponse,
@@ -454,8 +455,11 @@ export async function createReview(
       includeValidationEvidence?: boolean;
     };
     model?: string;
-    provenance?: {
+    provenance: {
       note?: string | null;
+      repo: string;
+      branch: string;
+      intentSummaryModel?: string;
       sessionIds?: string[];
       transcriptUrl?: string | null;
       intentSessionContext?: string[];
@@ -496,6 +500,30 @@ export async function createReview(
   }
 
   return response.json() as Promise<ReviewCreateResponse>;
+}
+
+export async function createReviewPolicy(
+  workerUrl: string,
+  payload: {
+    rawSessionPrompts: string;
+    intentSessionContext?: string[];
+    model?: string;
+  }
+): Promise<ReviewPolicyResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/policy`, {
+    method: 'POST',
+    headers: withReviewHeaders({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<ReviewPolicyResponse>;
 }
 
 export async function createAdminApiKey(

@@ -58,6 +58,7 @@ export interface Env {
   AGENT_PROVIDER?: string;
   AGENT_MODEL?: string;
   REVIEW_MODEL?: string;
+  REVIEW_INTENT_SUMMARY_MODEL?: string;
   AGENT_SDK_URL?: string;
   AGENT_SDK_AUTH_TOKEN?: string;
   AGENT_ENDPOINT?: Fetcher;
@@ -505,12 +506,16 @@ export interface ReviewFindingLocation {
 }
 
 export interface ReviewFinding {
+  sequence?: number;
   severity: ReviewFindingSeverityV2;
   category: ReviewFindingCategory;
   passType: ReviewFindingPassType;
   locations: ReviewFindingLocation[];
   description: string;
   suggestedFix: string;
+  failingScenario?: string;
+  evidence?: string;
+  guardGap?: string;
 }
 
 export interface ReviewFindingLocationV2 {
@@ -520,12 +525,16 @@ export interface ReviewFindingLocationV2 {
 }
 
 export interface ReviewFindingV2 {
+  sequence?: number;
   severity: ReviewFindingSeverityV2;
   category: ReviewFindingCategory;
   passType: ReviewFindingPassType;
   locations: ReviewFindingLocationV2[];
   description: string;
   suggestedFix: string;
+  failingScenario?: string;
+  evidence?: string;
+  guardGap?: string;
 }
 
 export interface ReviewAnalysisOutputV2 {
@@ -616,11 +625,12 @@ export interface ReviewIntentSummary {
 export interface ReviewSessionIntentSummary {
   goal: string | null;
   prohibitions: string[];
-  riskFocus: string[];
   constraints: string[];
 }
 
 export interface ReviewProvenanceSummary {
+  repo: string;
+  branch: string;
   sessionIds: string[];
   policyItems: string[];
   rawSessionPrompts?: string | null;
@@ -688,6 +698,8 @@ export interface ReviewRunRecord {
   request_payload_json: string;
   request_payload_sha256: string;
   provenance_json: string;
+  repo: string;
+  branch: string;
   last_event_seq: number;
   attempt_count: number;
   started_at: string | null;

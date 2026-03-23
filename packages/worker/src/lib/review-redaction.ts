@@ -2,7 +2,7 @@ const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
 const DB_CONNECTION_STRING_PATTERN = /\b(postgres|mysql|mongodb|redis):\/\/[^\s"'`]+/gi;
 const INTERNAL_HOSTNAME_PATTERN = /\b(?:[a-z0-9-]+\.)+(?:internal|local|corp|lan)\b/gi;
 const EMAIL_ADDRESS_PATTERN = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
-const POLICY_PREFIX_PATTERN = /^(prohibition|risk focus)\s*:/i;
+const POLICY_PREFIX_PATTERN = /^(prohibition)\s*:/i;
 const POLICY_LIST_ITEM_PATTERN = /^(-|\d+[.):-]?)/;
 const POLICY_MAX_CHARS = 180;
 

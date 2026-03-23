@@ -17,6 +17,7 @@ import {
 } from '../lib/db.js';
 import { createReviewQueueMessage } from '../lib/review-queue.js';
 import { canAccessAccount } from '../lib/authz.js';
+import { summarizeReviewIntentPolicy } from '../lib/review-runner.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -353,6 +354,42 @@ function normalizeLocalCochange(value: unknown): {
   };
 }
 
+function normalizeRepoSlug(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined;
+  }
+  if (value.length > 255) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed) ? trimmed : undefined;
+}
+
+function normalizeBranchRef(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined;
+  }
+  if (value.length > 255) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeIntentSummaryModel(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 120) {
+    return undefined;
+  }
+  return trimmed;
+}
+
 function readReviewGithubTokenHeader(request: Request): string | null {
   const value = request.headers.get('X-Review-Github-Token');
   return typeof value === 'string' && value.trim() ? value.trim() : null;
@@ -410,6 +447,8 @@ function buildReviewRequestPayload(input: {
   policy: Record<string, unknown>;
   format: Record<string, unknown>;
   provenance: Record<string, unknown>;
+  repo: string;
+  branch: string;
   model: string | undefined;
 }) {
   const note = typeof input.provenance.note === 'string' && input.provenance.note.trim()
@@ -435,6 +474,7 @@ function buildReviewRequestPayload(input: {
     typeof input.provenance.rawSessionPrompts === 'string' && input.provenance.rawSessionPrompts.trim()
       ? input.provenance.rawSessionPrompts.trim().slice(0, 6000)
       : null;
+  const intentSummaryModel = normalizeIntentSummaryModel(input.provenance.intentSummaryModel);
   const commitSha = typeof input.provenance.commitSha === 'string' && input.provenance.commitSha.trim()
     ? input.provenance.commitSha.trim()
     : undefined;
@@ -506,6 +546,7 @@ function buildReviewRequestPayload(input: {
       ...(sessionIds.length > 0 ? { sessionIds } : {}),
       ...(intentSessionContext.length > 0 ? { intentSessionContext } : {}),
       ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
+      ...(intentSummaryModel ? { intentSummaryModel } : {}),
       ...(commitSha ? { commitSha } : {}),
       ...(commitDiffPatch ? { commitDiffPatch } : {}),
       ...(commitDiffPatchSha256 ? { commitDiffPatchSha256 } : {}),
@@ -516,6 +557,8 @@ function buildReviewRequestPayload(input: {
       ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),
       ...(contextResolutionResolvedCommitSha ? { contextResolutionResolvedCommitSha } : {}),
       ...(contextResolutionResolvedCommitMessage ? { contextResolutionResolvedCommitMessage } : {}),
+      repo: input.repo,
+      branch: input.branch,
       ...(localCochange ? { localCochange } : {}),
     },
     ...(model ? { model } : {}),
@@ -571,115 +614,6 @@ function buildReviewRequestPayload(input: {
     requestPayload: normalized,
     idempotencyPayload: withSortedKeys(idempotencyPayload),
   };
-}
-
-function buildLegacyReviewRequestPayload(input: {
-  workspaceId: string;
-  deploymentId: string;
-  policy: Record<string, unknown>;
-  format: Record<string, unknown>;
-}) {
-  return {
-    target: {
-      type: 'workspace_deployment',
-      workspaceId: input.workspaceId,
-      deploymentId: input.deploymentId,
-    },
-    mode: 'report_only',
-    policy: {
-      severityThreshold:
-        typeof input.policy.severityThreshold === 'string' && input.policy.severityThreshold.trim()
-          ? input.policy.severityThreshold.trim()
-          : 'low',
-      maxFindings: typeof input.policy.maxFindings === 'number' && Number.isFinite(input.policy.maxFindings)
-        ? Math.max(1, Math.min(500, Math.floor(input.policy.maxFindings)))
-        : 100,
-      includeProvenance: input.policy.includeProvenance !== false,
-      includeValidationEvidence: input.policy.includeValidationEvidence !== false,
-    },
-    format: {
-      primary: typeof input.format.primary === 'string' && input.format.primary.trim() ? input.format.primary.trim() : 'json',
-      includeMarkdownSummary: input.format.includeMarkdownSummary !== false,
-    },
-    provenance: {
-      trigger: 'api',
-    },
-  };
-}
-
-function hasExtendedReviewIdempotencyInputs(input: {
-  provenance: Record<string, unknown>;
-  model: string | undefined;
-}): boolean {
-  if (typeof input.model === 'string' && input.model.trim()) {
-    return true;
-  }
-  const provenance = input.provenance;
-  if (typeof provenance.note === 'string' && provenance.note.trim()) {
-    return true;
-  }
-  if (typeof provenance.transcriptUrl === 'string' && provenance.transcriptUrl.trim()) {
-    return true;
-  }
-  if (typeof provenance.commitSha === 'string' && provenance.commitSha.trim()) {
-    return true;
-  }
-  if (typeof provenance.commitDiffPatch === 'string' && provenance.commitDiffPatch.trim()) {
-    return true;
-  }
-  if (typeof provenance.commitDiffPatchSha256 === 'string' && provenance.commitDiffPatchSha256.trim()) {
-    return true;
-  }
-  if (provenance.commitDiffPatchTruncated === true) {
-    return true;
-  }
-  if (
-    typeof provenance.commitDiffPatchOriginalChars === 'number' &&
-    Number.isFinite(provenance.commitDiffPatchOriginalChars) &&
-    provenance.commitDiffPatchOriginalChars > 0
-  ) {
-    return true;
-  }
-  if (provenance.contextResolution === 'branch_fallback' || provenance.contextResolution === 'direct') {
-    return true;
-  }
-  if (
-    typeof provenance.contextResolutionOriginalCheckpointId === 'string' &&
-    provenance.contextResolutionOriginalCheckpointId.trim()
-  ) {
-    return true;
-  }
-  if (
-    typeof provenance.contextResolutionResolvedCheckpointId === 'string' &&
-    provenance.contextResolutionResolvedCheckpointId.trim()
-  ) {
-    return true;
-  }
-  if (
-    typeof provenance.contextResolutionResolvedCommitSha === 'string' &&
-    provenance.contextResolutionResolvedCommitSha.trim()
-  ) {
-    return true;
-  }
-  if (
-    typeof provenance.contextResolutionResolvedCommitMessage === 'string' &&
-    provenance.contextResolutionResolvedCommitMessage.trim()
-  ) {
-    return true;
-  }
-  if (Array.isArray(provenance.sessionIds) && provenance.sessionIds.some((item) => typeof item === 'string' && item.trim())) {
-    return true;
-  }
-  if (
-    Array.isArray(provenance.intentSessionContext) &&
-    provenance.intentSessionContext.some((item) => typeof item === 'string' && item.trim())
-  ) {
-    return true;
-  }
-  if (normalizeLocalCochange(provenance.localCochange)) {
-    return true;
-  }
-  return false;
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -784,32 +718,36 @@ export async function handleCreateReview(
         400
       );
     }
+    const reviewRepo = normalizeRepoSlug(provenance.repo);
+    const reviewBranch = normalizeBranchRef(provenance.branch);
+    if (!reviewRepo || !reviewBranch) {
+      return jsonResponse(
+        {
+          error: 'Missing required provenance.repo or provenance.branch',
+          code: 'invalid_review_provenance',
+        },
+        400
+      );
+    }
+
     const { requestPayload, idempotencyPayload } = buildReviewRequestPayload({
       workspaceId,
       deploymentId,
       policy,
       format,
       provenance,
+      repo: reviewRepo,
+      branch: reviewBranch,
       model,
     });
     const sanitizedRequestPayload = stripSensitiveTokenFields(requestPayload) as Record<string, unknown>;
 
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));
-    const requestPayloadSha256Aliases: string[] = [];
-    if (!hasExtendedReviewIdempotencyInputs({ provenance, model })) {
-      const legacyRequestPayloadSha256 = await sha256Hex(
-        JSON.stringify(buildLegacyReviewRequestPayload({ workspaceId, deploymentId, policy, format }))
-      );
-      if (legacyRequestPayloadSha256 !== requestPayloadSha256) {
-        requestPayloadSha256Aliases.push(legacyRequestPayloadSha256);
-      }
-    }
     const existingReview = await getReviewRunByIdempotency(
       env.DB,
       workspaceId,
       idempotencyKey,
-      requestPayloadSha256,
-      requestPayloadSha256Aliases
+      requestPayloadSha256
     );
     if (existingReview) {
       const created = { review: existingReview, reused: true };
@@ -896,13 +834,14 @@ export async function handleCreateReview(
       idempotencyKey,
       requestPayload: sanitizedRequestPayload,
       requestPayloadSha256,
-      requestPayloadSha256Aliases,
       // Keep review ownership aligned to the workspace owner so admin-triggered
       // reviews stay visible to the owning account in hosted mode.
       accountId: workspaceAccountId,
       provenance: {
         promptSummary: `Review deployment ${deploymentId} for workspace ${workspaceId}`,
       },
+      repo: reviewRepo,
+      branch: reviewBranch,
     });
 
     if (!created.reused) {
@@ -982,6 +921,61 @@ export async function handleCreateReview(
     const message = error instanceof Error ? error.message : String(error);
     return jsonResponse({ error: `Failed to create review: ${message}` }, 500);
   }
+}
+
+export async function handleCreateReviewPolicy(
+  request: Request,
+  env: Env,
+  authContext: AuthContext
+): Promise<Response> {
+  if (authContext.isHostedMode && !authContext.isAuthenticated) {
+    return jsonResponse({ error: 'Authentication required' }, 401);
+  }
+
+  let payload: unknown;
+  try {
+    payload = await request.json();
+  } catch {
+    return jsonResponse({ error: 'Invalid JSON body' }, 400);
+  }
+
+  if (!isRecord(payload)) {
+    return jsonResponse({ error: 'Request body must be an object' }, 400);
+  }
+
+  const rawSessionPrompts =
+    typeof payload.rawSessionPrompts === 'string' && payload.rawSessionPrompts.trim()
+      ? payload.rawSessionPrompts.trim().slice(0, 24000)
+      : '';
+  if (!rawSessionPrompts) {
+    return jsonResponse({ error: 'rawSessionPrompts is required', code: 'invalid_review_policy_input' }, 400);
+  }
+
+  const intentSessionContext = Array.isArray(payload.intentSessionContext)
+    ? payload.intentSessionContext
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 50)
+    : [];
+  const intentSummaryModel = normalizeIntentSummaryModel(payload.model) ?? normalizeIntentSummaryModel(payload.intentSummaryModel);
+  const openrouterApiKey = readOpenrouterApiKeyHeader(request);
+
+  const summary = await summarizeReviewIntentPolicy(env, {
+    rawSessionPrompts,
+    intentSessionContext,
+    openrouterApiKey,
+    intentSummaryModel,
+  });
+
+  return jsonResponse({
+    policy: summary ?? {
+      goal: null,
+      prohibitions: [],
+      constraints: [],
+    },
+    source: summary ? 'model_or_fallback' : 'empty',
+  });
 }
 
 export async function handleGetReview(

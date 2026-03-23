@@ -1409,6 +1409,8 @@ export async function runReviewCommandTests(): Promise<void> {
           includeValidationEvidence?: boolean;
         };
         provenance?: {
+          repo?: string;
+          branch?: string;
           note?: string | null;
           sessionIds?: string[];
           intentSessionContext?: string[];
@@ -1419,7 +1421,10 @@ export async function runReviewCommandTests(): Promise<void> {
       assert.equal(requestBody.model, 'sonnet-4.5');
       assert.equal(requestBody.policy?.includeProvenance, false);
       assert.equal(requestBody.policy?.includeValidationEvidence, false);
-      assert.equal(requestBody.provenance, undefined);
+      assert.equal(typeof requestBody.provenance?.repo, 'string');
+      assert.equal(Boolean(requestBody.provenance?.repo?.trim()), true);
+      assert.equal(typeof requestBody.provenance?.branch, 'string');
+      assert.equal(Boolean(requestBody.provenance?.branch?.trim()), true);
     }
 
     {

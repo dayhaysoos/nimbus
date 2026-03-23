@@ -294,13 +294,14 @@ export interface ReviewRunResponse {
   };
   evidence: ReviewEvidenceItem[];
   provenance: {
+    repo: string;
+    branch: string;
     sessionIds: string[];
     policyItems: string[];
     rawSessionPrompts?: string | null;
     intentSummary?: {
       goal: string | null;
       prohibitions: string[];
-      riskFocus: string[];
       constraints: string[];
     };
     promptSummary: string | null;
@@ -318,6 +319,15 @@ export interface ReviewCreateResponse {
   status: ReviewRunStatus;
   eventsUrl: string;
   resultUrl: string;
+}
+
+export interface ReviewPolicyResponse {
+  policy: {
+    goal: string | null;
+    prohibitions: string[];
+    constraints: string[];
+  };
+  source: 'model_or_fallback' | 'empty';
 }
 
 export interface ReviewGetResponse {

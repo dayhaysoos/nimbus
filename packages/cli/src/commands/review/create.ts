@@ -8,6 +8,7 @@ import {
   getWorkerUrl,
   streamReviewEvents,
 } from '../../lib/api.js';
+import { detectRepoSlugFromGitOrigin } from '../../lib/git.js';
 import { workspaceDeployCommand } from '../workspace/deploy.js';
 import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../workspace/create.js';
 import { resolveCochangeFromLocalGit } from '../../lib/entire/context.js';
@@ -63,6 +64,70 @@ function buildIdempotencyKey(workspaceId: string, deploymentId: string): string 
   return `review-${createHash('sha256').update(seed).digest('hex').slice(0, 20)}`;
 }
 
+function normalizeBranchRefForProvenance(value: string): string | null {
+  const normalized = value.trim().replace(/^refs\/heads\//, '');
+  if (!normalized) {
+    return null;
+  }
+  if (/[\s~^:?*\[\\]/.test(normalized) || normalized.includes('..') || normalized.includes('@{')) {
+    return null;
+  }
+  if (!/^[A-Za-z0-9._\/-]+$/.test(normalized)) {
+    return null;
+  }
+  if (
+    normalized.startsWith('/') ||
+    normalized.endsWith('/') ||
+    normalized.startsWith('.') ||
+    normalized.endsWith('.') ||
+    normalized.includes('//') ||
+    normalized.includes('/.') ||
+    normalized.includes('./') ||
+    normalized.endsWith('.lock')
+  ) {
+    return null;
+  }
+  return normalized;
+}
+
+function resolveReviewGitProvenance(): { repo: string; branch: string } {
+  let branchCandidate = '';
+  try {
+    branchCandidate = new GitRepo(process.cwd()).getCurrentBranchRef() ?? '';
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not resolve current git branch: ${details}`);
+  }
+
+  let branch = normalizeBranchRefForProvenance(branchCandidate);
+
+  if (!branch) {
+    const githubHeadRef = typeof process.env.GITHUB_HEAD_REF === 'string' ? process.env.GITHUB_HEAD_REF.trim() : '';
+    if (githubHeadRef) {
+      branch = normalizeBranchRefForProvenance(githubHeadRef);
+      if (!branch) {
+        throw new Error(`GITHUB_HEAD_REF is present but invalid for branch provenance: ${githubHeadRef}`);
+      }
+    }
+  }
+
+  if (!branch) {
+    throw new Error(
+      'Could not resolve current git branch (git branch detection failed and GITHUB_HEAD_REF not set). In GitHub Actions, ensure GITHUB_HEAD_REF is available in the workflow environment.'
+    );
+  }
+
+  let repo = '';
+  try {
+    repo = detectRepoSlugFromGitOrigin();
+  } catch (error) {
+    const details = error instanceof Error ? error.message : String(error);
+    throw new Error(`Could not resolve git repo slug from origin: ${details}`);
+  }
+
+  return { repo: repo.trim(), branch };
+}
+
 export async function createReviewCommand(
   workspaceId: string,
   deploymentId: string,
@@ -71,6 +136,7 @@ export async function createReviewCommand(
     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
     maxFindings?: number;
     model?: string;
+    intentSummaryModel?: string;
     includeProvenance?: boolean;
     includeValidationEvidence?: boolean;
   }
@@ -81,6 +147,8 @@ export async function createReviewCommand(
   }
 
   await validateReviewCochangeTokenReadiness();
+
+  const gitProvenance = resolveReviewGitProvenance();
 
   const response = await createReview(workerUrl, options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId, deploymentId), {
     target: {
@@ -96,6 +164,11 @@ export async function createReviewCommand(
       includeValidationEvidence: options?.includeValidationEvidence ?? true,
     },
     model: options?.model,
+    provenance: {
+      repo: gitProvenance.repo,
+      branch: gitProvenance.branch,
+      ...(options?.intentSummaryModel?.trim() ? { intentSummaryModel: options.intentSummaryModel.trim() } : {}),
+    },
   });
 
   p.log.success(`Review queued: ${response.reviewId}`);
@@ -202,6 +275,37 @@ function deriveIdempotencyKey(base: string, scope: 'deploy' | 'review'): string 
   return `${scope}-${createHash('sha256').update(`${base}:${scope}`).digest('hex').slice(0, 20)}`;
 }
 
+async function sleep(ms: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function pollReviewUntilTerminalStatus(
+  workerUrl: string,
+  reviewId: string,
+  options?: { intervalMs?: number; timeoutMs?: number }
+): Promise<Awaited<ReturnType<typeof getReviewForCommitFlow>>> {
+  const intervalMs =
+    typeof options?.intervalMs === 'number' && Number.isFinite(options.intervalMs)
+      ? Math.max(1_000, Math.min(10_000, Math.floor(options.intervalMs)))
+      : 2_000;
+  const timeoutMs =
+    typeof options?.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
+      ? Math.max(10_000, Math.min(30 * 60_000, Math.floor(options.timeoutMs)))
+      : 10 * 60_000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const latest = await getReviewForCommitFlow(workerUrl, reviewId);
+    if (latest.review.status !== 'queued' && latest.review.status !== 'running') {
+      return latest;
+    }
+    if (Date.now() >= deadline) {
+      return latest;
+    }
+    await sleep(intervalMs);
+  }
+}
+
 function normalizeResultUrl(workerUrl: string, resultUrl: string): string {
   try {
     return new URL(resultUrl, workerUrl).toString();
@@ -245,6 +349,7 @@ export async function createReviewFromCommitCommand(
     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
     maxFindings?: number;
     model?: string;
+    intentSummaryModel?: string;
     includeProvenance?: boolean;
     includeValidationEvidence?: boolean;
     pollIntervalMs?: number;
@@ -281,10 +386,12 @@ export async function createReviewFromCommitCommand(
       }
     | null = null;
   let changedPaths: string[] = [];
+  let gitProvenance: { repo: string; branch: string } = { repo: '', branch: '' };
 
   try {
     spinner.start('Resolving checkpoint...');
     try {
+      gitProvenance = resolveReviewGitProvenance();
       const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
         baseRef: options?.baseRef,
         allowBranchCheckpointFallback: Boolean(options?.baseRef),
@@ -454,6 +561,11 @@ export async function createReviewFromCommitCommand(
               entireContextResolution?.contextResolution === 'branch_fallback'
                 ? entireContextResolution.resolvedCommitSubject
                 : undefined,
+            repo: gitProvenance.repo,
+            branch: gitProvenance.branch,
+            ...(options?.intentSummaryModel?.trim()
+              ? { intentSummaryModel: options.intentSummaryModel.trim() }
+              : {}),
             localCochange: localCochange
               ? {
                   source: localCochange.source,
@@ -518,26 +630,42 @@ export async function createReviewFromCommitCommand(
     p.log.info(`Streaming review events for ${reviewId}`);
     let terminalStatus: string | null = null;
     let lastFailureEvent: Record<string, unknown> | null = null;
-    await streamReviewEventsForCommitFlow(workerUrl, reviewId, async (event) => {
-      const line = formatEvent(event);
-      if (line) {
-        console.log(line);
-      }
-      if (
-        event.data.type === 'review_context_cochange_failed' ||
-        event.data.type === 'review_context_assembly_failed' ||
-        event.data.type === 'review_failed'
-      ) {
-        lastFailureEvent = event.data;
-      }
-      if (event.data.type === 'terminal' && typeof event.data.status === 'string') {
-        terminalStatus = event.data.status;
-      }
-    });
+    let streamErrorMessage: string | null = null;
+    try {
+      await streamReviewEventsForCommitFlow(workerUrl, reviewId, async (event) => {
+        const line = formatEvent(event);
+        if (line) {
+          console.log(line);
+        }
+        if (
+          event.data.type === 'review_context_cochange_failed' ||
+          event.data.type === 'review_context_assembly_failed' ||
+          event.data.type === 'review_failed'
+        ) {
+          lastFailureEvent = event.data;
+        }
+        if (event.data.type === 'terminal' && typeof event.data.status === 'string') {
+          terminalStatus = event.data.status;
+        }
+      });
+    } catch (error) {
+      streamErrorMessage = error instanceof Error ? error.message : String(error);
+      p.log.warning(`Event stream interrupted before terminal status: ${streamErrorMessage}`);
+    }
 
-    const final = await getReviewForCommitFlow(workerUrl, reviewId);
+    let final = await getReviewForCommitFlow(workerUrl, reviewId);
+    if (!terminalStatus && (final.review.status === 'queued' || final.review.status === 'running')) {
+      p.log.warning('Review still in progress after event stream ended; falling back to status polling.');
+      final = await pollReviewUntilTerminalStatus(workerUrl, reviewId, {
+        intervalMs: options?.pollIntervalMs,
+      });
+    }
+
     const status = typeof terminalStatus === 'string' ? terminalStatus : final.review.status;
     if (status !== 'succeeded') {
+      if (streamErrorMessage) {
+        p.log.warning(`Latest stream interruption detail: ${streamErrorMessage}`);
+      }
       throw new Error(formatReviewExecutionFailure(status, final.review, lastFailureEvent));
     }
 

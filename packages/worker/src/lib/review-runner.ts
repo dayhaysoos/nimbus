@@ -17,6 +17,7 @@ import {
   generateReviewContextId,
   getReviewRun,
   getReviewCochangeCacheBatch,
+  getHighestFindingNumberForBranch,
   getReviewRunRequestPayload,
   getWorkspace,
   getWorkspaceArtifactById,
@@ -71,19 +72,19 @@ const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
 const LARGE_DIFF_ADVISORY_THRESHOLD = 30;
 const DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const REVIEW_STALE_GRACE_MS = 60 * 1000;
-const INTENT_SUMMARY_MODEL = 'anthropic/claude-haiku-4-5';
+const INTENT_SUMMARY_MODEL = 'anthropic/claude-sonnet-4.5';
 const INTENT_SUMMARY_MAX_TOKENS = 512;
 const INTENT_SUMMARY_SYSTEM_PROMPT = `You are a staff engineer reviewing a colleague's session notes
 before conducting a code review. Your job is to extract the
 key intent signals from their notes so the reviewer understands
 what the developer was trying to do, what they were worried
 about, and what constraints they were working within.
+Prefer explicit statements over inference; do not over-generalize risk from implementation details.
 
 Return only a JSON object with no surrounding prose:
 {
   "goal": string or null,
   "prohibitions": string[],
-  "riskFocus": string[],
   "constraints": string[]
 }
 
@@ -92,10 +93,6 @@ Field guidance:
   If unclear, return null.
 - prohibitions: things the developer explicitly said must
   not happen. Max 5 items.
-- riskFocus: areas the developer flagged as risky or
-  concerning, either explicitly or by returning to them
-  repeatedly. Max 5 items. Prefer explicit statements but
-  include recurring themes even if not labeled as risks.
 - constraints: preferences, requirements, or boundaries
   the developer stated they were working within. Max 5 items.
 
@@ -106,11 +103,15 @@ Rules:
 - Keep each extracted item to one concise sentence.
 - If a category has nothing clear to extract, return an
   empty array or null.
+- If uncertain whether a signal is explicit, omit it.
+- Do not duplicate the same item across multiple categories.
 - When more than 5 candidates exist for a category,
   prioritize the most explicitly stated items over
   inferred ones.
 - Do not invent intent that is not present or implied
-  in the notes.`;
+  in the notes.
+- This summary is prioritization context for code review,
+  not direct evidence of defects.`;
 
 interface ReviewRunExecutionOptions {
   cochangeGithubToken?: string | null;
@@ -171,11 +172,57 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
   const summary: ReviewSessionIntentSummary = {
     goal,
     prohibitions: normalizeList(record.prohibitions),
-    riskFocus: normalizeList(record.riskFocus),
     constraints: normalizeList(record.constraints),
   };
 
-  if (!summary.goal && summary.prohibitions.length === 0 && summary.riskFocus.length === 0 && summary.constraints.length === 0) {
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.constraints.length === 0) {
+    return null;
+  }
+
+  return summary;
+}
+
+function deriveIntentSummaryFallback(
+  rawSessionPrompts: string,
+  intentSessionContext: string[]
+): ReviewSessionIntentSummary | null {
+  const lines = [
+    ...rawSessionPrompts.split(/\r?\n/),
+    ...intentSessionContext,
+  ]
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let goal: string | null = null;
+  const prohibitions: string[] = [];
+  const constraints: string[] = [];
+
+  for (const line of lines) {
+    const goalMatch = line.match(/^goal\s*:\s*(.+)$/i);
+    if (!goal && goalMatch?.[1]?.trim()) {
+      goal = goalMatch[1].trim();
+      continue;
+    }
+
+    const prohibitionMatch = line.match(/^prohibition\s*:\s*(.+)$/i);
+    if (prohibitionMatch?.[1]?.trim()) {
+      prohibitions.push(prohibitionMatch[1].trim());
+      continue;
+    }
+
+    const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
+    if (constraintMatch?.[1]?.trim()) {
+      constraints.push(constraintMatch[1].trim());
+    }
+  }
+
+  const summary: ReviewSessionIntentSummary = {
+    goal,
+    prohibitions: uniqueStrings(prohibitions),
+    constraints: uniqueStrings(constraints),
+  };
+
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.constraints.length === 0) {
     return null;
   }
 
@@ -185,11 +232,14 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
 async function runIntentSummarizationPrePass(
   env: Env,
   rawSessionPrompts: string,
-  options?: { openrouterApiKey?: string | null }
+  options?: { openrouterApiKey?: string | null; intentSummaryModel?: string | null }
 ): Promise<ReviewSessionIntentSummary | null> {
   const INTENT_SUMMARY_TIMEOUT_MS = 15_000;
   const envApiKey = typeof env.OPENROUTER_API_KEY === 'string' ? env.OPENROUTER_API_KEY.trim() : '';
   const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';
+  const requestModel = typeof options?.intentSummaryModel === 'string' ? options.intentSummaryModel.trim() : '';
+  const envModel = typeof env.REVIEW_INTENT_SUMMARY_MODEL === 'string' ? env.REVIEW_INTENT_SUMMARY_MODEL.trim() : '';
+  const summaryModel = requestModel || envModel || INTENT_SUMMARY_MODEL;
   const apiKey = envApiKey || requestApiKey;
   if (!apiKey) {
     console.warn('[intent-summary] pre-pass failed: OPENROUTER_API_KEY not configured');
@@ -211,7 +261,7 @@ async function runIntentSummarizationPrePass(
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: INTENT_SUMMARY_MODEL,
+            model: summaryModel,
             max_tokens: INTENT_SUMMARY_MAX_TOKENS,
             messages: [
               { role: 'system', content: INTENT_SUMMARY_SYSTEM_PROMPT },
@@ -264,6 +314,31 @@ async function runIntentSummarizationPrePass(
     console.warn(`[intent-summary] pre-pass failed: ${message}`);
     return null;
   }
+}
+
+export async function summarizeReviewIntentPolicy(
+  env: Env,
+  input: {
+    rawSessionPrompts: string;
+    intentSessionContext?: string[];
+    openrouterApiKey?: string | null;
+    intentSummaryModel?: string | null;
+  }
+): Promise<ReviewSessionIntentSummary | null> {
+  const rawSessionPrompts = input.rawSessionPrompts.trim();
+  const intentSessionContext = uniqueStrings(
+    Array.isArray(input.intentSessionContext)
+      ? input.intentSessionContext.filter((item): item is string => typeof item === 'string').map((item) => item.trim())
+      : []
+  );
+  if (!rawSessionPrompts) {
+    return null;
+  }
+  const modelSummary = await runIntentSummarizationPrePass(env, rawSessionPrompts, {
+    openrouterApiKey: input.openrouterApiKey,
+    intentSummaryModel: input.intentSummaryModel,
+  });
+  return modelSummary ?? deriveIntentSummaryFallback(rawSessionPrompts, intentSessionContext);
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -763,6 +838,13 @@ function mergeProvenance(
   const mergedIntent = Array.from(new Set([...deploymentIntent, ...reviewIntent]));
   if (mergedIntent.length > 0) {
     merged.intentSessionContext = mergedIntent;
+  }
+
+  const deploymentRawPrompts = readOptionalString(deploymentProvenance.rawSessionPrompts);
+  const reviewRawPrompts = readOptionalString(reviewProvenance.rawSessionPrompts);
+  const mergedRawPrompts = reviewRawPrompts ?? deploymentRawPrompts;
+  if (mergedRawPrompts) {
+    merged.rawSessionPrompts = mergedRawPrompts;
   }
 
   return merged;
@@ -1594,15 +1676,23 @@ async function buildWorkspaceDeploymentReport(
   const requestValidation = asRecord(deploymentRequest.validation);
   const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
   const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
-  const rawSessionPrompts =
-    typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim()
-      ? requestProvenance.rawSessionPrompts.trim()
-      : null;
-  const derivedIntentSummary = rawSessionPrompts
+  const rawSessionPromptsFromProvenance = readOptionalString(requestProvenance.rawSessionPrompts);
+  const intentSummaryModelFromProvenance = readOptionalString(requestProvenance.intentSummaryModel);
+  const rawSessionPrompts = rawSessionPromptsFromProvenance ?? (intentSessionContext.length > 0 ? intentSessionContext.join('\n') : null);
+  if (!rawSessionPrompts) {
+    throw new ReviewContextAssemblyError(
+      'review_context_prompt_history_missing',
+      'Review prompt-history context is required for intent summarization. Ensure deployment/review provenance includes rawSessionPrompts.'
+    );
+  }
+  const modelDerivedIntentSummary = rawSessionPrompts
     ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
         openrouterApiKey: readOptionalString(options?.openrouterApiKey),
+        intentSummaryModel: intentSummaryModelFromProvenance,
       })
     : null;
+  const derivedIntentSummary =
+    modelDerivedIntentSummary ?? deriveIntentSummaryFallback(rawSessionPrompts, intentSessionContext);
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
     : typeof requestProvenance.taskId === 'string'
@@ -1838,6 +1928,11 @@ async function buildWorkspaceDeploymentReport(
     requestProvenance.contextResolutionResolvedCommitMessage.trim()
       ? requestProvenance.contextResolutionResolvedCommitMessage.trim()
       : null;
+  const provenanceRepo = readOptionalString(requestProvenance.repo);
+  const provenanceBranch = readOptionalString(requestProvenance.branch);
+  if (!provenanceRepo || !provenanceBranch) {
+    throw new Error('Review provenance must include repo and branch.');
+  }
   const policyItems = extractPolicyItemsFromIntentContext(parseStringArray(requestProvenance.intentSessionContext));
 
   const report: ReviewReport = {
@@ -1849,6 +1944,8 @@ async function buildWorkspaceDeploymentReport(
     evidence,
     provenance: includeProvenance
         ? {
+          repo: provenanceRepo,
+          branch: provenanceBranch,
           sessionIds: parseStringArray(requestProvenance.sessionIds),
           policyItems,
           ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
@@ -1898,6 +1995,8 @@ async function buildWorkspaceDeploymentReport(
           advisories: advisories.length > 0 ? advisories : undefined,
         }
       : {
+          repo: provenanceRepo,
+          branch: provenanceBranch,
           sessionIds: [],
           policyItems: [],
           promptSummary: null,
@@ -2050,6 +2149,22 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
 
     const reviewContext = await assembleReviewContextBootstrap(env, review, payload, options);
     const report = await executeReviewRun(env, review, payload, reviewContext, options);
+    const payloadRecord = asRecord(payload);
+    const requestProvenance = asRecord(payloadRecord.provenance);
+    const reviewRepo = readOptionalString(requestProvenance.repo);
+    const reviewBranch = readOptionalString(requestProvenance.branch);
+    if (!reviewRepo || !reviewBranch) {
+      throw new Error('Review request payload missing required provenance.repo or provenance.branch.');
+    }
+    const findingSequenceStart = (await getHighestFindingNumberForBranch(env.DB, reviewRepo, reviewBranch)) + 1;
+    const findingsWithSequence = report.findings.map((finding, index) => ({
+      ...finding,
+      sequence: findingSequenceStart + index,
+    }));
+    const reportWithSequence: ReviewReport = {
+      ...report,
+      findings: findingsWithSequence,
+    };
     await appendReviewEvent(env.DB, {
       reviewId,
       eventType: 'review_finalize_started',
@@ -2057,7 +2172,7 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
         findingCount: report.findings.length,
       },
     });
-    await replaceReviewFindings(env.DB, reviewId, report.findings);
+    await replaceReviewFindings(env.DB, reviewId, findingsWithSequence, { startNumber: findingSequenceStart });
     await appendReviewEvent(env.DB, {
       reviewId,
       eventType: 'review_analysis_findings_persisted',
@@ -2066,8 +2181,8 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
       },
     });
     await updateReviewRunStatus(env.DB, reviewId, 'succeeded', {
-      report,
-      markdownSummary: report.markdownSummary,
+      report: reportWithSequence,
+      markdownSummary: reportWithSequence.markdownSummary,
       errorCode: null,
       errorMessage: null,
     });

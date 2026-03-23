@@ -15,7 +15,7 @@ import {
   handleGetWorkspaceDeploymentEvents,
   handleWorkspaceDeploymentPreflight,
 } from './api/workspace-deployments.js';
-import { handleCreateReview, handleGetReview, handleGetReviewEvents } from './api/reviews.js';
+import { handleCreateReview, handleCreateReviewPolicy, handleGetReview, handleGetReviewEvents } from './api/reviews.js';
 import {
   handleCreateWorkspace,
   handleCreateWorkspaceGithubFork,
@@ -101,6 +101,11 @@ export default {
     // Route: POST /api/reviews - Create review run
     if (url.pathname === '/api/reviews' && request.method === 'POST') {
       return handleCreateReview(request, env, ctx, authContext);
+    }
+
+    // Route: POST /api/reviews/policy - Summarize review policy intent
+    if (url.pathname === '/api/reviews/policy' && request.method === 'POST') {
+      return handleCreateReviewPolicy(request, env, authContext);
     }
 
     // Route: POST /api/admin/keys - Provision hosted API key
