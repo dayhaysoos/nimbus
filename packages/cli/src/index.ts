@@ -34,6 +34,7 @@ import { reviewEventsCommand } from './commands/review/events.js';
 import { showReviewCommand } from './commands/review/show.js';
 import { exportReviewCommand } from './commands/review/export.js';
 import { reviewPreflightCommand } from './commands/review/preflight.js';
+import { openReviewFromCommitCommand } from './commands/review/open.js';
 import { reviewPolicyCommand } from './commands/review/policy.js';
 import { parseArgs } from './lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
@@ -123,9 +124,11 @@ Commands:
   review show <review-id>
                        Show review status and summary
   review events <review-id>
-                      Stream review lifecycle events
+                       Stream review lifecycle events
+  review open
+                       Run one-command policy-first review flow in local UI
   review export <review-id>
-                       Export a review as markdown or json
+                        Export a review as markdown or json
   admin provision-key  Provision a hosted API key (admin only)
   repo register       Register current repository for OIDC exchange
   auth exchange       Exchange GitHub OIDC token for Nimbus JWT (GitHub Actions)
@@ -180,6 +183,7 @@ Options:
                       Suppress validation/deploy evidence in report output
   --format <type>     Review export format (markdown|json)
   --out <path>        Review export output file path
+  --port <n>          Port for local report UI server (default: 2000)
   --preflight-only   Run deploy preflight only (do not queue deploy)
   --auto-fix         Allow safe preflight/deploy remediations
   --no-dry-run       Upload source bundle and create checkpoint job
@@ -209,6 +213,8 @@ Examples:
   nimbus review policy --commit HEAD --base origin/main --model anthropic/claude-sonnet-4.5 --json
   nimbus review show rev_abcd1234
   nimbus review events rev_abcd1234
+   nimbus review open
+   nimbus review open --commit HEAD~1
   nimbus review export rev_abcd1234 --format markdown --out review.md
   nimbus admin provision-key --label "Beta User Key"
   nimbus repo register
@@ -575,7 +581,42 @@ async function main(): Promise<void> {
           break;
         }
 
-        p.log.error('Unknown review command. Use: create, preflight, policy, show, events, export');
+        if (reviewAction === 'open') {
+          const unexpectedPositional = positional[1];
+          if (typeof unexpectedPositional === 'string' && unexpectedPositional.trim()) {
+            p.log.error('Usage: nimbus review open [--commit <commit-ish>] [--port <n>] [--base <ref>] [--project-root <path>]');
+            process.exit(1);
+          }
+
+          const workspaceFlag = flags.workspace;
+          const deploymentFlag = flags.deployment;
+          if (typeof workspaceFlag === 'string' || typeof deploymentFlag === 'string') {
+            p.log.error('review open no longer accepts --workspace/--deployment. It now resolves workspace and deployment automatically from git context.');
+            process.exit(1);
+          }
+
+          const port = parsePositiveIntegerFlag(flags.port);
+          const commitFlag = flags.commit;
+          const commitish = typeof commitFlag === 'string' ? commitFlag : commitFlag === true ? 'HEAD' : 'HEAD';
+          const baseFlag = flags.base;
+          const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
+          const projectRootFlag = flags['project-root'];
+          const projectRoot = typeof projectRootFlag === 'string' && projectRootFlag.trim() ? projectRootFlag.trim() : undefined;
+          const idempotencyKeyFlag = flags['idempotency-key'];
+          const idempotencyKey = typeof idempotencyKeyFlag === 'string' && idempotencyKeyFlag.trim() ? idempotencyKeyFlag.trim() : undefined;
+
+          await openReviewFromCommitCommand({
+            port,
+            commitish,
+            baseRef,
+            projectRoot,
+            idempotencyKey,
+            pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),
+          });
+          break;
+        }
+
+        p.log.error('Unknown review command. Use: create, preflight, policy, show, events, open, export');
         process.exit(1);
       }
 

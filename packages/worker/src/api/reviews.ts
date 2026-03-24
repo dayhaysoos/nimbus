@@ -1,4 +1,4 @@
-import type { AuthContext, Env, ReviewRunStatus } from '../types.js';
+import type { AuthContext, Env, ReviewApprovedPolicy, ReviewRunStatus, ReviewSessionIntentSummary } from '../types.js';
 import {
   ReviewIdempotencyConflictError,
   appendReviewEvent,
@@ -13,11 +13,13 @@ import {
   getWorkspaceDeployment,
   hasReviewEvent,
   listReviewEvents,
+  updateReviewRunPolicy,
   updateReviewRunStatus,
 } from '../lib/db.js';
 import { createReviewQueueMessage } from '../lib/review-queue.js';
 import { canAccessAccount } from '../lib/authz.js';
 import { summarizeReviewIntentPolicy } from '../lib/review-runner.js';
+import { extractPolicyItemsFromIntentContext } from '../lib/review-redaction.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -441,6 +443,195 @@ function withSortedKeys(value: unknown): unknown {
     }, {});
 }
 
+function normalizeStringList(value: unknown, maxItems = 20): string[] {
+  return Array.isArray(value)
+    ? Array.from(
+        new Set(
+          value
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      ).slice(0, maxItems)
+    : [];
+}
+
+function normalizePolicySentence(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function extractChangedPathsFromPatch(value: unknown, maxItems = 5): string[] {
+  if (typeof value !== 'string' || !value.trim()) {
+    return [];
+  }
+  const matches = value.matchAll(/^diff --git a\/[^\n\r]+ b\/([^\n\r]+)$/gm);
+  const paths = Array.from(matches, (match) => normalizePolicySentence(match[1] ?? ''))
+    .filter(Boolean)
+    .filter((path) => path !== '/dev/null');
+  return Array.from(new Set(paths)).slice(0, maxItems);
+}
+
+function extractPolicyHintsFromProvenance(provenance: Record<string, unknown>): {
+  goal: string | null;
+  prohibitions: string[];
+  constraints: string[];
+} {
+  const intentSessionContext = Array.isArray(provenance.intentSessionContext)
+    ? provenance.intentSessionContext
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+
+  const goalCandidates: string[] = [];
+  const prohibitions: string[] = [];
+  const constraints: string[] = [];
+
+  for (const line of intentSessionContext) {
+    const goalMatch = line.match(/^goal\s*signal\s*:\s*(.+)$/i);
+    if (goalMatch) {
+      const goalText = normalizePolicySentence(goalMatch[1] ?? '');
+      if (goalText && !/^you are a code reviewer\b/i.test(goalText)) {
+        goalCandidates.push(goalText);
+      }
+      continue;
+    }
+
+    const prohibitionMatch = line.match(/^prohibition\s*:\s*(.+)$/i);
+    if (prohibitionMatch) {
+      const text = normalizePolicySentence(prohibitionMatch[1] ?? '');
+      if (text) {
+        prohibitions.push(text);
+      }
+      continue;
+    }
+
+    const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
+    if (constraintMatch) {
+      const text = normalizePolicySentence(constraintMatch[1] ?? '');
+      if (text) {
+        constraints.push(text);
+      }
+    }
+  }
+
+  if (prohibitions.length === 0 || constraints.length === 0) {
+    const policyHints = extractPolicyItemsFromIntentContext(intentSessionContext);
+    for (const hint of policyHints) {
+      if (/^prohibition\s*:/i.test(hint)) {
+        const text = normalizePolicySentence(hint.replace(/^prohibition\s*:\s*/i, ''));
+        if (text) {
+          prohibitions.push(text);
+        }
+        continue;
+      }
+    }
+  }
+
+  const rawSessionPrompts = typeof provenance.rawSessionPrompts === 'string' ? provenance.rawSessionPrompts : '';
+  const rawLines = rawSessionPrompts
+    .split(/\r?\n/)
+    .map((line) => normalizePolicySentence(line))
+    .filter(Boolean);
+  if (prohibitions.length === 0) {
+    for (const line of rawLines) {
+      if (/(?:\bdo not\b|\bdon't\b|\bmust not\b|\bnever\b|\bavoid\b)/i.test(line)) {
+        prohibitions.push(line);
+      }
+    }
+  }
+  if (constraints.length === 0) {
+    for (const line of rawLines) {
+      if (/(?:\bfocus on\b|\bprefer\b|\bensure\b|\bkeep\b|\brequire\b|\bshould\b)/i.test(line)) {
+        constraints.push(line);
+      }
+    }
+  }
+
+  if (constraints.length === 0) {
+    const changedPaths = extractChangedPathsFromPatch(provenance.commitDiffPatch, 5);
+    for (const path of changedPaths) {
+      constraints.push(`Prioritize review coverage for changed file: ${path}`);
+    }
+  }
+
+  return {
+    goal: goalCandidates[0] ?? null,
+    prohibitions: normalizeStringList(prohibitions, 5),
+    constraints: normalizeStringList(constraints, 5),
+  };
+}
+
+function normalizeReviewPolicy(value: unknown): ReviewApprovedPolicy | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const goal = typeof value.goal === 'string' && value.goal.trim() ? value.goal.trim() : null;
+  const policy: ReviewApprovedPolicy = {
+    goal,
+    prohibitions: normalizeStringList(value.prohibitions),
+    constraints: normalizeStringList(value.constraints),
+  };
+
+  if (!policy.goal && policy.prohibitions.length === 0 && policy.constraints.length === 0) {
+    return null;
+  }
+
+  return policy;
+}
+
+function policyFromIntentSummary(summary: ReviewSessionIntentSummary | null): ReviewApprovedPolicy | null {
+  if (!summary) {
+    return null;
+  }
+
+  return normalizeReviewPolicy({
+    goal: summary.goal,
+    prohibitions: summary.prohibitions,
+    constraints: summary.constraints,
+  });
+}
+
+function intentSummaryFromPolicy(policy: ReviewApprovedPolicy): ReviewSessionIntentSummary {
+  return {
+    goal: policy.goal,
+    prohibitions: policy.prohibitions,
+    constraints: policy.constraints,
+  };
+}
+
+function fallbackDerivedPolicy(input: {
+  workspaceId: string;
+  deploymentId: string;
+  provenance: Record<string, unknown>;
+}): ReviewApprovedPolicy {
+  const hints = extractPolicyHintsFromProvenance(input.provenance);
+  const note = typeof input.provenance.note === 'string' && input.provenance.note.trim() ? input.provenance.note.trim() : null;
+  const goal = hints.goal ?? note ?? `Review deployment ${input.deploymentId} for workspace ${input.workspaceId}.`;
+  return (
+    normalizeReviewPolicy({
+      goal,
+      prohibitions: hints.prohibitions,
+      constraints: hints.constraints,
+    }) ?? {
+      goal,
+      prohibitions: [],
+      constraints: [],
+    }
+  );
+}
+
+function isReviewStatusActive(status: ReviewRunStatus): boolean {
+  return (
+    status === 'policy_pending' ||
+    status === 'policy_ready' ||
+    status === 'policy_approved' ||
+    status === 'queued' ||
+    status === 'running'
+  );
+}
+
 function buildReviewRequestPayload(input: {
   workspaceId: string;
   deploymentId: string;
@@ -621,6 +812,324 @@ async function sha256Hex(input: string): Promise<string> {
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, '0'))
     .join('');
+}
+
+export async function handleDeriveReviewPolicy(
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
+
+  if (!env.REVIEWS_QUEUE || !env.ReviewRunner) {
+    return jsonResponse(
+      {
+        error: 'Review runner is unavailable',
+        code: 'review_runner_unavailable',
+      },
+      503
+    );
+  }
+
+  let createdReviewId: string | null = null;
+  try {
+    const payloadRaw = await request.text();
+    const payload = payloadRaw.trim() ? (JSON.parse(payloadRaw) as unknown) : {};
+    if (!isRecord(payload)) {
+      return jsonResponse({ error: 'Request body must be a JSON object' }, 400);
+    }
+
+    const target = isRecord(payload.target) ? payload.target : {};
+    const workspaceId =
+      typeof payload.workspaceId === 'string' && payload.workspaceId.trim()
+        ? payload.workspaceId.trim()
+        : typeof target.workspaceId === 'string' && target.workspaceId.trim()
+          ? target.workspaceId.trim()
+          : '';
+    const deploymentId =
+      typeof payload.deploymentId === 'string' && payload.deploymentId.trim()
+        ? payload.deploymentId.trim()
+        : typeof target.deploymentId === 'string' && target.deploymentId.trim()
+          ? target.deploymentId.trim()
+          : '';
+
+    if (!workspaceId || !deploymentId) {
+      return jsonResponse({ error: 'workspaceId and deploymentId are required' }, 400);
+    }
+
+    const workspaceAccessResponse = await requireWorkspaceAccess(env, workspaceId, effectiveAuthContext);
+    if (workspaceAccessResponse) {
+      return workspaceAccessResponse;
+    }
+
+    const workspace = await getWorkspace(env.DB, workspaceId);
+    if (!workspace || workspace.status === 'deleted') {
+      return jsonResponse({ error: 'Workspace not found' }, 404);
+    }
+
+    const deployment = await getWorkspaceDeployment(env.DB, workspaceId, deploymentId);
+    if (!deployment) {
+      return jsonResponse({ error: 'Deployment not found' }, 404);
+    }
+    if (deployment.status !== 'succeeded') {
+      return jsonResponse(
+        {
+          error: 'Review target deployment must be succeeded',
+          code: 'deployment_not_reviewable',
+        },
+        409
+      );
+    }
+
+    const workspaceAccountId = await getWorkspaceAccountId(env.DB, workspaceId);
+    if (workspaceAccountId === undefined) {
+      return jsonResponse({ error: 'Workspace not found' }, 404);
+    }
+
+    const provenance = isRecord(payload.provenance) ? payload.provenance : {};
+    const reviewRepo = normalizeRepoSlug(provenance.repo);
+    const reviewBranch = normalizeBranchRef(provenance.branch);
+    if (!reviewRepo || !reviewBranch) {
+      return jsonResponse(
+        {
+          error: 'Missing required provenance.repo or provenance.branch',
+          code: 'invalid_review_provenance',
+        },
+        400
+      );
+    }
+    const rawSessionPrompts =
+      typeof provenance.rawSessionPrompts === 'string' && provenance.rawSessionPrompts.trim()
+        ? provenance.rawSessionPrompts.trim().slice(0, 24000)
+        : null;
+    const intentSessionContext = Array.isArray(provenance.intentSessionContext)
+      ? provenance.intentSessionContext
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .slice(0, 50)
+      : [];
+    const intentSummaryModel = normalizeIntentSummaryModel(provenance.intentSummaryModel);
+
+    const requestPayload = {
+      target: {
+        type: 'workspace_deployment' as const,
+        workspaceId,
+        deploymentId,
+      },
+      mode: 'report_only' as const,
+      provenance,
+    };
+    const requestPayloadSha256 = await sha256Hex(JSON.stringify(withSortedKeys(requestPayload)));
+    const reviewId = generateReviewRunId();
+    createdReviewId = reviewId;
+
+    const created = await createReviewRun(env.DB, {
+      id: reviewId,
+      workspaceId,
+      deploymentId,
+      targetType: 'workspace_deployment',
+      mode: 'report_only',
+      status: 'policy_pending',
+      idempotencyKey: `policy-derive-${reviewId}`,
+      requestPayload,
+      requestPayloadSha256,
+      accountId: workspaceAccountId,
+      provenance: {
+        promptSummary: `Policy derivation for deployment ${deploymentId} in workspace ${workspaceId}`,
+      },
+      repo: reviewRepo,
+      branch: reviewBranch,
+    });
+
+    await appendReviewEvent(env.DB, {
+      reviewId: created.review.id,
+      eventType: 'review_created',
+      payload: {
+        workspaceId,
+        deploymentId,
+        mode: 'report_only',
+      },
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId: created.review.id,
+      eventType: 'review_policy_derivation_started',
+      payload: {
+        hasRawSessionPrompts: Boolean(rawSessionPrompts),
+      },
+    });
+
+    const derivedIntentSummary = rawSessionPrompts
+      ? await summarizeReviewIntentPolicy(env, {
+          rawSessionPrompts,
+          intentSessionContext,
+          openrouterApiKey: readOpenrouterApiKeyHeader(request),
+          intentSummaryModel,
+        })
+      : null;
+    const derivedPolicy =
+      policyFromIntentSummary(derivedIntentSummary) ??
+      fallbackDerivedPolicy({
+        workspaceId,
+        deploymentId,
+        provenance,
+      });
+
+    await updateReviewRunPolicy(env.DB, created.review.id, {
+      derivedPolicy,
+    });
+    await updateReviewRunStatus(env.DB, created.review.id, 'policy_ready', {
+      errorCode: null,
+      errorMessage: null,
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId: created.review.id,
+      eventType: 'review_policy_derivation_completed',
+      payload: {
+        policyReady: true,
+      },
+    });
+
+    return jsonResponse(
+      {
+        reviewId: created.review.id,
+        status: 'policy_ready',
+        derivedPolicy,
+      },
+      202
+    );
+  } catch (error) {
+    if (createdReviewId) {
+      const message = error instanceof Error ? error.message : String(error);
+      await updateReviewRunStatus(env.DB, createdReviewId, 'failed', {
+        errorCode: 'policy_derivation_failed',
+        errorMessage: message,
+      });
+      await appendReviewEvent(env.DB, {
+        reviewId: createdReviewId,
+        eventType: 'review_failed',
+        payload: {
+          code: 'policy_derivation_failed',
+          message,
+        },
+      }).catch(() => undefined);
+    }
+
+    if (error instanceof SyntaxError) {
+      return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ error: `Failed to derive review policy: ${message}` }, 500);
+  }
+}
+
+export async function handleApproveReviewPolicy(
+  reviewId: string,
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
+
+  if (!env.REVIEWS_QUEUE || !env.ReviewRunner) {
+    return jsonResponse(
+      {
+        error: 'Review runner is unavailable',
+        code: 'review_runner_unavailable',
+      },
+      503
+    );
+  }
+
+  try {
+    const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
+    if (reviewAccessResponse) {
+      return reviewAccessResponse;
+    }
+
+    const review = await getReviewRun(env.DB, reviewId);
+    if (!review) {
+      return jsonResponse({ error: 'Review not found' }, 404);
+    }
+
+    if (review.status !== 'policy_ready') {
+      return jsonResponse(
+        {
+          error: 'Review policy is not ready for approval',
+          code: 'invalid_policy_state',
+          expectedStatus: 'policy_ready',
+          currentStatus: review.status,
+        },
+        409
+      );
+    }
+
+    const payloadRaw = await request.text();
+    const payload = payloadRaw.trim() ? (JSON.parse(payloadRaw) as unknown) : {};
+    if (!isRecord(payload)) {
+      return jsonResponse({ error: 'Request body must be a JSON object' }, 400);
+    }
+
+    const approvedPolicy = normalizeReviewPolicy(payload.approvedPolicy);
+    if (!approvedPolicy) {
+      return jsonResponse(
+        {
+          error: 'approvedPolicy must include at least one non-empty policy field',
+          code: 'invalid_review_policy',
+        },
+        400
+      );
+    }
+
+    const approvedPolicySha256 = await sha256Hex(JSON.stringify(withSortedKeys(approvedPolicy)));
+    await updateReviewRunPolicy(env.DB, reviewId, {
+      approvedPolicy,
+      approvedPolicySha256,
+    });
+    await updateReviewRunStatus(env.DB, reviewId, 'policy_approved', {
+      errorCode: null,
+      errorMessage: null,
+    });
+
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_policy_approved',
+      payload: {
+        approvedPolicySha256,
+      },
+    });
+
+    const openrouterApiKey = readOpenrouterApiKeyHeader(request);
+    await env.REVIEWS_QUEUE.send(
+      createReviewQueueMessage(reviewId, readReviewGithubTokenHeader(request), openrouterApiKey)
+    );
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_enqueued',
+      payload: {
+        mode: 'queue',
+        policyApproved: true,
+      },
+    });
+
+    return jsonResponse(
+      {
+        reviewId,
+        approvedPolicySha256,
+      },
+      202
+    );
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ error: `Failed to approve review policy: ${message}` }, 500);
+  }
 }
 
 export async function handleCreateReview(
@@ -1095,7 +1604,7 @@ export async function handleGetReviewEvents(
             })
           );
 
-          while (currentStatus === 'queued' || currentStatus === 'running') {
+          while (isReviewStatusActive(currentStatus)) {
             await sleep(REVIEW_STREAM_POLL_INTERVAL_MS);
             pollCount += 1;
             await writePersistedEvents();
@@ -1124,10 +1633,10 @@ export async function handleGetReviewEvents(
               currentStatus = refreshed?.status ?? latest.status;
             }
 
-            if (currentStatus !== 'queued' && currentStatus !== 'running' && terminalGraceDeadline === null) {
+            if (!isReviewStatusActive(currentStatus) && terminalGraceDeadline === null) {
               terminalGraceDeadline = Date.now() + REVIEW_TERMINAL_EVENT_GRACE_MS;
             }
-            if (currentStatus !== 'queued' && currentStatus !== 'running' && sawTerminalEvent) {
+            if (!isReviewStatusActive(currentStatus) && sawTerminalEvent) {
               break;
             }
             if (terminalGraceDeadline !== null && Date.now() >= terminalGraceDeadline) {

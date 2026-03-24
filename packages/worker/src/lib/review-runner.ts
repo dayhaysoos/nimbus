@@ -4,6 +4,7 @@ import type {
   ReviewEvidenceItem,
   ReviewFinding,
   ReviewFindingSeverityV2,
+  ReviewApprovedPolicy,
   ReviewRecommendation,
   ReviewReport,
   ReviewSessionIntentSummary,
@@ -74,6 +75,9 @@ const DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const REVIEW_STALE_GRACE_MS = 60 * 1000;
 const INTENT_SUMMARY_MODEL = 'anthropic/claude-sonnet-4.5';
 const INTENT_SUMMARY_MAX_TOKENS = 512;
+const INTENT_SUMMARY_NON_POLICY_LINE_PATTERN =
+  /\b(step\s*\d+|start with step|next step|exact order|one step at a time|showing me each file change|before moving to the next|before committing|commit and push|run migrations|deploy to worker|test locally|summarize the task tool output|go ahead with step)\b/i;
+const INTENT_SUMMARY_NON_POLICY_PREFIX_PATTERN = /^(f-\d{3}\b|fix:)/i;
 const INTENT_SUMMARY_SYSTEM_PROMPT = `You are a staff engineer reviewing a colleague's session notes
 before conducting a code review. Your job is to extract the
 key intent signals from their notes so the reviewer understands
@@ -100,6 +104,10 @@ Rules:
 - Skip any line phrased as a question.
 - Skip any line that is directing an AI tool to do something.
 - Skip implementation details and step-by-step instructions.
+- Never include sequencing/process directives (examples: "Step 1",
+  "start with", "before committing", "run migrations", "deploy",
+  "test locally", "commit and push").
+- Never include finding IDs or fix bullets (examples: "F-002", "Fix:").
 - Keep each extracted item to one concise sentence.
 - If a category has nothing clear to extract, return an
   empty array or null.
@@ -154,6 +162,16 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
     return null;
   }
 
+  const isPolicyLine = (line: string): boolean => {
+    if (!line) {
+      return false;
+    }
+    if (INTENT_SUMMARY_NON_POLICY_PREFIX_PATTERN.test(line)) {
+      return false;
+    }
+    return !INTENT_SUMMARY_NON_POLICY_LINE_PATTERN.test(line);
+  };
+
   const normalizeList = (input: unknown): string[] =>
     Array.isArray(input)
       ? Array.from(
@@ -161,13 +179,13 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
             input
               .filter((item): item is string => typeof item === 'string')
               .map((item) => item.trim())
-              .filter(Boolean)
+              .filter(isPolicyLine)
           )
         ).slice(0, 5)
       : [];
 
   const goalRaw = typeof record.goal === 'string' ? record.goal.trim() : null;
-  const goal = goalRaw && goalRaw.length > 0 ? goalRaw : null;
+  const goal = goalRaw && isPolicyLine(goalRaw) ? goalRaw : null;
 
   const summary: ReviewSessionIntentSummary = {
     goal,
@@ -182,54 +200,15 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
   return summary;
 }
 
-function deriveIntentSummaryFallback(
-  rawSessionPrompts: string,
-  intentSessionContext: string[]
-): ReviewSessionIntentSummary | null {
-  const lines = [
-    ...rawSessionPrompts.split(/\r?\n/),
-    ...intentSessionContext,
-  ]
-    .map((line) => line.trim())
-    .filter(Boolean);
-
-  let goal: string | null = null;
-  const prohibitions: string[] = [];
-  const constraints: string[] = [];
-
-  for (const line of lines) {
-    const goalMatch = line.match(/^goal\s*:\s*(.+)$/i);
-    if (!goal && goalMatch?.[1]?.trim()) {
-      goal = goalMatch[1].trim();
-      continue;
-    }
-
-    const prohibitionMatch = line.match(/^prohibition\s*:\s*(.+)$/i);
-    if (prohibitionMatch?.[1]?.trim()) {
-      prohibitions.push(prohibitionMatch[1].trim());
-      continue;
-    }
-
-    const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
-    if (constraintMatch?.[1]?.trim()) {
-      constraints.push(constraintMatch[1].trim());
-    }
-  }
-
-  const summary: ReviewSessionIntentSummary = {
-    goal,
-    prohibitions: uniqueStrings(prohibitions),
-    constraints: uniqueStrings(constraints),
+function intentSummaryFromApprovedPolicy(policy: ReviewApprovedPolicy): ReviewSessionIntentSummary {
+  return {
+    goal: policy.goal,
+    prohibitions: policy.prohibitions,
+    constraints: policy.constraints,
   };
-
-  if (!summary.goal && summary.prohibitions.length === 0 && summary.constraints.length === 0) {
-    return null;
-  }
-
-  return summary;
 }
 
-async function runIntentSummarizationPrePass(
+export async function runIntentSummarizationPrePass(
   env: Env,
   rawSessionPrompts: string,
   options?: { openrouterApiKey?: string | null; intentSummaryModel?: string | null }
@@ -316,6 +295,49 @@ async function runIntentSummarizationPrePass(
   }
 }
 
+function deriveIntentSummaryFallback(
+  rawSessionPrompts: string,
+  intentSessionContext: string[]
+): ReviewSessionIntentSummary | null {
+  const lines = [...rawSessionPrompts.split(/\r?\n/), ...intentSessionContext]
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let goal: string | null = null;
+  const prohibitions: string[] = [];
+  const constraints: string[] = [];
+
+  for (const line of lines) {
+    const goalMatch = line.match(/^goal\s*:\s*(.+)$/i);
+    if (!goal && goalMatch?.[1]?.trim()) {
+      goal = goalMatch[1].trim();
+      continue;
+    }
+
+    const prohibitionMatch = line.match(/^prohibition\s*:\s*(.+)$/i);
+    if (prohibitionMatch?.[1]?.trim()) {
+      prohibitions.push(prohibitionMatch[1].trim());
+      continue;
+    }
+
+    const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
+    if (constraintMatch?.[1]?.trim()) {
+      constraints.push(constraintMatch[1].trim());
+    }
+  }
+
+  const summary: ReviewSessionIntentSummary = {
+    goal,
+    prohibitions: uniqueStrings(prohibitions),
+    constraints: uniqueStrings(constraints),
+  };
+
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.constraints.length === 0) {
+    return null;
+  }
+
+  return summary;
+}
 export async function summarizeReviewIntentPolicy(
   env: Env,
   input: {
@@ -1676,23 +1698,27 @@ async function buildWorkspaceDeploymentReport(
   const requestValidation = asRecord(deploymentRequest.validation);
   const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
   const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
-  const rawSessionPromptsFromProvenance = readOptionalString(requestProvenance.rawSessionPrompts);
-  const intentSummaryModelFromProvenance = readOptionalString(requestProvenance.intentSummaryModel);
+  const approvedPolicy = review.approvedPolicy ?? null;
+  const rawSessionPromptsFromProvenance =
+    typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim()
+      ? requestProvenance.rawSessionPrompts.trim()
+      : null;
   const rawSessionPrompts = rawSessionPromptsFromProvenance ?? (intentSessionContext.length > 0 ? intentSessionContext.join('\n') : null);
-  if (!rawSessionPrompts) {
+  const intentSummaryModel = readOptionalString(requestProvenance.intentSummaryModel);
+  if (!approvedPolicy && !rawSessionPrompts) {
     throw new ReviewContextAssemblyError(
       'review_context_prompt_history_missing',
       'Review prompt-history context is required for intent summarization. Ensure deployment/review provenance includes rawSessionPrompts.'
     );
   }
-  const modelDerivedIntentSummary = rawSessionPrompts
-    ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
+  const derivedIntentSummary = approvedPolicy
+    ? intentSummaryFromApprovedPolicy(approvedPolicy)
+    : await summarizeReviewIntentPolicy(env, {
+        rawSessionPrompts: rawSessionPrompts ?? '',
+        intentSessionContext,
         openrouterApiKey: readOptionalString(options?.openrouterApiKey),
-        intentSummaryModel: intentSummaryModelFromProvenance,
-      })
-    : null;
-  const derivedIntentSummary =
-    modelDerivedIntentSummary ?? deriveIntentSummaryFallback(rawSessionPrompts, intentSessionContext);
+        intentSummaryModel,
+      });
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
     : typeof requestProvenance.taskId === 'string'
@@ -1771,7 +1797,18 @@ async function buildWorkspaceDeploymentReport(
     typeof resultArtifact.sourceBundleKey === 'string' && resultArtifact.sourceBundleKey.trim()
       ? resultArtifact.sourceBundleKey.trim()
       : deployment.sourceBundleKey ?? null;
-  const promptGoal = provenanceTask?.prompt?.trim() || baseGoal;
+  const promptGoal = approvedPolicy?.goal?.trim() || provenanceTask?.prompt?.trim() || baseGoal;
+  const promptConstraints = approvedPolicy
+    ? Array.from(new Set([...approvedPolicy.constraints, ...baseConstraints]))
+    : baseConstraints;
+  const promptDecisions = approvedPolicy
+    ? Array.from(
+        new Set([
+          ...approvedPolicy.prohibitions.map((item) => `Must not: ${item}`),
+          ...baseDecisions,
+        ])
+      )
+    : baseDecisions;
   if (reviewAgentEnabled && deploymentSourceBundleKey) {
     await appendReviewEvent(env.DB, {
       reviewId: review.id,
@@ -1797,8 +1834,8 @@ async function buildWorkspaceDeploymentReport(
           }
         : undefined,
       goal: promptGoal,
-      constraints: baseConstraints,
-      decisions: baseDecisions.filter(Boolean),
+      constraints: promptConstraints,
+      decisions: promptDecisions.filter(Boolean),
       intentSessionContext,
       intentSummary: derivedIntentSummary,
       evidenceCatalog: analysisEvidence.map((item) => ({
@@ -1891,9 +1928,9 @@ async function buildWorkspaceDeploymentReport(
   };
 
   const intent = sanitizeIntentBlock({
-    goal: agentAnalysis?.intent?.goal ?? baseGoal,
-    constraints: Array.from(new Set([...(agentAnalysis?.intent?.constraints ?? []), ...baseConstraints])),
-    decisions: Array.from(new Set([...(agentAnalysis?.intent?.decisions ?? []), ...baseDecisions])),
+    goal: agentAnalysis?.intent?.goal ?? promptGoal,
+    constraints: Array.from(new Set([...(agentAnalysis?.intent?.constraints ?? []), ...promptConstraints])),
+    decisions: Array.from(new Set([...(agentAnalysis?.intent?.decisions ?? []), ...promptDecisions])),
   });
 
   const promptSummary = redactReviewText(

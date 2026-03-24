@@ -99,6 +99,21 @@ dd {
   cursor: not-allowed;
 }
 
+input {
+  width: 100%;
+  border: 1px solid #bdccd9;
+  border-radius: 9px;
+  padding: 0.45rem 0.6rem;
+  background: #ffffff;
+  color: #1f2937;
+}
+
+input:focus {
+  outline: 2px solid #c7dcff;
+  outline-offset: 0;
+  border-color: #8db4ef;
+}
+
 .section-block {
   display: flex;
   flex-direction: column;
@@ -157,7 +172,10 @@ dd {
 }
 
 .status-running,
-.status-queued {
+.status-queued,
+.status-policy_pending,
+.status-policy_ready,
+.status-policy_approved {
   background: #dbeafe;
   color: #1e40af;
 }

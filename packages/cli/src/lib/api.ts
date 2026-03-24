@@ -3,6 +3,7 @@ import type {
   JobsListResponse,
   CheckpointJobCreateResponse,
   ReviewCreateResponse,
+  ReviewPolicyDeriveResponse,
   ReviewEventEnvelope,
   ReviewGetResponse,
   ReviewPolicyResponse,
@@ -524,6 +525,30 @@ export async function createReviewPolicy(
   }
 
   return response.json() as Promise<ReviewPolicyResponse>;
+}
+
+export async function deriveReviewPolicy(
+  workerUrl: string,
+  payload: {
+    workspaceId: string;
+    deploymentId: string;
+    provenance?: Record<string, unknown>;
+  }
+): Promise<ReviewPolicyDeriveResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/policy/derive`, {
+    method: 'POST',
+    headers: withReviewHeaders({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Worker error (${response.status}): ${errorText}`);
+  }
+
+  return response.json() as Promise<ReviewPolicyDeriveResponse>;
 }
 
 export async function createAdminApiKey(

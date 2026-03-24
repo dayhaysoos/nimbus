@@ -229,7 +229,15 @@ export interface ReviewReadinessResponse {
   checks: DeployReadinessCheck[];
 }
 
-export type ReviewRunStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+export type ReviewRunStatus =
+  | 'policy_pending'
+  | 'policy_ready'
+  | 'policy_approved'
+  | 'queued'
+  | 'running'
+  | 'succeeded'
+  | 'failed'
+  | 'cancelled';
 export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ReviewConfidence = 'high' | 'medium' | 'low';
 export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
@@ -281,6 +289,17 @@ export interface ReviewRunResponse {
   status: ReviewRunStatus;
   idempotencyKey: string;
   attemptCount: number;
+  derivedPolicy?: {
+    goal: string | null;
+    prohibitions: string[];
+    constraints: string[];
+  };
+  approvedPolicy?: {
+    goal: string | null;
+    prohibitions: string[];
+    constraints: string[];
+  };
+  approvedPolicySha256?: string;
   startedAt: string | null;
   finishedAt: string | null;
   createdAt: string;
@@ -319,6 +338,16 @@ export interface ReviewCreateResponse {
   status: ReviewRunStatus;
   eventsUrl: string;
   resultUrl: string;
+}
+
+export interface ReviewPolicyDeriveResponse {
+  reviewId: string;
+  status: ReviewRunStatus;
+  derivedPolicy: {
+    goal: string | null;
+    prohibitions: string[];
+    constraints: string[];
+  };
 }
 
 export interface ReviewPolicyResponse {

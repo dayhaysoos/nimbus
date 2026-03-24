@@ -51,12 +51,15 @@ export async function runReviewDbTests(): Promise<void> {
                     deployment_id: values[2],
                     target_type: values[3],
                     mode: values[4],
-                    status: 'queued',
-                    idempotency_key: values[5],
-                    request_payload_json: values[6],
-                    request_payload_sha256: values[7],
-                    account_id: values[8],
-                    provenance_json: values[9],
+                    status: values[5],
+                    idempotency_key: values[6],
+                    request_payload_json: values[7],
+                    request_payload_sha256: values[8],
+                    account_id: values[9],
+                    provenance_json: values[10],
+                    derived_policy_json: values[11],
+                    approved_policy_json: values[12],
+                    approved_policy_sha256: values[13],
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,
@@ -194,7 +197,7 @@ export async function runReviewDbTests(): Promise<void> {
     });
     assert.equal(created.reused, false);
     assert.equal(created.review.id, 'rev_abcd1234');
-    assert.equal(insertValues[8], 'acct_workspace_owner');
+    assert.equal(insertValues[9], 'acct_workspace_owner');
 
     const review = await getReviewRun(db, 'rev_abcd1234');
     assert.ok(review);

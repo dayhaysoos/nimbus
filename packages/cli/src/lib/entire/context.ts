@@ -30,7 +30,8 @@ export interface EntireLocalCochangeResolution {
 
 interface CheckpointSessionContext {
   sessionId: string;
-  contextMarkdown: string;
+  contextText: string;
+  rawPromptText: string | null;
   createdAt: string | null;
 }
 
@@ -123,6 +124,67 @@ function parseChangedPathsFromDiff(patch: string): string[] {
     paths.add(normalized);
   }
   return Array.from(paths);
+}
+
+function basename(path: string): string {
+  const normalized = path.replace(/\\/g, '/').replace(/\/+/g, '/');
+  const segments = normalized.split('/').filter(Boolean);
+  return segments[segments.length - 1] ?? normalized;
+}
+
+function scoreIntentLineAgainstChangedPaths(line: string, changedPaths: string[]): number {
+  const normalizedLine = line.toLowerCase();
+  let score = 0;
+
+  for (const changedPath of changedPaths) {
+    const normalizedPath = changedPath.toLowerCase();
+    if (normalizedLine.includes(normalizedPath)) {
+      score += 8;
+      continue;
+    }
+    const fileName = basename(normalizedPath);
+    if (fileName && fileName.length > 3 && normalizedLine.includes(fileName)) {
+      score += 3;
+    }
+  }
+
+  if (/^(prohibition|constraint|goal signal)\s*:/i.test(line)) {
+    score += 2;
+  }
+  if (/\b(do not|don't|must not|never|avoid|prefer|require|should)\b/i.test(line)) {
+    score += 1;
+  }
+  if (/\b(run\s+git\s+diff|usage:|step\s+\d+|command:)\b/i.test(line)) {
+    score -= 3;
+  }
+
+  return score;
+}
+
+export function selectRelevantIntentContextLines(
+  lines: string[],
+  changedPaths: string[],
+  options?: { maxLines?: number }
+): string[] {
+  const maxLines = Math.max(8, Math.min(80, Math.floor(options?.maxLines ?? 40)));
+  const normalizedPaths = Array.from(new Set(changedPaths.map((path) => path.trim()).filter(Boolean)));
+  const scored = lines
+    .map((line, index) => ({
+      line,
+      index,
+      score: scoreIntentLineAgainstChangedPaths(line, normalizedPaths),
+    }))
+    .filter((entry) => entry.line.trim());
+
+  const withPositiveScore = scored.filter((entry) => entry.score > 0);
+  const target = withPositiveScore.length > 0 ? withPositiveScore : scored;
+  const prioritized = target
+    .sort((a, b) => b.score - a.score || a.index - b.index)
+    .slice(0, maxLines)
+    .map((entry) => entry.line.trim())
+    .filter(Boolean);
+
+  return Array.from(new Set(prioritized));
 }
 
 export function selectEntireCheckpointsRef(refExists: (ref: string) => boolean): string | null {
@@ -329,12 +391,14 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
     const item = entry as Record<string, unknown>;
     const metadataPathRaw = readOptionalString(item.metadata);
     const contextPathRaw = readOptionalString(item.context);
-    if (!metadataPathRaw || !contextPathRaw) {
+    const promptPathRaw = readOptionalString(item.prompt);
+    if (!metadataPathRaw || (!contextPathRaw && !promptPathRaw)) {
       continue;
     }
 
     const metadataPath = normalizeBranchPath(metadataPathRaw);
-    const contextPath = normalizeBranchPath(contextPathRaw);
+    const contextPath = contextPathRaw ? normalizeBranchPath(contextPathRaw) : null;
+    const promptPath = promptPathRaw ? normalizeBranchPath(promptPathRaw) : null;
 
     try {
       const metadataText = git.run(['show', `${checkpointsRef}:${metadataPath}`]);
@@ -343,10 +407,37 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
       if (!sessionId || !isValidEntireSessionId(sessionId)) {
         continue;
       }
-      const contextMarkdown = git.run(['show', `${checkpointsRef}:${contextPath}`]);
+
+      let contextText = '';
+      if (contextPath) {
+        try {
+          contextText = git.run(['show', `${checkpointsRef}:${contextPath}`]);
+        } catch {
+          contextText = '';
+        }
+      }
+
+      let rawPromptText: string | null = null;
+      if (promptPath) {
+        try {
+          const promptText = git.run(['show', `${checkpointsRef}:${promptPath}`]);
+          rawPromptText = promptText.trim() ? promptText : null;
+        } catch {
+          rawPromptText = null;
+        }
+      }
+
+      if (!contextText.trim() && rawPromptText) {
+        contextText = rawPromptText;
+      }
+      if (!contextText.trim()) {
+        continue;
+      }
+
       resolved.push({
         sessionId,
-        contextMarkdown,
+        contextText,
+        rawPromptText,
         createdAt: readOptionalString(metadata.created_at),
       });
     } catch {
@@ -402,22 +493,6 @@ function rankIntentLines(lines: string[]): string[] {
     .map((item) => item.line);
 }
 
-function annotateIntentLine(line: string): string {
-  if (/(do not|don't|never|must not|without)/i.test(line)) {
-    return `Prohibition: ${line}`;
-  }
-  if (/(must|required|should|prefer|use)/i.test(line)) {
-    return `Constraint: ${line}`;
-  }
-  if (/(security|auth|token|secret|rollback|data loss|migration|breaking)/i.test(line)) {
-    return `Constraint: ${line}`;
-  }
-  if (/(goal|intent|implement|fix|add|change)/i.test(line)) {
-    return `Goal signal: ${line}`;
-  }
-  return `Context: ${line}`;
-}
-
 function extractContextExcerpts(markdown: string, options: Required<EntireIntentContextOptions>): string[] {
   const lines = markdown
     .split(/\r?\n/)
@@ -442,7 +517,7 @@ function extractContextExcerpts(markdown: string, options: Required<EntireIntent
   }
 
   if (options.summarizeSession === 'never' || (options.summarizeSession === 'auto' && fullEstimate <= options.tokenBudget)) {
-    return excerpts.map((line) => annotateIntentLine(line));
+    return excerpts;
   }
 
   const ranked = rankIntentLines(excerpts);
@@ -451,7 +526,7 @@ function extractContextExcerpts(markdown: string, options: Required<EntireIntent
   const maxSummaryLines = Math.max(4, Math.min(24, Math.floor(options.tokenBudget / 80)));
   for (const line of ranked) {
     const candidateLine = line.length > 180 ? `${line.slice(0, 177)}...` : line;
-    const candidate = annotateIntentLine(candidateLine);
+    const candidate = candidateLine;
     const lineTokens = estimateTokenCount([candidate]);
     if (runningTokens + lineTokens > options.tokenBudget) {
       continue;
@@ -577,6 +652,7 @@ export async function resolveEntireIntentContextForCommit(
 
   let sawSessionMetadata = false;
   let lastExcerptError: Error | null = null;
+
   for (const checkpointsRef of availableRefs) {
     const checkpointSessions = readCheckpointSessionsFromBranch(git, checkpointId, checkpointsRef);
     if (checkpointSessions.length === 0) {
@@ -587,7 +663,7 @@ export async function resolveEntireIntentContextForCommit(
     for (const selectedSession of checkpointSessions) {
       let excerpts: string[] = [];
       try {
-        excerpts = extractContextExcerpts(selectedSession.contextMarkdown, normalizedOptions);
+        excerpts = extractContextExcerpts(selectedSession.contextText, normalizedOptions);
       } catch (error) {
         lastExcerptError = error instanceof Error ? error : new Error(String(error));
         continue;
@@ -601,7 +677,7 @@ export async function resolveEntireIntentContextForCommit(
         note: `Review with Entire checkpoint intent context (${checkpointId}).`,
         transcriptUrl: null,
         intentSessionContext: excerpts,
-        rawSessionPrompts: extractRawUserPrompts(selectedSession.contextMarkdown),
+        rawSessionPrompts: selectedSession.rawPromptText ?? extractRawUserPrompts(selectedSession.contextText),
       };
     }
   }
