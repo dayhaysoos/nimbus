@@ -78,6 +78,31 @@ function validateNonEmptyString(
   return trimmed;
 }
 
+function isValidationLikeFinding(text: string): boolean {
+  return /\b(regex|normalize|normalization|validate|validation|pattern)\b/i.test(text);
+}
+
+function hasConcreteSampleAndOutcomeEvidence(failingScenario: string, evidence: string): boolean {
+  const combined = `${failingScenario}\n${evidence}`;
+  const hasConcreteSample =
+    /\b(input|sample|string|value)\b/i.test(combined) || /`[^`]+`|'[^']+'|"[^"]+"/.test(combined);
+  const hasOutcome = /\b(match|matches|reject|rejected|accept|accepted|return|returns|result|status|passes|fails)\b/i.test(
+    combined
+  );
+  return hasConcreteSample && hasOutcome;
+}
+
+function isTimeoutBoundaryLikeFinding(text: string): boolean {
+  return /\b(timeout|retry|deadline|interval|boundary|poll)\b/i.test(text);
+}
+
+function hasBoundaryAndStatusEvidence(failingScenario: string, evidence: string): boolean {
+  const combined = `${failingScenario}\n${evidence}`;
+  const hasBoundary = /\b\d+\b|>=|<=|>|<|==|\b(deadline|interval|timeout|ms|second|seconds)\b/i.test(combined);
+  const hasStatusOutcome = /\b(status|queued|running|succeeded|failed|cancelled|return|returns|result)\b/i.test(combined);
+  return hasBoundary && hasStatusOutcome;
+}
+
 export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): ValidationResult {
   const errors: ReviewAnalysisValidationError[] = [];
   if (!isRecord(payload)) {
@@ -141,6 +166,24 @@ export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): Va
           `${findingPath}.suggestedFix`,
           'suggestedFix'
         );
+        const failingScenario = validateNonEmptyString(
+          findingValue.failingScenario,
+          errors,
+          `${findingPath}.failingScenario`,
+          'failingScenario'
+        );
+        const evidence = validateNonEmptyString(
+          findingValue.evidence,
+          errors,
+          `${findingPath}.evidence`,
+          'evidence'
+        );
+        const guardGap = validateNonEmptyString(
+          findingValue.guardGap,
+          errors,
+          `${findingPath}.guardGap`,
+          'guardGap'
+        );
 
         const locationsValue = findingValue.locations;
         if (!Array.isArray(locationsValue)) {
@@ -197,7 +240,35 @@ export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): Va
           ];
         });
 
-        if (!severity || !category || !passType || !description || !suggestedFix || locations.length === 0) {
+        if (
+          !severity ||
+          !category ||
+          !passType ||
+          !description ||
+          !suggestedFix ||
+          !failingScenario ||
+          !evidence ||
+          !guardGap ||
+          locations.length === 0
+        ) {
+          return [];
+        }
+
+        const behaviorText = `${description}\n${suggestedFix}\n${failingScenario}`;
+        if (isValidationLikeFinding(behaviorText) && !hasConcreteSampleAndOutcomeEvidence(failingScenario, evidence)) {
+          addError(
+            errors,
+            `${findingPath}.evidence`,
+            'validation/regex findings require concrete sample input and observed outcome in failingScenario/evidence'
+          );
+          return [];
+        }
+        if (isTimeoutBoundaryLikeFinding(behaviorText) && !hasBoundaryAndStatusEvidence(failingScenario, evidence)) {
+          addError(
+            errors,
+            `${findingPath}.evidence`,
+            'timeout/retry findings require explicit boundary values and resulting status in failingScenario/evidence'
+          );
           return [];
         }
 
@@ -209,6 +280,9 @@ export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): Va
             locations,
             description,
             suggestedFix,
+            failingScenario,
+            evidence,
+            guardGap,
           },
         ];
       })

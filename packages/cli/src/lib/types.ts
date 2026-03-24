@@ -313,6 +313,8 @@ export interface ReviewRunResponse {
   };
   evidence: ReviewEvidenceItem[];
   provenance: {
+    repo: string;
+    branch: string;
     sessionIds: string[];
     policyItems: string[];
     rawSessionPrompts?: string | null;
@@ -346,6 +348,15 @@ export interface ReviewPolicyDeriveResponse {
     prohibitions: string[];
     constraints: string[];
   };
+}
+
+export interface ReviewPolicyResponse {
+  policy: {
+    goal: string | null;
+    prohibitions: string[];
+    constraints: string[];
+  };
+  source: 'model_or_fallback' | 'empty';
 }
 
 export interface ReviewGetResponse {

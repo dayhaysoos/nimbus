@@ -35,6 +35,7 @@ import { showReviewCommand } from './commands/review/show.js';
 import { exportReviewCommand } from './commands/review/export.js';
 import { reviewPreflightCommand } from './commands/review/preflight.js';
 import { openReviewFromCommitCommand } from './commands/review/open.js';
+import { reviewPolicyCommand } from './commands/review/policy.js';
 import { parseArgs } from './lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
 import { provisionAdminKeyCommand } from './commands/admin/provision-key.js';
@@ -118,6 +119,8 @@ Commands:
                        Create a report-only review run for an existing deployment
   review preflight [commit-ish]
                        Validate Entire checkpoint/session metadata for review create
+  review policy --commit [commit-ish]
+                       Generate review policy from Entire prompt history only
   review show <review-id>
                        Show review status and summary
   review events <review-id>
@@ -157,6 +160,8 @@ Options:
                       Intent context summarization mode (auto|always|never)
   --intent-token-budget <n>
                       Token budget for Entire intent context capture (default: 1200)
+  --intent-summary-model <name>
+                      Intent summary model override for this run
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
@@ -204,6 +209,8 @@ Examples:
   nimbus review create --commit HEAD --model sonnet-4.5
   nimbus review preflight
   nimbus review preflight HEAD~2
+  nimbus review policy --commit HEAD
+  nimbus review policy --commit HEAD --base origin/main --model anthropic/claude-sonnet-4.5 --json
   nimbus review show rev_abcd1234
   nimbus review events rev_abcd1234
    nimbus review open
@@ -426,6 +433,11 @@ async function main(): Promise<void> {
           const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
           const modelFlag = flags.model;
           const model = typeof modelFlag === 'string' && modelFlag.trim() ? modelFlag.trim() : undefined;
+          const intentSummaryModelFlag = flags['intent-summary-model'];
+          const intentSummaryModel =
+            typeof intentSummaryModelFlag === 'string' && intentSummaryModelFlag.trim()
+              ? intentSummaryModelFlag.trim()
+              : undefined;
           const projectRootFlag = flags['project-root'];
           const projectRoot = typeof projectRootFlag === 'string' && projectRootFlag.trim() ? projectRootFlag.trim() : undefined;
           const baseFlag = flags.base;
@@ -463,6 +475,7 @@ async function main(): Promise<void> {
               severityThreshold,
               maxFindings,
               model,
+              intentSummaryModel,
               includeProvenance: !Boolean(flags['no-provenance']),
               includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
               pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),
@@ -480,6 +493,7 @@ async function main(): Promise<void> {
             severityThreshold,
             maxFindings,
             model,
+            intentSummaryModel,
             includeProvenance: !Boolean(flags['no-provenance']),
             includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
           });
@@ -511,6 +525,28 @@ async function main(): Promise<void> {
               throw new Error('Invalid --summarize-session value. Use auto, always, or never.');
             })(),
             intentTokenBudget: parsePositiveIntegerFlag(flags['intent-token-budget']),
+          });
+          break;
+        }
+
+        if (reviewAction === 'policy') {
+          const commitFlag = flags.commit;
+          const commitishArg = positional[1];
+          const commitish =
+            typeof commitFlag === 'string' && commitFlag.trim()
+              ? commitFlag.trim()
+              : typeof commitishArg === 'string' && commitishArg.trim()
+                ? commitishArg.trim()
+                : 'HEAD';
+          const baseFlag = flags.base;
+          const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
+          const modelFlag = flags.model;
+          const model = typeof modelFlag === 'string' && modelFlag.trim() ? modelFlag.trim() : undefined;
+          await reviewPolicyCommand({
+            commitish,
+            baseRef,
+            model,
+            json: Boolean(flags.json),
           });
           break;
         }
@@ -580,7 +616,7 @@ async function main(): Promise<void> {
           break;
         }
 
-        p.log.error('Unknown review command. Use: create, preflight, show, events, open, export');
+        p.log.error('Unknown review command. Use: create, preflight, policy, show, events, open, export');
         process.exit(1);
       }
 

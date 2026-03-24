@@ -514,12 +514,16 @@ export interface ReviewFindingLocation {
 }
 
 export interface ReviewFinding {
+  sequence?: number;
   severity: ReviewFindingSeverityV2;
   category: ReviewFindingCategory;
   passType: ReviewFindingPassType;
   locations: ReviewFindingLocation[];
   description: string;
   suggestedFix: string;
+  failingScenario?: string;
+  evidence?: string;
+  guardGap?: string;
 }
 
 export interface ReviewFindingLocationV2 {
@@ -529,12 +533,16 @@ export interface ReviewFindingLocationV2 {
 }
 
 export interface ReviewFindingV2 {
+  sequence?: number;
   severity: ReviewFindingSeverityV2;
   category: ReviewFindingCategory;
   passType: ReviewFindingPassType;
   locations: ReviewFindingLocationV2[];
   description: string;
   suggestedFix: string;
+  failingScenario?: string;
+  evidence?: string;
+  guardGap?: string;
 }
 
 export interface ReviewAnalysisOutputV2 {
@@ -635,6 +643,8 @@ export interface ReviewApprovedPolicy {
 }
 
 export interface ReviewProvenanceSummary {
+  repo: string;
+  branch: string;
   sessionIds: string[];
   policyItems: string[];
   rawSessionPrompts?: string | null;
@@ -702,6 +712,8 @@ export interface ReviewRunRecord {
   request_payload_json: string;
   request_payload_sha256: string;
   provenance_json: string;
+  repo: string;
+  branch: string;
   derived_policy_json: string | null;
   approved_policy_json: string | null;
   approved_policy_sha256: string | null;

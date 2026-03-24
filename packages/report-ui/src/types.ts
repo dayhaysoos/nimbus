@@ -22,6 +22,7 @@ export interface ReviewFindingLocation {
 }
 
 export interface ReviewFinding {
+  sequence?: number;
   severity: ReviewSeverity;
   category: ReviewCategory;
   passType: ReviewPassType;

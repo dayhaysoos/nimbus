@@ -162,8 +162,9 @@ export interface CreateReviewRunInput {
   idempotencyKey: string;
   requestPayload: unknown;
   requestPayloadSha256: string;
-  requestPayloadSha256Aliases?: string[];
   provenance?: Record<string, unknown>;
+  repo: string;
+  branch: string;
   accountId?: string | null;
   derivedPolicy?: ReviewApprovedPolicy | null;
   approvedPolicy?: ReviewApprovedPolicy | null;
@@ -752,8 +753,13 @@ function toReviewFindingRecord(value: unknown): ReviewFinding[] {
       return [];
     }
 
+    const sequence = typeof record.sequence === 'number' && Number.isInteger(record.sequence) && record.sequence > 0
+      ? record.sequence
+      : undefined;
+
     return [
       {
+        ...(sequence ? { sequence } : {}),
         severity: severity as ReviewFinding['severity'],
         category: category as ReviewFinding['category'],
         passType: passType as ReviewFinding['passType'],
@@ -823,6 +829,14 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
     findings: toReviewFindingRecord(report?.findings),
     evidence: Array.isArray(report?.evidence) ? report.evidence : [],
     provenance: {
+      repo:
+        typeof requestProvenance.repo === 'string' && requestProvenance.repo.trim()
+          ? requestProvenance.repo.trim()
+          : (record.repo ?? ''),
+      branch:
+        typeof requestProvenance.branch === 'string' && requestProvenance.branch.trim()
+          ? requestProvenance.branch.trim()
+          : (record.branch ?? ''),
       sessionIds:
         report?.provenance && Array.isArray(report.provenance.sessionIds) ? report.provenance.sessionIds : [],
       policyItems: intentSummary ? [] : policyItems,
@@ -2755,7 +2769,6 @@ export async function createReviewRun(
   input: CreateReviewRunInput
 ): Promise<{ review: ReviewRunResponse; reused: boolean }> {
   const now = new Date().toISOString();
-  const acceptedHashes = new Set([input.requestPayloadSha256, ...(input.requestPayloadSha256Aliases ?? [])]);
   const existingIdempotency = await db
     .prepare(
       `SELECT review_id, request_payload_sha256, expires_at
@@ -2767,7 +2780,7 @@ export async function createReviewRun(
     .first<{ review_id: string; request_payload_sha256: string; expires_at: string }>();
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
-    if (!acceptedHashes.has(existingIdempotency.request_payload_sha256)) {
+    if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {
       throw new ReviewIdempotencyConflictError(input.idempotencyKey);
     }
 
@@ -2801,7 +2814,7 @@ export async function createReviewRun(
     .first<ReviewRunRecord>();
 
   if (existingReviewByKey) {
-    if (!acceptedHashes.has(existingReviewByKey.request_payload_sha256)) {
+    if (existingReviewByKey.request_payload_sha256 !== input.requestPayloadSha256) {
       throw new ReviewIdempotencyConflictError(input.idempotencyKey);
     }
 
@@ -2849,7 +2862,7 @@ export async function createReviewRun(
       : null;
   const reviewRecord = await db
     .prepare(
-      `INSERT INTO review_runs (
+       `INSERT INTO review_runs (
          id,
          workspace_id,
          deployment_id,
@@ -2861,13 +2874,15 @@ export async function createReviewRun(
          request_payload_sha256,
          account_id,
           provenance_json,
-         derived_policy_json,
-         approved_policy_json,
-         approved_policy_sha256,
+          repo,
+          branch,
+          derived_policy_json,
+          approved_policy_json,
+          approved_policy_sha256,
           created_at,
           updated_at
          )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
@@ -2882,6 +2897,8 @@ export async function createReviewRun(
       input.requestPayloadSha256,
       input.accountId ?? null,
       JSON.stringify(sanitizedProvenance),
+      input.repo,
+      input.branch,
       derivedPolicyJson,
       approvedPolicyJson,
       approvedPolicySha256,
@@ -2937,7 +2954,7 @@ export async function createReviewRun(
       throw new Error('Review idempotency race detected but winner record is unavailable');
     }
 
-    if (!acceptedHashes.has(concurrent.request_payload_sha256)) {
+    if (concurrent.request_payload_sha256 !== input.requestPayloadSha256) {
       await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
       throw new ReviewIdempotencyConflictError(input.idempotencyKey);
     }
@@ -2979,11 +2996,9 @@ export async function getReviewRunByIdempotency(
   db: D1Database,
   workspaceId: string,
   idempotencyKey: string,
-  requestPayloadSha256: string,
-  requestPayloadSha256Aliases: string[] = []
+  requestPayloadSha256: string
 ): Promise<ReviewRunResponse | null> {
   const now = new Date().toISOString();
-  const acceptedHashes = new Set([requestPayloadSha256, ...requestPayloadSha256Aliases]);
   const existingIdempotency = await db
     .prepare(
       `SELECT review_id, request_payload_sha256, expires_at
@@ -2995,7 +3010,7 @@ export async function getReviewRunByIdempotency(
     .first<{ review_id: string; request_payload_sha256: string; expires_at: string }>();
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
-    if (!acceptedHashes.has(existingIdempotency.request_payload_sha256)) {
+    if (existingIdempotency.request_payload_sha256 !== requestPayloadSha256) {
       throw new ReviewIdempotencyConflictError(idempotencyKey);
     }
 
@@ -3025,7 +3040,7 @@ export async function getReviewRunByIdempotency(
     return null;
   }
 
-  if (!acceptedHashes.has(existingReview.request_payload_sha256)) {
+  if (existingReview.request_payload_sha256 !== requestPayloadSha256) {
     throw new ReviewIdempotencyConflictError(idempotencyKey);
   }
 
@@ -3235,14 +3250,22 @@ export async function hasReviewEvent(db: D1Database, reviewId: string, eventType
 export async function replaceReviewFindings(
   db: D1Database,
   reviewId: string,
-  findings: ReviewFinding[]
+  findings: ReviewFinding[],
+  options?: { startNumber?: number }
 ): Promise<void> {
   await db.prepare('DELETE FROM review_findings WHERE review_id = ?').bind(reviewId).run();
 
-  for (const finding of findings) {
+  const startNumber =
+    typeof options?.startNumber === 'number' && Number.isFinite(options.startNumber) && options.startNumber > 0
+      ? Math.floor(options.startNumber)
+      : 1;
+
+  for (const [index, finding] of findings.entries()) {
+    const findingNumber = startNumber + index;
+    const findingId = `${reviewId}_F-${String(findingNumber).padStart(3, '0')}`;
     await db
       .prepare(
-       `INSERT INTO review_findings (
+        `INSERT INTO review_findings (
            id,
            review_id,
            severity,
@@ -3255,7 +3278,7 @@ export async function replaceReviewFindings(
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
       )
       .bind(
-        generatePrefixedId('rf'),
+        findingId,
         reviewId,
         finding.severity,
         finding.category,
@@ -3266,6 +3289,38 @@ export async function replaceReviewFindings(
       )
       .run();
   }
+}
+
+export async function getHighestFindingNumberForBranch(
+  db: D1Database,
+  repo: string,
+  branch: string
+): Promise<number> {
+  const normalizedRepo = repo.trim();
+  const normalizedBranch = branch.trim();
+  if (!normalizedRepo || !normalizedBranch) {
+    return 0;
+  }
+
+  const row = await db
+    .prepare(
+      `SELECT
+         COALESCE(MAX(
+           CASE
+             WHEN instr(rf.id, '_F-') > 0
+               THEN CAST(substr(rf.id, instr(rf.id, '_F-') + 3) AS INTEGER)
+             ELSE 0
+           END
+         ), 0) AS max_seq
+       FROM review_findings rf
+       JOIN review_runs rr ON rr.id = rf.review_id
+       WHERE rr.repo = ? AND rr.branch = ?`
+    )
+    .bind(normalizedRepo, normalizedBranch)
+    .first<{ max_seq: number | null }>();
+
+  const maxSeq = typeof row?.max_seq === 'number' && Number.isFinite(row.max_seq) ? row.max_seq : 0;
+  return Math.max(0, Math.floor(maxSeq));
 }
 
 export function generateReviewContextId(): string {

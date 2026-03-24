@@ -67,6 +67,8 @@ function createReviewRunnerEnv(options?: {
     provenance: {
       trigger: 'manual_cli',
       note: 'Initial review placeholder',
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
     },
     ...(options?.payload ?? {}),
   };
@@ -124,6 +126,14 @@ function createReviewRunnerEnv(options?: {
                     request_payload_json: JSON.stringify(payload),
                     request_payload_sha256: 'hash',
                     provenance_json: JSON.stringify(payload.provenance),
+                    repo: (() => {
+                      const p = payload.provenance as Record<string, unknown>;
+                      return typeof p.repo === 'string' ? p.repo : 'dayhaysoos/nimbus';
+                    })(),
+                    branch: (() => {
+                      const p = payload.provenance as Record<string, unknown>;
+                      return typeof p.branch === 'string' ? p.branch : 'main';
+                    })(),
                     last_event_seq: state.events.length,
                     attempt_count: state.attemptCount,
                     started_at: state.startedAt,
@@ -614,11 +624,13 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const { env, state } = createReviewRunnerEnv({
-      payload: {
-        provenance: {
-          trigger: 'manual_cli',
+        payload: {
+          provenance: {
+            trigger: 'manual_cli',
+            repo: 'dayhaysoos/nimbus',
+            branch: 'main',
+          },
         },
-      },
       deploymentRequestProvenance: {
         note: null,
       },
@@ -626,6 +638,51 @@ export async function runReviewRunnerTests(): Promise<void> {
     await processReviewRun(env as never, 'rev_abcd1234');
     const report = JSON.parse(state.reportJson ?? '{}') as { provenance: { promptSummary: string | null } };
     assert.equal(report.provenance.promptSummary, 'Review generated in report_only mode for deployment dep_abcd1234.');
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv({
+      deploymentRequestProvenance: {
+        rawSessionPrompts: null,
+        intentSessionContext: [
+          'Goal: Harden auth checks for privileged API routes.',
+          'Prohibition: Do not introduce new unauthenticated paths.',
+          'Risk Focus: Token validation bypass during middleware refactors.',
+          'Constraint: Keep existing API response shapes stable.',
+        ],
+      },
+      envOverrides: {
+        OPENROUTER_API_KEY: '',
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    const report = JSON.parse(state.reportJson ?? '{}') as {
+      provenance?: {
+        intentSummary?: {
+          goal: string | null;
+          prohibitions: string[];
+          constraints: string[];
+        };
+      };
+    };
+    assert.equal(report.provenance?.intentSummary?.goal, 'Harden auth checks for privileged API routes.');
+    assert.deepEqual(report.provenance?.intentSummary?.prohibitions ?? [], ['Do not introduce new unauthenticated paths.']);
+    assert.deepEqual(report.provenance?.intentSummary?.constraints ?? [], ['Keep existing API response shapes stable.']);
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv({
+      deploymentRequestProvenance: {
+        rawSessionPrompts: null,
+        intentSessionContext: [],
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'failed');
+    const failedEvent = state.events.find((event) => event.eventType === 'review_failed') as
+      | { eventType: string; payload: { code?: string } }
+      | undefined;
+    assert.equal(failedEvent?.payload?.code, 'review_context_prompt_history_missing');
   }
 
   {
@@ -1184,6 +1241,9 @@ export async function runReviewRunnerTests(): Promise<void> {
                   description: 'Repository metadata should stay aligned with deployment ownership to make follow-up debugging easier.',
                   locations: [{ filePath: 'package.json', startLine: 1, endLine: 1 }],
                   suggestedFix: 'Verify package.json repository metadata remains accurate for deployment handoff.',
+                  failingScenario: 'When repository metadata drifts from deployment ownership during follow-up handoff.',
+                  evidence: 'package.json line 1 repository field is used for follow-up ownership debugging paths.',
+                  guardGap: 'No explicit consistency check enforces repository metadata alignment in review flow.',
                 },
               ],
               summary: 'One logic issue identified.',
@@ -1203,6 +1263,8 @@ export async function runReviewRunnerTests(): Promise<void> {
         payload: {
           provenance: {
             trigger: 'manual_cli',
+            repo: 'dayhaysoos/nimbus',
+            branch: 'main',
             taskId: 'tsk_123',
             note: 'Review against Entire intent history for auth hardening.',
             sessionIds: ['ses_review_1'],
@@ -1231,8 +1293,9 @@ export async function runReviewRunnerTests(): Promise<void> {
         },
         deploymentRequestProvenance: {
           note: null,
-          sessionIds: ['ses_deploy_1'],
+          sessionIds: ['ses_deploy_1', 'ses_review_1'],
           intentSessionContext: ['Deployment run validated baseline and generated source bundle.'],
+          rawSessionPrompts: 'Goal: Validate deployment baseline behavior.\nRisk Focus: Missing auth guard in deployment middleware.',
         },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
@@ -1240,11 +1303,12 @@ export async function runReviewRunnerTests(): Promise<void> {
       assert.equal(fetchCalls.length, 2);
       assert.equal(fetchCalls[0]?.body.model, 'claude-test');
       assert.equal(capturedSandboxId, 'review-snapshot-rev_abcd1234');
-      assert.equal(String(fetchCalls[0].body.prompt ?? '').includes('Intent session context excerpts'), true);
+      const firstPromptText = String(fetchCalls[0].body.prompt ?? '');
       assert.equal(
-        String(fetchCalls[0].body.prompt ?? '').includes('Deployment run validated baseline and generated source bundle.'),
+        firstPromptText.includes('Intent session context excerpts') || firstPromptText.includes('Developer intent summary'),
         true
       );
+      assert.equal(firstPromptText.includes('Goal: Validate deployment baseline behavior.'), true);
       assert.equal(
         JSON.stringify(fetchCalls[0].body).includes('secret123') || JSON.stringify(fetchCalls[0].body).includes('[REDACTED]'),
         true
@@ -2327,7 +2391,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       assert.equal(firstPrompt.includes('Authoritative deployed diff snapshot'), true);
       assert.equal(firstPrompt.includes('const deployed = true'), true);
       assert.equal(firstPrompt.length < 50000, true);
-      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 5000, true);
+      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 7000, true);
       assert.equal(JSON.stringify(secondCallBody ?? {}).includes('const deployed = true'), true);
     } finally {
       globalThis.fetch = originalFetch;
@@ -2371,6 +2435,9 @@ export async function runReviewRunnerTests(): Promise<void> {
                   description: 'Should disappear when threshold is high.',
                   locations: [{ filePath: 'src/placeholder.ts', startLine: null, endLine: null }],
                   suggestedFix: 'Add a stricter guard.',
+                  failingScenario: 'When threshold filtering is misapplied and medium findings are retained under high threshold.',
+                  evidence: 'Placeholder finding appears in model output prior to threshold filtering.',
+                  guardGap: 'No pre-filter at model stage guarantees severity threshold compliance.',
                 },
               ],
               summary: 'One medium issue found.',

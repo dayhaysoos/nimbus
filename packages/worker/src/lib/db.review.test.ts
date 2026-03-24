@@ -191,6 +191,8 @@ export async function runReviewDbTests(): Promise<void> {
       idempotencyKey: 'idem-review',
       requestPayload: {},
       requestPayloadSha256: 'hash',
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
       accountId: 'acct_workspace_owner',
     });
     assert.equal(created.reused, false);
@@ -253,6 +255,8 @@ export async function runReviewDbTests(): Promise<void> {
         idempotencyKey: 'idem-review',
         requestPayload: {},
         requestPayloadSha256: 'hash',
+        repo: 'dayhaysoos/nimbus',
+        branch: 'main',
       }),
       (error: unknown) => error instanceof ReviewIdempotencyConflictError
     );
@@ -342,6 +346,8 @@ export async function runReviewDbTests(): Promise<void> {
       idempotencyKey: 'idem-review',
       requestPayload: {},
       requestPayloadSha256: 'hash',
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
     });
     assert.equal(reused.reused, true);
     assert.equal(reused.review.id, 'rev_existing');
@@ -480,7 +486,14 @@ export async function runReviewDbTests(): Promise<void> {
                       furtherPassesLowYield: true,
                       intent: { goal: null, constraints: [], decisions: [] },
                       evidence: [],
-                      provenance: { sessionIds: [], promptSummary: null, transcriptUrl: null },
+                      provenance: {
+                        repo: 'dayhaysoos/nimbus',
+                        branch: 'main',
+                        sessionIds: [],
+                        policyItems: [],
+                        promptSummary: null,
+                        transcriptUrl: null,
+                      },
                       markdownSummary: null,
                     }),
                     markdown_summary: null,

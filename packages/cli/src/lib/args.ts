@@ -22,6 +22,7 @@ const LONG_VALUE_FLAGS = new Set([
   'max-findings',
   'summarize-session',
   'intent-token-budget',
+  'intent-summary-model',
   'model',
   'label',
   'account-id',
