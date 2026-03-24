@@ -29,6 +29,8 @@ const MAX_COMMIT_DIFF_PATCH_CHARS = 120_000;
 const COCHANGE_LOOKBACK_SESSIONS = 5;
 const COCHANGE_TOP_N = 20;
 
+type ReviewCreateProvenance = NonNullable<Parameters<typeof createReview>[2]['provenance']>;
+
 function isExpectedLocalCochangeResolutionError(message: string): boolean {
   return (
     /not a git repository/i.test(message) ||
@@ -150,6 +152,20 @@ function formatReviewExecutionFailure(
   return `Review flow failed at review execution: review ended with status ${status} (${details.join(' | ')})`;
 }
 
+export interface ResolveReviewContextOptions {
+  commitish?: string;
+  baseRef?: string;
+  projectRoot?: string;
+  idempotencyKey?: string;
+  pollIntervalMs?: number;
+}
+
+export interface ResolveReviewContextResult {
+  workspaceId: string;
+  deploymentId: string;
+  resolvedProvenance: ReviewCreateProvenance;
+}
+
 let createWorkspaceForCommitFlow: (source: {
   commitSha: string;
   checkpointId: string | null;
@@ -235,26 +251,9 @@ function normalizeCommitDiffPatch(patch: string): {
   };
 }
 
-export async function createReviewFromCommitCommand(
-  options?: {
-    commitish?: string;
-    baseRef?: string;
-    outputReviewIdPath?: string;
-    projectRoot?: string;
-    idempotencyKey?: string;
-    severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
-    maxFindings?: number;
-    model?: string;
-    includeProvenance?: boolean;
-    includeValidationEvidence?: boolean;
-    pollIntervalMs?: number;
-  }
-): Promise<void> {
-  const workerUrl = getWorkerUrl();
-  if (!workerUrl) {
-    throw new Error('NIMBUS_WORKER_URL environment variable is required');
-  }
-
+export async function resolveReviewContext(
+  options?: ResolveReviewContextOptions
+): Promise<ResolveReviewContextResult> {
   const commitish = options?.commitish?.trim() || 'HEAD';
   const projectRoot = options?.projectRoot?.trim() || '.';
   const spinner = p.spinner();
@@ -264,8 +263,6 @@ export async function createReviewFromCommitCommand(
   let commitDiffPatch = '';
   let workspaceId = '';
   let deploymentId = '';
-  let reviewId = '';
-  let reviewResultUrl = '';
   let commitDiffPatchSha256 = '';
   let commitDiffPatchTruncated = false;
   let commitDiffPatchOriginalChars = 0;
@@ -323,6 +320,7 @@ export async function createReviewFromCommitCommand(
         },
         process.cwd()
       );
+
       if (entireContextResolution.contextResolution === 'branch_fallback') {
         spinner.stop(
           `Entire session metadata resolved via branch fallback (${entireContextResolution.resolvedCheckpointId} from ${entireContextResolution.resolvedCommitSha.slice(0, 12)})`
@@ -413,6 +411,85 @@ export async function createReviewFromCommitCommand(
       spinner.stop('Workspace deploy failed');
       throw new Error(`Review flow failed at workspace deploy: ${message}`);
     }
+  } catch (error) {
+    throw error;
+  }
+
+  const resolvedProvenance: ReviewCreateProvenance = {
+    note: `Review with Entire checkpoint intent context (${entireContextResolution?.resolvedCheckpointId ?? checkpointId}).`,
+    sessionIds: entireContextResolution?.context.sessionIds ?? [],
+    intentSessionContext: entireContextResolution?.context.intentSessionContext ?? [],
+    rawSessionPrompts: entireContextResolution?.context.rawSessionPrompts ?? null,
+    commitSha,
+    commitDiffPatch,
+    commitDiffPatchSha256,
+    commitDiffPatchTruncated,
+    commitDiffPatchOriginalChars,
+    contextResolution: entireContextResolution?.contextResolution ?? 'direct',
+    contextResolutionOriginalCheckpointId: entireContextResolution?.originalCheckpointId ?? checkpointId,
+    contextResolutionResolvedCheckpointId: entireContextResolution?.resolvedCheckpointId ?? checkpointId,
+    contextResolutionResolvedCommitSha: entireContextResolution?.resolvedCommitSha ?? commitSha,
+    contextResolutionResolvedCommitMessage:
+      entireContextResolution?.contextResolution === 'branch_fallback'
+        ? entireContextResolution.resolvedCommitSubject
+        : undefined,
+    localCochange: localCochange
+      ? {
+          source: localCochange.source,
+          checkpointsRef: localCochange.checkpointsRef,
+          lookbackSessions: localCochange.lookbackSessions,
+          topN: localCochange.topN,
+          sessionsScanned: localCochange.sessionsScanned,
+          relatedByChangedPath: localCochange.relatedByChangedPath,
+        }
+      : undefined,
+  };
+
+  return {
+    workspaceId,
+    deploymentId,
+    resolvedProvenance,
+  };
+}
+
+export async function createReviewFromCommitCommand(
+  options?: {
+    commitish?: string;
+    baseRef?: string;
+    outputReviewIdPath?: string;
+    projectRoot?: string;
+    idempotencyKey?: string;
+    severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
+    maxFindings?: number;
+    model?: string;
+    includeProvenance?: boolean;
+    includeValidationEvidence?: boolean;
+    pollIntervalMs?: number;
+  }
+): Promise<void> {
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) {
+    throw new Error('NIMBUS_WORKER_URL environment variable is required');
+  }
+
+  let workspaceId = '';
+  let deploymentId = '';
+  let reviewId = '';
+  let reviewResultUrl = '';
+  let resolvedProvenance: ReviewCreateProvenance | null = null;
+  const spinner = p.spinner();
+
+  try {
+    const resolved = await resolveReviewContext({
+      commitish: options?.commitish,
+      baseRef: options?.baseRef,
+      projectRoot: options?.projectRoot,
+      idempotencyKey: options?.idempotencyKey,
+      pollIntervalMs: options?.pollIntervalMs,
+    });
+    workspaceId = resolved.workspaceId;
+    deploymentId = resolved.deploymentId;
+    resolvedProvenance = resolved.resolvedProvenance;
 
     spinner.start('Creating review...');
     try {
@@ -436,35 +513,7 @@ export async function createReviewFromCommitCommand(
             includeValidationEvidence: options?.includeValidationEvidence ?? true,
           },
           model: options?.model,
-          provenance: {
-            note: `Review with Entire checkpoint intent context (${entireContextResolution?.resolvedCheckpointId ?? checkpointId}).`,
-            sessionIds: entireContextResolution?.context.sessionIds ?? [],
-            intentSessionContext: entireContextResolution?.context.intentSessionContext ?? [],
-            rawSessionPrompts: entireContextResolution?.context.rawSessionPrompts ?? null,
-            commitSha,
-            commitDiffPatch,
-            commitDiffPatchSha256,
-            commitDiffPatchTruncated,
-            commitDiffPatchOriginalChars,
-            contextResolution: entireContextResolution?.contextResolution ?? 'direct',
-            contextResolutionOriginalCheckpointId: entireContextResolution?.originalCheckpointId ?? checkpointId,
-            contextResolutionResolvedCheckpointId: entireContextResolution?.resolvedCheckpointId ?? checkpointId,
-            contextResolutionResolvedCommitSha: entireContextResolution?.resolvedCommitSha ?? commitSha,
-            contextResolutionResolvedCommitMessage:
-              entireContextResolution?.contextResolution === 'branch_fallback'
-                ? entireContextResolution.resolvedCommitSubject
-                : undefined,
-            localCochange: localCochange
-              ? {
-                  source: localCochange.source,
-                  checkpointsRef: localCochange.checkpointsRef,
-                  lookbackSessions: localCochange.lookbackSessions,
-                  topN: localCochange.topN,
-                  sessionsScanned: localCochange.sessionsScanned,
-                  relatedByChangedPath: localCochange.relatedByChangedPath,
-                }
-              : undefined,
-          },
+          provenance: resolvedProvenance ?? undefined,
         }
       );
       reviewId = response.reviewId;

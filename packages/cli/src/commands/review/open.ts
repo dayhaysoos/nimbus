@@ -1,12 +1,13 @@
 import * as p from '@clack/prompts';
-import { execFileSync, spawn } from 'child_process';
+import { spawn } from 'child_process';
 import { once } from 'events';
 import { createReadStream, statSync } from 'fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
 import { dirname, extname, join, resolve, sep } from 'path';
 import { fileURLToPath } from 'url';
-import { deriveReviewPolicy, getWorkerUrl, getWorkspace } from '../../lib/api.js';
-import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
+import { deriveReviewPolicy, getReview, getWorkerUrl, streamReviewEvents } from '../../lib/api.js';
+import { formatEvent } from './events.js';
+import { resolveReviewContext } from './create.js';
 
 const DEFAULT_OPEN_PORT = 2000;
 const LOCAL_HOST = '127.0.0.1';
@@ -25,6 +26,21 @@ const CONTENT_TYPES: Record<string, string> = {
   '.svg': 'image/svg+xml; charset=utf-8',
   '.txt': 'text/plain; charset=utf-8',
 };
+
+interface UiServerSession {
+  appUrl: string;
+  close: () => Promise<void>;
+  waitForExit: () => Promise<void>;
+}
+
+export interface OpenReviewFromCommitOptions {
+  port?: number;
+  commitish?: string;
+  baseRef?: string;
+  projectRoot?: string;
+  idempotencyKey?: string;
+  pollIntervalMs?: number;
+}
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
@@ -319,30 +335,20 @@ async function waitForServer(url: string, server: ReturnType<typeof spawn>, time
   throw new Error(`Timed out waiting for report UI server at ${url}`);
 }
 
-async function runDevServer(options: {
+async function startDevServerSession(options: {
   routePath: string;
   reportUiDir: string;
   workerUrl: string;
   port: number;
-}): Promise<void> {
+}): Promise<UiServerSession> {
   const appUrl = `http://${LOCAL_HOST}:${options.port}${options.routePath}`;
   const env: NodeJS.ProcessEnv = { ...process.env, NIMBUS_API_PROXY_TARGET: options.workerUrl };
   delete env.VITE_NIMBUS_API_BASE_URL;
 
   const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const serverArgs = [
-    'dev',
-    '--',
-    '--host',
-    LOCAL_HOST,
-    '--port',
-    String(options.port),
-    '--strictPort',
-  ];
+  const serverArgs = ['dev', '--', '--host', LOCAL_HOST, '--port', String(options.port), '--strictPort'];
 
-  p.log.message(
-    `Starting report UI dev server on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`
-  );
+  p.log.message(`Starting report UI dev server on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`);
 
   const server = spawn(pnpmCommand, serverArgs, {
     cwd: options.reportUiDir,
@@ -364,46 +370,28 @@ async function runDevServer(options: {
     });
   });
 
-  let shuttingDown = false;
-  const handleSignal = (signal: NodeJS.Signals) => {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-    server.kill(signal);
-  };
+  await waitForServer(`http://${LOCAL_HOST}:${options.port}/`, server, 30_000);
 
-  process.on('SIGINT', handleSignal);
-  process.on('SIGTERM', handleSignal);
-
-  try {
-    await waitForServer(`http://${LOCAL_HOST}:${options.port}/`, server, 30_000);
-    openBrowser(appUrl);
-    p.log.success(`Opened ${appUrl}`);
-    p.log.message('Press Ctrl+C to stop the local report UI.');
-
-    const exit = await serverExit;
-    if (shuttingDown) {
-      p.outro('Report UI stopped.');
-      return;
-    }
-
-    const signalSuffix = exit.signal ? ` (signal ${exit.signal})` : '';
-    throw new Error(`Report UI server exited unexpectedly with code ${exit.code ?? 'null'}${signalSuffix}.`);
-  } finally {
-    process.off('SIGINT', handleSignal);
-    process.off('SIGTERM', handleSignal);
-    if (server.exitCode === null) {
-      server.kill('SIGTERM');
-      await Promise.race([serverExit.catch(() => undefined), sleep(2000)]);
+  return {
+    appUrl,
+    close: async () => {
+      if (server.exitCode === null) {
+        server.kill('SIGTERM');
+        await Promise.race([serverExit.catch(() => undefined), sleep(2000)]);
+      }
       if (server.exitCode === null) {
         server.kill('SIGKILL');
       }
-    }
-  }
+    },
+    waitForExit: async () => {
+      const exit = await serverExit;
+      const signalSuffix = exit.signal ? ` (signal ${exit.signal})` : '';
+      throw new Error(`Report UI server exited unexpectedly with code ${exit.code ?? 'null'}${signalSuffix}.`);
+    },
+  };
 }
 
-async function runStaticServer(options: {
+async function startStaticServerSession(options: {
   routePath: string;
   distDir: string;
   workerUrl: string;
@@ -411,7 +399,7 @@ async function runStaticServer(options: {
   reviewGithubToken: string | null;
   openrouterApiKey: string | null;
   port: number;
-}): Promise<void> {
+}): Promise<UiServerSession> {
   const appUrl = `http://${LOCAL_HOST}:${options.port}${options.routePath}`;
   const server = await startStaticServer({
     distDir: options.distDir,
@@ -422,149 +410,60 @@ async function runStaticServer(options: {
     port: options.port,
   });
 
-  p.log.message(
-    `Serving report UI assets from ${options.distDir} on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`
-  );
-
-  openBrowser(appUrl);
-  p.log.success(`Opened ${appUrl}`);
-  p.log.message('Press Ctrl+C to stop the local report UI.');
-
-  let shutdownRequested = false;
-  const closeServer = async (): Promise<void> => {
-    if (!server.listening) {
-      return;
-    }
-    await new Promise<void>((resolveClose, rejectClose) => {
-      server.close((error) => {
-        if (error) {
-          rejectClose(error);
+  return {
+    appUrl,
+    close: async () => {
+      if (!server.listening) {
+        return;
+      }
+      await new Promise<void>((resolveClose, rejectClose) => {
+        server.close((error) => {
+          if (error) {
+            rejectClose(error);
+            return;
+          }
+          resolveClose();
+        });
+      });
+    },
+    waitForExit: async () => {
+      await new Promise<void>((_resolve, rejectWait) => {
+        if (!server.listening) {
+          rejectWait(new Error('Report UI server stopped unexpectedly.'));
           return;
         }
-        resolveClose();
+        const onClose = () => {
+          server.off('error', onError);
+          rejectWait(new Error('Report UI server stopped unexpectedly.'));
+        };
+        const onError = (error: Error) => {
+          server.off('close', onClose);
+          rejectWait(error);
+        };
+        server.once('close', onClose);
+        server.once('error', onError);
       });
-    });
+    },
   };
-
-  let resolveWait!: () => void;
-  let rejectWait!: (error: Error) => void;
-  const waitForShutdown = new Promise<void>((resolveWaitPromise, rejectWaitPromise) => {
-    resolveWait = resolveWaitPromise;
-    rejectWait = (error: Error) => rejectWaitPromise(error);
-  });
-
-  const handleSignal = () => {
-    if (shutdownRequested) {
-      return;
-    }
-    shutdownRequested = true;
-    void closeServer()
-      .then(() => resolveWait())
-      .catch((error) => {
-        rejectWait(error instanceof Error ? error : new Error(String(error)));
-      });
-  };
-
-  const handleUnexpectedClose = () => {
-    if (shutdownRequested) {
-      resolveWait();
-      return;
-    }
-    rejectWait(new Error('Report UI server stopped unexpectedly.'));
-  };
-
-  const handleServerError = (error: Error) => {
-    rejectWait(error);
-  };
-
-  process.on('SIGINT', handleSignal);
-  process.on('SIGTERM', handleSignal);
-  server.once('close', handleUnexpectedClose);
-  server.once('error', handleServerError);
-
-  try {
-    await waitForShutdown;
-    p.outro('Report UI stopped.');
-  } finally {
-    process.off('SIGINT', handleSignal);
-    process.off('SIGTERM', handleSignal);
-    server.off('close', handleUnexpectedClose);
-    server.off('error', handleServerError);
-    if (server.listening) {
-      await closeServer().catch(() => undefined);
-    }
-  }
 }
 
-function resolveRepositorySlug(): string | null {
-  const explicit = process.env.NIMBUS_REPO_SLUG?.trim();
-  if (explicit) {
-    return explicit;
-  }
-
-  try {
-    const remoteUrl = execFileSync('git', ['remote', 'get-url', 'origin'], {
-      encoding: 'utf8',
-      cwd: process.cwd(),
-    }).trim();
-    const normalized = remoteUrl.replace(/^git\+/, '').replace(/\.git$/i, '').trim();
-    if (!normalized) {
-      return null;
-    }
-
-    const scpLikeSshMatch = normalized.match(/^git@([^:]+):([^/]+\/[^/]+)$/i);
-    if (scpLikeSshMatch) {
-      const host = (scpLikeSshMatch[1] ?? '').toLowerCase();
-      if (host !== 'github.com') {
-        return null;
-      }
-      return (scpLikeSshMatch[2] ?? '').trim() || null;
-    }
-
-    if (/^https?:\/\//i.test(normalized) || /^ssh:\/\//i.test(normalized)) {
-      const parsed = new URL(normalized);
-      if (parsed.hostname.toLowerCase() !== 'github.com') {
-        return null;
-      }
-      const segments = parsed.pathname.replace(/^\/+/, '').split('/').filter(Boolean);
-      if (segments.length < 2) {
-        return null;
-      }
-      return `${segments[0]}/${segments[1]}`;
-    }
-  } catch {
-    return null;
-  }
-
-  return null;
-}
-
-function resolveCurrentBranch(): string | null {
-  try {
-    const branch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-      encoding: 'utf8',
-      cwd: process.cwd(),
-    }).trim();
-    return branch || null;
-  } catch {
-    return null;
-  }
-}
-
-async function openReportUiRoute(options: {
+async function startReportUiSession(options: {
   routePath: string;
   port: number;
   workerUrl: string;
   apiKey: string | null;
   reviewGithubToken: string | null;
   openrouterApiKey: string | null;
-}): Promise<void> {
+}): Promise<UiServerSession> {
   const bundledDistDir = resolvePackagedDistDir();
   const monorepoDistDir = resolveMonorepoDistDir();
   const distDir = bundledDistDir ?? monorepoDistDir;
 
   if (distDir) {
-    await runStaticServer({
+    p.log.message(
+      `Serving report UI assets from ${distDir} on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`
+    );
+    return startStaticServerSession({
       routePath: options.routePath,
       distDir,
       workerUrl: options.workerUrl,
@@ -573,7 +472,6 @@ async function openReportUiRoute(options: {
       openrouterApiKey: options.openrouterApiKey,
       port: options.port,
     });
-    return;
   }
 
   const reportUiDir = resolveMonorepoReportUiDir();
@@ -581,7 +479,7 @@ async function openReportUiRoute(options: {
     throw new Error('Unable to locate bundled report UI assets or monorepo report-ui package. Reinstall or rebuild the CLI package.');
   }
 
-  await runDevServer({
+  return startDevServerSession({
     routePath: options.routePath,
     reportUiDir,
     workerUrl: options.workerUrl,
@@ -589,10 +487,7 @@ async function openReportUiRoute(options: {
   });
 }
 
-export async function openReviewCommand(
-  reviewId: string,
-  options?: { port?: number }
-): Promise<void> {
+export async function openReviewFromCommitCommand(options?: OpenReviewFromCommitOptions): Promise<void> {
   const port = options?.port ?? DEFAULT_OPEN_PORT;
   if (!Number.isInteger(port) || port <= 0 || port > 65535) {
     throw new Error('Invalid port. Use an integer between 1 and 65535.');
@@ -602,78 +497,26 @@ export async function openReviewCommand(
   const apiKey = process.env.NIMBUS_API_KEY?.trim() ?? null;
   const reviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN?.trim() ?? null;
   const openrouterApiKey = process.env.OPENROUTER_API_KEY?.trim() ?? null;
-
   if (!apiKey) {
     p.log.warning('NIMBUS_API_KEY is not set. Hosted worker requests may be rejected as unauthenticated.');
   }
 
-  await openReportUiRoute({
-    routePath: `/reports/${encodeURIComponent(reviewId)}`,
-    port,
-    workerUrl,
-    apiKey,
-    reviewGithubToken,
-    openrouterApiKey,
+  const context = await resolveReviewContext({
+    commitish: options?.commitish,
+    baseRef: options?.baseRef,
+    projectRoot: options?.projectRoot,
+    idempotencyKey: options?.idempotencyKey,
+    pollIntervalMs: options?.pollIntervalMs,
   });
-}
 
-export async function startPolicyReviewOpenCommand(
-  workspaceId: string,
-  deploymentId: string,
-  options?: { port?: number }
-): Promise<void> {
-  const port = options?.port ?? DEFAULT_OPEN_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error('Invalid port. Use an integer between 1 and 65535.');
-  }
-
-  const workerUrl = getWorkerUrl();
-  const apiKey = process.env.NIMBUS_API_KEY?.trim() ?? null;
-  const reviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN?.trim() ?? null;
-  const openrouterApiKey = process.env.OPENROUTER_API_KEY?.trim() ?? null;
-  if (!apiKey) {
-    p.log.warning('NIMBUS_API_KEY is not set. Hosted worker requests may be rejected as unauthenticated.');
-  }
-
-  const workspace = await getWorkspace(workerUrl, workspaceId);
-  const provenance: Record<string, unknown> = {
-    trigger: 'manual_cli',
-    commitSha: workspace.commitSha,
-  };
-  const repo = resolveRepositorySlug();
-  if (repo) {
-    provenance.repo = repo;
-  }
-  const branch = resolveCurrentBranch();
-  if (branch) {
-    provenance.branch = branch;
-  }
-
-  if (workspace.checkpointId) {
-    try {
-      const entire = await resolveEntireIntentContextForCommit(workspace.commitSha, process.cwd(), {
-        summarizeSession: 'auto',
-        checkpointId: workspace.checkpointId,
-      });
-      provenance.note = entire.note;
-      provenance.transcriptUrl = entire.transcriptUrl;
-      provenance.sessionIds = entire.sessionIds;
-      provenance.intentSessionContext = entire.intentSessionContext;
-      provenance.rawSessionPrompts = entire.rawSessionPrompts ?? null;
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      p.log.warning(`Entire intent context unavailable for policy derivation: ${message}`);
-    }
-  }
-
-  p.log.message(`Starting policy derivation for workspace ${workspaceId}, deployment ${deploymentId}`);
+  p.log.message(`Starting policy derivation for workspace ${context.workspaceId}, deployment ${context.deploymentId}`);
   const derived = await deriveReviewPolicy(workerUrl, {
-    workspaceId,
-    deploymentId,
-    provenance,
+    workspaceId: context.workspaceId,
+    deploymentId: context.deploymentId,
+    provenance: context.resolvedProvenance,
   });
 
-  await openReportUiRoute({
+  const uiSession = await startReportUiSession({
     routePath: `/policy/${encodeURIComponent(derived.reviewId)}`,
     port,
     workerUrl,
@@ -681,4 +524,58 @@ export async function startPolicyReviewOpenCommand(
     reviewGithubToken,
     openrouterApiKey,
   });
+  openBrowser(uiSession.appUrl);
+  p.log.success(`Opened ${uiSession.appUrl}`);
+  p.log.message('Streaming review events; press Ctrl+C to stop.');
+
+  let terminalStatus: string | null = null;
+  let interrupted = false;
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    await uiSession.close().catch(() => undefined);
+  };
+  const handleSignal = () => {
+    interrupted = true;
+    void shutdown();
+  };
+
+  process.on('SIGINT', handleSignal);
+  process.on('SIGTERM', handleSignal);
+
+  try {
+    const proxyWorkerUrl = `http://${LOCAL_HOST}:${port}`;
+    await Promise.race([
+      streamReviewEvents(proxyWorkerUrl, derived.reviewId, async (event) => {
+        const line = formatEvent(event);
+        if (line) {
+          console.log(line);
+        }
+        if (event.data.type === 'terminal' && typeof event.data.status === 'string') {
+          terminalStatus = event.data.status;
+        }
+      }),
+      uiSession.waitForExit(),
+    ]);
+
+    if (interrupted) {
+      return;
+    }
+
+    const final = await getReview(proxyWorkerUrl, derived.reviewId);
+    const status = terminalStatus ?? final.review.status;
+    if (status === 'succeeded') {
+      p.log.success(`Review completed: ${status}`);
+    } else {
+      p.log.warning(`Review completed: ${status}`);
+    }
+  } finally {
+    process.off('SIGINT', handleSignal);
+    process.off('SIGTERM', handleSignal);
+    await shutdown();
+    p.outro('Report UI stopped.');
+  }
 }

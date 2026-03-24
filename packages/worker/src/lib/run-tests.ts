@@ -20,6 +20,7 @@ import { runWorkspaceDeployProviderTests } from './workspace-deploy-provider.tes
 import { runReviewQueueTests } from './review-queue.test.js';
 import { runReviewQueueDispatchTests } from '../review-queue-dispatch.test.js';
 import { runReviewRunnerTests } from './review-runner.test.js';
+import { runReviewIntentSummaryTests } from './review-intent-summary.test.js';
 import { runReviewRunnerDurableObjectTests } from '../review-runner-do.test.js';
 import { runReviewDbTests } from './db.review.test.js';
 import { runReviewOutputV2Tests } from './review-output-v2.test.js';
@@ -58,6 +59,7 @@ const TEST_CASES: TestCase[] = [
   { name: 'review-db', run: runReviewDbTests },
   { name: 'review-output-v2', run: runReviewOutputV2Tests },
   { name: 'review-runner', run: runReviewRunnerTests },
+  { name: 'review-intent-summary', run: runReviewIntentSummaryTests },
   { name: 'review-api', run: runReviewApiTests },
   { name: 'admin-api', run: runAdminApiTests },
   { name: 'auth-middleware', run: runAuthMiddlewareTests },

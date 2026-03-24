@@ -786,9 +786,6 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
         prohibitions: Array.isArray(intentSummaryFromReport.prohibitions)
           ? intentSummaryFromReport.prohibitions.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
           : [],
-        riskFocus: Array.isArray(intentSummaryFromReport.riskFocus)
-          ? intentSummaryFromReport.riskFocus.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
-          : [],
         constraints: Array.isArray(intentSummaryFromReport.constraints)
           ? intentSummaryFromReport.constraints.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)
           : [],

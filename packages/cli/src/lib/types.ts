@@ -319,7 +319,6 @@ export interface ReviewRunResponse {
     intentSummary?: {
       goal: string | null;
       prohibitions: string[];
-      riskFocus: string[];
       constraints: string[];
     };
     promptSummary: string | null;

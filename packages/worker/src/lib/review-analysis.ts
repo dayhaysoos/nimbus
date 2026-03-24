@@ -183,11 +183,47 @@ export function stripCodeFences(value: string): string {
 export function extractJsonObject(value: string): string {
   const stripped = stripCodeFences(value);
   const start = stripped.indexOf('{');
-  const end = stripped.lastIndexOf('}');
-  if (start >= 0 && end > start) {
-    return stripped.slice(start, end + 1);
+  if (start < 0) {
+    return stripped;
   }
-  return stripped;
+
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+
+  for (let index = start; index < stripped.length; index += 1) {
+    const char = stripped[index];
+
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (char === '\\') {
+        escaped = true;
+      } else if (char === '"') {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+
+    if (char === '{') {
+      depth += 1;
+      continue;
+    }
+
+    if (char === '}') {
+      depth -= 1;
+      if (depth === 0) {
+        return stripped.slice(start, index + 1);
+      }
+    }
+  }
+
+  return stripped.slice(start);
 }
 
 function normalizeIntent(value: unknown): ReviewAgentIntent | null {
@@ -345,7 +381,6 @@ function sanitizePromptInput(input: ReviewAgentPromptInput): ReviewAgentPromptIn
     ? {
         goal: rawIntentSummary.goal ? redactReviewText(rawIntentSummary.goal) : null,
         prohibitions: rawIntentSummary.prohibitions.map((item) => redactReviewText(item) ?? '').filter(Boolean),
-        riskFocus: rawIntentSummary.riskFocus.map((item) => redactReviewText(item) ?? '').filter(Boolean),
         constraints: rawIntentSummary.constraints.map((item) => redactReviewText(item) ?? '').filter(Boolean),
       }
     : null;
@@ -392,9 +427,6 @@ function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
         input.intentSummary.prohibitions.length > 0
           ? `Prohibitions:\n${input.intentSummary.prohibitions.map((item) => `- ${item}`).join('\n')}`
           : 'Prohibitions: None stated',
-        input.intentSummary.riskFocus.length > 0
-          ? `Risk focus areas:\n${input.intentSummary.riskFocus.map((item) => `- ${item}`).join('\n')}`
-          : 'Risk focus areas: None stated',
         input.intentSummary.constraints.length > 0
           ? `Constraints:\n${input.intentSummary.constraints.map((item) => `- ${item}`).join('\n')}`
           : 'Constraints: None stated',

@@ -91,6 +91,12 @@ export function PolicyPage(): JSX.Element {
   const [approving, setApproving] = useState(false);
   const [policyDraft, setPolicyDraft] = useState<EditablePolicy>({ goal: '', prohibitions: [], constraints: [] });
 
+  console.log('[PolicyPage] render', {
+    reviewId: reviewId ?? null,
+    state,
+    reviewStatus: review?.status ?? null,
+  });
+
   useEffect(() => {
     if (!reviewId) {
       setState('error');
@@ -117,6 +123,10 @@ export function PolicyPage(): JSX.Element {
         }
 
         setReview(data.review);
+        console.log('[PolicyPage] fetched review status', {
+          reviewId,
+          status: data.review.status,
+        });
         setState('loaded');
         setErrorMessage('');
 
@@ -133,6 +143,10 @@ export function PolicyPage(): JSX.Element {
       })
       .catch((error) => {
         if (!cancelled) {
+          console.error('[PolicyPage] fetch failed', {
+            reviewId,
+            error: error instanceof Error ? error.message : String(error),
+          });
           setState('error');
           setErrorMessage(error instanceof Error ? error.message : String(error));
         }

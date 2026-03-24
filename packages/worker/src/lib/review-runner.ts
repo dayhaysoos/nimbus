@@ -72,19 +72,22 @@ const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
 const LARGE_DIFF_ADVISORY_THRESHOLD = 30;
 const DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
 const REVIEW_STALE_GRACE_MS = 60 * 1000;
-const INTENT_SUMMARY_MODEL = 'anthropic/claude-haiku-4-5';
+const INTENT_SUMMARY_MODEL = 'anthropic/claude-sonnet-4.5';
 const INTENT_SUMMARY_MAX_TOKENS = 512;
+const INTENT_SUMMARY_NON_POLICY_LINE_PATTERN =
+  /\b(step\s*\d+|start with step|next step|exact order|one step at a time|showing me each file change|before moving to the next|before committing|commit and push|run migrations|deploy to worker|test locally|summarize the task tool output|go ahead with step)\b/i;
+const INTENT_SUMMARY_NON_POLICY_PREFIX_PATTERN = /^(f-\d{3}\b|fix:)/i;
 const INTENT_SUMMARY_SYSTEM_PROMPT = `You are a staff engineer reviewing a colleague's session notes
 before conducting a code review. Your job is to extract the
 key intent signals from their notes so the reviewer understands
 what the developer was trying to do, what they were worried
 about, and what constraints they were working within.
+Prefer explicit statements over inference; do not over-generalize risk from implementation details.
 
 Return only a JSON object with no surrounding prose:
 {
   "goal": string or null,
   "prohibitions": string[],
-  "riskFocus": string[],
   "constraints": string[]
 }
 
@@ -93,10 +96,6 @@ Field guidance:
   If unclear, return null.
 - prohibitions: things the developer explicitly said must
   not happen. Max 5 items.
-- riskFocus: areas the developer flagged as risky or
-  concerning, either explicitly or by returning to them
-  repeatedly. Max 5 items. Prefer explicit statements but
-  include recurring themes even if not labeled as risks.
 - constraints: preferences, requirements, or boundaries
   the developer stated they were working within. Max 5 items.
 
@@ -104,14 +103,22 @@ Rules:
 - Skip any line phrased as a question.
 - Skip any line that is directing an AI tool to do something.
 - Skip implementation details and step-by-step instructions.
+- Never include sequencing/process directives (examples: "Step 1",
+  "start with", "before committing", "run migrations", "deploy",
+  "test locally", "commit and push").
+- Never include finding IDs or fix bullets (examples: "F-002", "Fix:").
 - Keep each extracted item to one concise sentence.
 - If a category has nothing clear to extract, return an
   empty array or null.
+- If uncertain whether a signal is explicit, omit it.
+- Do not duplicate the same item across multiple categories.
 - When more than 5 candidates exist for a category,
   prioritize the most explicitly stated items over
   inferred ones.
 - Do not invent intent that is not present or implied
-  in the notes.`;
+  in the notes.
+- This summary is prioritization context for code review,
+  not direct evidence of defects.`;
 
 interface ReviewRunExecutionOptions {
   cochangeGithubToken?: string | null;
@@ -154,6 +161,16 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
     return null;
   }
 
+  const isPolicyLine = (line: string): boolean => {
+    if (!line) {
+      return false;
+    }
+    if (INTENT_SUMMARY_NON_POLICY_PREFIX_PATTERN.test(line)) {
+      return false;
+    }
+    return !INTENT_SUMMARY_NON_POLICY_LINE_PATTERN.test(line);
+  };
+
   const normalizeList = (input: unknown): string[] =>
     Array.isArray(input)
       ? Array.from(
@@ -161,22 +178,21 @@ function validateIntentSummaryPayload(value: unknown): ReviewSessionIntentSummar
             input
               .filter((item): item is string => typeof item === 'string')
               .map((item) => item.trim())
-              .filter(Boolean)
+              .filter(isPolicyLine)
           )
         ).slice(0, 5)
       : [];
 
   const goalRaw = typeof record.goal === 'string' ? record.goal.trim() : null;
-  const goal = goalRaw && goalRaw.length > 0 ? goalRaw : null;
+  const goal = goalRaw && isPolicyLine(goalRaw) ? goalRaw : null;
 
   const summary: ReviewSessionIntentSummary = {
     goal,
     prohibitions: normalizeList(record.prohibitions),
-    riskFocus: normalizeList(record.riskFocus),
     constraints: normalizeList(record.constraints),
   };
 
-  if (!summary.goal && summary.prohibitions.length === 0 && summary.riskFocus.length === 0 && summary.constraints.length === 0) {
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.constraints.length === 0) {
     return null;
   }
 
@@ -188,18 +204,20 @@ function intentSummaryFromApprovedPolicy(policy: ReviewApprovedPolicy): ReviewSe
     goal: policy.goal,
     prohibitions: policy.prohibitions,
     constraints: policy.constraints,
-    riskFocus: [],
   };
 }
 
 export async function runIntentSummarizationPrePass(
   env: Env,
   rawSessionPrompts: string,
-  options?: { openrouterApiKey?: string | null }
+  options?: { openrouterApiKey?: string | null; intentSummaryModel?: string | null }
 ): Promise<ReviewSessionIntentSummary | null> {
   const INTENT_SUMMARY_TIMEOUT_MS = 15_000;
   const envApiKey = typeof env.OPENROUTER_API_KEY === 'string' ? env.OPENROUTER_API_KEY.trim() : '';
   const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';
+  const requestModel = typeof options?.intentSummaryModel === 'string' ? options.intentSummaryModel.trim() : '';
+  const envModel = typeof env.REVIEW_INTENT_SUMMARY_MODEL === 'string' ? env.REVIEW_INTENT_SUMMARY_MODEL.trim() : '';
+  const summaryModel = requestModel || envModel || INTENT_SUMMARY_MODEL;
   const apiKey = envApiKey || requestApiKey;
   if (!apiKey) {
     console.warn('[intent-summary] pre-pass failed: OPENROUTER_API_KEY not configured');
@@ -221,7 +239,7 @@ export async function runIntentSummarizationPrePass(
             Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
-            model: INTENT_SUMMARY_MODEL,
+            model: summaryModel,
             max_tokens: INTENT_SUMMARY_MAX_TOKENS,
             messages: [
               { role: 'system', content: INTENT_SUMMARY_SYSTEM_PROMPT },
@@ -274,6 +292,77 @@ export async function runIntentSummarizationPrePass(
     console.warn(`[intent-summary] pre-pass failed: ${message}`);
     return null;
   }
+}
+
+function deriveIntentSummaryFallback(
+  rawSessionPrompts: string,
+  intentSessionContext: string[]
+): ReviewSessionIntentSummary | null {
+  const lines = [...rawSessionPrompts.split(/\r?\n/), ...intentSessionContext]
+    .map((line) => line.trim())
+    .filter(Boolean);
+
+  let goal: string | null = null;
+  const prohibitions: string[] = [];
+  const constraints: string[] = [];
+
+  for (const line of lines) {
+    const goalMatch = line.match(/^goal\s*:\s*(.+)$/i);
+    if (!goal && goalMatch?.[1]?.trim()) {
+      goal = goalMatch[1].trim();
+      continue;
+    }
+
+    const prohibitionMatch = line.match(/^prohibition\s*:\s*(.+)$/i);
+    if (prohibitionMatch?.[1]?.trim()) {
+      prohibitions.push(prohibitionMatch[1].trim());
+      continue;
+    }
+
+    const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
+    if (constraintMatch?.[1]?.trim()) {
+      constraints.push(constraintMatch[1].trim());
+    }
+  }
+
+  const summary: ReviewSessionIntentSummary = {
+    goal,
+    prohibitions: uniqueStrings(prohibitions),
+    constraints: uniqueStrings(constraints),
+  };
+
+  if (!summary.goal && summary.prohibitions.length === 0 && summary.constraints.length === 0) {
+    return null;
+  }
+
+  return summary;
+}
+
+export async function summarizeReviewIntentPolicy(
+  env: Env,
+  input: {
+    rawSessionPrompts: string;
+    intentSessionContext?: string[];
+    openrouterApiKey?: string | null;
+    intentSummaryModel?: string | null;
+  }
+): Promise<ReviewSessionIntentSummary | null> {
+  const rawSessionPrompts = input.rawSessionPrompts.trim();
+  const intentSessionContext = uniqueStrings(
+    Array.isArray(input.intentSessionContext)
+      ? input.intentSessionContext.filter((item): item is string => typeof item === 'string').map((item) => item.trim())
+      : []
+  );
+  if (!rawSessionPrompts) {
+    return null;
+  }
+
+  const modelSummary = await runIntentSummarizationPrePass(env, rawSessionPrompts, {
+    openrouterApiKey: input.openrouterApiKey,
+    intentSummaryModel: input.intentSummaryModel,
+  });
+
+  return modelSummary ?? deriveIntentSummaryFallback(rawSessionPrompts, intentSessionContext);
 }
 
 function uniqueStrings(values: string[]): string[] {
@@ -1609,11 +1698,15 @@ async function buildWorkspaceDeploymentReport(
     typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim()
       ? requestProvenance.rawSessionPrompts.trim()
       : null;
+  const intentSummaryModel = readOptionalString(requestProvenance.intentSummaryModel);
   const derivedIntentSummary = approvedPolicy
     ? intentSummaryFromApprovedPolicy(approvedPolicy)
     : rawSessionPrompts
-      ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
+      ? await summarizeReviewIntentPolicy(env, {
+          rawSessionPrompts,
+          intentSessionContext,
           openrouterApiKey: readOptionalString(options?.openrouterApiKey),
+          intentSummaryModel,
         })
       : null;
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'

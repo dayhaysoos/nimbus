@@ -18,7 +18,8 @@ import {
 } from '../lib/db.js';
 import { createReviewQueueMessage } from '../lib/review-queue.js';
 import { canAccessAccount } from '../lib/authz.js';
-import { runIntentSummarizationPrePass } from '../lib/review-runner.js';
+import { summarizeReviewIntentPolicy } from '../lib/review-runner.js';
+import { extractPolicyItemsFromIntentContext } from '../lib/review-redaction.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -365,6 +366,17 @@ function readOpenrouterApiKeyHeader(request: Request): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
+function normalizeIntentSummaryModel(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 120) {
+    return undefined;
+  }
+  return trimmed;
+}
+
 function stripSensitiveTokenFields(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => stripSensitiveTokenFields(item));
@@ -419,6 +431,112 @@ function normalizeStringList(value: unknown, maxItems = 20): string[] {
     : [];
 }
 
+function normalizePolicySentence(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function extractChangedPathsFromPatch(value: unknown, maxItems = 5): string[] {
+  if (typeof value !== 'string' || !value.trim()) {
+    return [];
+  }
+  const matches = value.matchAll(/^diff --git a\/[^\n\r]+ b\/([^\n\r]+)$/gm);
+  const paths = Array.from(matches, (match) => normalizePolicySentence(match[1] ?? ''))
+    .filter(Boolean)
+    .filter((path) => path !== '/dev/null');
+  return Array.from(new Set(paths)).slice(0, maxItems);
+}
+
+function extractPolicyHintsFromProvenance(provenance: Record<string, unknown>): {
+  goal: string | null;
+  prohibitions: string[];
+  constraints: string[];
+} {
+  const intentSessionContext = Array.isArray(provenance.intentSessionContext)
+    ? provenance.intentSessionContext
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+
+  const goalCandidates: string[] = [];
+  const prohibitions: string[] = [];
+  const constraints: string[] = [];
+
+  for (const line of intentSessionContext) {
+    const goalMatch = line.match(/^goal\s*signal\s*:\s*(.+)$/i);
+    if (goalMatch) {
+      const goalText = normalizePolicySentence(goalMatch[1] ?? '');
+      if (goalText && !/^you are a code reviewer\b/i.test(goalText)) {
+        goalCandidates.push(goalText);
+      }
+      continue;
+    }
+
+    const prohibitionMatch = line.match(/^prohibition\s*:\s*(.+)$/i);
+    if (prohibitionMatch) {
+      const text = normalizePolicySentence(prohibitionMatch[1] ?? '');
+      if (text) {
+        prohibitions.push(text);
+      }
+      continue;
+    }
+
+    const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
+    if (constraintMatch) {
+      const text = normalizePolicySentence(constraintMatch[1] ?? '');
+      if (text) {
+        constraints.push(text);
+      }
+    }
+  }
+
+  if (prohibitions.length === 0 || constraints.length === 0) {
+    const policyHints = extractPolicyItemsFromIntentContext(intentSessionContext);
+    for (const hint of policyHints) {
+      if (/^prohibition\s*:/i.test(hint)) {
+        const text = normalizePolicySentence(hint.replace(/^prohibition\s*:\s*/i, ''));
+        if (text) {
+          prohibitions.push(text);
+        }
+        continue;
+      }
+    }
+  }
+
+  const rawSessionPrompts = typeof provenance.rawSessionPrompts === 'string' ? provenance.rawSessionPrompts : '';
+  const rawLines = rawSessionPrompts
+    .split(/\r?\n/)
+    .map((line) => normalizePolicySentence(line))
+    .filter(Boolean);
+  if (prohibitions.length === 0) {
+    for (const line of rawLines) {
+      if (/(?:\bdo not\b|\bdon't\b|\bmust not\b|\bnever\b|\bavoid\b)/i.test(line)) {
+        prohibitions.push(line);
+      }
+    }
+  }
+  if (constraints.length === 0) {
+    for (const line of rawLines) {
+      if (/(?:\bfocus on\b|\bprefer\b|\bensure\b|\bkeep\b|\brequire\b|\bshould\b)/i.test(line)) {
+        constraints.push(line);
+      }
+    }
+  }
+
+  if (constraints.length === 0) {
+    const changedPaths = extractChangedPathsFromPatch(provenance.commitDiffPatch, 5);
+    for (const path of changedPaths) {
+      constraints.push(`Prioritize review coverage for changed file: ${path}`);
+    }
+  }
+
+  return {
+    goal: goalCandidates[0] ?? null,
+    prohibitions: normalizeStringList(prohibitions, 5),
+    constraints: normalizeStringList(constraints, 5),
+  };
+}
+
 function normalizeReviewPolicy(value: unknown): ReviewApprovedPolicy | null {
   if (!isRecord(value)) {
     return null;
@@ -455,7 +573,6 @@ function intentSummaryFromPolicy(policy: ReviewApprovedPolicy): ReviewSessionInt
     goal: policy.goal,
     prohibitions: policy.prohibitions,
     constraints: policy.constraints,
-    riskFocus: [],
   };
 }
 
@@ -464,12 +581,20 @@ function fallbackDerivedPolicy(input: {
   deploymentId: string;
   provenance: Record<string, unknown>;
 }): ReviewApprovedPolicy {
+  const hints = extractPolicyHintsFromProvenance(input.provenance);
   const note = typeof input.provenance.note === 'string' && input.provenance.note.trim() ? input.provenance.note.trim() : null;
-  return {
-    goal: note ?? `Review deployment ${input.deploymentId} for workspace ${input.workspaceId}.`,
-    prohibitions: [],
-    constraints: [],
-  };
+  const goal = hints.goal ?? note ?? `Review deployment ${input.deploymentId} for workspace ${input.workspaceId}.`;
+  return (
+    normalizeReviewPolicy({
+      goal,
+      prohibitions: hints.prohibitions,
+      constraints: hints.constraints,
+    }) ?? {
+      goal,
+      prohibitions: [],
+      constraints: [],
+    }
+  );
 }
 
 function isReviewStatusActive(status: ReviewRunStatus): boolean {
@@ -844,8 +969,16 @@ export async function handleDeriveReviewPolicy(
     const provenance = isRecord(payload.provenance) ? payload.provenance : {};
     const rawSessionPrompts =
       typeof provenance.rawSessionPrompts === 'string' && provenance.rawSessionPrompts.trim()
-        ? provenance.rawSessionPrompts.trim().slice(0, 6000)
+        ? provenance.rawSessionPrompts.trim().slice(0, 24000)
         : null;
+    const intentSessionContext = Array.isArray(provenance.intentSessionContext)
+      ? provenance.intentSessionContext
+          .filter((item): item is string => typeof item === 'string')
+          .map((item) => item.trim())
+          .filter(Boolean)
+          .slice(0, 50)
+      : [];
+    const intentSummaryModel = normalizeIntentSummaryModel(provenance.intentSummaryModel);
 
     const requestPayload = {
       target: {
@@ -894,8 +1027,11 @@ export async function handleDeriveReviewPolicy(
     });
 
     const derivedIntentSummary = rawSessionPrompts
-      ? await runIntentSummarizationPrePass(env, rawSessionPrompts, {
+      ? await summarizeReviewIntentPolicy(env, {
+          rawSessionPrompts,
+          intentSessionContext,
           openrouterApiKey: readOpenrouterApiKeyHeader(request),
+          intentSummaryModel,
         })
       : null;
     const derivedPolicy =
