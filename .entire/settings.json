@@ -1,3 +1,6 @@
 {
-  "enabled": true
+  "enabled": true,
+  "absolute_git_hook_path": true,
+  "telemetry": true,
+  "commit_linking": "always"
 }

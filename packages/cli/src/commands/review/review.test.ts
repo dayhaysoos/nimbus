@@ -385,6 +385,100 @@ export async function runReviewCommandTests(): Promise<void> {
     }
 
     {
+      let capturedReviewProvenance: Record<string, unknown> | null = null;
+      setReviewCommitResolverForTests(() => ({
+        commitSha: '2'.repeat(40),
+        checkpointId: null,
+        commitDiffPatch: 'diff --git a/commit.txt b/commit.txt\nindex 111..222 100644\n--- a/commit.txt\n+++ b/commit.txt\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightLastCheckpointResolverForTests(() => ({
+        commitSha: 'abc1234def567890123456789012345678901234',
+        subject: 'feat: fallback checkpoint commit',
+        commitsAgo: 2,
+        checkpointId: '8a513f56ed70',
+      }));
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_base_fallback'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      setReviewCreateFlowForTests({
+        resolveWorkspaceSource: (_commitSha, options) => ({
+          commitSha: '2'.repeat(40),
+          checkpointId: null,
+          sourceRef: null,
+          projectRoot: options?.projectRoot ?? '.',
+        }),
+        createWorkspace: async () => ({
+          workspace: {
+            id: 'ws_base_fallback',
+            status: 'ready',
+            sourceType: 'checkpoint',
+            checkpointId: null,
+            commitSha: '2'.repeat(40),
+            sourceRef: null,
+            sourceProjectRoot: '.',
+            sourceBundleKey: 'bundle',
+            sourceBundleSha256: 'f'.repeat(64),
+            sourceBundleBytes: 123,
+            sandboxId: 'workspace-ws_base_fallback',
+            baselineReady: true,
+            errorCode: null,
+            errorMessage: null,
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:00.000Z',
+            deletedAt: null,
+            eventsUrl: '/api/workspaces/ws_base_fallback/events',
+          },
+        }),
+        deployWorkspace: async () => ({
+          id: 'dep_base_fallback',
+          workspaceId: 'ws_base_fallback',
+          status: 'succeeded',
+          provider: 'simulated',
+          idempotencyKey: 'idem-deploy',
+          maxRetries: 2,
+          attemptCount: 1,
+          sourceSnapshotSha256: null,
+          sourceBundleKey: 'bundle',
+          deployedUrl: 'https://example.dev',
+          providerDeploymentId: null,
+          cancelRequestedAt: null,
+          startedAt: '2026-03-11T00:00:00.000Z',
+          finishedAt: '2026-03-11T00:00:30.000Z',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          updatedAt: '2026-03-11T00:00:30.000Z',
+          provenance: {},
+          toolchain: null,
+          dependencyCacheKey: null,
+          dependencyCacheHit: false,
+          remediations: [],
+        }),
+        createReview: async (_workerUrl, _idempotencyKey, payload) => {
+          capturedReviewProvenance = (payload.provenance ?? null) as Record<string, unknown> | null;
+          return {
+            reviewId: 'rev_base_fallback',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_base_fallback/events',
+            resultUrl: '/reviews/rev_base_fallback',
+          };
+        },
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => createReviewResponseBody() as unknown as { review: any },
+      });
+
+      await createReviewFromCommitCommand({ commitish: 'HEAD', baseRef: 'origin/main' });
+      assert.equal(capturedReviewProvenance?.['contextResolutionOriginalCheckpointId'], '8a513f56ed70');
+      setReviewCommitResolverForTests(null);
+      setReviewPreflightLastCheckpointResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewCreateFlowForTests(null);
+    }
+
+    {
       let capturedBaseRef: string | undefined;
       setReviewCommitResolverForTests((_commitish, options) => {
         capturedBaseRef = options?.baseRef;

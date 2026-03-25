@@ -172,6 +172,7 @@ function findLastCheckpointOnBranch(commitSha: string, cwd = process.cwd()): Las
       commitSha: commits[index].sha,
       subject: commitSubject(commits[index].message),
       commitsAgo,
+      checkpointId: trailers.checkpointId,
     };
   }
 
