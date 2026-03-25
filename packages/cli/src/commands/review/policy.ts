@@ -45,7 +45,6 @@ export async function reviewPolicyCommand(options?: {
   try {
     resolved = validateReviewCommitCheckpoint(commitish, process.cwd(), {
       baseRef: options?.baseRef,
-      allowBranchCheckpointFallback: Boolean(options?.baseRef),
     });
     spinner.stop(`Resolved checkpoint ${resolved.checkpointId} from ${resolved.commitSha.slice(0, 12)}`);
   } catch (error) {
@@ -116,10 +115,5 @@ export async function reviewPolicyCommand(options?: {
 
   p.log.message(`Commit: ${resolved.commitSha}`);
   p.log.message(`Checkpoint: ${contextResolution.resolvedCheckpointId}`);
-  if (contextResolution.contextResolution === 'branch_fallback') {
-    p.log.warning(
-      `Context fallback: using checkpoint ${contextResolution.resolvedCheckpointId} from ${contextResolution.resolvedCommitSha.slice(0, 12)}`
-    );
-  }
   p.note(renderPolicyText(response.policy), `Review Policy (${response.source})`);
 }

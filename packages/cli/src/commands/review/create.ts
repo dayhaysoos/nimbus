@@ -391,7 +391,6 @@ export async function resolveReviewContext(
       gitProvenance = resolveReviewGitProvenance();
       const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
         baseRef: options?.baseRef,
-        allowBranchCheckpointFallback: Boolean(options?.baseRef),
       });
       commitSha = resolvedCommit.commitSha;
       checkpointId = resolvedCommit.checkpointId;
@@ -401,14 +400,7 @@ export async function resolveReviewContext(
       commitDiffPatchSha256 = normalizedPatch.sha256;
       commitDiffPatchTruncated = normalizedPatch.truncated;
       commitDiffPatchOriginalChars = normalizedPatch.originalChars;
-      if (resolvedCommit.checkpointResolution === 'branch_fallback') {
-        const fallbackSha = (resolvedCommit.checkpointResolvedFromCommitSha ?? '').slice(0, 12);
-        const commitsAgo = resolvedCommit.checkpointResolvedCommitsAgo;
-        const suffix = Number.isInteger(commitsAgo) ? ` (${commitsAgo} commits ago)` : '';
-        spinner.stop(`Resolved checkpoint ${checkpointId} via branch fallback from ${fallbackSha}${suffix}`);
-      } else {
-        spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
-      }
+      spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Checkpoint resolution failed');
@@ -428,13 +420,7 @@ export async function resolveReviewContext(
         process.cwd()
       );
 
-      if (entireContextResolution.contextResolution === 'branch_fallback') {
-        spinner.stop(
-          `Entire session metadata resolved via branch fallback (${entireContextResolution.resolvedCheckpointId} from ${entireContextResolution.resolvedCommitSha.slice(0, 12)})`
-        );
-      } else {
-        spinner.stop('Entire session metadata is readable');
-      }
+      spinner.stop('Entire session metadata is readable');
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Entire session metadata validation failed');
@@ -540,10 +526,7 @@ export async function resolveReviewContext(
     contextResolutionOriginalCheckpointId: entireContextResolution?.originalCheckpointId ?? checkpointId,
     contextResolutionResolvedCheckpointId: entireContextResolution?.resolvedCheckpointId ?? checkpointId,
     contextResolutionResolvedCommitSha: entireContextResolution?.resolvedCommitSha ?? commitSha,
-    contextResolutionResolvedCommitMessage:
-      entireContextResolution?.contextResolution === 'branch_fallback'
-        ? entireContextResolution.resolvedCommitSubject
-        : undefined,
+    contextResolutionResolvedCommitMessage: undefined,
     repo: gitProvenance.repo,
     branch: gitProvenance.branch,
     ...(options?.intentSummaryModel?.trim()
