@@ -479,7 +479,11 @@ export async function resolveReviewContext(
 
     spinner.start('Creating workspace...');
     try {
-      const source = resolveWorkspaceSourceForCommitFlow(commitSha, { projectRoot });
+      const sourceResolved = resolveWorkspaceSourceForCommitFlow(commitSha, { projectRoot });
+      const source = {
+        ...sourceResolved,
+        checkpointId,
+      };
       const created = await createWorkspaceForCommitFlow(source);
       workspaceId = created.workspace.id;
       spinner.stop(`Workspace created: ${workspaceId}`);

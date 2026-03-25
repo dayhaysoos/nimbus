@@ -386,6 +386,7 @@ export async function runReviewCommandTests(): Promise<void> {
 
     {
       let capturedReviewProvenance: Record<string, unknown> | null = null;
+      let capturedWorkspaceCheckpointId: string | null = null;
       setReviewCommitResolverForTests(() => ({
         commitSha: '2'.repeat(40),
         checkpointId: null,
@@ -410,7 +411,9 @@ export async function runReviewCommandTests(): Promise<void> {
           sourceRef: null,
           projectRoot: options?.projectRoot ?? '.',
         }),
-        createWorkspace: async () => ({
+        createWorkspace: async (source) => {
+          capturedWorkspaceCheckpointId = source.checkpointId;
+          return {
           workspace: {
             id: 'ws_base_fallback',
             status: 'ready',
@@ -431,7 +434,8 @@ export async function runReviewCommandTests(): Promise<void> {
             deletedAt: null,
             eventsUrl: '/api/workspaces/ws_base_fallback/events',
           },
-        }),
+          };
+        },
         deployWorkspace: async () => ({
           id: 'dep_base_fallback',
           workspaceId: 'ws_base_fallback',
@@ -471,6 +475,7 @@ export async function runReviewCommandTests(): Promise<void> {
       });
 
       await createReviewFromCommitCommand({ commitish: 'HEAD', baseRef: 'origin/main' });
+      assert.equal(capturedWorkspaceCheckpointId, '8a513f56ed70');
       assert.equal(capturedReviewProvenance?.['contextResolutionOriginalCheckpointId'], '8a513f56ed70');
       setReviewCommitResolverForTests(null);
       setReviewPreflightLastCheckpointResolverForTests(null);
