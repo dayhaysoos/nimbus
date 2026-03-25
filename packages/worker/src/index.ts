@@ -113,6 +113,7 @@ export default {
     // Route: POST /api/reviews/policy/derive - Derive review policy draft
     if (url.pathname === '/api/reviews/policy/derive' && request.method === 'POST') {
       return handleDeriveReviewPolicy(request, env, authContext);
+    }
 
     // Route: POST /api/reviews/policy - Summarize review policy intent
     if (url.pathname === '/api/reviews/policy' && request.method === 'POST') {

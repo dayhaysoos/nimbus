@@ -12,17 +12,13 @@ interface CommitResolution {
 
 interface ResolveCommitContextOptions {
   baseRef?: string;
-  allowBranchCheckpointFallback?: boolean;
 }
 
 export interface ReviewCommitValidationResult {
   commitSha: string;
   checkpointId: string;
   commitDiffPatch: string;
-  checkpointResolution?: 'direct' | 'branch_fallback';
-  checkpointResolvedFromCommitSha?: string;
-  checkpointResolvedFromSubject?: string;
-  checkpointResolvedCommitsAgo?: number;
+  checkpointResolution?: 'direct';
 }
 
 interface LastCheckpointOnBranch {
@@ -43,7 +39,7 @@ function buildMissingLocalCheckpointHistoryMessage(): string {
 
 export interface ReviewEntireContextResolution {
   context: EntireIntentContext;
-  contextResolution: 'direct' | 'branch_fallback';
+  contextResolution: 'direct';
   originalCheckpointId: string;
   resolvedCheckpointId: string;
   resolvedCommitSha: string;
@@ -172,6 +168,7 @@ function findLastCheckpointOnBranch(commitSha: string, cwd = process.cwd()): Las
       commitSha: commits[index].sha,
       subject: commitSubject(commits[index].message),
       commitsAgo,
+      checkpointId: trailers.checkpointId,
     };
   }
 
@@ -245,69 +242,6 @@ async function findLastCommitWithValidCheckpointContext(
   return null;
 }
 
-async function resolveBranchFallbackContext(
-  commitSha: string,
-  options: {
-    summarizeSession?: 'auto' | 'always' | 'never';
-    intentTokenBudget?: number;
-  },
-  cwd = process.cwd()
-): Promise<LastCheckpointOnBranch | null> {
-  const fromResolver = resolveLastValidContextOnBranchForTests
-    ? await resolveLastValidContextOnBranchForTests(commitSha, cwd, options)
-    : null;
-  if (fromResolver) {
-    if (fromResolver.checkpointId && fromResolver.context) {
-      return fromResolver;
-    }
-    return null;
-  }
-
-  const git = new GitRepo(cwd);
-  const ref = git.getCurrentBranchRef() ?? 'HEAD';
-  const commits = git.listCommits(ref);
-  if (commits.length === 0) {
-    return null;
-  }
-
-  const currentIndex = commits.findIndex((entry) => entry.sha === commitSha);
-  if (currentIndex < 0) {
-    return null;
-  }
-  const startIndex = currentIndex >= 0 ? currentIndex + 1 : 0;
-  const contextResolver = resolveEntireContextForTests ?? resolveEntireIntentContextForCommit;
-
-  for (let index = startIndex; index < commits.length; index += 1) {
-    const trailers = parseCommitTrailers(commits[index].message);
-    if (!trailers.checkpointId) {
-      continue;
-    }
-    try {
-      const context = await contextResolver(commits[index].sha, cwd, {
-        checkpointId: trailers.checkpointId,
-        summarizeSession: options.summarizeSession ?? 'auto',
-        tokenBudget: options.intentTokenBudget,
-      });
-      const commitsAgo = currentIndex >= 0 ? index - currentIndex : index;
-      return {
-        commitSha: commits[index].sha,
-        subject: commitSubject(commits[index].message),
-        commitsAgo,
-        checkpointId: trailers.checkpointId,
-        context,
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (!shouldMapEntireContextErrorToHistoryDiagnostic(message)) {
-        throw error;
-      }
-      continue;
-    }
-  }
-
-  return null;
-}
-
 async function buildMissingEntireContextMessage(
   commitSha: string,
   options: {
@@ -349,17 +283,7 @@ export function validateReviewCommitCheckpoint(
   const normalizedCommitish = commitish.trim() || 'HEAD';
   const resolved = resolveCommitContext(normalizedCommitish, cwd, options);
   const checkpointId = resolved.checkpointId ?? '';
-  let effectiveCheckpointId = checkpointId;
-  let checkpointResolution: 'direct' | 'branch_fallback' = 'direct';
-  let fallback: LastCheckpointOnBranch | null = null;
-  if (!effectiveCheckpointId && options?.allowBranchCheckpointFallback) {
-    fallback = findLastCheckpointOnBranch(resolved.commitSha, cwd);
-    if (fallback?.checkpointId) {
-      effectiveCheckpointId = fallback.checkpointId;
-      checkpointResolution = 'branch_fallback';
-    }
-  }
-  if (!effectiveCheckpointId) {
+  if (!checkpointId) {
     throw new Error(buildMissingCheckpointTrailerMessage(resolved.commitSha, cwd));
   }
   if (!resolved.commitDiffPatch.trim()) {
@@ -369,12 +293,9 @@ export function validateReviewCommitCheckpoint(
   }
   return {
     commitSha: resolved.commitSha,
-    checkpointId: effectiveCheckpointId,
+    checkpointId,
     commitDiffPatch: resolved.commitDiffPatch,
-    checkpointResolution,
-    checkpointResolvedFromCommitSha: fallback?.commitSha,
-    checkpointResolvedFromSubject: fallback?.subject,
-    checkpointResolvedCommitsAgo: fallback?.commitsAgo,
+    checkpointResolution: 'direct',
   };
 }
 
@@ -410,20 +331,7 @@ export async function validateReviewEntireIntentContext(
     if (!shouldMapEntireContextErrorToHistoryDiagnostic(message)) {
       throw error;
     }
-
-    const fallback = await resolveBranchFallbackContext(input.commitSha, options ?? {}, cwd);
-    if (!fallback || !fallback.checkpointId || !fallback.context) {
-      throw new Error(await buildMissingEntireContextMessage(input.commitSha, options ?? {}, cwd));
-    }
-    return {
-      context: fallback.context,
-      contextResolution: 'branch_fallback',
-      originalCheckpointId: input.checkpointId,
-      resolvedCheckpointId: fallback.checkpointId,
-      resolvedCommitSha: fallback.commitSha,
-      resolvedCommitSubject: fallback.subject,
-      commitsAgo: fallback.commitsAgo,
-    };
+    throw new Error(await buildMissingEntireContextMessage(input.commitSha, options ?? {}, cwd));
   }
 }
 
@@ -490,13 +398,7 @@ export async function reviewPreflightCommand(
       },
       process.cwd()
     );
-    if (contextResolution.contextResolution === 'branch_fallback') {
-      spinner.stop(
-        `Entire session metadata resolved via branch fallback (${contextResolution.resolvedCheckpointId} from ${contextResolution.resolvedCommitSha.slice(0, 12)})`
-      );
-    } else {
-      spinner.stop('Entire session metadata is readable');
-    }
+    spinner.stop('Entire session metadata is readable');
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Entire session metadata validation failed');
@@ -529,11 +431,6 @@ export async function reviewPreflightCommand(
     p.log.success('Review preflight passed');
     p.log.message(`Commit: ${resolved.commitSha}`);
     p.log.message(`Checkpoint: ${contextResolution.resolvedCheckpointId}`);
-    if (contextResolution.contextResolution === 'branch_fallback') {
-      p.log.warning(
-        `Context fallback: using checkpoint ${contextResolution.resolvedCheckpointId} from ${contextResolution.resolvedCommitSha.slice(0, 7)} (${contextResolution.commitsAgo} commits ago)`
-      );
-    }
     p.log.message(
       `Session IDs: ${contextResolution.context.sessionIds.length > 0 ? contextResolution.context.sessionIds.join(', ') : '(none)'}`
     );

@@ -237,7 +237,10 @@ export async function runReviewCommandTests(): Promise<void> {
           intentSessionContext: ['Constraint: Keep scope narrow.'],
         },
       }));
-      await reviewPreflightCommand('HEAD');
+      await assert.rejects(
+        () => reviewPreflightCommand('HEAD'),
+        /Review preflight failed: This commit has no Entire session context\. The last commit on this branch with valid checkpoint context was abc1234 \('feat: fallback context commit'\) 2 commits ago\./
+      );
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightLastValidContextResolverForTests(null);
@@ -380,6 +383,43 @@ export async function runReviewCommandTests(): Promise<void> {
       await createReviewFromCommitCommand({ commitish: 'HEAD', baseRef: 'origin/main' });
       assert.equal(capturedBaseRef, 'origin/main');
       setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewCreateFlowForTests(null);
+    }
+
+    {
+      const sequence: string[] = [];
+      setReviewCommitResolverForTests(() => ({
+        commitSha: '2'.repeat(40),
+        checkpointId: null,
+        commitDiffPatch: 'diff --git a/commit.txt b/commit.txt\nindex 111..222 100644\n--- a/commit.txt\n+++ b/commit.txt\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewPreflightLastCheckpointResolverForTests(() => ({
+        commitSha: 'abc1234def567890123456789012345678901234',
+        subject: 'feat: fallback checkpoint commit',
+        commitsAgo: 2,
+        checkpointId: '8a513f56ed70',
+      }));
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_base_fallback'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      setReviewCreateFlowForTests({
+        createWorkspace: async () => {
+          sequence.push('workspace.create');
+          throw new Error('should not be called');
+        },
+      });
+
+      await assert.rejects(
+        () => createReviewFromCommitCommand({ commitish: 'HEAD', baseRef: 'origin/main' }),
+        /Review flow failed at checkpoint resolution: This commit has no Entire-Checkpoint trailer\./
+      );
+      assert.deepEqual(sequence, []);
+      setReviewCommitResolverForTests(null);
+      setReviewPreflightLastCheckpointResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewCreateFlowForTests(null);
     }
@@ -754,8 +794,7 @@ export async function runReviewCommandTests(): Promise<void> {
     }
 
     {
-      let capturedDeployResolution: Record<string, unknown> | null = null;
-      let capturedReviewProvenance: Record<string, unknown> | null = null;
+      const sequence: string[] = [];
       setReviewPreflightContextResolverForTests(async () => {
         throw new Error('Checkpoint ddfa7c25a183 had no readable session metadata');
       });
@@ -777,81 +816,38 @@ export async function runReviewCommandTests(): Promise<void> {
         commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
       }));
       setReviewCreateFlowForTests({
-        resolveWorkspaceSource: () => ({
-          commitSha: 'a'.repeat(40),
-          checkpointId: 'ddfa7c25a183',
-          sourceRef: null,
-          projectRoot: '.',
-        }),
-        createWorkspace: async () => ({
-          workspace: {
-            id: 'ws_fallback',
-            status: 'ready',
-            sourceType: 'checkpoint',
-            checkpointId: 'ddfa7c25a183',
-            commitSha: 'a'.repeat(40),
-            sourceRef: null,
-            sourceProjectRoot: '.',
-            sourceBundleKey: 'bundle',
-            sourceBundleSha256: 'f'.repeat(64),
-            sourceBundleBytes: 123,
-            sandboxId: 'workspace-ws_fallback',
-            baselineReady: true,
-            errorCode: null,
-            errorMessage: null,
-            createdAt: '2026-03-11T00:00:00.000Z',
-            updatedAt: '2026-03-11T00:00:00.000Z',
-            deletedAt: null,
-            eventsUrl: '/api/workspaces/ws_fallback/events',
-          },
-        }),
-        deployWorkspace: async (_workspaceId, options) => {
-          capturedDeployResolution = (options?.entireIntentContextOverride ?? null) as Record<string, unknown> | null;
+        createWorkspace: async () => {
+          sequence.push('workspace.create');
           return {
-            id: 'dep_fallback',
-            workspaceId: 'ws_fallback',
-            status: 'succeeded',
-            provider: 'simulated',
-            idempotencyKey: 'idem-deploy',
-            maxRetries: 2,
-            attemptCount: 1,
-            sourceSnapshotSha256: null,
-            sourceBundleKey: 'bundle',
-            deployedUrl: 'https://example.dev',
-            providerDeploymentId: null,
-            cancelRequestedAt: null,
-            startedAt: '2026-03-11T00:00:00.000Z',
-            finishedAt: '2026-03-11T00:00:30.000Z',
-            createdAt: '2026-03-11T00:00:00.000Z',
-            updatedAt: '2026-03-11T00:00:30.000Z',
-            provenance: {},
-            toolchain: null,
-            dependencyCacheKey: null,
-            dependencyCacheHit: false,
-            remediations: [],
+            workspace: {
+              id: 'ws_fallback',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: 'ddfa7c25a183',
+              commitSha: 'a'.repeat(40),
+              sourceRef: null,
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'bundle',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 123,
+              sandboxId: 'workspace-ws_fallback',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_fallback/events',
+            },
           };
         },
-        createReview: async (_workerUrl, _idempotencyKey, payload) => {
-          capturedReviewProvenance = (payload.provenance ?? null) as Record<string, unknown> | null;
-          return {
-            reviewId: 'rev_fallback',
-            status: 'queued',
-            eventsUrl: '/api/reviews/rev_fallback/events',
-            resultUrl: '/reviews/rev_fallback',
-          };
-        },
-        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
-          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
-        },
-        getReview: async () => createReviewResponseBody() as unknown as { review: any },
       });
 
-      await createReviewFromCommitCommand({ commitish: 'HEAD' });
-      assert.equal(capturedDeployResolution?.['contextResolution'], 'branch_fallback');
-      assert.equal(capturedDeployResolution?.['resolvedCheckpointId'], 'fba364e3d99d');
-      assert.equal(capturedReviewProvenance?.['contextResolution'], 'branch_fallback');
-      assert.equal(capturedReviewProvenance?.['contextResolutionOriginalCheckpointId'], 'ddfa7c25a183');
-      assert.equal(capturedReviewProvenance?.['contextResolutionResolvedCheckpointId'], 'fba364e3d99d');
+      await assert.rejects(
+        () => createReviewFromCommitCommand({ commitish: 'HEAD' }),
+        /Review flow failed at checkpoint resolution: This commit has no Entire session context\./
+      );
+      assert.deepEqual(sequence, []);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightLastValidContextResolverForTests(null);
       setReviewCommitResolverForTests(null);
