@@ -59,7 +59,7 @@ Want the full walkthrough and troubleshooting? See `docs/getting-started.md`.
 
 ## How It Works
 
-Nimbus resolves your commit and Entire checkpoint context, creates an isolated workspace, runs deployment checks in Cloudflare Sandbox, and then creates a non-mutating review report. The CLI streams progress in real time and returns a report URL when complete. Review output includes findings, severity, and provenance so you can understand both what changed and why the review reached its recommendation.
+Nimbus resolves your commit and Entire checkpoint context, creates an isolated workspace, runs deployment checks in Cloudflare Sandbox, and then creates a non-mutating review report. The CLI streams progress in real-time and returns a report URL when complete. Review output includes findings, severity, and provenance so you can understand both what changed and why the review reached its recommendation.
 
 ## Self-hosting
 
