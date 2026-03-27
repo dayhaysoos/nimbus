@@ -262,3 +262,14 @@ nickdejesus@MacBook-Pro-6 nimbus %
 ---
 
 I'm gonna be honest I feel like soft resetting with git has actually been causing the issues. Do you think if I make a commit right now I'll be able to see a review for it?
+
+---
+
+looks like it's no good again: no changes added to commit (use "git add" and/or "git commit -a")
+nickdejesus@MacBook-Pro-6 nimbus % git add .
+nickdejesus@MacBook-Pro-6 nimbus % git commit -m "ui updates and reducing api requests"
+[feat/report-ui-policy-tailwind-shadcn-foundation e7afdc0] ui updates and reducing api requests
+ 2 files changed, 380 insertions(+), 26 deletions(-)
+nickdejesus@MacBook-Pro-6 nimbus % entire explain --commit HEAD
+checkpoint not found: 14fec0650824
+nickdejesus@MacBook-Pro-6 nimbus %
