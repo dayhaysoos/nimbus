@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'node:path';
 
 function createApiProxy() {
   const apiKey = process.env.NIMBUS_API_KEY?.trim();
@@ -22,6 +23,11 @@ function createApiProxy() {
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   server: {
     proxy: {
       '/api': createApiProxy(),

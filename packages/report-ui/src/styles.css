@@ -1,8 +1,41 @@
-:root {
-  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
-  color: #1f2937;
-  background: radial-gradient(circle at top left, #f3f8ff 0%, #f5f7fb 45%, #eef2f7 100%);
-  line-height: 1.5;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 25% 97%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --primary: 203 74% 38%;
+    --primary-foreground: 210 40% 98%;
+    --secondary: 210 27% 92%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 27% 92%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 206 37% 89%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 72% 46%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 214 32% 85%;
+    --input: 214 32% 85%;
+    --ring: 203 74% 38%;
+    --radius: 0.75rem;
+
+    font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+    color: #1f2937;
+    background: radial-gradient(circle at top left, #f3f8ff 0%, #f5f7fb 45%, #eef2f7 100%);
+    line-height: 1.5;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+  }
+
+  * {
+    @apply border-border;
+  }
 }
 
 * {

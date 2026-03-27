@@ -2,6 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { parseGetReviewResponse } from '../lib/review';
 import type { GetReviewResponse, ReviewPolicyDraft, ReviewResponse } from '../types';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 
@@ -45,37 +50,54 @@ function normalizeEditablePolicy(policy: EditablePolicy): ReviewPolicyDraft {
   };
 }
 
-function listEditor(
-  label: string,
-  values: string[],
-  onChange: (index: number, value: string) => void,
-  onAdd: () => void,
-  onRemove: (index: number) => void,
-  placeholder: string,
-  addLabel: string
-): JSX.Element {
+function StatusLayout({ children, cardClassName }: { children: React.ReactNode; cardClassName?: string }): JSX.Element {
   return (
-    <section className="card">
-      <h3>{label}</h3>
-      <div className="stack">
-        {values.length === 0 && <p>No entries yet.</p>}
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl items-center px-4 py-8 md:px-6">
+      <Card className={cn('w-full', cardClassName)}>{children}</Card>
+    </main>
+  );
+}
+
+function PolicyListEditor(props: {
+  title: string;
+  description: string;
+  values: string[];
+  placeholder: string;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, value: string) => void;
+  addLabel: string;
+}): JSX.Element {
+  const { title, description, values, placeholder, onAdd, onRemove, onChange, addLabel } = props;
+
+  return (
+    <Card className="border-slate-200/80 bg-white/90 backdrop-blur">
+      <CardHeader>
+        <CardTitle className="text-base md:text-lg">{title}</CardTitle>
+        <CardDescription>{description}</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {values.length === 0 ? <p className="text-sm text-muted-foreground">No entries yet.</p> : null}
         {values.map((value, index) => (
-          <div key={`${label}-${index}`} className="button-row">
-            <input
+          <div key={`${title}-${index}`} className="flex flex-col gap-2 sm:flex-row">
+            <Input
               value={value}
               onChange={(event) => onChange(index, event.target.value)}
               placeholder={placeholder}
+              className="h-11"
             />
-            <button type="button" className="secondary-button" onClick={() => onRemove(index)}>
+            <Button type="button" variant="outline" className="h-11 shrink-0" onClick={() => onRemove(index)}>
               Remove
-            </button>
+            </Button>
           </div>
         ))}
-      </div>
-      <button type="button" className="secondary-button" onClick={onAdd}>
-        {addLabel}
-      </button>
-    </section>
+      </CardContent>
+      <CardFooter>
+        <Button type="button" variant="secondary" onClick={onAdd}>
+          {addLabel}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -90,12 +112,6 @@ export function PolicyPage(): JSX.Element {
   const [progressCycle, setProgressCycle] = useState(0);
   const [approving, setApproving] = useState(false);
   const [policyDraft, setPolicyDraft] = useState<EditablePolicy>({ goal: '', prohibitions: [], constraints: [] });
-
-  console.log('[PolicyPage] render', {
-    reviewId: reviewId ?? null,
-    state,
-    reviewStatus: review?.status ?? null,
-  });
 
   useEffect(() => {
     if (!reviewId) {
@@ -123,10 +139,6 @@ export function PolicyPage(): JSX.Element {
         }
 
         setReview(data.review);
-        console.log('[PolicyPage] fetched review status', {
-          reviewId,
-          status: data.review.status,
-        });
         setState('loaded');
         setErrorMessage('');
 
@@ -143,10 +155,6 @@ export function PolicyPage(): JSX.Element {
       })
       .catch((error) => {
         if (!cancelled) {
-          console.error('[PolicyPage] fetch failed', {
-            reviewId,
-            error: error instanceof Error ? error.message : String(error),
-          });
           setState('error');
           setErrorMessage(error instanceof Error ? error.message : String(error));
         }
@@ -238,118 +246,141 @@ export function PolicyPage(): JSX.Element {
 
   if (state === 'loading') {
     return (
-      <main className="page">
-        <section className="card status-card">
-          <h1>Preparing policy</h1>
-          <p>Loading review {reviewId ?? 'unknown'}...</p>
-        </section>
-      </main>
+      <StatusLayout cardClassName="border-slate-200/80 bg-white/90">
+        <CardHeader>
+          <CardTitle>Preparing policy</CardTitle>
+          <CardDescription>Loading review {reviewId ?? 'unknown'}...</CardDescription>
+        </CardHeader>
+      </StatusLayout>
     );
   }
 
   if (state === 'error') {
     return (
-      <main className="page">
-        <section className="card status-card">
-          <h1>Unable to prepare policy</h1>
-          <p>{errorMessage || 'Unknown error'}</p>
-        </section>
-      </main>
+      <StatusLayout cardClassName="border-red-200 bg-white/95">
+        <CardHeader>
+          <CardTitle>Unable to prepare policy</CardTitle>
+          <CardDescription>{errorMessage || 'Unknown error'}</CardDescription>
+        </CardHeader>
+      </StatusLayout>
     );
   }
 
   if (!review) {
     return (
-      <main className="page">
-        <section className="card status-card">
-          <h1>No review data</h1>
-          <p>The review payload is empty.</p>
-        </section>
-      </main>
+      <StatusLayout cardClassName="border-slate-200/80 bg-white/90">
+        <CardHeader>
+          <CardTitle>No review data</CardTitle>
+          <CardDescription>The review payload is empty.</CardDescription>
+        </CardHeader>
+      </StatusLayout>
     );
   }
 
   if (review.status !== 'policy_ready') {
     return (
-      <main className="page">
-        <section className="card status-card">
-          <h1>Deriving policy</h1>
-          <p>{progressLabel}</p>
-        </section>
-      </main>
+      <StatusLayout cardClassName="border-sky-200 bg-white/95">
+        <CardHeader className="space-y-3">
+          <Badge variant="secondary" className="w-fit bg-sky-100 text-sky-900">
+            Deriving policy
+          </Badge>
+          <CardTitle>Policy draft in progress</CardTitle>
+          <CardDescription>{progressLabel}</CardDescription>
+        </CardHeader>
+      </StatusLayout>
     );
   }
 
   return (
-    <main className="page">
-      <section className="card summary-card">
-        <div className="summary-header">
-          <h1>Review policy draft</h1>
-          <span className="status-pill status-running">{review.status}</span>
-        </div>
-        <p>Confirm or edit the policy before Nimbus starts the review.</p>
-      </section>
+    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:px-6 md:py-10">
+      <Card className="border-slate-200/80 bg-white/90 backdrop-blur">
+        <CardHeader className="space-y-3">
+          <Badge variant="secondary" className="w-fit bg-sky-100 text-sky-900">
+            {review.status.replace('_', ' ')}
+          </Badge>
+          <CardTitle className="text-2xl tracking-tight">Review policy draft</CardTitle>
+          <CardDescription>
+            Confirm or edit this policy before Nimbus starts the review. Edits are normalized and deduplicated automatically when you submit.
+          </CardDescription>
+        </CardHeader>
+      </Card>
 
-      <section className="card">
-        <h3>Goal</h3>
-        <input
-          value={policyDraft.goal}
-          onChange={(event) => setPolicyDraft((current) => ({ ...current, goal: event.target.value }))}
-          placeholder="What should this review optimize for?"
+      <Card className="border-slate-200/80 bg-white/90 backdrop-blur">
+        <CardHeader>
+          <CardTitle className="text-base md:text-lg">Goal</CardTitle>
+          <CardDescription>What should this review optimize for?</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Input
+            value={policyDraft.goal}
+            onChange={(event) => setPolicyDraft((current) => ({ ...current, goal: event.target.value }))}
+            placeholder="Reduce production risk while keeping fixes minimal"
+            className="h-11"
+          />
+        </CardContent>
+      </Card>
+
+      <div className="grid gap-4 md:grid-cols-2">
+        <PolicyListEditor
+          title="Must Not"
+          description="Hard constraints Nimbus should avoid violating."
+          values={policyDraft.prohibitions}
+          placeholder="Do not alter public API behavior"
+          addLabel="Add must-not item"
+          onChange={(index, value) =>
+            setPolicyDraft((current) => ({
+              ...current,
+              prohibitions: current.prohibitions.map((item, itemIndex) => (itemIndex === index ? value : item)),
+            }))
+          }
+          onAdd={() =>
+            setPolicyDraft((current) => ({
+              ...current,
+              prohibitions: [...current.prohibitions, ''],
+            }))
+          }
+          onRemove={(index) =>
+            setPolicyDraft((current) => ({
+              ...current,
+              prohibitions: current.prohibitions.filter((_, itemIndex) => itemIndex !== index),
+            }))
+          }
         />
-      </section>
 
-      {listEditor(
-        'Must Not',
-        policyDraft.prohibitions,
-        (index, value) =>
-          setPolicyDraft((current) => ({
-            ...current,
-            prohibitions: current.prohibitions.map((item, itemIndex) => (itemIndex === index ? value : item)),
-          })),
-        () =>
-          setPolicyDraft((current) => ({
-            ...current,
-            prohibitions: [...current.prohibitions, ''],
-          })),
-        (index) =>
-          setPolicyDraft((current) => ({
-            ...current,
-            prohibitions: current.prohibitions.filter((_, itemIndex) => itemIndex !== index),
-          })),
-        'Add a prohibition',
-        'Add must-not item'
-      )}
+        <PolicyListEditor
+          title="Preferences"
+          description="Soft constraints Nimbus should prefer when possible."
+          values={policyDraft.constraints}
+          placeholder="Prefer small, isolated code changes"
+          addLabel="Add preference item"
+          onChange={(index, value) =>
+            setPolicyDraft((current) => ({
+              ...current,
+              constraints: current.constraints.map((item, itemIndex) => (itemIndex === index ? value : item)),
+            }))
+          }
+          onAdd={() =>
+            setPolicyDraft((current) => ({
+              ...current,
+              constraints: [...current.constraints, ''],
+            }))
+          }
+          onRemove={(index) =>
+            setPolicyDraft((current) => ({
+              ...current,
+              constraints: current.constraints.filter((_, itemIndex) => itemIndex !== index),
+            }))
+          }
+        />
+      </div>
 
-      {listEditor(
-        'Preferences',
-        policyDraft.constraints,
-        (index, value) =>
-          setPolicyDraft((current) => ({
-            ...current,
-            constraints: current.constraints.map((item, itemIndex) => (itemIndex === index ? value : item)),
-          })),
-        () =>
-          setPolicyDraft((current) => ({
-            ...current,
-            constraints: [...current.constraints, ''],
-          })),
-        (index) =>
-          setPolicyDraft((current) => ({
-            ...current,
-            constraints: current.constraints.filter((_, itemIndex) => itemIndex !== index),
-          })),
-        'Add a preference',
-        'Add preference item'
-      )}
-
-      <section className="card status-card">
-        <div className="button-row">
-          <button type="button" className="secondary-button" onClick={approvePolicy} disabled={approving}>
+      <Card className="border-slate-200/80 bg-white/90">
+        <CardFooter className="justify-end">
+          <Button type="button" size="lg" onClick={approvePolicy} disabled={approving}>
             {approving ? 'Confirming...' : 'Confirm policy and run review'}
-          </button>
-        </div>
-      </section>
+          </Button>
+        </CardFooter>
+      </Card>
     </main>
   );
 }
