@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { parseGetReviewResponse } from '../lib/review';
 import type { GetReviewResponse, ReviewPolicyDraft, ReviewResponse } from '../types';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -50,15 +49,25 @@ function normalizeEditablePolicy(policy: EditablePolicy): ReviewPolicyDraft {
   };
 }
 
-function StatusLayout({ children, cardClassName }: { children: React.ReactNode; cardClassName?: string }): JSX.Element {
+function StatusLayout({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-5xl items-center px-4 py-8 md:px-6">
-      <Card className={cn('w-full', cardClassName)}>{children}</Card>
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-5 py-12">
+      <div className="w-full">{children}</div>
     </main>
   );
 }
 
+function ClauseHeader({ number, label }: { number: string; label: string }): JSX.Element {
+  return (
+    <div className="flex items-center gap-3 mb-1">
+      <span className="policy-clause-number">{number}</span>
+      <div className="h-px flex-1 bg-border/60" />
+    </div>
+  );
+}
+
 function PolicyListEditor(props: {
+  clause: string;
   title: string;
   description: string;
   values: string[];
@@ -67,34 +76,59 @@ function PolicyListEditor(props: {
   onRemove: (index: number) => void;
   onChange: (index: number, value: string) => void;
   addLabel: string;
+  accentClass: string;
+  animDelay: string;
 }): JSX.Element {
-  const { title, description, values, placeholder, onAdd, onRemove, onChange, addLabel } = props;
+  const { clause, title, description, values, placeholder, onAdd, onRemove, onChange, addLabel, accentClass, animDelay } = props;
 
   return (
-    <Card className="border-slate-200/80 bg-white/90 backdrop-blur">
-      <CardHeader>
-        <CardTitle className="text-base md:text-lg">{title}</CardTitle>
-        <CardDescription>{description}</CardDescription>
+    <Card
+      className={cn(
+        'policy-fade-up border-border/50 bg-card/80 backdrop-blur-sm',
+        accentClass
+      )}
+      style={{ animationDelay: animDelay }}
+    >
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-center gap-2">
+          <span className="policy-clause-number">{clause}</span>
+          <CardTitle className="policy-section-title text-sm">{title}</CardTitle>
+        </div>
+        <CardDescription className="text-xs font-light">
+          {description}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-3">
-        {values.length === 0 ? <p className="text-sm text-muted-foreground">No entries yet.</p> : null}
+      <CardContent className="space-y-2 px-4">
+        {values.length === 0 ? (
+          <p className="text-sm text-muted-foreground/70 italic font-light">No entries yet.</p>
+        ) : null}
         {values.map((value, index) => (
           <div key={`${title}-${index}`} className="flex flex-col gap-2 sm:flex-row">
             <Input
               value={value}
               onChange={(event) => onChange(index, event.target.value)}
               placeholder={placeholder}
-              className="h-11"
+              className="h-10 bg-background/60 border-border/50 font-light text-sm placeholder:text-muted-foreground/50 focus-visible:ring-[hsl(38_65%_38%)] focus-visible:ring-1 focus-visible:ring-offset-0"
             />
-            <Button type="button" variant="outline" className="h-11 shrink-0" onClick={() => onRemove(index)}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-10 shrink-0 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5 text-xs font-medium tracking-wide uppercase"
+              onClick={() => onRemove(index)}
+            >
               Remove
             </Button>
           </div>
         ))}
       </CardContent>
-      <CardFooter>
-        <Button type="button" variant="secondary" onClick={onAdd}>
-          {addLabel}
+      <CardFooter className="pt-0 px-4 pb-3">
+        <Button
+          type="button"
+          variant="ghost"
+          className="text-xs font-medium tracking-wide uppercase text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 h-8 px-2"
+          onClick={onAdd}
+        >
+          + {addLabel}
         </Button>
       </CardFooter>
     </Card>
@@ -244,89 +278,140 @@ export function PolicyPage(): JSX.Element {
     }
   };
 
+  /* ── Loading ── */
   if (state === 'loading') {
     return (
-      <StatusLayout cardClassName="border-slate-200/80 bg-white/90">
-        <CardHeader>
-          <CardTitle>Preparing policy</CardTitle>
-          <CardDescription>Loading review {reviewId ?? 'unknown'}...</CardDescription>
-        </CardHeader>
+      <StatusLayout>
+        <div className="policy-fade-up text-center space-y-4">
+          <p className="policy-clause-number">preparing</p>
+          <h1 className="policy-heading text-2xl text-foreground">Loading policy</h1>
+          <p className="text-sm text-muted-foreground font-light">
+            Review {reviewId ?? 'unknown'}
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <span className="policy-derivation-dot" />
+            <span className="policy-derivation-dot" />
+            <span className="policy-derivation-dot" />
+          </div>
+        </div>
       </StatusLayout>
     );
   }
 
+  /* ── Error ── */
   if (state === 'error') {
     return (
-      <StatusLayout cardClassName="border-red-200 bg-white/95">
-        <CardHeader>
-          <CardTitle>Unable to prepare policy</CardTitle>
-          <CardDescription>{errorMessage || 'Unknown error'}</CardDescription>
-        </CardHeader>
+      <StatusLayout>
+        <Card className="policy-fade-up border-destructive/20 bg-card/90">
+          <CardHeader className="text-center space-y-3">
+            <p className="policy-clause-number text-destructive/70">error</p>
+            <CardTitle className="policy-heading text-xl">Unable to prepare policy</CardTitle>
+            <CardDescription className="font-light">
+              {errorMessage || 'Unknown error'}
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </StatusLayout>
     );
   }
 
+  /* ── No data ── */
   if (!review) {
     return (
-      <StatusLayout cardClassName="border-slate-200/80 bg-white/90">
-        <CardHeader>
-          <CardTitle>No review data</CardTitle>
-          <CardDescription>The review payload is empty.</CardDescription>
-        </CardHeader>
+      <StatusLayout>
+        <Card className="policy-fade-up border-border/50 bg-card/90">
+          <CardHeader className="text-center space-y-3">
+            <p className="policy-clause-number">empty</p>
+            <CardTitle className="policy-heading text-xl">No review data</CardTitle>
+            <CardDescription className="font-light">
+              The review payload is empty.
+            </CardDescription>
+          </CardHeader>
+        </Card>
       </StatusLayout>
     );
   }
 
+  /* ── Deriving ── */
   if (review.status !== 'policy_ready') {
     return (
-      <StatusLayout cardClassName="border-sky-200 bg-white/95">
-        <CardHeader className="space-y-3">
-          <Badge variant="secondary" className="w-fit bg-sky-100 text-sky-900">
-            Deriving policy
-          </Badge>
-          <CardTitle>Policy draft in progress</CardTitle>
-          <CardDescription>{progressLabel}</CardDescription>
-        </CardHeader>
+      <StatusLayout>
+        <div className="policy-fade-up text-center space-y-6">
+          <div className="inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-card/80 px-4 py-1.5 backdrop-blur-sm">
+            <div className="h-2 w-2 rounded-full bg-[hsl(38_65%_45%)] animate-pulse" />
+            <span className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
+              Deriving policy
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="policy-heading text-3xl md:text-4xl text-foreground leading-tight">
+              Policy draft in progress
+            </h1>
+            <p className="text-muted-foreground font-light text-base max-w-md mx-auto">
+              {progressLabel}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <span className="policy-derivation-dot" />
+            <span className="policy-derivation-dot" />
+            <span className="policy-derivation-dot" />
+          </div>
+        </div>
       </StatusLayout>
     );
   }
 
+  /* ── Policy editor ── */
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-8 md:px-6 md:py-10">
-      <Card className="border-slate-200/80 bg-white/90 backdrop-blur">
-        <CardHeader className="space-y-3">
-          <Badge variant="secondary" className="w-fit bg-sky-100 text-sky-900">
-            {review.status.replace('_', ' ')}
-          </Badge>
-          <CardTitle className="text-2xl tracking-tight">Review policy draft</CardTitle>
-          <CardDescription>
-            Confirm or edit this policy before Nimbus starts the review. Edits are normalized and deduplicated automatically when you submit.
-          </CardDescription>
-        </CardHeader>
-      </Card>
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-4 md:py-6">
+      {/* Header + Goal row */}
+      <div className="policy-fade-up flex flex-col gap-1" style={{ animationDelay: '0ms' }}>
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="policy-heading text-xl text-foreground tracking-tight">
+            Review policy
+          </h1>
+          <p className="text-xs text-muted-foreground/60 font-light shrink-0">
+            Policy will be locked after approval
+          </p>
+        </div>
+        <p className="text-muted-foreground font-light text-sm">
+          Confirm or edit this policy before Nimbus starts the review.
+        </p>
+      </div>
 
-      <Card className="border-slate-200/80 bg-white/90 backdrop-blur">
-        <CardHeader>
-          <CardTitle className="text-base md:text-lg">Goal</CardTitle>
-          <CardDescription>What should this review optimize for?</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <Input
-            value={policyDraft.goal}
-            onChange={(event) => setPolicyDraft((current) => ({ ...current, goal: event.target.value }))}
-            placeholder="Reduce production risk while keeping fixes minimal"
-            className="h-11"
-          />
-        </CardContent>
-      </Card>
+      <div className="h-px bg-border/60" />
 
+      {/* Goal */}
+      <div
+        className="policy-fade-up flex flex-col gap-1.5"
+        style={{ animationDelay: '60ms' }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="policy-clause-number">I.</span>
+          <label className="policy-section-title text-sm">Goal</label>
+          <span className="text-xs text-muted-foreground font-light">— What should this review optimize for?</span>
+        </div>
+        <Input
+          value={policyDraft.goal}
+          onChange={(event) => setPolicyDraft((current) => ({ ...current, goal: event.target.value }))}
+          placeholder="Reduce production risk while keeping fixes minimal"
+          className="h-9 bg-background/60 border-border/50 font-light text-sm placeholder:text-muted-foreground/50 focus-visible:ring-[hsl(38_65%_38%)] focus-visible:ring-1 focus-visible:ring-offset-0"
+        />
+      </div>
+
+      {/* Prohibitions & Preferences */}
       <div className="grid gap-4 md:grid-cols-2">
         <PolicyListEditor
+          clause="II."
           title="Must Not"
           description="Hard constraints Nimbus should avoid violating."
           values={policyDraft.prohibitions}
           placeholder="Do not alter public API behavior"
-          addLabel="Add must-not item"
+          addLabel="Add prohibition"
+          accentClass="policy-card-prohibition"
+          animDelay="120ms"
           onChange={(index, value) =>
             setPolicyDraft((current) => ({
               ...current,
@@ -348,11 +433,14 @@ export function PolicyPage(): JSX.Element {
         />
 
         <PolicyListEditor
+          clause="III."
           title="Preferences"
           description="Soft constraints Nimbus should prefer when possible."
           values={policyDraft.constraints}
           placeholder="Prefer small, isolated code changes"
-          addLabel="Add preference item"
+          addLabel="Add preference"
+          accentClass="policy-card-preference"
+          animDelay="180ms"
           onChange={(index, value) =>
             setPolicyDraft((current) => ({
               ...current,
@@ -374,13 +462,20 @@ export function PolicyPage(): JSX.Element {
         />
       </div>
 
-      <Card className="border-slate-200/80 bg-white/90">
-        <CardFooter className="justify-end">
-          <Button type="button" size="lg" onClick={approvePolicy} disabled={approving}>
-            {approving ? 'Confirming...' : 'Confirm policy and run review'}
-          </Button>
-        </CardFooter>
-      </Card>
+      {/* Approval */}
+      <div
+        className="policy-fade-up flex justify-end pt-1"
+        style={{ animationDelay: '240ms' }}
+      >
+        <button
+          type="button"
+          className="policy-approve-btn inline-flex items-center justify-center rounded-lg h-10 px-6 text-sm"
+          onClick={approvePolicy}
+          disabled={approving}
+        >
+          {approving ? 'Confirming...' : 'Approve & run review'}
+        </button>
+      </div>
     </main>
   );
 }

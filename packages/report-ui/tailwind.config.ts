@@ -13,6 +13,10 @@ const config: Config = {
       },
     },
     extend: {
+      fontFamily: {
+        display: ['Young Serif', 'Georgia', 'Times New Roman', 'serif'],
+        body: ['Outfit', 'system-ui', '-apple-system', 'sans-serif'],
+      },
       colors: {
         border: 'hsl(var(--border))',
         input: 'hsl(var(--input))',
