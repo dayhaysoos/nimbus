@@ -20,6 +20,29 @@ const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined
 
 type LoadState = 'loading' | 'loaded' | 'error';
 
+const VALID_STATUSES: ReadonlySet<ReviewResponse['status']> = new Set([
+  'policy_pending', 'policy_ready', 'policy_approved',
+  'queued', 'running', 'succeeded', 'failed', 'cancelled',
+]);
+
+function statusFromReviewEventType(eventType: string): ReviewResponse['status'] | null {
+  switch (eventType) {
+    case 'review_created':
+    case 'review_enqueued':
+      return 'queued';
+    case 'review_succeeded':
+      return 'succeeded';
+    case 'review_failed':
+      return 'failed';
+    case 'review_cancelled':
+      return 'cancelled';
+    case 'review_policy_approved':
+      return 'policy_approved';
+    default:
+      return null;
+  }
+}
+
 function copyButton(onClick: () => void, label: string, disabled = false): JSX.Element {
   return (
     <button type="button" className="secondary-button" onClick={onClick} disabled={disabled}>
@@ -221,15 +244,48 @@ export function ReportPage(): JSX.Element {
     const eventsUrl = `${API_BASE}/api/reviews/${encodeURIComponent(review.id)}/events`;
     const stream = new EventSource(eventsUrl);
 
-    const onMessage = () => {
-      setRefreshCycle((value) => value + 1);
+    const onMessage = (event: MessageEvent<string>) => {
+      let eventType: string | null = null;
+      let eventStatus: ReviewResponse['status'] | null = null;
+
+      try {
+        const payload = JSON.parse(event.data) as { type?: unknown; status?: unknown };
+        eventType = typeof payload.type === 'string' ? payload.type : null;
+        const rawStatus = typeof payload.status === 'string' ? payload.status : null;
+        eventStatus = rawStatus && VALID_STATUSES.has(rawStatus as ReviewResponse['status'])
+          ? (rawStatus as ReviewResponse['status'])
+          : null;
+      } catch {
+      }
+
+      if (eventType === 'heartbeat') {
+        return;
+      }
+
+      const derivedStatus = eventType ? statusFromReviewEventType(eventType) : null;
+      const nextStatus = eventStatus ?? derivedStatus;
+      if (nextStatus) {
+        setReview((current) => {
+          if (!current || current.status === nextStatus) {
+            return current;
+          }
+          return {
+            ...current,
+            status: nextStatus,
+          };
+        });
+      }
+
+      if (eventType === 'terminal' || nextStatus === 'succeeded' || nextStatus === 'failed' || nextStatus === 'cancelled') {
+        setRefreshCycle((value) => value + 1);
+      }
     };
 
     const onError = () => {
       stream.close();
       window.setTimeout(() => {
         setRefreshCycle((value) => value + 1);
-      }, 1000);
+      }, 3000);
     };
 
     stream.addEventListener('message', onMessage);
@@ -240,7 +296,7 @@ export function ReportPage(): JSX.Element {
       stream.removeEventListener('error', onError);
       stream.close();
     };
-  }, [review, state]);
+  }, [review?.id, review?.status, state]);
 
   useEffect(() => {
     if (!toastMessage) {
