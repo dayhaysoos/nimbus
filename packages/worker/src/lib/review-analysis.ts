@@ -1229,7 +1229,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
                     {
                       severity: 'info|low|medium|high|critical',
                       category: 'security|logic|style|breaking-change',
-                      passType: 'single|security|logic|style|breaking-change',
+                      passType: 'single',
                       locations: [{ filePath: 'string', startLine: 'number|null', endLine: 'number|null' }],
                       description: 'string',
                       suggestedFix: 'string',

@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 import type {
   ReviewAnalysisOutputV2,
   ReviewFindingCategory,
@@ -25,58 +27,34 @@ type ValidationResult =
       errors: ReviewAnalysisValidationError[];
     };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
-}
+const STRING_WITH_CONTENT = z.string().transform((value) => value.trim()).pipe(z.string().min(1));
+const NORMALIZED_PATH = z.string().transform((value) => value.trim().replaceAll('\\', '/')).pipe(z.string().min(1));
 
-function normalizePath(path: string): string {
-  return path.trim().replaceAll('\\', '/');
-}
-
-function addError(errors: ReviewAnalysisValidationError[], path: string, message: string): void {
-  errors.push({ path, message });
-}
-
-function isPositiveInteger(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value > 0;
-}
-
-function validateEnum<T extends string>(
-  value: unknown,
-  allowedValues: readonly T[],
-  errors: ReviewAnalysisValidationError[],
-  path: string,
-  label: string
-): T | null {
-  if (typeof value !== 'string') {
-    addError(errors, path, `${label} must be a string enum value`);
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!allowedValues.includes(trimmed as T)) {
-    addError(errors, path, `${label} must be one of: ${allowedValues.join(', ')}`);
-    return null;
-  }
-  return trimmed as T;
-}
-
-function validateNonEmptyString(
-  value: unknown,
-  errors: ReviewAnalysisValidationError[],
-  path: string,
-  fieldName: string
-): string | null {
-  if (typeof value !== 'string') {
-    addError(errors, path, `${fieldName} must be a string`);
-    return null;
-  }
-  const trimmed = value.trim();
-  if (!trimmed) {
-    addError(errors, path, `${fieldName} must not be empty`);
-    return null;
-  }
-  return trimmed;
-}
+const locationSchema = z
+  .object({
+    filePath: NORMALIZED_PATH,
+    startLine: z.number().int().positive().nullable(),
+    endLine: z.number().int().positive().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const hasNullPair = value.startLine === null && value.endLine === null;
+    const hasIntegerPair = Number.isInteger(value.startLine) && Number.isInteger(value.endLine);
+    if (!hasNullPair && !hasIntegerPair) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'startLine/endLine must both be null or both be positive integers',
+        path: [],
+      });
+      return;
+    }
+    if (hasIntegerPair && (value.endLine as number) < (value.startLine as number)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'endLine must be greater than or equal to startLine',
+        path: [],
+      });
+    }
+  });
 
 function isValidationLikeFinding(text: string): boolean {
   return /\b(regex|normalize|normalization|validate|validation|pattern)\b/i.test(text);
@@ -103,200 +81,71 @@ function hasBoundaryAndStatusEvidence(failingScenario: string, evidence: string)
   return hasBoundary && hasStatusOutcome;
 }
 
+const findingSchema = z
+  .object({
+    severity: z.enum(REVIEW_FINDING_SEVERITIES_V2 as [ReviewFindingSeverityV2, ...ReviewFindingSeverityV2[]]),
+    category: z.enum(REVIEW_FINDING_CATEGORIES as [ReviewFindingCategory, ...ReviewFindingCategory[]]),
+    passType: z.literal('single'),
+    locations: z.array(locationSchema).min(1),
+    description: STRING_WITH_CONTENT,
+    suggestedFix: STRING_WITH_CONTENT,
+    failingScenario: STRING_WITH_CONTENT,
+    evidence: STRING_WITH_CONTENT,
+    guardGap: STRING_WITH_CONTENT,
+  })
+  .superRefine((value, ctx) => {
+    const behaviorText = `${value.description}\n${value.suggestedFix}\n${value.failingScenario}`;
+    if (isValidationLikeFinding(behaviorText) && !hasConcreteSampleAndOutcomeEvidence(value.failingScenario, value.evidence)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'validation/regex findings require concrete sample input and observed outcome in failingScenario/evidence',
+        path: ['evidence'],
+      });
+    }
+    if (isTimeoutBoundaryLikeFinding(behaviorText) && !hasBoundaryAndStatusEvidence(value.failingScenario, value.evidence)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'timeout/retry findings require explicit boundary values and resulting status in failingScenario/evidence',
+        path: ['evidence'],
+      });
+    }
+  });
+
+const reviewAnalysisOutputV2Schema = z.object({
+  findings: z.array(findingSchema),
+  summary: STRING_WITH_CONTENT,
+  furtherPassesLowYield: z.boolean(),
+});
+
+function issuePathToJsonPath(path: ReadonlyArray<string | number>): string {
+  if (path.length === 0) {
+    return '$';
+  }
+  let full = '$';
+  for (const segment of path) {
+    if (typeof segment === 'number') {
+      full += `[${segment}]`;
+    } else if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(segment)) {
+      full += `.${segment}`;
+    } else {
+      full += `[${JSON.stringify(segment)}]`;
+    }
+  }
+  return full;
+}
+
 export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): ValidationResult {
-  const errors: ReviewAnalysisValidationError[] = [];
-  if (!isRecord(payload)) {
-    return {
-      ok: false,
-      errors: [{ path: '$', message: 'Output must be a JSON object' }],
-    };
-  }
-
-  const findingsValue = payload.findings;
-  if (!Array.isArray(findingsValue)) {
-    addError(errors, '$.findings', 'findings must be an array');
-  }
-
-  const summary = validateNonEmptyString(payload.summary, errors, '$.summary', 'summary');
-  if (typeof payload.furtherPassesLowYield !== 'boolean') {
-    addError(errors, '$.furtherPassesLowYield', 'furtherPassesLowYield must be a boolean');
-  }
-
-  const normalizedFindings = Array.isArray(findingsValue)
-    ? findingsValue.flatMap((findingValue, findingIndex) => {
-        const findingPath = `$.findings[${findingIndex}]`;
-        if (!isRecord(findingValue)) {
-          addError(errors, findingPath, 'finding must be an object');
-          return [];
-        }
-
-        const severity = validateEnum(
-          findingValue.severity,
-          REVIEW_FINDING_SEVERITIES_V2,
-          errors,
-          `${findingPath}.severity`,
-          'severity'
-        );
-        const category = validateEnum(
-          findingValue.category,
-          REVIEW_FINDING_CATEGORIES,
-          errors,
-          `${findingPath}.category`,
-          'category'
-        );
-        const passType = validateEnum(
-          findingValue.passType,
-          REVIEW_FINDING_PASS_TYPES,
-          errors,
-          `${findingPath}.passType`,
-          'passType'
-        );
-        if (passType && passType !== 'single') {
-          addError(errors, `${findingPath}.passType`, 'passType must be "single" in Phase 2');
-        }
-        const description = validateNonEmptyString(
-          findingValue.description,
-          errors,
-          `${findingPath}.description`,
-          'description'
-        );
-        const suggestedFix = validateNonEmptyString(
-          findingValue.suggestedFix,
-          errors,
-          `${findingPath}.suggestedFix`,
-          'suggestedFix'
-        );
-        const failingScenario = validateNonEmptyString(
-          findingValue.failingScenario,
-          errors,
-          `${findingPath}.failingScenario`,
-          'failingScenario'
-        );
-        const evidence = validateNonEmptyString(
-          findingValue.evidence,
-          errors,
-          `${findingPath}.evidence`,
-          'evidence'
-        );
-        const guardGap = validateNonEmptyString(
-          findingValue.guardGap,
-          errors,
-          `${findingPath}.guardGap`,
-          'guardGap'
-        );
-
-        const locationsValue = findingValue.locations;
-        if (!Array.isArray(locationsValue)) {
-          addError(errors, `${findingPath}.locations`, 'locations must be an array');
-          return [];
-        }
-        if (locationsValue.length === 0) {
-          addError(errors, `${findingPath}.locations`, 'locations must contain at least one entry');
-        }
-
-        const locations = locationsValue.flatMap((locationValue, locationIndex) => {
-          const locationPath = `${findingPath}.locations[${locationIndex}]`;
-          if (!isRecord(locationValue)) {
-            addError(errors, locationPath, 'location must be an object');
-            return [];
-          }
-
-          const filePathRaw = locationValue.filePath;
-          if (typeof filePathRaw !== 'string') {
-            addError(errors, `${locationPath}.filePath`, 'filePath must be a string');
-            return [];
-          }
-          const filePath = normalizePath(filePathRaw);
-          if (!filePath) {
-            addError(errors, `${locationPath}.filePath`, 'filePath must not be empty');
-            return [];
-          }
-
-          const startLine = locationValue.startLine;
-          const endLine = locationValue.endLine;
-          const hasNullPair = startLine === null && endLine === null;
-          const hasIntegerPair = isPositiveInteger(startLine) && isPositiveInteger(endLine);
-
-          if (!hasNullPair && !hasIntegerPair) {
-            addError(
-              errors,
-              `${locationPath}`,
-              'startLine/endLine must both be null or both be positive integers'
-            );
-            return [];
-          }
-
-          if (hasIntegerPair && (endLine as number) < (startLine as number)) {
-            addError(errors, `${locationPath}`, 'endLine must be greater than or equal to startLine');
-            return [];
-          }
-
-          return [
-            {
-              filePath,
-              startLine: hasNullPair ? null : (startLine as number),
-              endLine: hasNullPair ? null : (endLine as number),
-            },
-          ];
-        });
-
-        if (
-          !severity ||
-          !category ||
-          !passType ||
-          !description ||
-          !suggestedFix ||
-          !failingScenario ||
-          !evidence ||
-          !guardGap ||
-          locations.length === 0
-        ) {
-          return [];
-        }
-
-        const behaviorText = `${description}\n${suggestedFix}\n${failingScenario}`;
-        if (isValidationLikeFinding(behaviorText) && !hasConcreteSampleAndOutcomeEvidence(failingScenario, evidence)) {
-          addError(
-            errors,
-            `${findingPath}.evidence`,
-            'validation/regex findings require concrete sample input and observed outcome in failingScenario/evidence'
-          );
-          return [];
-        }
-        if (isTimeoutBoundaryLikeFinding(behaviorText) && !hasBoundaryAndStatusEvidence(failingScenario, evidence)) {
-          addError(
-            errors,
-            `${findingPath}.evidence`,
-            'timeout/retry findings require explicit boundary values and resulting status in failingScenario/evidence'
-          );
-          return [];
-        }
-
-        return [
-          {
-            severity,
-            category,
-            passType,
-            locations,
-            description,
-            suggestedFix,
-            failingScenario,
-            evidence,
-            guardGap,
-          },
-        ];
-      })
-    : [];
-
-  if (errors.length > 0 || summary === null || !Array.isArray(findingsValue) || typeof payload.furtherPassesLowYield !== 'boolean') {
-    return {
-      ok: false,
-      errors,
-    };
+  const parsed = reviewAnalysisOutputV2Schema.safeParse(payload);
+  if (!parsed.success) {
+    const errors: ReviewAnalysisValidationError[] = parsed.error.issues.map((issue) => ({
+      path: issuePathToJsonPath(issue.path),
+      message: issue.message,
+    }));
+    return { ok: false, errors };
   }
 
   const seen = new Set<string>();
-  const dedupedFindings = normalizedFindings.filter((finding) => {
+  const dedupedFindings = parsed.data.findings.filter((finding) => {
     const key = JSON.stringify(finding);
     if (seen.has(key)) {
       return false;
@@ -309,9 +158,9 @@ export function validateAndNormalizeReviewAnalysisOutputV2(payload: unknown): Va
     ok: true,
     value: {
       findings: dedupedFindings,
-      summary,
-      furtherPassesLowYield: payload.furtherPassesLowYield,
+      summary: parsed.data.summary,
+      furtherPassesLowYield: parsed.data.furtherPassesLowYield,
     },
-    dedupedExactCount: normalizedFindings.length - dedupedFindings.length,
+    dedupedExactCount: parsed.data.findings.length - dedupedFindings.length,
   };
 }

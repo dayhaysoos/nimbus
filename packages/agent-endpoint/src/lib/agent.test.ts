@@ -62,6 +62,12 @@ export async function runAgentTests(): Promise<void> {
       const requestBody = JSON.parse(capturedBody) as Record<string, unknown>;
       assert.equal(requestBody.model, 'anthropic/claude-sonnet-4-5');
       assert.equal(Array.isArray(requestBody.messages), true);
+      const responseFormat = requestBody.response_format as { type?: string; json_schema?: Record<string, unknown> };
+      assert.equal(responseFormat?.type, 'json_schema');
+      assert.equal(typeof responseFormat?.json_schema, 'object');
+      const plugins = requestBody.plugins as Array<{ id?: string }>;
+      assert.equal(Array.isArray(plugins), true);
+      assert.equal(plugins.some((plugin) => plugin.id === 'response-healing'), true);
       assert.equal(capturedReferer, 'https://example-review-worker.workers.dev');
       assert.equal(capturedTitle, 'Nimbus Review');
     } finally {

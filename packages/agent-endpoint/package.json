@@ -12,6 +12,9 @@
     "cf-typegen": "wrangler types",
     "test": "tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js"
   },
+  "dependencies": {
+    "zod": "^3.25.76"
+  },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250121.0",
     "@types/node": "^22.10.0",

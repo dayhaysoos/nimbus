@@ -13,6 +13,10 @@ importers:
         version: 5.9.3
 
   packages/agent-endpoint:
+    dependencies:
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250121.0
@@ -124,6 +128,9 @@ importers:
       '@cloudflare/sandbox':
         specifier: ^0.1.1
         version: 0.1.4
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250121.0
