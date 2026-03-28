@@ -781,3 +781,7 @@ Would it make sense to introduce zod for schema validation? Here's a page that's
 ---
 
 Would it make sense to introduce zod for schema validation? Here's a page that's not necessarily related but shows how you can use openrouter with zod: https://openrouter.ai/docs/sdks/typescript/call-model/tools
+
+---
+
+Yes install Zod, refactor so that we don't experience this problem again and push.
