@@ -183,10 +183,14 @@ function createReviewEventsFanout(options: {
     }
   };
 
-  const cleanupChannel = (reviewId: string): void => {
+  const cleanupChannel = (reviewId: string, expectedChannel?: ReviewEventsChannel): void => {
     const channel = channels.get(reviewId);
-    if (!channel) {
+    if (!channel || (expectedChannel && channel !== expectedChannel)) {
       return;
+    }
+    if (channel.cleanupTimer) {
+      clearTimeout(channel.cleanupTimer);
+      channel.cleanupTimer = null;
     }
     if (channel.subscribers.size > 0 || channel.upstreamTask) {
       return;
@@ -199,13 +203,9 @@ function createReviewEventsFanout(options: {
     if (!channel || channel.cleanupTimer) {
       return;
     }
+    const scheduledChannel = channel;
     channel.cleanupTimer = setTimeout(() => {
-      const current = channels.get(reviewId);
-      if (current?.cleanupTimer) {
-        clearTimeout(current.cleanupTimer);
-        current.cleanupTimer = null;
-      }
-      cleanupChannel(reviewId);
+      cleanupChannel(reviewId, scheduledChannel);
     }, REVIEW_EVENTS_REPLAY_TTL_MS);
   };
 
@@ -677,7 +677,7 @@ async function startDevServerSession(options: {
   delete env.VITE_NIMBUS_API_BASE_URL;
 
   const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const serverArgs = ['dev'];
+  const serverArgs = ['dev', '--', '--host', LOCAL_HOST, '--port', String(options.port), '--strictPort'];
 
   p.log.message(`Starting report UI dev server on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`);
 
