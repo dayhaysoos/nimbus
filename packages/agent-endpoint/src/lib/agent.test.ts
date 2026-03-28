@@ -274,6 +274,36 @@ export async function runAgentTests(): Promise<void> {
   {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(JSON.stringify({ error: { message: 'Invalid request body' } }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    try {
+      await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+          model: 'anthropic/claude-sonnet-4-5',
+          history: [],
+        },
+        { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }
+      );
+      assert.fail('Expected openrouter_request_rejected error');
+    } catch (error) {
+      assert.equal(error instanceof AgentEndpointError, true);
+      const typed = error as AgentEndpointError;
+      assert.equal(typed.code, 'openrouter_request_rejected');
+      assert.equal(typed.status, 422);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
       return new Response(
         JSON.stringify({
           choices: [

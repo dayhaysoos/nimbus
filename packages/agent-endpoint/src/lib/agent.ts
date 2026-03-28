@@ -340,8 +340,15 @@ export async function callOpenRouter(input: {
   }
 
   if (!response.ok) {
-    throw new AgentEndpointError('openrouter_request_failed', 502, {
-      status: response.status,
+    const upstreamStatus = response.status;
+    if (upstreamStatus >= 500 || upstreamStatus === 429) {
+      throw new AgentEndpointError('openrouter_request_failed', 502, {
+        status: upstreamStatus,
+        body: bodyText.slice(0, 2_000),
+      });
+    }
+    throw new AgentEndpointError('openrouter_request_rejected', 422, {
+      status: upstreamStatus,
       body: bodyText.slice(0, 2_000),
     });
   }
