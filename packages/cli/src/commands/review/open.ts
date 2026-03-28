@@ -30,6 +30,9 @@ const CONTENT_TYPES: Record<string, string> = {
 const REVIEW_EVENTS_PATH = /^\/api\/reviews\/([^/]+)\/events$/;
 const REVIEW_EVENTS_REPLAY_LIMIT = 200;
 const REVIEW_EVENTS_REPLAY_TTL_MS = 60_000;
+const REVIEW_EVENTS_REPLAY_HARD_CAP = REVIEW_EVENTS_REPLAY_LIMIT * 2;
+// Hard in-memory cap for incomplete SSE frame assembly. If exceeded, upstream
+// stream is terminated with an explicit error event so truncation is observable.
 const REVIEW_EVENTS_BUFFER_LIMIT_CHARS = 256_000;
 
 interface UiServerSession {
@@ -236,6 +239,9 @@ function createReviewEventsFanout(options: {
     if (channel.replay.length > REVIEW_EVENTS_REPLAY_LIMIT) {
       channel.replay.splice(0, channel.replay.length - REVIEW_EVENTS_REPLAY_LIMIT);
     }
+    if (channel.replay.length > REVIEW_EVENTS_REPLAY_HARD_CAP) {
+      channel.replay = channel.replay.slice(-REVIEW_EVENTS_REPLAY_LIMIT);
+    }
   };
 
   const broadcast = (channel: ReviewEventsChannel, frame: string): void => {
@@ -311,7 +317,9 @@ function createReviewEventsFanout(options: {
         }
         buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
         if (buffer.length > REVIEW_EVENTS_BUFFER_LIMIT_CHARS) {
-          buffer = buffer.slice(-Math.floor(REVIEW_EVENTS_BUFFER_LIMIT_CHARS / 2));
+          throw new Error(
+            `Review events payload exceeded ${REVIEW_EVENTS_BUFFER_LIMIT_CHARS} characters before frame delimiter; stream aborted to avoid truncation`
+          );
         }
         const frames = buffer.split('\n\n');
         buffer = frames.pop() ?? '';

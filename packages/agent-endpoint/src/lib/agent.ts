@@ -54,13 +54,15 @@ const reviewLocationSchema = z
     endLine: z.number().int().positive().nullable(),
   })
   .superRefine((value, ctx) => {
-    const hasNullPair = value.startLine === null && value.endLine === null;
-    const hasIntegerPair = Number.isInteger(value.startLine) && Number.isInteger(value.endLine);
+    const startLine = value.startLine;
+    const endLine = value.endLine;
+    const hasNullPair = startLine === null && endLine === null;
+    const hasIntegerPair = startLine !== null && endLine !== null && Number.isInteger(startLine) && Number.isInteger(endLine);
     if (!hasNullPair && !hasIntegerPair) {
       ctx.addIssue({ code: 'custom', path: [], message: 'startLine/endLine must both be null or both be positive integers' });
       return;
     }
-    if (hasIntegerPair && (value.endLine as number) < (value.startLine as number)) {
+    if (hasIntegerPair && endLine < startLine) {
       ctx.addIssue({ code: 'custom', path: [], message: 'endLine must be greater than or equal to startLine' });
     }
   });
