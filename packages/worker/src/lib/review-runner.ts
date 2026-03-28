@@ -410,7 +410,7 @@ function toTimestampMs(value: string | null): number | null {
 }
 
 function transientReviewFailure(message: string): boolean {
-  return /(d1|database is locked|sqlite_busy|temporarily unavailable|connection reset)/i.test(message);
+  return /(d1|database is locked|sqlite_busy|temporarily unavailable|connection reset|timed out|timeout|aborted|fetch failed|network)/i.test(message);
 }
 
 function isCochangeCacheError(error: unknown): boolean {

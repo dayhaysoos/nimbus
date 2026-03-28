@@ -162,6 +162,27 @@ function createReviewEventsFanout(options: {
 }): ReviewEventsFanout {
   const channels = new Map<string, ReviewEventsChannel>();
 
+  const isTerminalFrame = (frameBody: string): boolean => {
+    const dataLines = frameBody
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim());
+
+    if (dataLines.length === 0) {
+      return false;
+    }
+
+    try {
+      const payload = JSON.parse(dataLines.join('\n')) as Record<string, unknown>;
+      const type = typeof payload.type === 'string' ? payload.type : null;
+      const status = typeof payload.status === 'string' ? payload.status : null;
+      return type === 'terminal' || status === 'succeeded' || status === 'failed' || status === 'cancelled';
+    } catch {
+      return false;
+    }
+  };
+
   const cleanupChannel = (reviewId: string): void => {
     const channel = channels.get(reviewId);
     if (!channel) {
@@ -245,6 +266,7 @@ function createReviewEventsFanout(options: {
     }
 
     const controller = new AbortController();
+    let sawTerminalFrame = false;
     channel.upstreamAbortController = controller;
     channel.upstreamTask = (async () => {
       const targetUrl = new URL(`/api/reviews/${encodeURIComponent(reviewId)}/events`, options.workerUrl);
@@ -293,6 +315,9 @@ function createReviewEventsFanout(options: {
           if (!frameBody.trim()) {
             continue;
           }
+          if (!sawTerminalFrame && isTerminalFrame(frameBody)) {
+            sawTerminalFrame = true;
+          }
           const frame = `${frameBody}\n\n`;
           pushReplay(channel, frame);
           broadcast(channel, frame);
@@ -301,6 +326,9 @@ function createReviewEventsFanout(options: {
 
       buffer += decoder.decode().replace(/\r\n/g, '\n').replace(/\r/g, '\n');
       if (buffer.trim()) {
+        if (!sawTerminalFrame && isTerminalFrame(buffer)) {
+          sawTerminalFrame = true;
+        }
         const frame = `${buffer}\n\n`;
         pushReplay(channel, frame);
         broadcast(channel, frame);
@@ -316,7 +344,7 @@ function createReviewEventsFanout(options: {
         broadcast(channel, frame);
       })
       .finally(() => {
-        channel.completed = true;
+        channel.completed = sawTerminalFrame;
         channel.upstreamAbortController = null;
         channel.upstreamTask = null;
         closeSubscribers(channel);

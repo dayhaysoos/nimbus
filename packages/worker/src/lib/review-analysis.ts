@@ -25,6 +25,8 @@ const PROMPT_RELATED_FILES_MAX_BYTES = 36_000;
 const PROMPT_CONVENTION_FILES_MAX_BYTES = 20_000;
 const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
 const REVIEW_PROVIDER_TIMEOUT_MS = 120_000;
+const REVIEW_PROVIDER_MAX_ATTEMPTS = 2;
+const REVIEW_PROVIDER_RETRY_DELAY_MS = 750;
 
 interface SandboxClient {
   exec(
@@ -335,6 +337,10 @@ function isTimeoutLikeError(error: unknown): boolean {
   }
   const message = error.message.toLowerCase();
   return message.includes('timeout') || message.includes('timed out') || message.includes('aborted');
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function toBase64(buffer: ArrayBuffer): string {
@@ -779,70 +785,91 @@ class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
     step: number;
     history: ReviewAgentHistoryEntry[];
   }): Promise<ReviewAgentAction> {
-    let response: Response;
-    let timeoutId: ReturnType<typeof setTimeout> | null = null;
-    try {
-      const requestFetch = this.serviceBinding
-        ? this.serviceBinding.fetch.bind(this.serviceBinding)
-        : fetch;
-      const signal =
-        typeof AbortSignal.timeout === 'function'
-          ? AbortSignal.timeout(REVIEW_PROVIDER_TIMEOUT_MS)
-          : (() => {
-              const controller = new AbortController();
-              timeoutId = setTimeout(() => controller.abort('review_provider_timeout'), REVIEW_PROVIDER_TIMEOUT_MS);
-              return controller.signal;
-            })();
-      response = await requestFetch(this.endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
-          ...(this.openrouterApiKey ? { 'X-Openrouter-Api-Key': this.openrouterApiKey } : {}),
-        },
-        body: JSON.stringify({
-          mode: 'workspace_task',
-          prompt: input.prompt,
-          model: input.model,
-          maxSteps: input.maxSteps,
-          step: input.step,
-          history: input.history,
-        }),
-        signal,
-      });
-    } catch (error) {
-      if (isTimeoutLikeError(error)) {
-        throw new Error(
-          `Review analysis provider request timed out after ${Math.floor(REVIEW_PROVIDER_TIMEOUT_MS / 1000)} seconds`
-        );
-      }
-      throw error;
-    } finally {
-      if (timeoutId !== null) {
-        clearTimeout(timeoutId);
+    const requestFetch = this.serviceBinding
+      ? this.serviceBinding.fetch.bind(this.serviceBinding)
+      : fetch;
+
+    for (let attempt = 1; attempt <= REVIEW_PROVIDER_MAX_ATTEMPTS; attempt += 1) {
+      const controller = new AbortController();
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+      try {
+        const requestPromise = requestFetch(this.endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(this.authToken ? { Authorization: `Bearer ${this.authToken}` } : {}),
+            ...(this.openrouterApiKey ? { 'X-Openrouter-Api-Key': this.openrouterApiKey } : {}),
+          },
+          body: JSON.stringify({
+            mode: 'workspace_task',
+            prompt: input.prompt,
+            model: input.model,
+            maxSteps: input.maxSteps,
+            step: input.step,
+            history: input.history,
+          }),
+          signal: controller.signal,
+        });
+
+        const timeoutPromise = new Promise<never>((_, reject) => {
+          timeoutId = setTimeout(() => {
+            controller.abort('review_provider_timeout');
+            reject(
+              new Error(`Review analysis provider request timed out after ${Math.floor(REVIEW_PROVIDER_TIMEOUT_MS / 1000)} seconds`)
+            );
+          }, REVIEW_PROVIDER_TIMEOUT_MS);
+        });
+
+        const response = await Promise.race([requestPromise, timeoutPromise]);
+        if (!response.ok) {
+          const providerErrorBody = redactReviewText(await response.text()) ?? '';
+          if (isWorkerToWorkerFetchRestriction(response.status, providerErrorBody)) {
+            throw new Error(
+              `Review analysis provider request blocked by Cloudflare Worker-to-Worker fetch restriction (error code 1042). Enable the 'global_fetch_strictly_public' compatibility flag on this worker or switch to a service binding.${providerErrorBody ? ` Provider response: ${providerErrorBody}` : ''}`
+            );
+          }
+
+          const transientStatus = response.status >= 500 || response.status === 429;
+          const statusError = new Error(
+            transientStatus
+              ? `Review analysis provider temporarily unavailable (status ${response.status})${providerErrorBody ? `: ${providerErrorBody}` : ''}`
+              : `Review analysis provider request failed with status ${response.status}${providerErrorBody ? `: ${providerErrorBody}` : ''}`
+          );
+
+          if (transientStatus && attempt < REVIEW_PROVIDER_MAX_ATTEMPTS) {
+            await sleep(REVIEW_PROVIDER_RETRY_DELAY_MS * attempt);
+            continue;
+          }
+
+          throw statusError;
+        }
+
+        const parsed = (await response.json()) as unknown;
+        const action = asRecord(parsed).action;
+        return validateReviewAgentAction(action);
+      } catch (error) {
+        const timeoutLike = isTimeoutLikeError(error);
+        const transientNetworkError =
+          error instanceof Error && /fetch failed|network|connection reset|econnreset|socket hang up/i.test(error.message);
+        if ((timeoutLike || transientNetworkError) && attempt < REVIEW_PROVIDER_MAX_ATTEMPTS) {
+          await sleep(REVIEW_PROVIDER_RETRY_DELAY_MS * attempt);
+          continue;
+        }
+        if (timeoutLike) {
+          throw new Error(
+            `Review analysis provider request timed out after ${Math.floor(REVIEW_PROVIDER_TIMEOUT_MS / 1000)} seconds (attempt ${attempt}/${REVIEW_PROVIDER_MAX_ATTEMPTS})`
+          );
+        }
+        throw error;
+      } finally {
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
       }
     }
 
-    if (!response.ok) {
-      const providerErrorBody = redactReviewText(await response.text()) ?? '';
-      if (isWorkerToWorkerFetchRestriction(response.status, providerErrorBody)) {
-        throw new Error(
-          `Review analysis provider request blocked by Cloudflare Worker-to-Worker fetch restriction (error code 1042). Enable the 'global_fetch_strictly_public' compatibility flag on this worker or switch to a service binding.${providerErrorBody ? ` Provider response: ${providerErrorBody}` : ''}`
-        );
-      }
-      if (response.status >= 500 || response.status === 429) {
-        throw new Error(
-          `Review analysis provider temporarily unavailable (status ${response.status})${providerErrorBody ? `: ${providerErrorBody}` : ''}`
-        );
-      }
-      throw new Error(
-        `Review analysis provider request failed with status ${response.status}${providerErrorBody ? `: ${providerErrorBody}` : ''}`
-      );
-    }
-
-    const parsed = (await response.json()) as unknown;
-    const action = asRecord(parsed).action;
-    return validateReviewAgentAction(action);
+    throw new Error('Review analysis provider exhausted retry attempts without a valid response');
   }
 }
 

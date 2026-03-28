@@ -411,3 +411,114 @@ input:focus {
 .policy-derivation-dot:nth-child(1) { animation: policy-pulse-dot 1.4s ease-in-out infinite 0s; }
 .policy-derivation-dot:nth-child(2) { animation: policy-pulse-dot 1.4s ease-in-out infinite 0.2s; }
 .policy-derivation-dot:nth-child(3) { animation: policy-pulse-dot 1.4s ease-in-out infinite 0.4s; }
+
+/* ── Report page ── */
+
+@keyframes report-finding-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes report-log-enter {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.report-finding-enter {
+  animation: report-finding-enter 0.35s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.report-log-entry {
+  animation: report-log-enter 0.2s ease-out both;
+}
+
+.report-toast {
+  position: fixed;
+  top: 0.75rem;
+  right: 0.75rem;
+  background: hsl(240 10% 10%);
+  color: hsl(0 0% 94%);
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 50;
+  animation: policy-fade-up 0.2s ease-out both;
+}
+
+.report-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.25rem 0.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  background: hsl(var(--card));
+  color: hsl(var(--muted-foreground));
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.report-copy-btn:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--ring));
+}
+
+.report-markdown {
+  font-size: 0.9rem;
+  line-height: 1.7;
+}
+
+.report-markdown h1,
+.report-markdown h2,
+.report-markdown h3 {
+  font-family: var(--font-display);
+  margin: 0.8rem 0 0.4rem;
+}
+
+.report-markdown h1 { font-size: 1.25rem; }
+.report-markdown h2 { font-size: 1.1rem; }
+.report-markdown h3 { font-size: 1rem; }
+
+.report-markdown p,
+.report-markdown ul,
+.report-markdown ol {
+  margin: 0.4rem 0;
+}
+
+.report-markdown ul,
+.report-markdown ol {
+  padding-left: 1.5rem;
+}
+
+.report-markdown code {
+  font-size: 0.8rem;
+  background: hsl(var(--muted));
+  padding: 0.1rem 0.3rem;
+  border-radius: 3px;
+}
+
+.report-markdown pre {
+  background: hsl(240 10% 8%);
+  color: hsl(0 0% 85%);
+  padding: 0.6rem;
+  border-radius: 6px;
+  overflow-x: auto;
+  font-size: 0.8rem;
+  margin: 0.5rem 0;
+}
+
+.report-markdown pre code {
+  background: none;
+  padding: 0;
+}
