@@ -789,3 +789,18 @@ Yes install Zod, refactor so that we don't experience this problem again and pus
 ---
 
 Here are some more bugs, verify and fix them
+
+---
+
+F-020 · 🟡 medium · logic: reviewLocationSchema allows startLine and endLine to both be null or both be positive integers, but does not validate that both are non-null when performing the endLine >= startLine check
+Fix: In the superRefine callback, check hasIntegerPair before casting to number. The current code casts value.endLine and value.startLine without confirming they are non-null, which could cause runtime issues if Zod's type inference is bypassed.
+
+packages/agent-endpoint/src/lib/agent.ts L57–63
+F-021 · 🟡 medium · logic: pushReplay can cause unbounded memory growth if replay limit is exceeded repeatedly before cleanup runs
+Fix: After splicing the replay buffer when it exceeds REVIEW_EVENTS_REPLAY_LIMIT, explicitly cap the buffer size to prevent edge cases where rapid pushes before cleanup could accumulate memory. Consider adding a hard cap check: if (channel.replay.length > REVIEW_EVENTS_REPLAY_LIMIT * 2) { channel.replay = channel.replay.slice(-REVIEW_EVENTS_REPLAY_LIMIT); }
+
+packages/cli/src/commands/review/open.ts L231–234
+F-022 · 🔵 low · logic: Review events buffer can drop frames if buffer exceeds REVIEW_EVENTS_BUFFER_LIMIT_CHARS mid-stream
+Fix: Document that REVIEW_EVENTS_BUFFER_LIMIT_CHARS (256,000 chars) is a hard limit and frames may be lost if upstream sends extremely large payloads. Alternatively, close the stream with an error event when the limit is hit to signal downstream consumers that data was truncated.
+
+packages/cli/src/commands/review/open.ts L332–336
