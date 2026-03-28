@@ -2308,6 +2308,7 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
         payload: {
           attemptCount,
           maxRetries: REVIEW_MAX_RETRIES,
+          reason: message.slice(0, 500),
         },
       });
       throw new QueueRetryError('Review transient failure; retry requested');

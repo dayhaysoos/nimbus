@@ -328,6 +328,21 @@ function isWorkerToWorkerFetchRestriction(status: number, responseBody: string):
   return status === 404 && /error\s*code\s*:\s*1042/i.test(responseBody);
 }
 
+function isMissingOpenRouterApiKeyError(responseBody: string): boolean {
+  if (!responseBody.trim()) {
+    return false;
+  }
+  try {
+    const parsed = JSON.parse(responseBody) as Record<string, unknown>;
+    const errorCode = typeof parsed.error === 'string' ? parsed.error : '';
+    const details = asRecord(parsed.details);
+    const detailsMessage = typeof details.message === 'string' ? details.message : '';
+    return errorCode === 'missing_openrouter_api_key' || /openrouter_api_key\s+is\s+required/i.test(detailsMessage);
+  } catch {
+    return /missing_openrouter_api_key|openrouter_api_key\s+is\s+required/i.test(responseBody);
+  }
+}
+
 function isTimeoutLikeError(error: unknown): boolean {
   if (!(error instanceof Error)) {
     return false;
@@ -824,6 +839,11 @@ class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
         const response = await Promise.race([requestPromise, timeoutPromise]);
         if (!response.ok) {
           const providerErrorBody = redactReviewText(await response.text()) ?? '';
+          if (isMissingOpenRouterApiKeyError(providerErrorBody)) {
+            throw new Error(
+              'Review analysis provider is missing an OpenRouter API key. Configure OPENROUTER_API_KEY for nimbus-agent-endpoint or pass X-Openrouter-Api-Key from the caller.'
+            );
+          }
           if (isWorkerToWorkerFetchRestriction(response.status, providerErrorBody)) {
             throw new Error(
               `Review analysis provider request blocked by Cloudflare Worker-to-Worker fetch restriction (error code 1042). Enable the 'global_fetch_strictly_public' compatibility flag on this worker or switch to a service binding.${providerErrorBody ? ` Provider response: ${providerErrorBody}` : ''}`
