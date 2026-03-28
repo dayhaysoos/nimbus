@@ -2,6 +2,10 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { parseGetReviewResponse } from '../lib/review';
 import type { GetReviewResponse, ReviewPolicyDraft, ReviewResponse } from '../types';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { cn } from '@/lib/utils';
 
 const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 
@@ -45,37 +49,89 @@ function normalizeEditablePolicy(policy: EditablePolicy): ReviewPolicyDraft {
   };
 }
 
-function listEditor(
-  label: string,
-  values: string[],
-  onChange: (index: number, value: string) => void,
-  onAdd: () => void,
-  onRemove: (index: number) => void,
-  placeholder: string,
-  addLabel: string
-): JSX.Element {
+function StatusLayout({ children }: { children: React.ReactNode }): JSX.Element {
   return (
-    <section className="card">
-      <h3>{label}</h3>
-      <div className="stack">
-        {values.length === 0 && <p>No entries yet.</p>}
+    <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-5 py-12">
+      <div className="w-full">{children}</div>
+    </main>
+  );
+}
+
+function ClauseHeader({ number, label }: { number: string; label: string }): JSX.Element {
+  return (
+    <div className="flex items-center gap-3 mb-1">
+      <span className="policy-clause-number">{number}</span>
+      <div className="h-px flex-1 bg-border/60" />
+    </div>
+  );
+}
+
+function PolicyListEditor(props: {
+  clause: string;
+  title: string;
+  description: string;
+  values: string[];
+  placeholder: string;
+  onAdd: () => void;
+  onRemove: (index: number) => void;
+  onChange: (index: number, value: string) => void;
+  addLabel: string;
+  accentClass: string;
+  animDelay: string;
+}): JSX.Element {
+  const { clause, title, description, values, placeholder, onAdd, onRemove, onChange, addLabel, accentClass, animDelay } = props;
+
+  return (
+    <Card
+      className={cn(
+        'policy-fade-up border-border/50 bg-card/80 backdrop-blur-sm',
+        accentClass
+      )}
+      style={{ animationDelay: animDelay }}
+    >
+      <CardHeader className="pb-2 pt-4 px-4">
+        <div className="flex items-center gap-2">
+          <span className="policy-clause-number">{clause}</span>
+          <CardTitle className="policy-section-title text-sm">{title}</CardTitle>
+        </div>
+        <CardDescription className="text-xs font-light">
+          {description}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2 px-4">
+        {values.length === 0 ? (
+          <p className="text-sm text-muted-foreground/70 italic font-light">No entries yet.</p>
+        ) : null}
         {values.map((value, index) => (
-          <div key={`${label}-${index}`} className="button-row">
-            <input
+          <div key={`${title}-${index}`} className="flex flex-col gap-2 sm:flex-row">
+            <Input
               value={value}
               onChange={(event) => onChange(index, event.target.value)}
               placeholder={placeholder}
+              className="h-10 bg-background/60 border-border/50 font-light text-sm placeholder:text-muted-foreground/50 focus-visible:ring-[hsl(38_65%_38%)] focus-visible:ring-1 focus-visible:ring-offset-0"
             />
-            <button type="button" className="secondary-button" onClick={() => onRemove(index)}>
+            <Button
+              type="button"
+              variant="ghost"
+              className="h-10 shrink-0 text-muted-foreground/60 hover:text-destructive hover:bg-destructive/5 text-xs font-medium tracking-wide uppercase"
+              onClick={() => onRemove(index)}
+            >
               Remove
-            </button>
+            </Button>
           </div>
         ))}
-      </div>
-      <button type="button" className="secondary-button" onClick={onAdd}>
-        {addLabel}
-      </button>
-    </section>
+      </CardContent>
+      <CardFooter className="pt-0 px-4 pb-3">
+        <Button
+          type="button"
+          variant="ghost"
+          className="text-xs font-medium tracking-wide uppercase text-muted-foreground/70 hover:text-foreground hover:bg-accent/50 h-8 px-2"
+          onClick={onAdd}
+        >
+          + {addLabel}
+        </Button>
+      </CardFooter>
+    </Card>
   );
 }
 
@@ -90,12 +146,6 @@ export function PolicyPage(): JSX.Element {
   const [progressCycle, setProgressCycle] = useState(0);
   const [approving, setApproving] = useState(false);
   const [policyDraft, setPolicyDraft] = useState<EditablePolicy>({ goal: '', prohibitions: [], constraints: [] });
-
-  console.log('[PolicyPage] render', {
-    reviewId: reviewId ?? null,
-    state,
-    reviewStatus: review?.status ?? null,
-  });
 
   useEffect(() => {
     if (!reviewId) {
@@ -123,10 +173,6 @@ export function PolicyPage(): JSX.Element {
         }
 
         setReview(data.review);
-        console.log('[PolicyPage] fetched review status', {
-          reviewId,
-          status: data.review.status,
-        });
         setState('loaded');
         setErrorMessage('');
 
@@ -143,10 +189,6 @@ export function PolicyPage(): JSX.Element {
       })
       .catch((error) => {
         if (!cancelled) {
-          console.error('[PolicyPage] fetch failed', {
-            reviewId,
-            error: error instanceof Error ? error.message : String(error),
-          });
           setState('error');
           setErrorMessage(error instanceof Error ? error.message : String(error));
         }
@@ -236,120 +278,204 @@ export function PolicyPage(): JSX.Element {
     }
   };
 
+  /* ── Loading ── */
   if (state === 'loading') {
     return (
-      <main className="page">
-        <section className="card status-card">
-          <h1>Preparing policy</h1>
-          <p>Loading review {reviewId ?? 'unknown'}...</p>
-        </section>
-      </main>
+      <StatusLayout>
+        <div className="policy-fade-up text-center space-y-4">
+          <p className="policy-clause-number">preparing</p>
+          <h1 className="policy-heading text-2xl text-foreground">Loading policy</h1>
+          <p className="text-sm text-muted-foreground font-light">
+            Review {reviewId ?? 'unknown'}
+          </p>
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <span className="policy-derivation-dot" />
+            <span className="policy-derivation-dot" />
+            <span className="policy-derivation-dot" />
+          </div>
+        </div>
+      </StatusLayout>
     );
   }
 
+  /* ── Error ── */
   if (state === 'error') {
     return (
-      <main className="page">
-        <section className="card status-card">
-          <h1>Unable to prepare policy</h1>
-          <p>{errorMessage || 'Unknown error'}</p>
-        </section>
-      </main>
+      <StatusLayout>
+        <Card className="policy-fade-up border-destructive/20 bg-card/90">
+          <CardHeader className="text-center space-y-3">
+            <p className="policy-clause-number text-destructive/70">error</p>
+            <CardTitle className="policy-heading text-xl">Unable to prepare policy</CardTitle>
+            <CardDescription className="font-light">
+              {errorMessage || 'Unknown error'}
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </StatusLayout>
     );
   }
 
+  /* ── No data ── */
   if (!review) {
     return (
-      <main className="page">
-        <section className="card status-card">
-          <h1>No review data</h1>
-          <p>The review payload is empty.</p>
-        </section>
-      </main>
+      <StatusLayout>
+        <Card className="policy-fade-up border-border/50 bg-card/90">
+          <CardHeader className="text-center space-y-3">
+            <p className="policy-clause-number">empty</p>
+            <CardTitle className="policy-heading text-xl">No review data</CardTitle>
+            <CardDescription className="font-light">
+              The review payload is empty.
+            </CardDescription>
+          </CardHeader>
+        </Card>
+      </StatusLayout>
     );
   }
 
+  /* ── Deriving ── */
   if (review.status !== 'policy_ready') {
     return (
-      <main className="page">
-        <section className="card status-card">
-          <h1>Deriving policy</h1>
-          <p>{progressLabel}</p>
-        </section>
-      </main>
+      <StatusLayout>
+        <div className="policy-fade-up text-center space-y-6">
+          <div className="inline-flex items-center gap-2.5 rounded-full border border-border/50 bg-card/80 px-4 py-1.5 backdrop-blur-sm">
+            <div className="h-2 w-2 rounded-full bg-[hsl(38_65%_45%)] animate-pulse" />
+            <span className="text-xs font-medium tracking-widest uppercase text-muted-foreground">
+              Deriving policy
+            </span>
+          </div>
+
+          <div className="space-y-2">
+            <h1 className="policy-heading text-3xl md:text-4xl text-foreground leading-tight">
+              Policy draft in progress
+            </h1>
+            <p className="text-muted-foreground font-light text-base max-w-md mx-auto">
+              {progressLabel}
+            </p>
+          </div>
+
+          <div className="flex items-center justify-center gap-2 pt-2">
+            <span className="policy-derivation-dot" />
+            <span className="policy-derivation-dot" />
+            <span className="policy-derivation-dot" />
+          </div>
+        </div>
+      </StatusLayout>
     );
   }
 
+  /* ── Policy editor ── */
   return (
-    <main className="page">
-      <section className="card summary-card">
-        <div className="summary-header">
-          <h1>Review policy draft</h1>
-          <span className="status-pill status-running">{review.status}</span>
+    <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-4 md:py-6">
+      {/* Header + Goal row */}
+      <div className="policy-fade-up flex flex-col gap-1" style={{ animationDelay: '0ms' }}>
+        <div className="flex items-baseline justify-between gap-4">
+          <h1 className="policy-heading text-xl text-foreground tracking-tight">
+            Review policy
+          </h1>
+          <p className="text-xs text-muted-foreground/60 font-light shrink-0">
+            Policy will be locked after approval
+          </p>
         </div>
-        <p>Confirm or edit the policy before Nimbus starts the review.</p>
-      </section>
+        <p className="text-muted-foreground font-light text-sm">
+          Confirm or edit this policy before Nimbus starts the review.
+        </p>
+      </div>
 
-      <section className="card">
-        <h3>Goal</h3>
-        <input
+      <div className="h-px bg-border/60" />
+
+      {/* Goal */}
+      <div
+        className="policy-fade-up flex flex-col gap-1.5"
+        style={{ animationDelay: '60ms' }}
+      >
+        <div className="flex items-center gap-2">
+          <span className="policy-clause-number">I.</span>
+          <label className="policy-section-title text-sm">Goal</label>
+          <span className="text-xs text-muted-foreground font-light">— What should this review optimize for?</span>
+        </div>
+        <Input
           value={policyDraft.goal}
           onChange={(event) => setPolicyDraft((current) => ({ ...current, goal: event.target.value }))}
-          placeholder="What should this review optimize for?"
+          placeholder="Reduce production risk while keeping fixes minimal"
+          className="h-9 bg-background/60 border-border/50 font-light text-sm placeholder:text-muted-foreground/50 focus-visible:ring-[hsl(38_65%_38%)] focus-visible:ring-1 focus-visible:ring-offset-0"
         />
-      </section>
+      </div>
 
-      {listEditor(
-        'Must Not',
-        policyDraft.prohibitions,
-        (index, value) =>
-          setPolicyDraft((current) => ({
-            ...current,
-            prohibitions: current.prohibitions.map((item, itemIndex) => (itemIndex === index ? value : item)),
-          })),
-        () =>
-          setPolicyDraft((current) => ({
-            ...current,
-            prohibitions: [...current.prohibitions, ''],
-          })),
-        (index) =>
-          setPolicyDraft((current) => ({
-            ...current,
-            prohibitions: current.prohibitions.filter((_, itemIndex) => itemIndex !== index),
-          })),
-        'Add a prohibition',
-        'Add must-not item'
-      )}
+      {/* Prohibitions & Preferences */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <PolicyListEditor
+          clause="II."
+          title="Must Not"
+          description="Hard constraints Nimbus should avoid violating."
+          values={policyDraft.prohibitions}
+          placeholder="Do not alter public API behavior"
+          addLabel="Add prohibition"
+          accentClass="policy-card-prohibition"
+          animDelay="120ms"
+          onChange={(index, value) =>
+            setPolicyDraft((current) => ({
+              ...current,
+              prohibitions: current.prohibitions.map((item, itemIndex) => (itemIndex === index ? value : item)),
+            }))
+          }
+          onAdd={() =>
+            setPolicyDraft((current) => ({
+              ...current,
+              prohibitions: [...current.prohibitions, ''],
+            }))
+          }
+          onRemove={(index) =>
+            setPolicyDraft((current) => ({
+              ...current,
+              prohibitions: current.prohibitions.filter((_, itemIndex) => itemIndex !== index),
+            }))
+          }
+        />
 
-      {listEditor(
-        'Preferences',
-        policyDraft.constraints,
-        (index, value) =>
-          setPolicyDraft((current) => ({
-            ...current,
-            constraints: current.constraints.map((item, itemIndex) => (itemIndex === index ? value : item)),
-          })),
-        () =>
-          setPolicyDraft((current) => ({
-            ...current,
-            constraints: [...current.constraints, ''],
-          })),
-        (index) =>
-          setPolicyDraft((current) => ({
-            ...current,
-            constraints: current.constraints.filter((_, itemIndex) => itemIndex !== index),
-          })),
-        'Add a preference',
-        'Add preference item'
-      )}
+        <PolicyListEditor
+          clause="III."
+          title="Preferences"
+          description="Soft constraints Nimbus should prefer when possible."
+          values={policyDraft.constraints}
+          placeholder="Prefer small, isolated code changes"
+          addLabel="Add preference"
+          accentClass="policy-card-preference"
+          animDelay="180ms"
+          onChange={(index, value) =>
+            setPolicyDraft((current) => ({
+              ...current,
+              constraints: current.constraints.map((item, itemIndex) => (itemIndex === index ? value : item)),
+            }))
+          }
+          onAdd={() =>
+            setPolicyDraft((current) => ({
+              ...current,
+              constraints: [...current.constraints, ''],
+            }))
+          }
+          onRemove={(index) =>
+            setPolicyDraft((current) => ({
+              ...current,
+              constraints: current.constraints.filter((_, itemIndex) => itemIndex !== index),
+            }))
+          }
+        />
+      </div>
 
-      <section className="card status-card">
-        <div className="button-row">
-          <button type="button" className="secondary-button" onClick={approvePolicy} disabled={approving}>
-            {approving ? 'Confirming...' : 'Confirm policy and run review'}
-          </button>
-        </div>
-      </section>
+      {/* Approval */}
+      <div
+        className="policy-fade-up flex justify-end pt-1"
+        style={{ animationDelay: '240ms' }}
+      >
+        <button
+          type="button"
+          className="policy-approve-btn inline-flex items-center justify-center rounded-lg h-10 px-6 text-sm"
+          onClick={approvePolicy}
+          disabled={approving}
+        >
+          {approving ? 'Confirming...' : 'Approve & run review'}
+        </button>
+      </div>
     </main>
   );
 }

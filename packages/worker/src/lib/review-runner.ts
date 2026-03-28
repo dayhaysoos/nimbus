@@ -72,6 +72,7 @@ const GITHUB_TOKEN_PATTERN = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/g;
 const GITHUB_TOKEN_PATTERN_TEST = /\bgh[psu]_[A-Za-z0-9_]{20,}\b/;
 const LARGE_DIFF_ADVISORY_THRESHOLD = 30;
 const DEFAULT_REVIEW_ATTEMPT_TIMEOUT_MS = 10 * 60 * 1000;
+const DEFAULT_REVIEW_ANALYSIS_TIMEOUT_MS = 4 * 60 * 1000;
 const REVIEW_STALE_GRACE_MS = 60 * 1000;
 const INTENT_SUMMARY_MODEL = 'anthropic/claude-sonnet-4.5';
 const INTENT_SUMMARY_MAX_TOKENS = 512;
@@ -401,6 +402,28 @@ function parseTimeoutMs(value: string | undefined, fallback: number): number {
   return parsed;
 }
 
+async function withTimeout<T>(
+  task: Promise<T>,
+  timeoutMs: number,
+  createError: () => Error
+): Promise<T> {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      task,
+      new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(createError());
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timeoutId !== null) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
+
 function toTimestampMs(value: string | null): number | null {
   if (typeof value !== 'string' || !value.trim()) {
     return null;
@@ -410,7 +433,7 @@ function toTimestampMs(value: string | null): number | null {
 }
 
 function transientReviewFailure(message: string): boolean {
-  return /(d1|database is locked|sqlite_busy|temporarily unavailable|connection reset)/i.test(message);
+  return /(d1|database is locked|sqlite_busy|temporarily unavailable|connection reset|timed out|timeout|aborted|fetch failed|network)/i.test(message);
 }
 
 function isCochangeCacheError(error: unknown): boolean {
@@ -1819,48 +1842,71 @@ async function buildWorkspaceDeploymentReport(
       },
     });
 
-    agentAnalysis = await runWorkspaceDeploymentAgentAnalysis(env, {
-      reviewId: review.id,
-      workspaceId: review.workspaceId,
-      deploymentId: review.deploymentId,
-      deploymentSandboxId: `review-snapshot-${review.id}`,
-      sourceBundleKey: deploymentSourceBundleKey,
-      modelOverride: reviewAnalysisModel,
-      authoritativeDiffSnapshot: authoritativeDiff
-        ? {
-            source: authoritativeDiff.source,
-            artifactId: authoritativeDiff.artifactId,
-            patch: authoritativeDiff.patch,
-          }
-        : undefined,
-      goal: promptGoal,
-      constraints: promptConstraints,
-      decisions: promptDecisions.filter(Boolean),
-      intentSessionContext,
-      intentSummary: derivedIntentSummary,
-      evidenceCatalog: analysisEvidence.map((item) => ({
-        id: item.id,
-        type: item.type,
-        label: item.label,
-        status: item.status,
-      })),
-      deploymentSummary: {
-        provider: deployment.provider,
-        deployedUrl: deployment.deployedUrl,
-        validationSummary: JSON.stringify(requestValidation),
-      },
-      reviewContext,
-      rootListing: {},
-      diffSnapshot: {},
-      onLifecycleEvent: async (eventType, eventPayload) => {
+    const analysisTimeoutMs = parseTimeoutMs(env.REVIEW_ANALYSIS_TIMEOUT_MS, DEFAULT_REVIEW_ANALYSIS_TIMEOUT_MS);
+    try {
+      agentAnalysis = await withTimeout(
+        runWorkspaceDeploymentAgentAnalysis(env, {
+          reviewId: review.id,
+          workspaceId: review.workspaceId,
+          deploymentId: review.deploymentId,
+          deploymentSandboxId: `review-snapshot-${review.id}`,
+          sourceBundleKey: deploymentSourceBundleKey,
+          modelOverride: reviewAnalysisModel,
+          authoritativeDiffSnapshot: authoritativeDiff
+            ? {
+                source: authoritativeDiff.source,
+                artifactId: authoritativeDiff.artifactId,
+                patch: authoritativeDiff.patch,
+              }
+            : undefined,
+          goal: promptGoal,
+          constraints: promptConstraints,
+          decisions: promptDecisions.filter(Boolean),
+          intentSessionContext,
+          intentSummary: derivedIntentSummary,
+          evidenceCatalog: analysisEvidence.map((item) => ({
+            id: item.id,
+            type: item.type,
+            label: item.label,
+            status: item.status,
+          })),
+          deploymentSummary: {
+            provider: deployment.provider,
+            deployedUrl: deployment.deployedUrl,
+            validationSummary: JSON.stringify(requestValidation),
+          },
+          reviewContext,
+          rootListing: {},
+          diffSnapshot: {},
+          onLifecycleEvent: async (eventType, eventPayload) => {
+            await appendReviewEvent(env.DB, {
+              reviewId: review.id,
+              eventType,
+              payload: eventPayload,
+            });
+          },
+          openrouterApiKey: readOptionalString(options?.openrouterApiKey),
+        }),
+        analysisTimeoutMs,
+        () =>
+          new Error(
+            `Review analysis timed out after ${analysisTimeoutMs}ms while waiting for model/provider response`
+          )
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (/timed out|timeout/i.test(message)) {
         await appendReviewEvent(env.DB, {
           reviewId: review.id,
-          eventType,
-          payload: eventPayload,
+          eventType: 'review_analysis_timeout',
+          payload: {
+            timeoutMs: analysisTimeoutMs,
+            message,
+          },
         });
-      },
-      openrouterApiKey: readOptionalString(options?.openrouterApiKey),
-    });
+      }
+      throw error;
+    }
 
     if (!agentAnalysis) {
       throw new Error('Review analysis did not produce output.');
@@ -2262,6 +2308,7 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
         payload: {
           attemptCount,
           maxRetries: REVIEW_MAX_RETRIES,
+          reason: message.slice(0, 500),
         },
       });
       throw new QueueRetryError('Review transient failure; retry requested');

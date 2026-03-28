@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import path from 'node:path';
 
 function createApiProxy() {
   const apiKey = process.env.NIMBUS_API_KEY?.trim();
@@ -22,7 +23,15 @@ function createApiProxy() {
 
 export default defineConfig({
   plugins: [react()],
+  resolve: {
+    alias: {
+      '@': path.resolve(__dirname, './src'),
+    },
+  },
   server: {
+    host: process.env.VITE_HOST ?? 'localhost',
+    port: process.env.VITE_PORT ? Number(process.env.VITE_PORT) : undefined,
+    strictPort: Boolean(process.env.VITE_PORT),
     proxy: {
       '/api': createApiProxy(),
     },
