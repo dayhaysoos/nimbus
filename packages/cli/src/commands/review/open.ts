@@ -30,6 +30,7 @@ const CONTENT_TYPES: Record<string, string> = {
 const REVIEW_EVENTS_PATH = /^\/api\/reviews\/([^/]+)\/events$/;
 const REVIEW_EVENTS_REPLAY_LIMIT = 200;
 const REVIEW_EVENTS_REPLAY_TTL_MS = 60_000;
+const REVIEW_EVENTS_BUFFER_LIMIT_CHARS = 256_000;
 
 interface UiServerSession {
   appUrl: string;
@@ -309,6 +310,9 @@ function createReviewEventsFanout(options: {
           continue;
         }
         buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+        if (buffer.length > REVIEW_EVENTS_BUFFER_LIMIT_CHARS) {
+          buffer = buffer.slice(-Math.floor(REVIEW_EVENTS_BUFFER_LIMIT_CHARS / 2));
+        }
         const frames = buffer.split('\n\n');
         buffer = frames.pop() ?? '';
         for (const frameBody of frames) {

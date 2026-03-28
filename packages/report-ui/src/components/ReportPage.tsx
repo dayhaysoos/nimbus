@@ -341,11 +341,13 @@ export function ReportPage(): JSX.Element {
   const [refreshCycle, setRefreshCycle] = useState(0);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const seenEventIds = useRef(new Set<string>());
+  const fallbackEventOrdinal = useRef(0);
 
   const isLive = review ? LIVE_STREAM_STATUSES.has(review.status) : false;
 
   useEffect(() => {
     seenEventIds.current.clear();
+    fallbackEventOrdinal.current = 0;
     setActivityLog([]);
   }, [reviewId]);
 
@@ -425,8 +427,10 @@ export function ReportPage(): JSX.Element {
             ? `id:${eventData.id}`
             : typeof eventData.createdAt === 'string'
               ? `at:${eventData.createdAt}`
-              : `sig:${JSON.stringify(eventData.description ?? eventData.step ?? '')}`;
-        const dedupeKey = `${eventType}-${eventSeq}`;
+              : null;
+        const fallbackKey = `fallback:${eventType}:${fallbackEventOrdinal.current++}`;
+        const dedupeSource = eventSeq ?? fallbackKey;
+        const dedupeKey = `${eventType}-${dedupeSource}`;
         if (!seenEventIds.current.has(dedupeKey)) {
           seenEventIds.current.add(dedupeKey);
           const logEntry = eventToLogEntry(eventType, eventData);
