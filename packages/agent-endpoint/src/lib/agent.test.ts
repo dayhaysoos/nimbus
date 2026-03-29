@@ -62,6 +62,12 @@ export async function runAgentTests(): Promise<void> {
       const requestBody = JSON.parse(capturedBody) as Record<string, unknown>;
       assert.equal(requestBody.model, 'anthropic/claude-sonnet-4-5');
       assert.equal(Array.isArray(requestBody.messages), true);
+      const responseFormat = requestBody.response_format as { type?: string; json_schema?: Record<string, unknown> };
+      assert.equal(responseFormat?.type, 'json_schema');
+      assert.equal(typeof responseFormat?.json_schema, 'object');
+      const plugins = requestBody.plugins as Array<{ id?: string }>;
+      assert.equal(Array.isArray(plugins), true);
+      assert.equal(plugins.some((plugin) => plugin.id === 'response-healing'), true);
       assert.equal(capturedReferer, 'https://example-review-worker.workers.dev');
       assert.equal(capturedTitle, 'Nimbus Review');
     } finally {
@@ -260,6 +266,36 @@ export async function runAgentTests(): Promise<void> {
       const typed = error as AgentEndpointError;
       assert.equal(typed.code, 'openrouter_request_timeout');
       assert.equal(typed.status, 504);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(JSON.stringify({ error: { message: 'Invalid request body' } }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    }) as typeof fetch;
+
+    try {
+      await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'You are Nimbus Review. Return your final answer as raw JSON with furtherPassesLowYield.',
+          model: 'anthropic/claude-sonnet-4-5',
+          history: [],
+        },
+        { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }
+      );
+      assert.fail('Expected openrouter_request_rejected error');
+    } catch (error) {
+      assert.equal(error instanceof AgentEndpointError, true);
+      const typed = error as AgentEndpointError;
+      assert.equal(typed.code, 'openrouter_request_rejected');
+      assert.equal(typed.status, 422);
     } finally {
       globalThis.fetch = originalFetch;
     }

@@ -23,6 +23,25 @@ const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined
 type LoadState = 'loading' | 'loaded' | 'error';
 type TimelinePhaseState = 'completed' | 'active' | 'pending';
 
+const VALID_STATUSES: ReadonlySet<ReviewResponse['status']> = new Set([
+  'policy_pending',
+  'policy_ready',
+  'policy_approved',
+  'queued',
+  'running',
+  'succeeded',
+  'failed',
+  'cancelled',
+]);
+
+const LIVE_STREAM_STATUSES: ReadonlySet<ReviewResponse['status']> = new Set([
+  'policy_pending',
+  'policy_ready',
+  'policy_approved',
+  'queued',
+  'running',
+]);
+
 const FINDING_SEVERITY_ORDER: ReviewSeverity[] = ['critical', 'high', 'medium', 'low', 'info'];
 
 interface ActivityLogEntry {
@@ -73,6 +92,24 @@ const EVENT_LABELS: Record<string, string> = {
   review_retry_scheduled: 'Retry scheduled',
 };
 
+function statusFromReviewEventType(eventType: string): ReviewResponse['status'] | null {
+  switch (eventType) {
+    case 'review_created':
+    case 'review_enqueued':
+      return 'queued';
+    case 'review_succeeded':
+      return 'succeeded';
+    case 'review_failed':
+      return 'failed';
+    case 'review_cancelled':
+      return 'cancelled';
+    case 'review_policy_approved':
+      return 'policy_approved';
+    default:
+      return null;
+  }
+}
+
 function eventToLogEntry(eventType: string, data: Record<string, unknown>): ActivityLogEntry | null {
   if (eventType === 'heartbeat' || eventType === 'snapshot' || eventType === 'terminal') {
     return null;
@@ -84,14 +121,16 @@ function eventToLogEntry(eventType: string, data: Record<string, unknown>): Acti
     detail = `Step ${data.step}`;
   } else if (eventType === 'review_analysis_model_output_received' && typeof data.step === 'number') {
     detail = data.repairAttempted ? `Step ${data.step} (repair)` : `Step ${data.step}`;
-  } else if (eventType === 'review_finding_emitted' && typeof data.description === 'string') {
-    detail = data.description;
+  } else if (eventType === 'review_finding_emitted') {
+    detail = typeof data.description === 'string' ? data.description : undefined;
   } else if (eventType === 'review_context_changed_files_collected' && typeof data.changedFileCount === 'number') {
     detail = `${data.changedFileCount} files`;
   } else if (eventType === 'review_analysis_agent_started' && typeof data.model === 'string') {
     detail = data.model;
-  } else if (eventType === 'review_context_budget_checked' && typeof data.estimatedTokens === 'number' && typeof data.tokenBudget === 'number') {
-    detail = `${data.estimatedTokens.toLocaleString()} / ${data.tokenBudget.toLocaleString()} tokens`;
+  } else if (eventType === 'review_context_budget_checked') {
+    if (typeof data.estimatedTokens === 'number' && typeof data.tokenBudget === 'number') {
+      detail = `${data.estimatedTokens.toLocaleString()} / ${data.tokenBudget.toLocaleString()} tokens`;
+    }
   } else if (eventType === 'review_failed' && typeof data.message === 'string') {
     detail = data.message;
   } else if (eventType === 'review_succeeded' && typeof data.findingCount === 'number') {
@@ -530,8 +569,15 @@ export function ReportPage(): JSX.Element {
   const [refreshCycle, setRefreshCycle] = useState(0);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const seenEventIds = useRef(new Set<string>());
+  const fallbackEventOrdinal = useRef(0);
 
-  const isLive = review?.status === 'queued' || review?.status === 'running' || review?.status === 'policy_approved';
+  const isLive = review ? LIVE_STREAM_STATUSES.has(review.status) : false;
+
+  useEffect(() => {
+    seenEventIds.current.clear();
+    fallbackEventOrdinal.current = 0;
+    setActivityLog([]);
+  }, [reviewId]);
 
   useEffect(() => {
     if (!reviewId) {
@@ -577,14 +623,12 @@ export function ReportPage(): JSX.Element {
     if (state !== 'loaded' || !review) {
       return;
     }
-    if (review.status !== 'queued' && review.status !== 'running' && review.status !== 'policy_approved') {
+    if (!LIVE_STREAM_STATUSES.has(review.status)) {
       return;
     }
 
     if (typeof EventSource === 'undefined') {
-      const timer = window.setTimeout(() => {
-        setRefreshCycle((value) => value + 1);
-      }, 3000);
+      const timer = window.setTimeout(() => setRefreshCycle((value) => value + 1), 3000);
       return () => {
         window.clearTimeout(timer);
       };
@@ -592,7 +636,6 @@ export function ReportPage(): JSX.Element {
 
     const eventsUrl = `${API_BASE}/api/reviews/${encodeURIComponent(review.id)}/events`;
     const stream = new EventSource(eventsUrl);
-    let errorRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
     const onMessage = (event: MessageEvent<string>) => {
       let eventType: string | null = null;
@@ -603,12 +646,9 @@ export function ReportPage(): JSX.Element {
         const payload = JSON.parse(event.data) as Record<string, unknown>;
         eventType = typeof payload.type === 'string' ? payload.type : null;
         const rawStatus = typeof payload.status === 'string' ? payload.status : null;
-        eventStatus =
-          rawStatus === 'policy_pending' || rawStatus === 'policy_ready' || rawStatus === 'policy_approved' ||
-          rawStatus === 'queued' || rawStatus === 'running' ||
-          rawStatus === 'succeeded' || rawStatus === 'failed' || rawStatus === 'cancelled'
-            ? (rawStatus as ReviewResponse['status'])
-            : null;
+        eventStatus = rawStatus && VALID_STATUSES.has(rawStatus as ReviewResponse['status'])
+          ? (rawStatus as ReviewResponse['status'])
+          : null;
         eventData = payload;
       } catch {
       }
@@ -618,7 +658,16 @@ export function ReportPage(): JSX.Element {
       }
 
       if (eventType) {
-        const dedupeKey = `${eventType}-${JSON.stringify(eventData.description ?? eventData.step ?? '')}`;
+        const eventSeq = typeof eventData.seq === 'number'
+          ? `seq:${eventData.seq}`
+          : typeof eventData.id === 'number'
+            ? `id:${eventData.id}`
+            : typeof eventData.createdAt === 'string'
+              ? `at:${eventData.createdAt}`
+              : null;
+        const fallbackKey = `fallback:${eventType}:${fallbackEventOrdinal.current++}`;
+        const dedupeSource = eventSeq ?? fallbackKey;
+        const dedupeKey = `${eventType}-${dedupeSource}`;
         if (!seenEventIds.current.has(dedupeKey)) {
           seenEventIds.current.add(dedupeKey);
           const logEntry = eventToLogEntry(eventType, eventData);
@@ -628,20 +677,23 @@ export function ReportPage(): JSX.Element {
         }
       }
 
-      if (eventStatus) {
+      const derivedStatus = eventType ? statusFromReviewEventType(eventType) : null;
+      const nextStatus = eventStatus ?? derivedStatus;
+
+      if (nextStatus) {
         setReview((current) => {
-          if (!current || current.status === eventStatus) {
+          if (!current || current.status === nextStatus) {
             return current;
           }
-          return { ...current, status: eventStatus };
+          return { ...current, status: nextStatus };
         });
       }
 
       if (
         eventType === 'terminal' ||
-        eventStatus === 'succeeded' ||
-        eventStatus === 'failed' ||
-        eventStatus === 'cancelled'
+        nextStatus === 'succeeded' ||
+        nextStatus === 'failed' ||
+        nextStatus === 'cancelled'
       ) {
         setRefreshCycle((value) => value + 1);
       }
@@ -649,7 +701,7 @@ export function ReportPage(): JSX.Element {
 
     const onError = () => {
       stream.close();
-      errorRetryTimer = setTimeout(() => {
+      window.setTimeout(() => {
         setRefreshCycle((value) => value + 1);
       }, 3000);
     };
@@ -661,9 +713,6 @@ export function ReportPage(): JSX.Element {
       stream.removeEventListener('message', onMessage);
       stream.removeEventListener('error', onError);
       stream.close();
-      if (errorRetryTimer !== null) {
-        clearTimeout(errorRetryTimer);
-      }
     };
   }, [review?.id, review?.status, state]);
 

@@ -13,6 +13,10 @@ importers:
         version: 5.9.3
 
   packages/agent-endpoint:
+    dependencies:
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250121.0
@@ -48,9 +52,6 @@ importers:
 
   packages/report-ui:
     dependencies:
-      '@chenglou/pretext':
-        specifier: ^0.0.2
-        version: 0.0.2(typescript@5.9.3)
       '@radix-ui/react-slot':
         specifier: ^1.2.4
         version: 1.2.4(@types/react@18.3.28)(react@18.3.1)
@@ -127,6 +128,9 @@ importers:
       '@cloudflare/sandbox':
         specifier: ^0.1.1
         version: 0.1.4
+      zod:
+        specifier: ^3.25.76
+        version: 3.25.76
     devDependencies:
       '@cloudflare/workers-types':
         specifier: ^4.20250121.0
@@ -239,11 +243,6 @@ packages:
   '@babel/types@7.29.0':
     resolution: {integrity: sha512-LwdZHpScM4Qz8Xw2iKSzS+cfglZzJGvofQICy7W7v4caru4EaAmyUuO6BGrbyQ2mYV11W0U8j5mBhd14dd3B0A==}
     engines: {node: '>=6.9.0'}
-
-  '@chenglou/pretext@0.0.2':
-    resolution: {integrity: sha512-bMPySDxbU1h+qU3D7HzTsz2vhBFIeO19Yp8gsYTJ219tjuX7WFsKJzk2oPVpwxl2P1VEuQGo6whg6Kr8gztphA==}
-    peerDependencies:
-      typescript: ^5
 
   '@clack/core@0.4.1':
     resolution: {integrity: sha512-Pxhij4UXg8KSr7rPek6Zowm+5M22rbd2g1nfojHJkxp5YkFqiZ2+YLEM/XGVIzvGOcM0nqjIFxrpDwWRZYWYjA==}
@@ -2199,10 +2198,6 @@ snapshots:
     dependencies:
       '@babel/helper-string-parser': 7.27.1
       '@babel/helper-validator-identifier': 7.28.5
-
-  '@chenglou/pretext@0.0.2(typescript@5.9.3)':
-    dependencies:
-      typescript: 5.9.3
 
   '@clack/core@0.4.1':
     dependencies:

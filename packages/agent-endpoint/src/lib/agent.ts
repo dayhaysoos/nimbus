@@ -1,3 +1,5 @@
+import { z } from 'zod';
+
 type AgentHistoryEntry =
   | { role: 'assistant'; content: string }
   | { role: 'tool'; tool: string; output: unknown };
@@ -41,6 +43,145 @@ export interface ReviewOutputV2 {
   summary: string;
   furtherPassesLowYield: boolean;
 }
+
+const REVIEW_FINDING_SEVERITIES = ['info', 'low', 'medium', 'high', 'critical'] as const;
+const REVIEW_FINDING_CATEGORIES = ['security', 'logic', 'style', 'breaking-change'] as const;
+
+const reviewLocationSchema = z
+  .object({
+    filePath: z.string().transform((value) => value.trim().replaceAll('\\', '/')).pipe(z.string().min(1)),
+    startLine: z.number().int().positive().nullable(),
+    endLine: z.number().int().positive().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    const startLine = value.startLine;
+    const endLine = value.endLine;
+    const hasNullPair = startLine === null && endLine === null;
+    const hasIntegerPair = startLine !== null && endLine !== null && Number.isInteger(startLine) && Number.isInteger(endLine);
+    if (!hasNullPair && !hasIntegerPair) {
+      ctx.addIssue({ code: 'custom', path: [], message: 'startLine/endLine must both be null or both be positive integers' });
+      return;
+    }
+    if (hasIntegerPair && endLine < startLine) {
+      ctx.addIssue({ code: 'custom', path: [], message: 'endLine must be greater than or equal to startLine' });
+    }
+  });
+
+function isValidationLikeFinding(text: string): boolean {
+  return /\b(regex|normalize|normalization|validate|validation|pattern)\b/i.test(text);
+}
+
+function hasConcreteSampleAndOutcomeEvidence(failingScenario: string, evidence: string): boolean {
+  const combined = `${failingScenario}\n${evidence}`;
+  const hasConcreteSample =
+    /\b(input|sample|string|value)\b/i.test(combined) || /`[^`]+`|'[^']+'|"[^"]+"/.test(combined);
+  const hasOutcome = /\b(match|matches|reject|rejected|accept|accepted|return|returns|result|status|passes|fails)\b/i.test(
+    combined
+  );
+  return hasConcreteSample && hasOutcome;
+}
+
+function isTimeoutBoundaryLikeFinding(text: string): boolean {
+  return /\b(timeout|retry|deadline|interval|boundary|poll)\b/i.test(text);
+}
+
+function hasBoundaryAndStatusEvidence(failingScenario: string, evidence: string): boolean {
+  const combined = `${failingScenario}\n${evidence}`;
+  const hasBoundary = /\b\d+\b|>=|<=|>|<|==|\b(deadline|interval|timeout|ms|second|seconds)\b/i.test(combined);
+  const hasStatusOutcome = /\b(status|queued|running|succeeded|failed|cancelled|return|returns|result)\b/i.test(combined);
+  return hasBoundary && hasStatusOutcome;
+}
+
+const reviewFindingSchema = z
+  .object({
+    severity: z.enum(REVIEW_FINDING_SEVERITIES),
+    category: z.enum(REVIEW_FINDING_CATEGORIES),
+    passType: z.literal('single'),
+    locations: z.array(reviewLocationSchema).min(1),
+    description: z.string().transform((value) => value.trim()).pipe(z.string().min(1)),
+    suggestedFix: z.string().transform((value) => value.trim()).pipe(z.string().min(1)),
+    failingScenario: z.string().transform((value) => value.trim()).pipe(z.string().min(1)),
+    evidence: z.string().transform((value) => value.trim()).pipe(z.string().min(1)),
+    guardGap: z.string().transform((value) => value.trim()).pipe(z.string().min(1)),
+  })
+  .superRefine((value, ctx) => {
+    const behaviorText = `${value.description}\n${value.suggestedFix}\n${value.failingScenario}`;
+    if (isValidationLikeFinding(behaviorText) && !hasConcreteSampleAndOutcomeEvidence(value.failingScenario, value.evidence)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'validation/regex findings require concrete sample input and observed outcome in failingScenario/evidence',
+        path: ['evidence'],
+      });
+    }
+    if (isTimeoutBoundaryLikeFinding(behaviorText) && !hasBoundaryAndStatusEvidence(value.failingScenario, value.evidence)) {
+      ctx.addIssue({
+        code: 'custom',
+        message: 'timeout/retry findings require explicit boundary values and resulting status in failingScenario/evidence',
+        path: ['evidence'],
+      });
+    }
+  });
+
+const reviewOutputV2Schema = z.object({
+  findings: z.array(reviewFindingSchema),
+  summary: z.string().transform((value) => value.trim()).pipe(z.string().min(1)),
+  furtherPassesLowYield: z.boolean(),
+});
+
+const reviewOutputV2JsonSchema = {
+  name: 'ReviewAnalysisOutputV2',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      findings: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            severity: { type: 'string', enum: [...REVIEW_FINDING_SEVERITIES] },
+            category: { type: 'string', enum: [...REVIEW_FINDING_CATEGORIES] },
+            passType: { type: 'string', enum: ['single'] },
+            locations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  filePath: { type: 'string' },
+                  startLine: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+                  endLine: { anyOf: [{ type: 'integer' }, { type: 'null' }] },
+                },
+                required: ['filePath', 'startLine', 'endLine'],
+              },
+            },
+            description: { type: 'string' },
+            suggestedFix: { type: 'string' },
+            failingScenario: { type: 'string' },
+            evidence: { type: 'string' },
+            guardGap: { type: 'string' },
+          },
+          required: [
+            'severity',
+            'category',
+            'passType',
+            'locations',
+            'description',
+            'suggestedFix',
+            'failingScenario',
+            'evidence',
+            'guardGap',
+          ],
+        },
+      },
+      summary: { type: 'string' },
+      furtherPassesLowYield: { type: 'boolean' },
+    },
+    required: ['findings', 'summary', 'furtherPassesLowYield'],
+  },
+} as const;
 
 function hasToolOutput(history: AgentHistoryEntry[], tool: string): boolean {
   return history.some((entry) => entry.role === 'tool' && entry.tool === tool);
@@ -170,7 +311,8 @@ export async function callOpenRouter(input: {
       },
       body: JSON.stringify({
         model: input.model,
-        response_format: { type: 'json_object' },
+        response_format: { type: 'json_schema', json_schema: reviewOutputV2JsonSchema },
+        plugins: [{ id: 'response-healing' }],
         messages: [{ role: 'user', content: input.prompt }],
       }),
       signal,
@@ -197,8 +339,15 @@ export async function callOpenRouter(input: {
   }
 
   if (!response.ok) {
-    throw new AgentEndpointError('openrouter_request_failed', 502, {
-      status: response.status,
+    const upstreamStatus = response.status;
+    if (upstreamStatus >= 500 || upstreamStatus === 429) {
+      throw new AgentEndpointError('openrouter_request_failed', 502, {
+        status: upstreamStatus,
+        body: bodyText.slice(0, 2_000),
+      });
+    }
+    throw new AgentEndpointError('openrouter_request_rejected', 422, {
+      status: upstreamStatus,
       body: bodyText.slice(0, 2_000),
     });
   }
@@ -213,35 +362,19 @@ export async function callOpenRouter(input: {
 }
 
 function validateReviewOutputV2(payload: unknown): ReviewOutputV2 {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    throw new AgentEndpointError('invalid_model_output', 422, {
-      errors: [{ path: '$', message: 'output must be an object' }],
+  const parsed = reviewOutputV2Schema.safeParse(payload);
+  if (!parsed.success) {
+    const errors = parsed.error.issues.map((issue) => {
+      const path = issue.path.length === 0
+        ? '$'
+        : `$${issue.path
+            .map((segment) => (typeof segment === 'number' ? `[${segment}]` : `.${String(segment)}`))
+            .join('')}`;
+      return { path, message: issue.message };
     });
-  }
-  const record = payload as Record<string, unknown>;
-  const errors: Array<{ path: string; message: string }> = [];
-
-  if (!Array.isArray(record.findings)) {
-    errors.push({ path: '$.findings', message: 'findings must be an array' });
-  }
-
-  if (typeof record.summary !== 'string' || !record.summary.trim()) {
-    errors.push({ path: '$.summary', message: 'summary must be a non-empty string' });
-  }
-
-  if (typeof record.furtherPassesLowYield !== 'boolean') {
-    errors.push({ path: '$.furtherPassesLowYield', message: 'furtherPassesLowYield must be a boolean' });
-  }
-
-  if (errors.length > 0) {
     throw new AgentEndpointError('invalid_model_output', 422, { errors });
   }
-
-  return {
-    findings: record.findings as unknown[],
-    summary: (record.summary as string).trim(),
-    furtherPassesLowYield: record.furtherPassesLowYield as boolean,
-  };
+  return parsed.data;
 }
 
 function buildReviewFinalSummary(): string {
