@@ -433,53 +433,45 @@ function FindingCard(props: {
   const locationsText = findingLocationsText(finding);
 
   return (
-    <details
-      className="report-finding-enter overflow-hidden rounded-sm border border-border/60 bg-card/80"
+    <article
+      className="report-finding-enter space-y-2 rounded-sm border border-border/60 bg-card/85 px-3 py-2.5"
       style={{ animationDelay: `${index * 45}ms` }}
     >
-      <summary className="cursor-pointer list-none px-3 py-2.5">
-        <div className="flex items-start gap-2">
-          <span
-            className={cn(
-              'mt-0.5 inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]',
-              severityColor(finding.severity)
-            )}
-          >
-            {finding.severity}
-          </span>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium leading-snug text-foreground">{finding.description}</p>
-            <p className="mt-1 truncate font-mono text-[11px] text-muted-foreground">{locationsText}</p>
+      <div className="flex items-start gap-2">
+        <span
+          className={cn(
+            'mt-0.5 inline-flex shrink-0 items-center rounded border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]',
+            severityColor(finding.severity)
+          )}
+        >
+          {finding.severity}
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm font-medium leading-snug text-foreground">{finding.description}</p>
+          <div className="mt-1 flex flex-wrap items-center gap-1">
+            <span className="inline-flex items-center rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">
+              {finding.category}
+            </span>
+            <span className="inline-flex items-center rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">
+              {`pass ${finding.passType}`}
+            </span>
+            <span className="font-mono text-[11px] text-muted-foreground">{locationsText}</span>
           </div>
-          <button
-            type="button"
-            className="report-copy-btn shrink-0 text-xs"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onCopyFinding(finding);
-            }}
-          >
-            Copy
-          </button>
         </div>
-      </summary>
-
-      <div className="space-y-2 border-t border-border/40 bg-accent/20 px-3 py-2.5">
-        <div className="flex flex-wrap gap-1">
-          <span className="inline-flex items-center rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">
-            {finding.category}
-          </span>
-          <span className="inline-flex items-center rounded-full bg-muted/70 px-2 py-0.5 text-[10px] font-medium tracking-wide text-muted-foreground">
-            {`pass ${finding.passType}`}
-          </span>
-        </div>
-        <div>
-          <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Suggested fix</p>
-          <p className="text-sm leading-relaxed text-foreground/90">{finding.suggestedFix?.trim() || 'not provided'}</p>
-        </div>
+        <button
+          type="button"
+          className="report-copy-btn shrink-0 text-xs"
+          onClick={() => onCopyFinding(finding)}
+        >
+          Copy
+        </button>
       </div>
-    </details>
+
+      <div className="rounded-sm border border-border/50 bg-accent/20 px-2.5 py-2">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Suggested fix</p>
+        <p className="text-sm leading-relaxed text-foreground/90">{finding.suggestedFix?.trim() || 'not provided'}</p>
+      </div>
+    </article>
   );
 }
 
@@ -487,7 +479,10 @@ function ActivityLog({ entries, isLive }: { entries: ActivityLogEntry[]; isLive:
   const logEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    logEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    const node = logEndRef.current;
+    if (node && typeof node.scrollIntoView === 'function') {
+      node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
   }, [entries.length]);
 
   if (entries.length === 0 && !isLive) {
@@ -533,7 +528,6 @@ export function ReportPage(): JSX.Element {
   const [errorMessage, setErrorMessage] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [refreshCycle, setRefreshCycle] = useState(0);
-  const [policyExpanded, setPolicyExpanded] = useState(true);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const seenEventIds = useRef(new Set<string>());
 
@@ -836,13 +830,6 @@ export function ReportPage(): JSX.Element {
         <span className="text-foreground font-medium font-mono truncate">{review.id}</span>
       </nav>
 
-      {/* Activity log */}
-      {(isLive || activityLog.length > 0) && (
-        <section className="policy-fade-up" style={{ animationDelay: '20ms' }}>
-          <ActivityLog entries={activityLog} isLive={isLive} />
-        </section>
-      )}
-
       <section className={cn('policy-fade-up card space-y-3 border', verdictTone.containerClass)} style={{ animationDelay: '40ms' }}>
         <div className="summary-header">
           <h1 className="policy-heading text-base text-foreground">Review {review.id}</h1>
@@ -934,11 +921,6 @@ export function ReportPage(): JSX.Element {
         </div>
       </section>
 
-      <section className="policy-fade-up card status-card" style={{ animationDelay: '40ms' }}>
-        <h2>{status.title}</h2>
-        <p>{status.detail}</p>
-      </section>
-
       {failureGuidance && (
         <section className="policy-fade-up space-y-1 rounded-sm border border-red-200 bg-red-50/55 px-3 py-2" style={{ animationDelay: '60ms' }}>
           <h2 className="text-base font-semibold text-red-800">Failure guidance</h2>
@@ -952,73 +934,7 @@ export function ReportPage(): JSX.Element {
         </section>
       )}
 
-      {review.approvedPolicy && (
-        <section className="policy-fade-up card space-y-2" style={{ animationDelay: '80ms' }}>
-          <button
-            type="button"
-            className="flex w-full items-center justify-between text-left"
-            onClick={() => setPolicyExpanded((value) => !value)}
-          >
-            <span className="policy-heading text-sm text-foreground">Approved policy</span>
-            <span className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
-              {policyExpanded ? 'Collapse' : 'Expand'}
-            </span>
-          </button>
-
-          {policyExpanded ? (
-            <div className="space-y-2 border-t border-border/70 pt-2">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Goal</p>
-                <p className="text-sm text-foreground">{review.approvedPolicy.goal?.trim() || 'No goal provided.'}</p>
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Prohibitions</p>
-                {review.approvedPolicy.prohibitions.length > 0 ? (
-                  <ul className="list-disc space-y-0.5 pl-5 text-sm text-foreground">
-                    {review.approvedPolicy.prohibitions.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground">None</p>
-                )}
-              </div>
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Preferences</p>
-                {review.approvedPolicy.constraints.length > 0 ? (
-                  <ul className="list-disc space-y-0.5 pl-5 text-sm text-foreground">
-                    {review.approvedPolicy.constraints.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="text-sm text-muted-foreground">None</p>
-                )}
-              </div>
-            </div>
-          ) : null}
-        </section>
-      )}
-
-      <section className="policy-fade-up card space-y-2" style={{ animationDelay: '100ms' }}>
-        <h2 className="policy-heading text-sm text-foreground">Review timeline</h2>
-        <ol className="space-y-2">
-          {timeline.map((phase) => (
-            <li key={phase.key} className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-semibold text-foreground">{phase.label}</span>
-                <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]', phaseStateClass(phase.state))}>
-                  {phase.state}
-                </span>
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">{phase.detail}</p>
-              <p className="text-xs font-medium text-foreground">Duration: {formatDuration(phase.durationMs)}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
-
-      <section className="policy-fade-up flex flex-col gap-2.5" style={{ animationDelay: '120ms' }}>
+      <section className="policy-fade-up flex flex-col gap-2.5" style={{ animationDelay: '80ms' }}>
         <div className="flex items-center justify-between">
           <h2 className="policy-heading text-sm text-foreground">Findings</h2>
           {review.findings.length > 0 && (
@@ -1064,124 +980,148 @@ export function ReportPage(): JSX.Element {
         )}
       </section>
 
-      <section className="policy-fade-up card space-y-2" style={{ animationDelay: '140ms' }}>
-        <h2 className="policy-heading text-sm text-foreground">Provenance</h2>
+      <section className="policy-fade-up" style={{ animationDelay: '100ms' }}>
+        <details className="card">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-foreground">Review details</summary>
+          <div className="mt-2 space-y-2 border-t border-border/70 pt-2">
+            <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+              <h3 className="text-sm font-semibold text-foreground">{status.title}</h3>
+              <p className="text-sm text-muted-foreground">{status.detail}</p>
+            </div>
 
-        {contextStats ? (
-          <div className="space-y-1.5 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
-            <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Token budget</p>
-            <p className="text-sm text-foreground">
-              {tokenBudget && tokenBudget > 0 ? `${estimatedTokens} / ${tokenBudget}` : `${estimatedTokens} estimated tokens`}
-            </p>
-            {tokenUsageRatio !== null ? (
-              <div className="h-2 overflow-hidden rounded-full border border-border/50 bg-muted/40">
-                <div
-                  className={cn('h-full', tokenUsageRatio > 0.9 ? 'bg-amber-500' : 'bg-emerald-500')}
-                  style={{ width: `${tokenUsageRatio * 100}%` }}
-                />
+            <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+              <h3 className="text-sm font-semibold text-foreground">Review timeline</h3>
+              <ul className="list-disc space-y-0.5 pl-5 text-sm text-foreground">
+                {timeline.map((phase) => (
+                  <li key={phase.key}>
+                    <span className="font-medium">{phase.label}:</span> {phase.state} · {formatDuration(phase.durationMs)} · {phase.detail}
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+              <h3 className="text-sm font-semibold text-foreground">Token budget</h3>
+              {contextStats ? (
+                <>
+                  <p className="text-sm text-foreground">
+                    {tokenBudget && tokenBudget > 0 ? `${estimatedTokens} / ${tokenBudget}` : `${estimatedTokens} estimated tokens`}
+                  </p>
+                  {tokenUsageRatio !== null ? (
+                    <div className="h-2 overflow-hidden rounded-full border border-border/50 bg-muted/40">
+                      <div
+                        className={cn('h-full', tokenUsageRatio > 0.9 ? 'bg-amber-500' : 'bg-emerald-500')}
+                        style={{ width: `${tokenUsageRatio * 100}%` }}
+                      />
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <p className="text-sm text-muted-foreground">Token budget usage not available.</p>
+              )}
+            </div>
+
+            <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+              <h3 className="text-sm font-semibold text-foreground">Context</h3>
+              <ul className="list-disc space-y-0.5 pl-5 text-sm text-foreground">
+                <li>
+                  Session ids: {review.provenance.sessionIds.length > 0 ? review.provenance.sessionIds.join(', ') : 'none'}
+                </li>
+                {cochangeBanner ? <li>{cochangeBanner}</li> : null}
+              </ul>
+            </div>
+
+            {review.approvedPolicy && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <h3 className="text-sm font-semibold text-foreground">Approved policy</h3>
+                <ul className="list-disc space-y-0.5 pl-5 text-sm text-foreground">
+                  <li>Goal: {review.approvedPolicy.goal?.trim() || 'No goal provided.'}</li>
+                  <li>
+                    Prohibitions: {review.approvedPolicy.prohibitions.length > 0 ? review.approvedPolicy.prohibitions.join('; ') : 'none'}
+                  </li>
+                  <li>
+                    Preferences: {review.approvedPolicy.constraints.length > 0 ? review.approvedPolicy.constraints.join('; ') : 'none'}
+                  </li>
+                </ul>
               </div>
-            ) : null}
-          </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">Token budget usage not available.</p>
-        )}
+            )}
 
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
-            <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Validation repair attempted</p>
-            <p className="text-sm font-semibold text-foreground">
-              {review.provenance.validation
-                ? review.provenance.validation.repairAttempted
-                  ? 'yes'
-                  : 'no'
-                : 'unknown'}
-            </p>
-          </div>
-          <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
-            <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Validation repair succeeded</p>
-            <p className="text-sm font-semibold text-foreground">
-              {review.provenance.validation
-                ? review.provenance.validation.repairSucceeded
-                  ? 'yes'
-                  : 'no'
-                : 'unknown'}
-            </p>
-          </div>
-        </div>
-
-        <ul className="list-disc space-y-1 pl-5 text-sm text-foreground">
-          <li>
-            Session ids: {review.provenance.sessionIds.length > 0 ? review.provenance.sessionIds.join(', ') : 'none'}
-          </li>
-          {cochangeBanner ? <li>{cochangeBanner}</li> : null}
-          {review.provenance.promptSummary ? <li>{review.provenance.promptSummary}</li> : null}
-        </ul>
-
-        {contextResolutionBanner && (
-          <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
-            <h3 className="text-sm font-semibold text-foreground">Context fallback used</h3>
-            <p className="text-sm text-muted-foreground">{contextResolutionBanner}</p>
-            {review.provenance.contextResolution && (
-              <dl className="summary-grid mt-1">
+            <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+              <h3 className="text-sm font-semibold text-foreground">Model output</h3>
+              <dl className="summary-grid">
                 <div>
-                  <dt>Original checkpoint</dt>
-                  <dd>{review.provenance.contextResolution.originalCheckpointId}</dd>
+                  <dt>Output schema</dt>
+                  <dd>{review.provenance.outputSchemaVersion ?? 'unknown'}</dd>
                 </div>
                 <div>
-                  <dt>Resolved checkpoint</dt>
-                  <dd>{review.provenance.contextResolution.resolvedCheckpointId}</dd>
+                  <dt>Pass architecture</dt>
+                  <dd>{review.provenance.passArchitecture ?? 'unknown'}</dd>
+                </div>
+                <div>
+                  <dt>Further passes low yield</dt>
+                  <dd>{typeof modelSignal === 'boolean' ? (modelSignal ? 'yes' : 'no') : 'unknown'}</dd>
                 </div>
               </dl>
+              <p className="text-sm text-muted-foreground">{modelSummary ?? 'Model summary not available yet.'}</p>
+            </div>
+
+            {contextResolutionBanner && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <h3 className="text-sm font-semibold text-foreground">Context fallback used</h3>
+                <p className="text-sm text-muted-foreground">{contextResolutionBanner}</p>
+                {review.provenance.contextResolution && (
+                  <dl className="summary-grid mt-1">
+                    <div>
+                      <dt>Original checkpoint</dt>
+                      <dd>{review.provenance.contextResolution.originalCheckpointId}</dd>
+                    </div>
+                    <div>
+                      <dt>Resolved checkpoint</dt>
+                      <dd>{review.provenance.contextResolution.resolvedCheckpointId}</dd>
+                    </div>
+                  </dl>
+                )}
+              </div>
+            )}
+
+            {provenanceAdvisories.length > 0 && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <h3 className="text-sm font-semibold text-foreground">Advisories</h3>
+                <ul className="list-disc space-y-0.5 pl-5 text-sm text-foreground">
+                  {provenanceAdvisories.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {(isLive || activityLog.length > 0) && (
+              <div className="space-y-1">
+                <h3 className="text-sm font-semibold text-foreground">Activity log</h3>
+                <ActivityLog entries={activityLog} isLive={isLive} />
+              </div>
             )}
           </div>
-        )}
-
-        {provenanceAdvisories.length > 0 && (
-          <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
-            <h3 className="text-sm font-semibold text-foreground">Advisories</h3>
-            <ul className="list-disc space-y-0.5 pl-5 text-sm text-foreground">
-              {provenanceAdvisories.map((item) => (
-                <li key={item}>{item}</li>
-              ))}
-            </ul>
-          </div>
-        )}
+        </details>
       </section>
 
-      <section className="policy-fade-up section-block" style={{ animationDelay: '160ms' }}>
-        <h2>Model output</h2>
-        <article className="card">
-          <dl className="summary-grid">
-            <div>
-              <dt>Output schema</dt>
-              <dd>{review.provenance.outputSchemaVersion ?? 'unknown'}</dd>
+      <section className="policy-fade-up" style={{ animationDelay: '120ms' }}>
+        <details className="card">
+          <summary className="cursor-pointer list-none text-sm font-semibold text-foreground">Markdown summary</summary>
+          <div className="mt-2 space-y-2 border-t border-border/70 pt-2">
+            <div className="flex items-center justify-between">
+              <div className="flex gap-1">
+                <button type="button" className="report-copy-btn text-xs" onClick={() => void handleCopy(normalizedMarkdown)} disabled={markdownUnavailable}>
+                  Copy markdown
+                </button>
+                <button type="button" className="report-copy-btn text-xs" onClick={handleDownloadMarkdown} disabled={markdownUnavailable}>
+                  Download .md
+                </button>
+              </div>
             </div>
-            <div>
-              <dt>Pass architecture</dt>
-              <dd>{review.provenance.passArchitecture ?? 'unknown'}</dd>
-            </div>
-            <div>
-              <dt>Further passes low yield</dt>
-              <dd>{typeof modelSignal === 'boolean' ? (modelSignal ? 'yes' : 'no') : 'unknown'}</dd>
-            </div>
-          </dl>
-          <p>{modelSummary ?? 'Model summary not available yet.'}</p>
-        </article>
-      </section>
-
-      <section className="policy-fade-up section-block" style={{ animationDelay: '180ms' }}>
-        <div className="flex items-center justify-between">
-          <h2>Markdown summary</h2>
-          <div className="flex gap-1">
-            <button type="button" className="report-copy-btn text-xs" onClick={() => void handleCopy(normalizedMarkdown)} disabled={markdownUnavailable}>
-              Copy markdown
-            </button>
-            <button type="button" className="report-copy-btn text-xs" onClick={handleDownloadMarkdown} disabled={markdownUnavailable}>
-              Download .md
-            </button>
+            <article className="card report-markdown" dangerouslySetInnerHTML={{ __html: markdownHtml }} />
           </div>
-        </div>
-        <article className="card report-markdown" dangerouslySetInnerHTML={{ __html: markdownHtml }} />
+        </details>
       </section>
 
       <section className="policy-fade-up section-block" style={{ animationDelay: '200ms' }}>

@@ -27,7 +27,7 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('No reviews yet')).toBeInTheDocument();
+    expect(await screen.findByText(/No reviews yet\./)).toBeInTheDocument();
   });
 
   it('renders review history links with newest first', async () => {
@@ -81,8 +81,8 @@ describe('ReviewHistoryPage', () => {
     );
 
     const links = await screen.findAllByRole('link');
-    expect(links[0]).toHaveAttribute('href', '/reports/rev_newer');
-    expect(links[1]).toHaveAttribute('href', '/reports/rev_older');
+    expect(links[0]).toHaveAttribute('href', '/branches/acme%2Fweb/main');
+    expect(links[1]).toHaveAttribute('href', '/branches/acme%2Fapi/main');
     expect(screen.getByText('running')).toBeInTheDocument();
   });
 });
