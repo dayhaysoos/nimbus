@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildFixPrompt, buildFindingText, findingCount, parseGetReviewResponse } from './review';
+import { buildFixPrompt, buildFindingText, findingCount, parseGetReviewResponse, parseListReviewsResponse } from './review';
 import type { ReviewFinding, ReviewResponse } from '../types';
 
 const finding: ReviewFinding = {
@@ -125,5 +125,39 @@ describe('parseGetReviewResponse', () => {
         },
       })
     ).toThrow(/workspaceId/);
+  });
+});
+
+describe('parseListReviewsResponse', () => {
+  it('parses list response payload', () => {
+    const payload = parseListReviewsResponse({
+      reviews: [
+        {
+          id: 'rev_1',
+          workspaceId: 'ws_1',
+          deploymentId: 'dep_1',
+          repo: 'acme/web',
+          branch: 'main',
+          status: 'running',
+          createdAt: '2026-03-01T00:00:00.000Z',
+          updatedAt: '2026-03-01T00:00:05.000Z',
+          startedAt: '2026-03-01T00:00:02.000Z',
+          finishedAt: null,
+          findingCount: 2,
+          riskLevel: 'high',
+          recommendation: 'request_changes',
+          summaryText: 'Potentially unsafe mutation found in request handler.',
+        },
+      ],
+    });
+
+    expect(payload.reviews).toHaveLength(1);
+    expect(payload.reviews[0]?.id).toBe('rev_1');
+    expect(payload.reviews[0]?.status).toBe('running');
+    expect(payload.reviews[0]?.findingCount).toBe(2);
+  });
+
+  it('throws when reviews is not an array', () => {
+    expect(() => parseListReviewsResponse({ reviews: null })).toThrow(/reviews must be an array/i);
   });
 });

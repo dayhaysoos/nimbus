@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
 import { spawn } from 'child_process';
+import { createHash } from 'crypto';
 import { once } from 'events';
 import { createReadStream, statSync } from 'fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
@@ -27,6 +28,10 @@ const CONTENT_TYPES: Record<string, string> = {
   '.txt': 'text/plain; charset=utf-8',
 };
 
+const REPORT_UI_MARKER = 'nimbus-report-ui';
+const REPORT_UI_HEALTH_PATH = '/__nimbus/report-ui-health';
+const REPORT_UI_PROBE_TIMEOUT_MS = 1200;
+
 interface UiServerSession {
   appUrl: string;
   close: () => Promise<void>;
@@ -42,8 +47,90 @@ export interface OpenReviewFromCommitOptions {
   pollIntervalMs?: number;
 }
 
+export interface StartReviewUiOptions {
+  port?: number;
+}
+
+interface ExistingReportUiServer {
+  appUrl: string;
+  source: 'health' | 'html-marker';
+  workerUrl: string | null;
+  authFingerprint: string | null;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
+}
+
+function normalizeRoutePath(routePath: string): string {
+  if (!routePath.trim()) {
+    return '/';
+  }
+  return routePath.startsWith('/') ? routePath : `/${routePath}`;
+}
+
+function buildAppUrl(port: number, routePath: string): string {
+  return `http://${LOCAL_HOST}:${port}${normalizeRoutePath(routePath)}`;
+}
+
+function resolveUiPort(port: number | undefined): number {
+  const resolved = port ?? DEFAULT_OPEN_PORT;
+  if (!Number.isInteger(resolved) || resolved <= 0 || resolved > 65535) {
+    throw new Error('Invalid port. Use an integer between 1 and 65535.');
+  }
+  return resolved;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function buildProxyAuthFingerprint(options: {
+  apiKey: string | null;
+  reviewGithubToken: string | null;
+  openrouterApiKey: string | null;
+}): string {
+  const payload = JSON.stringify({
+    apiKey: options.apiKey ?? '',
+    reviewGithubToken: options.reviewGithubToken ?? '',
+    openrouterApiKey: options.openrouterApiKey ?? '',
+  });
+  return createHash('sha256').update(payload).digest('hex');
+}
+
+function validateExistingServerCompatibility(
+  existingServer: ExistingReportUiServer,
+  expectedWorkerUrl: string,
+  expectedAuthFingerprint: string
+): { reusable: boolean; reason?: string } {
+  if (existingServer.source !== 'health') {
+    return {
+      reusable: false,
+      reason: 'detected an older server that does not expose compatibility metadata',
+    };
+  }
+  if (!existingServer.workerUrl || existingServer.workerUrl !== expectedWorkerUrl) {
+    return {
+      reusable: false,
+      reason: 'server is configured for a different NIMBUS_WORKER_URL',
+    };
+  }
+  if (!existingServer.authFingerprint || existingServer.authFingerprint !== expectedAuthFingerprint) {
+    return {
+      reusable: false,
+      reason: 'server was started with different proxy auth headers',
+    };
+  }
+  return { reusable: true };
 }
 
 function openBrowser(url: string): void {
@@ -83,7 +170,7 @@ function resolveStaticEntry(distDir: string, rawPathname: string): string | null
   }
 
   const indexPath = join(distDir, 'index.html');
-  if (pathname === '/' || pathname.startsWith('/reports/')) {
+  if (pathname === '/' || pathname.startsWith('/reports/') || pathname.startsWith('/policy/')) {
     return fileExists(indexPath) ? indexPath : null;
   }
 
@@ -203,6 +290,38 @@ async function handleStaticRequest(
   }
 ): Promise<void> {
   try {
+    const requestUrl = new URL(request.url ?? '/', `http://${LOCAL_HOST}`);
+    if (requestUrl.pathname === REPORT_UI_HEALTH_PATH) {
+      const method = (request.method ?? 'GET').toUpperCase();
+      if (method !== 'GET' && method !== 'HEAD') {
+        response.statusCode = 405;
+        response.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        response.end('Method not allowed');
+        return;
+      }
+
+      const body = JSON.stringify({
+        service: REPORT_UI_MARKER,
+        host: LOCAL_HOST,
+        workerUrl: options.workerUrl,
+        authFingerprint: buildProxyAuthFingerprint({
+          apiKey: options.apiKey,
+          reviewGithubToken: options.reviewGithubToken,
+          openrouterApiKey: options.openrouterApiKey,
+        }),
+      });
+      response.statusCode = 200;
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.setHeader('Content-Length', String(Buffer.byteLength(body, 'utf8')));
+      if (method === 'HEAD') {
+        response.end();
+        return;
+      }
+      response.end(body);
+      return;
+    }
+
     const proxied = await proxyApiRequest(
       request,
       response,
@@ -215,7 +334,6 @@ async function handleStaticRequest(
       return;
     }
 
-    const requestUrl = new URL(request.url ?? '/', `http://${LOCAL_HOST}`);
     const staticPath = resolveStaticEntry(options.distDir, requestUrl.pathname);
     if (!staticPath) {
       response.statusCode = 404;
@@ -335,14 +453,83 @@ async function waitForServer(url: string, server: ReturnType<typeof spawn>, time
   throw new Error(`Timed out waiting for report UI server at ${url}`);
 }
 
+async function probeExistingReportUiServer(port: number): Promise<ExistingReportUiServer | null> {
+  const rootUrl = buildAppUrl(port, '/');
+  const healthUrl = buildAppUrl(port, REPORT_UI_HEALTH_PATH);
+
+  try {
+    const healthResponse = await fetchWithTimeout(
+      healthUrl,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'application/json',
+        },
+      },
+      REPORT_UI_PROBE_TIMEOUT_MS
+    );
+    if (healthResponse.ok) {
+      const payload = (await healthResponse.json().catch(() => null)) as Record<string, unknown> | null;
+      if (payload && payload.service === REPORT_UI_MARKER) {
+        return {
+          appUrl: rootUrl,
+          source: 'health',
+          workerUrl: typeof payload.workerUrl === 'string' ? payload.workerUrl : null,
+          authFingerprint: typeof payload.authFingerprint === 'string' ? payload.authFingerprint : null,
+        };
+      }
+    }
+  } catch {
+    // Fall through to HTML marker probing.
+  }
+
+  try {
+    const rootResponse = await fetchWithTimeout(
+      rootUrl,
+      {
+        method: 'GET',
+        headers: {
+          Accept: 'text/html',
+        },
+      },
+      REPORT_UI_PROBE_TIMEOUT_MS
+    );
+    if (!rootResponse.ok) {
+      return null;
+    }
+    const html = await rootResponse.text();
+    const markerToken = `name="${REPORT_UI_MARKER}"`;
+    if (!html.includes(markerToken)) {
+      return null;
+    }
+    return {
+      appUrl: rootUrl,
+      source: 'html-marker',
+      workerUrl: null,
+      authFingerprint: null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 async function startDevServerSession(options: {
   routePath: string;
   reportUiDir: string;
   workerUrl: string;
+  apiKey: string | null;
+  reviewGithubToken: string | null;
+  openrouterApiKey: string | null;
   port: number;
 }): Promise<UiServerSession> {
-  const appUrl = `http://${LOCAL_HOST}:${options.port}${options.routePath}`;
+  const appUrl = buildAppUrl(options.port, options.routePath);
   const env: NodeJS.ProcessEnv = { ...process.env, NIMBUS_API_PROXY_TARGET: options.workerUrl };
+  env.NIMBUS_REPORT_UI_HEALTH_WORKER_URL = options.workerUrl;
+  env.NIMBUS_REPORT_UI_HEALTH_AUTH_FINGERPRINT = buildProxyAuthFingerprint({
+    apiKey: options.apiKey,
+    reviewGithubToken: options.reviewGithubToken,
+    openrouterApiKey: options.openrouterApiKey,
+  });
   delete env.VITE_NIMBUS_API_BASE_URL;
 
   const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
@@ -400,7 +587,7 @@ async function startStaticServerSession(options: {
   openrouterApiKey: string | null;
   port: number;
 }): Promise<UiServerSession> {
-  const appUrl = `http://${LOCAL_HOST}:${options.port}${options.routePath}`;
+  const appUrl = buildAppUrl(options.port, options.routePath);
   const server = await startStaticServer({
     distDir: options.distDir,
     workerUrl: options.workerUrl,
@@ -483,22 +670,38 @@ async function startReportUiSession(options: {
     routePath: options.routePath,
     reportUiDir,
     workerUrl: options.workerUrl,
+    apiKey: options.apiKey,
+    reviewGithubToken: options.reviewGithubToken,
+    openrouterApiKey: options.openrouterApiKey,
     port: options.port,
   });
 }
 
 export async function openReviewFromCommitCommand(options?: OpenReviewFromCommitOptions): Promise<void> {
-  const port = options?.port ?? DEFAULT_OPEN_PORT;
-  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
-    throw new Error('Invalid port. Use an integer between 1 and 65535.');
-  }
+  const port = resolveUiPort(options?.port);
 
   const workerUrl = getWorkerUrl();
   const apiKey = process.env.NIMBUS_API_KEY?.trim() ?? null;
   const reviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN?.trim() ?? null;
   const openrouterApiKey = process.env.OPENROUTER_API_KEY?.trim() ?? null;
+  const expectedAuthFingerprint = buildProxyAuthFingerprint({
+    apiKey,
+    reviewGithubToken,
+    openrouterApiKey,
+  });
   if (!apiKey) {
     p.log.warning('NIMBUS_API_KEY is not set. Hosted worker requests may be rejected as unauthenticated.');
+  }
+
+  const existingServer = await probeExistingReportUiServer(port);
+  if (existingServer) {
+    const compatibility = validateExistingServerCompatibility(existingServer, workerUrl, expectedAuthFingerprint);
+    if (!compatibility.reusable) {
+      throw new Error(
+        `Report UI server already running on ${LOCAL_HOST}:${port} but cannot be reused: ${compatibility.reason}. Stop the existing server or use a different --port.`
+      );
+    }
+    p.log.message(`Detected running report UI server on ${LOCAL_HOST}:${port}; reusing existing session.`);
   }
 
   const context = await resolveReviewContext({
@@ -516,8 +719,17 @@ export async function openReviewFromCommitCommand(options?: OpenReviewFromCommit
     provenance: context.resolvedProvenance,
   });
 
+  const policyPath = `/policy/${encodeURIComponent(derived.reviewId)}`;
+  const policyUrl = buildAppUrl(port, policyPath);
+  if (existingServer) {
+    openBrowser(policyUrl);
+    p.log.success(`Opened ${policyUrl}`);
+    p.log.message('Policy draft is ready in the browser. Approve it there to start review execution.');
+    return;
+  }
+
   const uiSession = await startReportUiSession({
-    routePath: `/policy/${encodeURIComponent(derived.reviewId)}`,
+    routePath: policyPath,
     port,
     workerUrl,
     apiKey,
@@ -571,6 +783,80 @@ export async function openReviewFromCommitCommand(options?: OpenReviewFromCommit
       p.log.success(`Review completed: ${status}`);
     } else {
       p.log.warning(`Review completed: ${status}`);
+    }
+  } finally {
+    process.off('SIGINT', handleSignal);
+    process.off('SIGTERM', handleSignal);
+    await shutdown();
+    p.outro('Report UI stopped.');
+  }
+}
+
+export async function startReviewUiCommand(options?: StartReviewUiOptions): Promise<void> {
+  const port = resolveUiPort(options?.port);
+  const workerUrl = getWorkerUrl();
+  const apiKey = process.env.NIMBUS_API_KEY?.trim() ?? null;
+  const reviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN?.trim() ?? null;
+  const openrouterApiKey = process.env.OPENROUTER_API_KEY?.trim() ?? null;
+  const expectedAuthFingerprint = buildProxyAuthFingerprint({
+    apiKey,
+    reviewGithubToken,
+    openrouterApiKey,
+  });
+
+  if (!apiKey) {
+    p.log.warning('NIMBUS_API_KEY is not set. Hosted worker requests may be rejected as unauthenticated.');
+  }
+
+  const existingServer = await probeExistingReportUiServer(port);
+  if (existingServer) {
+    const compatibility = validateExistingServerCompatibility(existingServer, workerUrl, expectedAuthFingerprint);
+    if (!compatibility.reusable) {
+      throw new Error(
+        `Report UI server already running on ${LOCAL_HOST}:${port} but cannot be reused: ${compatibility.reason}. Stop the existing server or use a different --port.`
+      );
+    }
+    openBrowser(existingServer.appUrl);
+    p.log.success(`Opened ${existingServer.appUrl}`);
+    p.log.message(`Report UI server is already running on ${LOCAL_HOST}:${port}.`);
+    return;
+  }
+
+  const uiSession = await startReportUiSession({
+    routePath: '/',
+    port,
+    workerUrl,
+    apiKey,
+    reviewGithubToken,
+    openrouterApiKey,
+  });
+
+  openBrowser(uiSession.appUrl);
+  p.log.success(`Opened ${uiSession.appUrl}`);
+  p.log.message('Report UI server running; press Ctrl+C to stop.');
+
+  let interrupted = false;
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    await uiSession.close().catch(() => undefined);
+  };
+  const handleSignal = () => {
+    interrupted = true;
+    void shutdown();
+  };
+
+  process.on('SIGINT', handleSignal);
+  process.on('SIGTERM', handleSignal);
+
+  try {
+    await uiSession.waitForExit();
+  } catch (error) {
+    if (!interrupted) {
+      throw error;
     }
   } finally {
     process.off('SIGINT', handleSignal);

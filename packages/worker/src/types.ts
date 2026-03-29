@@ -762,3 +762,24 @@ export interface ReviewRunResponse {
     message: string;
   };
 }
+
+export interface ReviewRunListItem {
+  id: string;
+  workspaceId: string;
+  deploymentId: string;
+  repo: string;
+  branch: string;
+  status: ReviewRunStatus;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  findingCount: number | null;
+  riskLevel: ReviewSeverity | null;
+  recommendation: ReviewRecommendation | null;
+  summaryText: string | null;
+  error?: {
+    code: string;
+    message: string;
+  };
+}

@@ -100,6 +100,12 @@ export function runArgsParsingTests(): void {
     assert.equal(parsed.flags['output-review-id'], true);
   }
 
+  {
+    const parsed = parseArgs(['review', 'open', '--port', '2001']);
+    assert.equal(parsed.flags.port, '2001');
+    assert.deepEqual(parsed.positional, ['open']);
+  }
+
   assert.throws(
     () => parseArgs(['deploy', 'checkpoint', 'HEAD', '--ref']),
     /Missing value for --ref/

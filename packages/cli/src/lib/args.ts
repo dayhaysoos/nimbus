@@ -28,6 +28,7 @@ const LONG_VALUE_FLAGS = new Set([
   'account-id',
   'base',
   'repo',
+  'port',
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',

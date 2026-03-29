@@ -153,6 +153,31 @@ export interface GetReviewResponse {
   review: ReviewResponse;
 }
 
+export interface ReviewHistoryItem {
+  id: string;
+  workspaceId: string;
+  deploymentId: string;
+  repo: string;
+  branch: string;
+  status: ReviewStatus;
+  createdAt: string;
+  updatedAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+  findingCount: number | null;
+  riskLevel: 'critical' | 'high' | 'medium' | 'low' | null;
+  recommendation: ReviewRecommendation | null;
+  summaryText: string | null;
+  error?: {
+    code: string;
+    message: string;
+  };
+}
+
+export interface ListReviewsResponse {
+  reviews: ReviewHistoryItem[];
+}
+
 export interface ReviewFailureGuidance {
   headline: string;
   details: string;

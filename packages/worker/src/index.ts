@@ -22,6 +22,7 @@ import {
   handleDeriveReviewPolicy,
   handleGetReview,
   handleGetReviewEvents,
+  handleListReviews,
 } from './api/reviews.js';
 import {
   handleCreateWorkspace,
@@ -108,6 +109,11 @@ export default {
     // Route: POST /api/reviews - Create review run
     if (url.pathname === '/api/reviews' && request.method === 'POST') {
       return handleCreateReview(request, env, ctx, authContext);
+    }
+
+    // Route: GET /api/reviews - List review runs
+    if (url.pathname === '/api/reviews' && request.method === 'GET') {
+      return handleListReviews(request, env, authContext);
     }
 
     // Route: POST /api/reviews/policy/derive - Derive review policy draft

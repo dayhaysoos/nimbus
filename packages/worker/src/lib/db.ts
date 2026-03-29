@@ -7,8 +7,11 @@ import type {
   ReviewFinding,
   ReviewReport,
   ReviewRunRecord,
+  ReviewRunListItem,
   ReviewRunResponse,
   ReviewRunStatus,
+  ReviewSeverity,
+  ReviewRecommendation,
   ReviewApprovedPolicy,
   ReviewContext,
   ReviewContextRef,
@@ -905,6 +908,25 @@ function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse {
   }
 
   return response;
+}
+
+interface ReviewRunListRecord {
+  id: string;
+  workspace_id: string;
+  deployment_id: string;
+  repo: string | null;
+  branch: string | null;
+  status: ReviewRunStatus;
+  created_at: string;
+  updated_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  finding_count: number | null;
+  risk_level: ReviewSeverity | null;
+  recommendation: ReviewRecommendation | null;
+  summary_text: string | null;
+  error_code: string | null;
+  error_message: string | null;
 }
 
 /**
@@ -2979,6 +3001,104 @@ export async function getReviewRun(db: D1Database, reviewId: string): Promise<Re
   }
 
   return toReviewRunResponse(record);
+}
+
+export async function listReviewRuns(
+  db: D1Database,
+  options?: {
+    limit?: number;
+    accountId?: string;
+    repo?: string;
+    branch?: string;
+  }
+): Promise<ReviewRunListItem[]> {
+  const resolvedLimit =
+    typeof options?.limit === 'number' && Number.isFinite(options.limit)
+      ? Math.max(1, Math.min(200, Math.floor(options.limit)))
+      : 100;
+
+  const whereClauses: string[] = [];
+  const values: Array<string | number> = [];
+
+  if (typeof options?.accountId === 'string' && options.accountId.trim()) {
+    whereClauses.push('account_id = ?');
+    values.push(options.accountId.trim());
+  }
+  if (typeof options?.repo === 'string' && options.repo.trim()) {
+    whereClauses.push('repo = ?');
+    values.push(options.repo.trim());
+  }
+  if (typeof options?.branch === 'string' && options.branch.trim()) {
+    whereClauses.push('branch = ?');
+    values.push(options.branch.trim());
+  }
+
+  const query = [
+    `SELECT
+      id,
+      workspace_id,
+      deployment_id,
+      repo,
+      branch,
+      status,
+      created_at,
+      updated_at,
+      started_at,
+      finished_at,
+      error_code,
+      error_message,
+      json_extract(report_json, '$.summary.riskLevel') AS risk_level,
+      json_extract(report_json, '$.summary.recommendation') AS recommendation,
+      json_extract(report_json, '$.summaryText') AS summary_text,
+      CASE
+        WHEN report_json IS NULL THEN NULL
+        WHEN json_type(report_json, '$.summary.findingCounts') = 'object' THEN
+          COALESCE(CAST(json_extract(report_json, '$.summary.findingCounts.info') AS INTEGER), 0) +
+          COALESCE(CAST(json_extract(report_json, '$.summary.findingCounts.critical') AS INTEGER), 0) +
+          COALESCE(CAST(json_extract(report_json, '$.summary.findingCounts.high') AS INTEGER), 0) +
+          COALESCE(CAST(json_extract(report_json, '$.summary.findingCounts.medium') AS INTEGER), 0) +
+          COALESCE(CAST(json_extract(report_json, '$.summary.findingCounts.low') AS INTEGER), 0)
+        WHEN json_type(report_json, '$.findings') = 'array' THEN json_array_length(report_json, '$.findings')
+        ELSE NULL
+      END AS finding_count
+     FROM review_runs`,
+    whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '',
+    'ORDER BY created_at DESC',
+    'LIMIT ?',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  values.push(resolvedLimit);
+
+  const result = await db.prepare(query).bind(...values).all<ReviewRunListRecord>();
+  return result.results.map((record) => {
+    const response: ReviewRunListItem = {
+      id: record.id,
+      workspaceId: record.workspace_id,
+      deploymentId: record.deployment_id,
+      repo: typeof record.repo === 'string' && record.repo.trim() ? record.repo.trim() : 'unknown/repo',
+      branch: typeof record.branch === 'string' && record.branch.trim() ? record.branch.trim() : 'unknown',
+      status: record.status,
+      createdAt: record.created_at,
+      updatedAt: record.updated_at,
+      startedAt: record.started_at,
+      finishedAt: record.finished_at,
+      findingCount: typeof record.finding_count === 'number' && Number.isFinite(record.finding_count) ? record.finding_count : null,
+      riskLevel: record.risk_level,
+      recommendation: record.recommendation,
+      summaryText: typeof record.summary_text === 'string' ? record.summary_text : null,
+    };
+
+    if (record.error_code && record.error_message) {
+      response.error = {
+        code: record.error_code,
+        message: record.error_message,
+      };
+    }
+
+    return response;
+  });
 }
 
 export async function getReviewRunAccountId(db: D1Database, reviewId: string): Promise<string | null | undefined> {
