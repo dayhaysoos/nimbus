@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { CompactHistoryText } from './CompactHistoryText';
+import { StatusPill } from './ui/StatusPill';
+import { Card } from './ui/card';
+import { cn } from '../lib/utils';
 import { parseListReviewsResponse } from '../lib/review';
 import type { ListReviewsResponse, ReviewHistoryItem } from '../types';
 
@@ -13,28 +16,6 @@ const ACTIVE_STATUSES: ReadonlySet<ReviewHistoryItem['status']> = new Set([
   'queued',
   'running',
 ]);
-
-function statusClass(status: ReviewHistoryItem['status']): string {
-  switch (status) {
-    case 'succeeded':
-      return 'history-status history-status-succeeded';
-    case 'failed':
-    case 'cancelled':
-      return 'history-status history-status-failed';
-    case 'running':
-    case 'queued':
-    case 'policy_pending':
-    case 'policy_ready':
-    case 'policy_approved':
-      return 'history-status history-status-active';
-    default:
-      return 'history-status history-status-unknown';
-  }
-}
-
-function statusLabel(status: ReviewHistoryItem['status']): string {
-  return status.replace(/_/g, ' ');
-}
 
 function relativeTime(timestamp: string): string {
   const date = new Date(timestamp);
@@ -141,13 +122,13 @@ export function ReviewHistoryPage(): JSX.Element {
   }, [entries]);
 
   return (
-    <main className="page history-page">
-      <section className="card history-header">
-        <div>
+    <main className="page">
+      <section className="card summary-card">
+        <div className="summary-header">
           <h1>Review history</h1>
-          <p>Recent backend review runs. New policy drafts appear here automatically.</p>
         </div>
-        <dl>
+        <p>Recent backend review runs. New policy drafts appear here automatically.</p>
+        <dl className="summary-grid">
           <div>
             <dt>Total</dt>
             <dd>{summaryCount.total}</dd>
@@ -160,14 +141,14 @@ export function ReviewHistoryPage(): JSX.Element {
       </section>
 
       {loading ? (
-        <section className="card status-card history-empty">
+        <section className="card status-card">
           <h2>Loading review history</h2>
           <p>Fetching existing reviews from the backend.</p>
         </section>
       ) : null}
 
       {!loading && errorMessage ? (
-        <section className="card status-card history-empty">
+        <section className="card status-card">
           <h2>Unable to load review history</h2>
           <p>{errorMessage}</p>
         </section>
@@ -179,20 +160,22 @@ export function ReviewHistoryPage(): JSX.Element {
           <p>Run <code>nimbus review open</code> to create a review, or keep this page open with <code>nimbus review start</code>.</p>
         </section>
       ) : (
-        !loading && !errorMessage && <section className="card history-list-card">
+        !loading && !errorMessage && <section className="stack history-list-container">
           <ul className="history-list">
             {entries.map((entry) => (
               <li key={entry.id}>
-                <Link to={reviewDestinationPath(entry)} className="history-link">
-                  <div className="history-row-main">
-                    <span className="history-review-id">{entry.id}</span>
-                    <span className={statusClass(entry.status)}>{statusLabel(entry.status)}</span>
-                  </div>
-                  <p className="history-meta">{metadataLine(entry)}</p>
-                  <CompactHistoryText
-                    className="history-summary"
-                    text={entry.summaryText ?? `${entry.repo} @ ${entry.branch}`}
-                  />
+                <Link to={reviewDestinationPath(entry)} className="history-card-link">
+                  <Card className={cn('history-item', 'p-4')}>
+                    <div className="history-item-header">
+                      <span className="history-review-id">{entry.id}</span>
+                      <StatusPill status={entry.status} />
+                    </div>
+                    <p className="finding-meta history-item-meta">{metadataLine(entry)}</p>
+                    <CompactHistoryText
+                      className="history-item-summary"
+                      text={entry.summaryText ?? `${entry.repo} @ ${entry.branch}`}
+                    />
+                  </Card>
                 </Link>
               </li>
             ))}

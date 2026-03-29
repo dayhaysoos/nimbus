@@ -4,6 +4,7 @@ import DOMPurify from 'dompurify';
 import { marked } from 'marked';
 import { copyToClipboard } from '../lib/clipboard';
 import { downloadTextFile } from '../lib/download';
+import { StatusPill } from './ui/StatusPill';
 import {
   buildFindingText,
   buildFixPrompt,
@@ -340,7 +341,7 @@ export function ReportPage(): JSX.Element {
       <section className="card summary-card">
         <div className="summary-header">
           <h1>Review {review.id}</h1>
-          <span className={`status-pill status-${review.status}`}>{review.status}</span>
+          <StatusPill status={review.status} />
         </div>
         <dl className="summary-grid">
           <div>
