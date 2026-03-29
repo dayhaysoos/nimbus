@@ -367,6 +367,7 @@ export async function validateReviewCochangeTokenReadiness(options?: {
 export async function reviewPreflightCommand(
   commitish = 'HEAD',
   options?: {
+    baseRef?: string;
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
   }
@@ -377,7 +378,9 @@ export async function reviewPreflightCommand(
 
   spinner.start('Resolving commit and checkpoint...');
   try {
-    resolved = validateReviewCommitCheckpoint(commitish, process.cwd());
+    resolved = validateReviewCommitCheckpoint(commitish, process.cwd(), {
+      baseRef: options?.baseRef,
+    });
     spinner.stop(`Resolved checkpoint ${resolved.checkpointId} from ${resolved.commitSha.slice(0, 12)}`);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

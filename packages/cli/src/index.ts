@@ -517,7 +517,10 @@ async function main(): Promise<void> {
 
         if (reviewAction === 'preflight') {
           const commitishArg = positional[1];
+          const baseFlag = flags.base;
+          const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
           await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {
+            baseRef,
             summarizeSession: (() => {
               const summarizeSessionFlag = flags['summarize-session'];
               if (typeof summarizeSessionFlag !== 'string') {
