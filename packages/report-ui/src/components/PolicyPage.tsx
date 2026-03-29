@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { parseGetReviewResponse } from '../lib/review';
 import type { GetReviewResponse, ReviewPolicyDraft, ReviewResponse } from '../types';
 import { Button } from './ui/button';
@@ -127,8 +127,9 @@ function PolicyListEditor(props: {
 }
 
 export function PolicyPage(): JSX.Element {
-  const { reviewId } = useParams<{ reviewId: string }>();
+  const { reviewId, repo, branch } = useParams<{ reviewId: string; repo: string; branch: string }>();
   const navigate = useNavigate();
+  const hasBranchContext = Boolean(repo && branch);
 
   const [state, setState] = useState<LoadState>('loading');
   const [review, setReview] = useState<ReviewResponse | null>(null);
@@ -203,9 +204,12 @@ export function PolicyPage(): JSX.Element {
       review.status === 'failed' ||
       review.status === 'cancelled'
     ) {
-      navigate(`/reports/${review.id}`);
+      const reportPath = hasBranchContext
+        ? `/branches/${encodeURIComponent(repo!)}/${encodeURIComponent(branch!)}/reports/${review.id}`
+        : `/reports/${review.id}`;
+      navigate(reportPath);
     }
-  }, [navigate, review]);
+  }, [navigate, review?.id, review?.status, hasBranchContext, repo, branch]);
 
   useEffect(() => {
     if (!review || review.status !== 'policy_pending') {
@@ -219,7 +223,7 @@ export function PolicyPage(): JSX.Element {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [review]);
+  }, [review?.id, review?.status]);
 
   useEffect(() => {
     if (!review || review.status !== 'policy_pending') {
@@ -233,7 +237,7 @@ export function PolicyPage(): JSX.Element {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [review, progressCycle]);
+  }, [review?.status, progressCycle]);
 
   const progressLabel = useMemo(() => DERIVATION_STEPS[progressCycle % DERIVATION_STEPS.length], [progressCycle]);
 
@@ -258,7 +262,10 @@ export function PolicyPage(): JSX.Element {
         throw new Error(body?.error ?? `Request failed (${response.status})`);
       }
 
-      navigate(`/reports/${reviewId}`);
+      const reportPath = hasBranchContext
+        ? `/branches/${encodeURIComponent(repo!)}/${encodeURIComponent(branch!)}/reports/${reviewId}`
+        : `/reports/${reviewId}`;
+      navigate(reportPath);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
       setState('error');
@@ -350,7 +357,25 @@ export function PolicyPage(): JSX.Element {
 
   return (
     <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-4 md:py-6">
-      <div className="policy-fade-up flex flex-col gap-1" style={{ animationDelay: '0ms' }}>
+      {/* Breadcrumbs */}
+      <nav className="policy-fade-up flex items-center gap-2 text-xs text-muted-foreground" style={{ animationDelay: '0ms' }}>
+        <Link to="/" className="hover:text-foreground transition-colors">Branches</Link>
+        {hasBranchContext && (
+          <>
+            <span className="text-muted-foreground/50">/</span>
+            <Link
+              to={`/branches/${encodeURIComponent(repo!)}/${encodeURIComponent(branch!)}`}
+              className="hover:text-foreground transition-colors truncate max-w-[240px]"
+            >
+              {branch}
+            </Link>
+          </>
+        )}
+        <span className="text-muted-foreground/50">/</span>
+        <span className="text-foreground font-medium font-mono truncate">{reviewId}</span>
+      </nav>
+
+      <div className="policy-fade-up flex flex-col gap-1" style={{ animationDelay: '20ms' }}>
         <div className="flex items-baseline justify-between gap-4">
           <h1 className="policy-heading text-xl text-foreground tracking-tight">
             Review policy
