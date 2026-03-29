@@ -157,7 +157,7 @@ export function BranchReviewsPage(): JSX.Element {
   }, [branchEntries, sortDirection, statusFilter]);
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-4 md:py-5">
+    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
       {/* Header */}
       <header className="policy-fade-up flex flex-col gap-2" style={{ animationDelay: '0ms' }}>
         <div className="flex items-center gap-2">
@@ -168,7 +168,7 @@ export function BranchReviewsPage(): JSX.Element {
         </div>
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <h1 className="policy-heading text-xl text-foreground tracking-tight truncate">{branchLabel}</h1>
+            <h1 className="policy-heading text-base text-foreground tracking-tight truncate">{branchLabel}</h1>
             {stats.active > 0 && (
               <Badge variant="outline" className="rounded-full border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-blue-800 shrink-0">
                 {stats.active} active
@@ -183,21 +183,21 @@ export function BranchReviewsPage(): JSX.Element {
 
       {/* Stats */}
       <section className="policy-fade-up grid grid-cols-2 sm:grid-cols-4 gap-2" style={{ animationDelay: '40ms' }}>
-        <div className="rounded-md border border-border/70 bg-card/70 px-3 py-2">
+        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Total</p>
-          <p className="text-lg font-semibold text-foreground">{stats.total}</p>
+          <p className="text-sm font-semibold text-foreground">{stats.total}</p>
         </div>
-        <div className="rounded-md border border-border/70 bg-card/70 px-3 py-2">
+        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Succeeded</p>
-          <p className="text-lg font-semibold text-emerald-700">{stats.succeeded}</p>
+          <p className="text-sm font-semibold text-emerald-700">{stats.succeeded}</p>
         </div>
-        <div className="rounded-md border border-border/70 bg-card/70 px-3 py-2">
+        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Failed</p>
-          <p className="text-lg font-semibold text-red-700">{stats.failed}</p>
+          <p className="text-sm font-semibold text-red-700">{stats.failed}</p>
         </div>
-        <div className="rounded-md border border-border/70 bg-card/70 px-3 py-2">
+        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Total findings</p>
-          <p className="text-lg font-semibold text-foreground">{stats.totalFindings}</p>
+          <p className="text-sm font-semibold text-foreground">{stats.totalFindings}</p>
         </div>
       </section>
 
@@ -243,7 +243,7 @@ export function BranchReviewsPage(): JSX.Element {
           <p>{errorMessage}</p>
         </div>
       ) : visibleEntries.length === 0 ? (
-        <div className="border border-border/50 bg-card/60 rounded-lg px-4 py-6 text-center">
+        <div className="border border-border/50 bg-card/60 rounded-sm px-3 py-4 text-center">
           <p className="text-sm text-muted-foreground font-light">
             {branchEntries.length === 0
               ? 'No reviews found for this branch.'

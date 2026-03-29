@@ -90,6 +90,9 @@ function createApiProxy() {
 export default defineConfig({
   plugins: [react(), reportUiHealthPlugin()],
   server: {
+    host: process.env.VITE_HOST ?? 'localhost',
+    port: process.env.VITE_PORT ? Number(process.env.VITE_PORT) : undefined,
+    strictPort: Boolean(process.env.VITE_PORT),
     proxy: {
       '/api': createApiProxy(),
     },

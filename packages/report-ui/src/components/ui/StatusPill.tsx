@@ -25,7 +25,7 @@ export function StatusPill({ status }: StatusPillProps): JSX.Element {
     <Badge
       variant="outline"
       className={cn(
-        'rounded-full px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.08em]',
+        'rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em]',
         statusClass(status)
       )}
     >

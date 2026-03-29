@@ -51,7 +51,7 @@ function normalizeEditablePolicy(policy: EditablePolicy): ReviewPolicyDraft {
 
 function StatusLayout({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-5 py-12">
+    <main className="mx-auto flex min-h-screen w-full max-w-[1400px] items-center justify-center px-3 py-4">
       <div className="w-full">{children}</div>
     </main>
   );
@@ -279,7 +279,7 @@ export function PolicyPage(): JSX.Element {
       <StatusLayout>
         <div className="policy-fade-up text-center space-y-4">
           <p className="policy-clause-number">preparing</p>
-          <h1 className="policy-heading text-2xl text-foreground">Loading policy</h1>
+          <h1 className="policy-heading text-base text-foreground">Loading policy</h1>
           <p className="text-sm text-muted-foreground font-light">
             Review {reviewId ?? 'unknown'}
           </p>
@@ -337,7 +337,7 @@ export function PolicyPage(): JSX.Element {
           </div>
 
           <div className="space-y-2">
-            <h1 className="policy-heading text-3xl md:text-4xl text-foreground leading-tight">
+            <h1 className="policy-heading text-lg text-foreground leading-tight">
               Policy draft in progress
             </h1>
             <p className="text-muted-foreground font-light text-base max-w-md mx-auto">
@@ -356,7 +356,7 @@ export function PolicyPage(): JSX.Element {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-4 md:py-6">
+    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
       {/* Breadcrumbs */}
       <nav className="policy-fade-up flex items-center gap-2 text-xs text-muted-foreground" style={{ animationDelay: '0ms' }}>
         <Link to="/" className="hover:text-foreground transition-colors">Branches</Link>
@@ -377,7 +377,7 @@ export function PolicyPage(): JSX.Element {
 
       <div className="policy-fade-up flex flex-col gap-1" style={{ animationDelay: '20ms' }}>
         <div className="flex items-baseline justify-between gap-4">
-          <h1 className="policy-heading text-xl text-foreground tracking-tight">
+          <h1 className="policy-heading text-base text-foreground tracking-tight">
             Review policy
           </h1>
           <p className="text-xs text-muted-foreground/60 font-light shrink-0">
@@ -408,7 +408,7 @@ export function PolicyPage(): JSX.Element {
         />
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-2 md:grid-cols-2">
         <PolicyListEditor
           clause="II."
           title="Must Not"
@@ -474,7 +474,7 @@ export function PolicyPage(): JSX.Element {
       >
         <button
           type="button"
-          className="policy-approve-btn inline-flex items-center justify-center rounded-lg h-10 px-6 text-sm"
+          className="policy-approve-btn inline-flex items-center justify-center rounded-sm h-10 px-6 text-sm"
           onClick={approvePolicy}
           disabled={approving}
         >

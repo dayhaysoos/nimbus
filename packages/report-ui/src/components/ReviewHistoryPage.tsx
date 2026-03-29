@@ -206,11 +206,11 @@ export function ReviewHistoryPage(): JSX.Element {
   }, [entries, branches]);
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-4 md:py-5">
+    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
       {/* Header */}
       <header className="policy-fade-up flex flex-col gap-2" style={{ animationDelay: '0ms' }}>
         <div className="flex items-center justify-between gap-3">
-          <h1 className="policy-heading text-xl text-foreground tracking-tight">Nimbus Reviews</h1>
+          <h1 className="policy-heading text-base text-foreground tracking-tight">Nimbus Reviews</h1>
           {globalStats.active > 0 && (
             <Badge variant="outline" className="rounded-full border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-blue-800">
               {globalStats.active} active
@@ -226,23 +226,23 @@ export function ReviewHistoryPage(): JSX.Element {
 
       {/* Global stats */}
       <section className="policy-fade-up grid grid-cols-2 sm:grid-cols-4 gap-2" style={{ animationDelay: '40ms' }}>
-        <div className="rounded-md border border-border/70 bg-card/70 px-3 py-2">
+        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Branches</p>
-          <p className="text-lg font-semibold text-foreground">{globalStats.totalBranches}</p>
+          <p className="text-sm font-semibold text-foreground">{globalStats.totalBranches}</p>
         </div>
-        <div className="rounded-md border border-border/70 bg-card/70 px-3 py-2">
+        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Total reviews</p>
-          <p className="text-lg font-semibold text-foreground">{globalStats.totalReviews}</p>
+          <p className="text-sm font-semibold text-foreground">{globalStats.totalReviews}</p>
         </div>
-        <div className="rounded-md border border-border/70 bg-card/70 px-3 py-2">
+        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Pass rate</p>
-          <p className="text-lg font-semibold text-foreground">
+          <p className="text-sm font-semibold text-foreground">
             {globalStats.totalReviews === 0 ? 'n/a' : `${globalStats.passRate}%`}
           </p>
         </div>
-        <div className="rounded-md border border-border/70 bg-card/70 px-3 py-2">
+        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Active</p>
-          <p className="text-lg font-semibold text-foreground">{globalStats.active}</p>
+          <p className="text-sm font-semibold text-foreground">{globalStats.active}</p>
         </div>
       </section>
 
@@ -262,7 +262,7 @@ export function ReviewHistoryPage(): JSX.Element {
           <p>{errorMessage}</p>
         </div>
       ) : branches.length === 0 ? (
-        <div className="border border-border/50 bg-card/60 rounded-lg px-4 py-8 text-center">
+        <div className="border border-border/50 bg-card/60 rounded-sm px-3 py-4 text-center">
           <p className="text-sm text-muted-foreground font-light">
             No reviews yet. Run <code className="text-xs bg-muted/50 px-1.5 py-0.5 rounded">nimbus review open</code> to create your first review.
           </p>
@@ -272,7 +272,7 @@ export function ReviewHistoryPage(): JSX.Element {
           {branches.map((group, index) => (
             <li key={group.key} className="report-finding-enter" style={{ animationDelay: `${60 + index * 40}ms` }}>
               <Link to={`/branches/${encodeURIComponent(group.repo)}/${encodeURIComponent(group.branch)}`}>
-                <Card className="px-4 py-3 transition-colors hover:bg-accent/30">
+                <Card className="px-3 py-2 transition-colors hover:bg-accent/30">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">

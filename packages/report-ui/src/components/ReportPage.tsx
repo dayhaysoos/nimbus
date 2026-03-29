@@ -198,7 +198,7 @@ function riskLevelClass(riskLevel: 'critical' | 'high' | 'medium' | 'low' | unde
 
 function StatusLayout({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-4xl items-center justify-center px-5 py-8">
+    <main className="mx-auto flex min-h-screen w-full max-w-[1400px] items-center justify-center px-3 py-4">
       <div className="w-full">{children}</div>
     </main>
   );
@@ -434,7 +434,7 @@ function FindingCard(props: {
 
   return (
     <details
-      className="report-finding-enter overflow-hidden rounded-md border border-border/60 bg-card/80"
+      className="report-finding-enter overflow-hidden rounded-sm border border-border/60 bg-card/80"
       style={{ animationDelay: `${index * 45}ms` }}
     >
       <summary className="cursor-pointer list-none px-3 py-2.5">
@@ -495,7 +495,7 @@ function ActivityLog({ entries, isLive }: { entries: ActivityLogEntry[]; isLive:
   }
 
   return (
-    <div className="border border-border/50 bg-[hsl(240_10%_8%)] rounded-lg overflow-hidden">
+    <div className="border border-border/50 bg-[hsl(240_10%_8%)] rounded-sm overflow-hidden">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
         {isLive && <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />}
         <span className="text-xs font-medium text-white/50 uppercase tracking-widest">
@@ -750,7 +750,7 @@ export function ReportPage(): JSX.Element {
       <StatusLayout>
         <div className="policy-fade-up space-y-3 text-center">
           <p className="policy-clause-number">loading</p>
-          <h1 className="policy-heading text-xl text-foreground">Loading review</h1>
+          <h1 className="policy-heading text-base text-foreground">Loading review</h1>
           <p className="text-sm font-light text-muted-foreground">Fetching review {reviewId ?? 'unknown'}...</p>
           <div className="flex items-center justify-center gap-2 pt-2">
             <span className="policy-derivation-dot" />
@@ -767,7 +767,7 @@ export function ReportPage(): JSX.Element {
       <StatusLayout>
         <div className="policy-fade-up max-w-lg space-y-3 text-center">
           <p className="policy-clause-number text-destructive/70">error</p>
-          <h1 className="policy-heading text-xl text-foreground">Unable to load review</h1>
+          <h1 className="policy-heading text-base text-foreground">Unable to load review</h1>
           <p className="text-sm font-light text-muted-foreground">{errorMessage || 'Unknown error'}</p>
         </div>
       </StatusLayout>
@@ -779,7 +779,7 @@ export function ReportPage(): JSX.Element {
       <StatusLayout>
         <div className="policy-fade-up space-y-3 text-center">
           <p className="policy-clause-number">empty</p>
-          <h1 className="policy-heading text-xl text-foreground">No review data</h1>
+          <h1 className="policy-heading text-base text-foreground">No review data</h1>
           <p className="text-sm font-light text-muted-foreground">The review payload is empty.</p>
         </div>
       </StatusLayout>
@@ -815,7 +815,7 @@ export function ReportPage(): JSX.Element {
   const tokenUsageRatio = tokenBudget && tokenBudget > 0 ? Math.min(1, estimatedTokens / tokenBudget) : null;
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-col gap-3 px-4 py-4 md:py-5">
+    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
       {toastMessage && <div className="report-toast">{toastMessage}</div>}
 
       {/* Breadcrumbs */}
@@ -845,19 +845,19 @@ export function ReportPage(): JSX.Element {
 
       <section className={cn('policy-fade-up card space-y-3 border', verdictTone.containerClass)} style={{ animationDelay: '40ms' }}>
         <div className="summary-header">
-          <h1 className="policy-heading text-xl text-foreground">Review {review.id}</h1>
+          <h1 className="policy-heading text-base text-foreground">Review {review.id}</h1>
           <StatusPill status={review.status} />
         </div>
 
         <div className="space-y-1">
           <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Recommendation</p>
-          <p className={cn('policy-heading text-2xl leading-tight capitalize', verdictTone.labelClass)}>
+          <p className={cn('policy-heading text-lg leading-tight capitalize', verdictTone.labelClass)}>
             {recommendationLabel(recommendation)}
           </p>
         </div>
 
         <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-md border border-border/70 bg-card/65 px-2.5 py-2">
+          <div className="rounded-sm border border-border/70 bg-card/65 px-2.5 py-2">
             <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Risk</dt>
             <dd className="mt-1">
               <span
@@ -870,15 +870,15 @@ export function ReportPage(): JSX.Element {
               </span>
             </dd>
           </div>
-          <div className="rounded-md border border-border/70 bg-card/65 px-2.5 py-2">
+          <div className="rounded-sm border border-border/70 bg-card/65 px-2.5 py-2">
             <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Findings</dt>
             <dd className="mt-1 text-base font-semibold text-foreground">{findingCount(review)}</dd>
           </div>
-          <div className="rounded-md border border-border/70 bg-card/65 px-2.5 py-2">
+          <div className="rounded-sm border border-border/70 bg-card/65 px-2.5 py-2">
             <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Time to complete</dt>
             <dd className="mt-1 text-sm font-semibold text-foreground">{reviewDurationLabel(review)}</dd>
           </div>
-          <div className="rounded-md border border-border/70 bg-card/65 px-2.5 py-2">
+          <div className="rounded-sm border border-border/70 bg-card/65 px-2.5 py-2">
             <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Updated</dt>
             <dd className="mt-1 text-sm font-semibold text-foreground">{dateTimeLabel(review.updatedAt)}</dd>
           </div>
@@ -940,7 +940,7 @@ export function ReportPage(): JSX.Element {
       </section>
 
       {failureGuidance && (
-        <section className="policy-fade-up space-y-1 rounded-lg border border-red-200 bg-red-50/55 px-4 py-3" style={{ animationDelay: '60ms' }}>
+        <section className="policy-fade-up space-y-1 rounded-sm border border-red-200 bg-red-50/55 px-3 py-2" style={{ animationDelay: '60ms' }}>
           <h2 className="text-base font-semibold text-red-800">Failure guidance</h2>
           <p className="text-sm text-red-700">{failureGuidance.headline}</p>
           <p className="text-sm text-red-700">{failureGuidance.details}</p>
@@ -959,7 +959,7 @@ export function ReportPage(): JSX.Element {
             className="flex w-full items-center justify-between text-left"
             onClick={() => setPolicyExpanded((value) => !value)}
           >
-            <span className="policy-heading text-lg text-foreground">Approved policy</span>
+            <span className="policy-heading text-sm text-foreground">Approved policy</span>
             <span className="text-xs uppercase tracking-[0.08em] text-muted-foreground">
               {policyExpanded ? 'Collapse' : 'Expand'}
             </span>
@@ -1001,10 +1001,10 @@ export function ReportPage(): JSX.Element {
       )}
 
       <section className="policy-fade-up card space-y-2" style={{ animationDelay: '100ms' }}>
-        <h2 className="policy-heading text-lg text-foreground">Review timeline</h2>
+        <h2 className="policy-heading text-sm text-foreground">Review timeline</h2>
         <ol className="space-y-2">
           {timeline.map((phase) => (
-            <li key={phase.key} className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
+            <li key={phase.key} className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-sm font-semibold text-foreground">{phase.label}</span>
                 <span className={cn('rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em]', phaseStateClass(phase.state))}>
@@ -1020,7 +1020,7 @@ export function ReportPage(): JSX.Element {
 
       <section className="policy-fade-up flex flex-col gap-2.5" style={{ animationDelay: '120ms' }}>
         <div className="flex items-center justify-between">
-          <h2 className="policy-heading text-lg text-foreground">Findings</h2>
+          <h2 className="policy-heading text-sm text-foreground">Findings</h2>
           {review.findings.length > 0 && (
             <button
               type="button"
@@ -1065,10 +1065,10 @@ export function ReportPage(): JSX.Element {
       </section>
 
       <section className="policy-fade-up card space-y-2" style={{ animationDelay: '140ms' }}>
-        <h2 className="policy-heading text-lg text-foreground">Provenance</h2>
+        <h2 className="policy-heading text-sm text-foreground">Provenance</h2>
 
         {contextStats ? (
-          <div className="space-y-1.5 rounded-md border border-border/60 bg-card/70 px-3 py-2">
+          <div className="space-y-1.5 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
             <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Token budget</p>
             <p className="text-sm text-foreground">
               {tokenBudget && tokenBudget > 0 ? `${estimatedTokens} / ${tokenBudget}` : `${estimatedTokens} estimated tokens`}
@@ -1087,7 +1087,7 @@ export function ReportPage(): JSX.Element {
         )}
 
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          <div className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
+          <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
             <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Validation repair attempted</p>
             <p className="text-sm font-semibold text-foreground">
               {review.provenance.validation
@@ -1097,7 +1097,7 @@ export function ReportPage(): JSX.Element {
                 : 'unknown'}
             </p>
           </div>
-          <div className="rounded-md border border-border/60 bg-card/70 px-3 py-2">
+          <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
             <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Validation repair succeeded</p>
             <p className="text-sm font-semibold text-foreground">
               {review.provenance.validation
@@ -1118,7 +1118,7 @@ export function ReportPage(): JSX.Element {
         </ul>
 
         {contextResolutionBanner && (
-          <div className="space-y-1 rounded-md border border-border/60 bg-card/70 px-3 py-2">
+          <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
             <h3 className="text-sm font-semibold text-foreground">Context fallback used</h3>
             <p className="text-sm text-muted-foreground">{contextResolutionBanner}</p>
             {review.provenance.contextResolution && (
@@ -1137,7 +1137,7 @@ export function ReportPage(): JSX.Element {
         )}
 
         {provenanceAdvisories.length > 0 && (
-          <div className="space-y-1 rounded-md border border-border/60 bg-card/70 px-3 py-2">
+          <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
             <h3 className="text-sm font-semibold text-foreground">Advisories</h3>
             <ul className="list-disc space-y-0.5 pl-5 text-sm text-foreground">
               {provenanceAdvisories.map((item) => (

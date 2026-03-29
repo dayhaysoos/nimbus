@@ -523,7 +523,12 @@ async function startDevServerSession(options: {
   port: number;
 }): Promise<UiServerSession> {
   const appUrl = buildAppUrl(options.port, options.routePath);
-  const env: NodeJS.ProcessEnv = { ...process.env, NIMBUS_API_PROXY_TARGET: options.workerUrl };
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    NIMBUS_API_PROXY_TARGET: options.workerUrl,
+    VITE_HOST: LOCAL_HOST,
+    VITE_PORT: String(options.port),
+  };
   env.NIMBUS_REPORT_UI_HEALTH_WORKER_URL = options.workerUrl;
   env.NIMBUS_REPORT_UI_HEALTH_AUTH_FINGERPRINT = buildProxyAuthFingerprint({
     apiKey: options.apiKey,
@@ -533,7 +538,7 @@ async function startDevServerSession(options: {
   delete env.VITE_NIMBUS_API_BASE_URL;
 
   const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const serverArgs = ['dev', '--', '--host', LOCAL_HOST, '--port', String(options.port), '--strictPort'];
+  const serverArgs = ['dev'];
 
   p.log.message(`Starting report UI dev server on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`);
 
@@ -642,17 +647,11 @@ async function startReportUiSession(options: {
   reviewGithubToken: string | null;
   openrouterApiKey: string | null;
 }): Promise<UiServerSession> {
-  const bundledDistDir = resolvePackagedDistDir();
-  const monorepoDistDir = resolveMonorepoDistDir();
-  const distDir = bundledDistDir ?? monorepoDistDir;
-
-  if (distDir) {
-    p.log.message(
-      `Serving report UI assets from ${distDir} on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`
-    );
-    return startStaticServerSession({
+  const reportUiDir = resolveMonorepoReportUiDir();
+  if (reportUiDir) {
+    return startDevServerSession({
       routePath: options.routePath,
-      distDir,
+      reportUiDir,
       workerUrl: options.workerUrl,
       apiKey: options.apiKey,
       reviewGithubToken: options.reviewGithubToken,
@@ -661,20 +660,23 @@ async function startReportUiSession(options: {
     });
   }
 
-  const reportUiDir = resolveMonorepoReportUiDir();
-  if (!reportUiDir) {
-    throw new Error('Unable to locate bundled report UI assets or monorepo report-ui package. Reinstall or rebuild the CLI package.');
+  const bundledDistDir = resolvePackagedDistDir();
+  if (bundledDistDir) {
+    p.log.message(
+      `Serving report UI assets from ${bundledDistDir} on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`
+    );
+    return startStaticServerSession({
+      routePath: options.routePath,
+      distDir: bundledDistDir,
+      workerUrl: options.workerUrl,
+      apiKey: options.apiKey,
+      reviewGithubToken: options.reviewGithubToken,
+      openrouterApiKey: options.openrouterApiKey,
+      port: options.port,
+    });
   }
 
-  return startDevServerSession({
-    routePath: options.routePath,
-    reportUiDir,
-    workerUrl: options.workerUrl,
-    apiKey: options.apiKey,
-    reviewGithubToken: options.reviewGithubToken,
-    openrouterApiKey: options.openrouterApiKey,
-    port: options.port,
-  });
+  throw new Error('Unable to locate monorepo report-ui package or bundled assets. Reinstall or rebuild the CLI package.');
 }
 
 export async function openReviewFromCommitCommand(options?: OpenReviewFromCommitOptions): Promise<void> {
