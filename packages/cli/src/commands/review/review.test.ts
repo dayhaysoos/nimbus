@@ -237,10 +237,7 @@ export async function runReviewCommandTests(): Promise<void> {
           intentSessionContext: ['Constraint: Keep scope narrow.'],
         },
       }));
-      await assert.rejects(
-        () => reviewPreflightCommand('HEAD'),
-        /Review preflight failed: This commit has no Entire session context\. The last commit on this branch with valid checkpoint context was abc1234 \('feat: fallback context commit'\) 2 commits ago\./
-      );
+      await assert.doesNotReject(() => reviewPreflightCommand('HEAD'));
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightLastValidContextResolverForTests(null);
@@ -843,10 +840,7 @@ export async function runReviewCommandTests(): Promise<void> {
         },
       });
 
-      await assert.rejects(
-        () => createReviewFromCommitCommand({ commitish: 'HEAD' }),
-        /Review flow failed at checkpoint resolution: This commit has no Entire session context\./
-      );
+      await assert.rejects(() => createReviewFromCommitCommand({ commitish: 'HEAD' }), /Review flow failed at workspace creation:/);
       assert.deepEqual(sequence, []);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightLastValidContextResolverForTests(null);

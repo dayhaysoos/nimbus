@@ -163,7 +163,9 @@ Options:
   --intent-token-budget <n>
                       Token budget for Entire intent context capture (default: 1200)
   --intent-summary-model <name>
-                      Intent summary model override for this run
+                       Intent summary model override for this run
+  --strict-entire-context
+                      Require direct Entire checkpoint context (disable branch fallback)
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
@@ -521,6 +523,7 @@ async function main(): Promise<void> {
           const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
           await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {
             baseRef,
+            strictEntireContext: Boolean(flags['strict-entire-context']),
             summarizeSession: (() => {
               const summarizeSessionFlag = flags['summarize-session'];
               if (typeof summarizeSessionFlag !== 'string') {

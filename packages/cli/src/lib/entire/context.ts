@@ -35,6 +35,19 @@ interface CheckpointSessionContext {
   createdAt: string | null;
 }
 
+interface CheckpointReadabilityDiagnostics {
+  checkpointMetadataFound: boolean;
+  checkpointMetadataParsed: boolean;
+  sessionEntries: number;
+  sessionsWithContextOrPromptPath: number;
+  sessionsWithReadableText: number;
+}
+
+interface CheckpointSessionReadResult {
+  sessions: CheckpointSessionContext[];
+  diagnostics: CheckpointReadabilityDiagnostics;
+}
+
 const ENTIRE_CHECKPOINTS_REF_PREFERENCE = [
   'entire/checkpoints/v1',
   'refs/heads/entire/checkpoints/v1',
@@ -358,9 +371,20 @@ export function resolveCochangeFromLocalGit(
   };
 }
 
-function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, checkpointsRef: string): CheckpointSessionContext[] {
+function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, checkpointsRef: string): CheckpointSessionReadResult {
+  const diagnostics: CheckpointReadabilityDiagnostics = {
+    checkpointMetadataFound: false,
+    checkpointMetadataParsed: false,
+    sessionEntries: 0,
+    sessionsWithContextOrPromptPath: 0,
+    sessionsWithReadableText: 0,
+  };
+
   if (!isCheckpointId(checkpointId)) {
-    return [];
+    return {
+      sessions: [],
+      diagnostics,
+    };
   }
 
   const shard = checkpointId.slice(0, 2).toLowerCase();
@@ -371,17 +395,28 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
   try {
     checkpointMetadataRaw = git.run(['show', `${checkpointsRef}:${checkpointMetadataPath}`]);
   } catch {
-    return [];
+    return {
+      sessions: [],
+      diagnostics,
+    };
   }
+
+  diagnostics.checkpointMetadataFound = true;
 
   let checkpointMetadata: Record<string, unknown>;
   try {
     checkpointMetadata = readJsonObject(checkpointMetadataRaw);
   } catch {
-    return [];
+    return {
+      sessions: [],
+      diagnostics,
+    };
   }
 
+  diagnostics.checkpointMetadataParsed = true;
+
   const sessions = Array.isArray(checkpointMetadata.sessions) ? checkpointMetadata.sessions : [];
+  diagnostics.sessionEntries = sessions.length;
   const resolved: CheckpointSessionContext[] = [];
 
   for (const entry of sessions) {
@@ -395,6 +430,8 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
     if (!metadataPathRaw || (!contextPathRaw && !promptPathRaw)) {
       continue;
     }
+
+    diagnostics.sessionsWithContextOrPromptPath += 1;
 
     const metadataPath = normalizeBranchPath(metadataPathRaw);
     const contextPath = contextPathRaw ? normalizeBranchPath(contextPathRaw) : null;
@@ -434,6 +471,8 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
         continue;
       }
 
+      diagnostics.sessionsWithReadableText += 1;
+
       resolved.push({
         sessionId,
         contextText,
@@ -445,20 +484,23 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
     }
   }
 
-  return resolved.sort((left, right) => {
-    const leftTs = left.createdAt ? Date.parse(left.createdAt) : Number.NaN;
-    const rightTs = right.createdAt ? Date.parse(right.createdAt) : Number.NaN;
-    if (Number.isNaN(leftTs) && Number.isNaN(rightTs)) {
-      return 0;
-    }
-    if (Number.isNaN(leftTs)) {
-      return 1;
-    }
-    if (Number.isNaN(rightTs)) {
-      return -1;
-    }
-    return rightTs - leftTs;
-  });
+  return {
+    sessions: resolved.sort((left, right) => {
+      const leftTs = left.createdAt ? Date.parse(left.createdAt) : Number.NaN;
+      const rightTs = right.createdAt ? Date.parse(right.createdAt) : Number.NaN;
+      if (Number.isNaN(leftTs) && Number.isNaN(rightTs)) {
+        return 0;
+      }
+      if (Number.isNaN(leftTs)) {
+        return 1;
+      }
+      if (Number.isNaN(rightTs)) {
+        return -1;
+      }
+      return rightTs - leftTs;
+    }),
+    diagnostics,
+  };
 }
 
 function compactWhitespace(value: string): string {
@@ -652,9 +694,17 @@ export async function resolveEntireIntentContextForCommit(
 
   let sawSessionMetadata = false;
   let lastExcerptError: Error | null = null;
+  let checkpointMetadataFound = false;
+  let sawContextOrPromptPaths = false;
+  let sawReadableSessionText = false;
 
   for (const checkpointsRef of availableRefs) {
-    const checkpointSessions = readCheckpointSessionsFromBranch(git, checkpointId, checkpointsRef);
+    const checkpointRead = readCheckpointSessionsFromBranch(git, checkpointId, checkpointsRef);
+    const checkpointSessions = checkpointRead.sessions;
+    checkpointMetadataFound = checkpointMetadataFound || checkpointRead.diagnostics.checkpointMetadataFound;
+    sawContextOrPromptPaths = sawContextOrPromptPaths || checkpointRead.diagnostics.sessionsWithContextOrPromptPath > 0;
+    sawReadableSessionText = sawReadableSessionText || checkpointRead.diagnostics.sessionsWithReadableText > 0;
+
     if (checkpointSessions.length === 0) {
       continue;
     }
@@ -684,6 +734,24 @@ export async function resolveEntireIntentContextForCommit(
 
   if (sawSessionMetadata && lastExcerptError) {
     throw lastExcerptError;
+  }
+
+  if (!checkpointMetadataFound) {
+    throw new Error(
+      `Checkpoint ${checkpointId} metadata was not found on any available Entire checkpoints ref (${availableRefs.join(', ')}) for commit ${commitSha.slice(0, 12)}.`
+    );
+  }
+
+  if (!sawContextOrPromptPaths) {
+    throw new Error(
+      `Checkpoint ${checkpointId} metadata exists but session entries had no context/prompt paths. Entire checkpoint integrity is incomplete for commit ${commitSha.slice(0, 12)}.`
+    );
+  }
+
+  if (!sawReadableSessionText) {
+    throw new Error(
+      `Checkpoint ${checkpointId} session context paths were present but no readable context text could be loaded for commit ${commitSha.slice(0, 12)}.`
+    );
   }
 
   throw new Error(

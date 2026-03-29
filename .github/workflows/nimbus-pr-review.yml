@@ -234,6 +234,24 @@ jobs:
         run: |
           node packages/cli/dist/index.js auth exchange
 
+      - name: Run Nimbus review preflight
+        id: review_preflight
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
+        env:
+          HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
+          BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
+        run: |
+          node packages/cli/dist/index.js review preflight "${HEAD_SHA}" --base "${BASE_REF}"
+
+      - name: Audit Entire checkpoint integrity (strict)
+        continue-on-error: true
+        if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'
+        env:
+          HEAD_SHA: ${{ steps.review_refs.outputs.head_sha }}
+          BASE_REF: ${{ steps.review_refs.outputs.base_ref }}
+        run: |
+          node packages/cli/dist/index.js review preflight "${HEAD_SHA}" --base "${BASE_REF}" --strict-entire-context
+
       - name: Run Nimbus review create
         id: create_review
         if: steps.pr_context.outputs.trusted_pr == 'true' && steps.runtime_guard.outputs.trusted_runtime == 'true'

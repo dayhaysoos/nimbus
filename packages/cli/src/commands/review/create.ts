@@ -416,11 +416,21 @@ export async function resolveReviewContext(
         },
         {
           summarizeSession: 'auto',
+          allowBranchFallback: true,
         },
         process.cwd()
       );
 
-      spinner.stop('Entire session metadata is readable');
+      spinner.stop(
+        entireContextResolution.contextResolution === 'branch_fallback'
+          ? `Entire session metadata resolved via branch fallback (${entireContextResolution.resolvedCheckpointId})`
+          : 'Entire session metadata is readable'
+      );
+      if (entireContextResolution.contextResolution === 'branch_fallback') {
+        p.log.warning(
+          `Using fallback Entire context from commit ${entireContextResolution.resolvedCommitSha.slice(0, 7)} ('${entireContextResolution.resolvedCommitSubject}') ${entireContextResolution.commitsAgo} commits ago.`
+        );
+      }
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       spinner.stop('Entire session metadata validation failed');
@@ -526,7 +536,7 @@ export async function resolveReviewContext(
     contextResolutionOriginalCheckpointId: entireContextResolution?.originalCheckpointId ?? checkpointId,
     contextResolutionResolvedCheckpointId: entireContextResolution?.resolvedCheckpointId ?? checkpointId,
     contextResolutionResolvedCommitSha: entireContextResolution?.resolvedCommitSha ?? commitSha,
-    contextResolutionResolvedCommitMessage: undefined,
+    contextResolutionResolvedCommitMessage: entireContextResolution?.resolvedCommitSubject,
     repo: gitProvenance.repo,
     branch: gitProvenance.branch,
     ...(options?.intentSummaryModel?.trim()

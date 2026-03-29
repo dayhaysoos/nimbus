@@ -63,10 +63,23 @@ export async function reviewPolicyCommand(options?: {
       },
       {
         summarizeSession: 'auto',
+        allowBranchFallback: true,
       },
       process.cwd()
     );
-    spinner.stop('Entire prompt history resolved');
+    spinner.stop(
+      contextResolution.contextResolution === 'branch_fallback'
+        ? `Entire prompt history resolved via branch fallback (${contextResolution.resolvedCheckpointId})`
+        : 'Entire prompt history resolved'
+    );
+    if (contextResolution.contextResolution === 'branch_fallback') {
+      p.log.warning(
+        `Using fallback Entire context from commit ${contextResolution.resolvedCommitSha.slice(0, 7)} ('${contextResolution.resolvedCommitSubject}') ${contextResolution.commitsAgo} commits ago.`
+      );
+      if (contextResolution.fallbackReason) {
+        p.log.warning(`Direct checkpoint context issue: ${contextResolution.fallbackReason}`);
+      }
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Entire prompt history resolution failed');

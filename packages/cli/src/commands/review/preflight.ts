@@ -39,12 +39,13 @@ function buildMissingLocalCheckpointHistoryMessage(): string {
 
 export interface ReviewEntireContextResolution {
   context: EntireIntentContext;
-  contextResolution: 'direct';
+  contextResolution: 'direct' | 'branch_fallback';
   originalCheckpointId: string;
   resolvedCheckpointId: string;
   resolvedCommitSha: string;
   resolvedCommitSubject: string;
   commitsAgo: number;
+  fallbackReason?: string;
 }
 
 function parseChangedPathsFromDiff(patch: string): string[] {
@@ -134,11 +135,24 @@ function commitSubject(message: string): string {
 
 function shouldMapEntireContextErrorToHistoryDiagnostic(message: string): boolean {
   return (
+    message.includes('metadata was not found on any available Entire checkpoints ref') ||
+    message.includes('session entries had no context/prompt paths') ||
+    message.includes('session context paths were present but no readable context text could be loaded') ||
     message.includes('had no readable session metadata on any available Entire checkpoints ref') ||
     message.includes('had no readable session metadata') ||
     message.includes('does not have a valid checkpoint ID for Entire context resolution') ||
     message.includes('Unable to resolve Entire checkpoints branch reference')
   );
+}
+
+function buildMissingEntireContextHistoryMessage(lastValid: LastCheckpointOnBranch | null): string {
+  if (lastValid) {
+    return `This commit has no Entire session context. The last commit on this branch with valid checkpoint context was ${lastValid.commitSha.slice(
+      0,
+      7
+    )} ('${lastValid.subject}') ${lastValid.commitsAgo} commits ago. Make sure Entire capture is active before committing.`;
+  }
+  return buildMissingLocalCheckpointHistoryMessage();
 }
 
 function findLastCheckpointOnBranch(commitSha: string, cwd = process.cwd()): LastCheckpointOnBranch | null {
@@ -219,7 +233,7 @@ async function findLastCommitWithValidCheckpointContext(
       continue;
     }
     try {
-      await contextResolver(commits[index].sha, cwd, {
+      const context = await contextResolver(commits[index].sha, cwd, {
         checkpointId: trailers.checkpointId,
         summarizeSession: options.summarizeSession ?? 'auto',
         tokenBudget: options.intentTokenBudget,
@@ -229,6 +243,8 @@ async function findLastCommitWithValidCheckpointContext(
         commitSha: commits[index].sha,
         subject: commitSubject(commits[index].message),
         commitsAgo,
+        checkpointId: trailers.checkpointId,
+        context,
       };
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -240,24 +256,6 @@ async function findLastCommitWithValidCheckpointContext(
   }
 
   return null;
-}
-
-async function buildMissingEntireContextMessage(
-  commitSha: string,
-  options: {
-    summarizeSession?: 'auto' | 'always' | 'never';
-    intentTokenBudget?: number;
-  },
-  cwd = process.cwd()
-): Promise<string> {
-  const lastValid = await findLastCommitWithValidCheckpointContext(commitSha, options, cwd);
-  if (lastValid) {
-    return `This commit has no Entire session context. The last commit on this branch with valid checkpoint context was ${lastValid.commitSha.slice(
-      0,
-      7
-    )} ('${lastValid.subject}') ${lastValid.commitsAgo} commits ago. Make sure Entire capture is active before committing.`;
-  }
-  return buildMissingLocalCheckpointHistoryMessage();
 }
 
 function resolveCommitContext(commitish: string, cwd = process.cwd(), options?: ResolveCommitContextOptions): CommitResolution {
@@ -307,6 +305,7 @@ export async function validateReviewEntireIntentContext(
   options?: {
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
+    allowBranchFallback?: boolean;
   },
   cwd = process.cwd()
 ): Promise<ReviewEntireContextResolution> {
@@ -331,7 +330,24 @@ export async function validateReviewEntireIntentContext(
     if (!shouldMapEntireContextErrorToHistoryDiagnostic(message)) {
       throw error;
     }
-    throw new Error(await buildMissingEntireContextMessage(input.commitSha, options ?? {}, cwd));
+
+    const lastValid = await findLastCommitWithValidCheckpointContext(input.commitSha, options ?? {}, cwd);
+    if (options?.allowBranchFallback !== false && lastValid?.context && lastValid.checkpointId) {
+      return {
+        context: lastValid.context,
+        contextResolution: 'branch_fallback',
+        originalCheckpointId: input.checkpointId,
+        resolvedCheckpointId: lastValid.checkpointId,
+        resolvedCommitSha: lastValid.commitSha,
+        resolvedCommitSubject: lastValid.subject,
+        commitsAgo: lastValid.commitsAgo,
+        fallbackReason: message,
+      };
+    }
+
+    throw new Error(
+      `${buildMissingEntireContextHistoryMessage(lastValid)} Direct checkpoint issue: ${message}`
+    );
   }
 }
 
@@ -370,6 +386,7 @@ export async function reviewPreflightCommand(
     baseRef?: string;
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
+    strictEntireContext?: boolean;
   }
 ): Promise<void> {
   const spinner = p.spinner();
@@ -396,12 +413,17 @@ export async function reviewPreflightCommand(
         checkpointId: resolved.checkpointId,
       },
       {
-      summarizeSession: options?.summarizeSession ?? 'auto',
+        summarizeSession: options?.summarizeSession ?? 'auto',
         intentTokenBudget: options?.intentTokenBudget,
+        allowBranchFallback: !options?.strictEntireContext,
       },
       process.cwd()
     );
-    spinner.stop('Entire session metadata is readable');
+    spinner.stop(
+      contextResolution.contextResolution === 'branch_fallback'
+        ? `Entire session metadata resolved via branch fallback (${contextResolution.resolvedCheckpointId})`
+        : 'Entire session metadata is readable'
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Entire session metadata validation failed');
@@ -434,6 +456,14 @@ export async function reviewPreflightCommand(
     p.log.success('Review preflight passed');
     p.log.message(`Commit: ${resolved.commitSha}`);
     p.log.message(`Checkpoint: ${contextResolution.resolvedCheckpointId}`);
+    if (contextResolution.contextResolution === 'branch_fallback') {
+      p.log.warning(
+        `Using fallback Entire context from commit ${contextResolution.resolvedCommitSha.slice(0, 7)} ('${contextResolution.resolvedCommitSubject}') ${contextResolution.commitsAgo} commits ago.`
+      );
+      if (contextResolution.fallbackReason) {
+        p.log.warning(`Direct checkpoint context issue: ${contextResolution.fallbackReason}`);
+      }
+    }
     p.log.message(
       `Session IDs: ${contextResolution.context.sessionIds.length > 0 ? contextResolution.context.sessionIds.join(', ') : '(none)'}`
     );
