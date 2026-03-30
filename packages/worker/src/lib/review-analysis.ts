@@ -88,6 +88,10 @@ export interface ReviewSourceFileReadResult {
 export { extractJsonObject, stripCodeFences } from './review-analysis/helpers.js';
 export { setReviewAnalysisSandboxResolverForTests } from './review-analysis/sandbox.js';
 
+/**
+ * Hydrates a temporary sandbox from a stored source bundle and reads a bounded set of files
+ * through the same read-only tool path used by review analysis.
+ */
 export async function readWorkspaceFilesFromSourceBundle(
   env: Env,
   input: {
@@ -156,6 +160,10 @@ export async function readWorkspaceFilesFromSourceBundle(
   }
 }
 
+/**
+ * Runs the model-backed review analysis loop against a hydrated deployment snapshot using
+ * the read-only review tools and strict structured-output validation.
+ */
 export async function runWorkspaceDeploymentAgentAnalysis(
   env: Env,
   input: ReviewAgentPromptInput & {
@@ -411,6 +419,9 @@ export async function runWorkspaceDeploymentAgentAnalysis(
   }
 }
 
+/**
+ * Redacts sensitive provider details from analysis errors before they are persisted or surfaced.
+ */
 export function formatReviewAnalysisError(error: unknown, options?: { openrouterApiKey?: string | null }): string {
   const message = error instanceof Error ? error.message : String(error);
   return sanitizeErrorMessage(message, options);

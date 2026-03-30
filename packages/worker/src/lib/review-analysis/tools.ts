@@ -140,6 +140,10 @@ function assertWorkspacePath(pathInput: string, policy: ReviewCommandPolicy): st
   return `${policy.rootPath}/${collapsed}`;
 }
 
+/**
+ * Executes one read-only review tool invocation inside the hydrated sandbox.
+ * Mutating tools are intentionally downgraded to policy errors/results rather than executed.
+ */
 export async function executeReviewTool(
   sandbox: SandboxClient,
   action: Extract<ReviewAgentAction, { type: 'tool' }>,
@@ -189,6 +193,9 @@ export async function executeReviewTool(
   };
 }
 
+/**
+ * Validates that a provider action conforms to the narrow review-tool contract before execution.
+ */
 export function validateReviewAgentAction(action: unknown): ReviewAgentAction {
   const record = asRecord(action);
   if (record.type === 'final') {
@@ -226,6 +233,9 @@ export function validateReviewAgentAction(action: unknown): ReviewAgentAction {
   }
 }
 
+/**
+ * Captures the initial root listing and diff snapshot used to seed review analysis prompts.
+ */
 export async function snapshotInitialContext(sandbox: SandboxClient, maxFileBytes: number): Promise<{ rootListing: unknown; diffSnapshot: unknown }> {
   const policy: ReviewCommandPolicy = {
     commandAllow: [],
