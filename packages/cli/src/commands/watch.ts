@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getWorkerUrl, getJob } from '../lib/api.js';
+import { getJob } from '../clients/worker/jobs.js';
+import { getWorkerUrl } from '../clients/worker/shared.js';
 import { getShortModelName } from '../lib/models.js';
 import type { JobResponse, JobStatus } from '../lib/types.js';
 

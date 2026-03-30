@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { createCheckpointJob } from './api.js';
+import { createCheckpointJob } from '../clients/worker/jobs.js';
 
 export async function runCheckpointApiTests(): Promise<void> {
   const originalFetch = globalThis.fetch;

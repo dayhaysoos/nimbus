@@ -1,6 +1,7 @@
 import * as p from '@clack/prompts';
 import { appendFile } from 'fs/promises';
-import { exchangeOidcToken, getWorkerUrl } from '../../lib/api.js';
+import { exchangeOidcToken } from '../../clients/worker/auth.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 
 interface GithubOidcResponse {
   value?: string;

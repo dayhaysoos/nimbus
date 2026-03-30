@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { createReview, getWorkerUrl } from '../../lib/api.js';
+import { createReview } from '../../clients/worker/reviews.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { validateReviewCochangeTokenReadiness } from '../../commands/review/preflight.js';
 import { buildIdempotencyKey, resolveReviewGitProvenance } from './create-shared.js';
 

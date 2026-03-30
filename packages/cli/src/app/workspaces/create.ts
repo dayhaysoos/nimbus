@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { createWorkspace, getWorkerUrl } from '../../lib/api.js';
+import { createWorkspace } from '../../clients/worker/workspaces.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import {
   buildSourceBundleFilename,
   createSourceArchiveFromCommit,

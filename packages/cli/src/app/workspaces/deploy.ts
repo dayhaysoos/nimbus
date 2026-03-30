@@ -2,11 +2,11 @@ import * as p from '@clack/prompts';
 import { createHash } from 'crypto';
 import {
   createWorkspaceDeployment,
-  getWorkspace,
-  getWorkerUrl,
   getWorkspaceDeployment,
   preflightWorkspaceDeployment,
-} from '../../lib/api.js';
+} from '../../clients/worker/deployments.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
+import { getWorkspace } from '../../clients/worker/workspaces.js';
 import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import type { WorkspaceDeploymentResponse } from '../../lib/types.js';

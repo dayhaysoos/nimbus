@@ -1,7 +1,7 @@
 import { createHash } from 'crypto';
+import type { createReview } from '../../clients/worker/reviews.js';
 import { detectRepoSlugFromGitOrigin } from '../../lib/git.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
-import type { createReview } from '../../lib/api.js';
 
 export const MAX_COMMIT_DIFF_PATCH_CHARS = 120_000;
 export const COCHANGE_LOOKBACK_SESSIONS = 5;

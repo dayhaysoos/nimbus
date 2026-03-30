@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { deleteWorkspace, getWorkerUrl } from '../../lib/api.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
+import { deleteWorkspace } from '../../clients/worker/workspaces.js';
 
 export async function destroyWorkspaceCommand(workspaceId: string): Promise<void> {
   const workerUrl = getWorkerUrl();

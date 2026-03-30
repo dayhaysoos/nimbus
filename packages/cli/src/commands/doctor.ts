@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getDeployReadiness, getWorkerUrl } from '../lib/api.js';
+import { getWorkerUrl } from '../clients/worker/shared.js';
+import { getDeployReadiness } from '../clients/worker/system.js';
 
 function checkLine(code: string, ok: boolean, details?: string): string {
   return `- ${code}: ${ok ? 'ok' : details ?? 'failed'}`;

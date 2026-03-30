@@ -1,5 +1,6 @@
 import { strict as assert } from 'assert';
-import { createReview, createWorkspace } from './api.js';
+import { createReview } from '../clients/worker/reviews.js';
+import { createWorkspace } from '../clients/worker/workspaces.js';
 
 export async function runApiOpenrouterHeaderTests(): Promise<void> {
   const originalFetch = globalThis.fetch;

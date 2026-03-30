@@ -1,7 +1,8 @@
 import * as p from '@clack/prompts';
 import { mkdir, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, resolve } from 'path';
-import { createReview, getReview, getWorkerUrl, streamReviewEvents } from '../../lib/api.js';
+import { createReview, getReview, streamReviewEvents } from '../../clients/worker/reviews.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { workspaceDeployCommand } from '../../commands/workspace/deploy.js';
 import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../../commands/workspace/create.js';
 import { resolveCochangeFromLocalGit } from '../../lib/entire/context.js';

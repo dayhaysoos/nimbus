@@ -1,5 +1,6 @@
 import { strict as assert } from 'assert';
-import { __resetApiClientStateForTests, getJob } from './api.js';
+import { getJob } from '../clients/worker/jobs.js';
+import { __resetApiClientStateForTests } from '../clients/worker/shared.js';
 
 const HOSTED_URL = 'https://nimbus-worker.ndejesus1227.workers.dev';
 
