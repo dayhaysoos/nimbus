@@ -1,0 +1,28 @@
+Continue work on the `huge-refactor` branch in `/Users/nickdejesus/Code/nimbus`.
+
+First, read `docs/next-session-handoff.md` in full.
+
+Important context:
+- A large CLI + worker readability refactor has already been done.
+- Worker tests and typecheck were green at the end of the last session.
+- We started troubleshooting Entire because Nimbus review preflight was falling back instead of resolving direct checkpoint metadata.
+- The current theory is that Entire session transcript condensation has been failing, so commit trailers were added but matching checkpoint metadata was not materialized on `entire/checkpoints/v1`.
+- In the last session we reset/re-enabled Entire and fixed `.entire/settings.local.json` from `"enabled": false` to `"enabled": true`.
+- A test commit `87671df` was created after that recovery attempt, but it got no `Entire-Checkpoint` trailer, likely because the already-running OpenCode process did not re-establish an active Entire session.
+- This new session is specifically to continue troubleshooting Entire first, then resume CLI cleanup after Entire is healthy.
+
+Do this first:
+1. Run `entire status`
+2. Verify Entire is enabled and that this fresh OpenCode session is actually active
+3. Make one tiny disposable commit
+4. Verify:
+   - `entire explain --commit HEAD`
+   - `pnpm --filter @dayhaysoos/nimbus exec node dist/index.js review preflight HEAD`
+5. Confirm the new checkpoint resolves directly, not via fallback
+
+After Entire is healthy again:
+- resume CLI cleanup
+- likely next target: split `packages/cli/src/cli/dispatch.ts` by domain
+- keep running CLI tests/build after each meaningful split
+
+Be direct and conservative. Preserve behavior. Prefer small, coherent refactors.
