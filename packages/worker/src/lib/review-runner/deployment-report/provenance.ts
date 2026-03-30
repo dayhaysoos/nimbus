@@ -1,0 +1,201 @@
+import type { Env, ReviewRunResponse } from '../../../types.js';
+import { getWorkspaceTask } from '../../db.js';
+import { extractPolicyItemsFromIntentContext, redactReviewText } from '../../review-redaction.js';
+import { intentSummaryFromApprovedPolicy, summarizeReviewIntentPolicy } from '../intent-summary.js';
+import { asRecord, mergeProvenance, parseStringArray, readOptionalString, uniqueStrings } from '../context-helpers.js';
+import { ReviewContextAssemblyError } from '../cochange.js';
+import { LARGE_DIFF_ADVISORY_THRESHOLD, parseBoolean, parsePositiveInteger } from './shared.js';
+
+/**
+ * Collects provenance, policy, and prompt-history inputs needed to build a deployment review report.
+ */
+export async function buildDeploymentReportInputs(
+  env: Env,
+  review: ReviewRunResponse,
+  payload: Record<string, unknown>,
+  deploymentRequest: Record<string, unknown>,
+  deploymentResult: Record<string, unknown>,
+  reviewContextFilesConsidered: number,
+  openrouterApiKey?: string | null
+): Promise<{
+  reviewPolicy: Record<string, unknown>;
+  reviewFormat: Record<string, unknown>;
+  requestValidation: Record<string, unknown>;
+  requestProvenance: Record<string, unknown>;
+  resultProvenance: Record<string, unknown>;
+  resultArtifact: Record<string, unknown>;
+  intentSessionContext: string[];
+  derivedIntentSummary: Awaited<ReturnType<typeof summarizeReviewIntentPolicy>>;
+  provenanceTask: Awaited<ReturnType<typeof getWorkspaceTask>>;
+  taskResult: Record<string, unknown>;
+  severityThreshold: string;
+  maxFindings: number;
+  includeProvenance: boolean;
+  includeValidationEvidence: boolean;
+  includeMarkdownSummary: boolean;
+  advisories: string[];
+  promptGoal: string;
+  promptConstraints: string[];
+  promptDecisions: string[];
+  provenanceRepo: string;
+  provenanceBranch: string;
+  policyItems: string[];
+  rawSessionPrompts: string | null;
+  promptSummary: string | null;
+  transcriptUrl: string | null;
+  contextResolutionMode: string;
+  contextResolutionOriginalCheckpointId: string | null;
+  contextResolutionResolvedCheckpointId: string | null;
+  contextResolutionResolvedCommitSha: string | null;
+  contextResolutionResolvedCommitMessage: string | null;
+}> {
+  const reviewPolicy = asRecord(payload.policy);
+  const reviewFormat = asRecord(payload.format);
+  const resultProvenance = asRecord(deploymentResult.provenance);
+  const resultArtifact = asRecord(deploymentResult.artifact);
+  const requestValidation = asRecord(deploymentRequest.validation);
+  const requestProvenance = mergeProvenance(asRecord(deploymentRequest.provenance), asRecord(payload.provenance));
+  const intentSessionContext = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext)).slice(0, 8);
+  const approvedPolicy = review.approvedPolicy ?? null;
+  const rawSessionPromptsFromProvenance =
+    typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim()
+      ? requestProvenance.rawSessionPrompts.trim()
+      : null;
+  const rawSessionPrompts = rawSessionPromptsFromProvenance ?? (intentSessionContext.length > 0 ? intentSessionContext.join('\n') : null);
+  const intentSummaryModel = readOptionalString(requestProvenance.intentSummaryModel);
+  if (!approvedPolicy && !rawSessionPrompts) {
+    throw new ReviewContextAssemblyError(
+      'review_context_prompt_history_missing',
+      'Review prompt-history context is required for intent summarization. Ensure deployment/review provenance includes rawSessionPrompts.'
+    );
+  }
+
+  const derivedIntentSummary = approvedPolicy
+    ? intentSummaryFromApprovedPolicy(approvedPolicy)
+    : await summarizeReviewIntentPolicy(env, {
+        rawSessionPrompts: rawSessionPrompts ?? '',
+        intentSessionContext,
+        openrouterApiKey: readOptionalString(openrouterApiKey),
+        intentSummaryModel,
+      });
+
+  const provenanceTaskId = typeof resultProvenance.taskId === 'string'
+    ? resultProvenance.taskId
+    : typeof requestProvenance.taskId === 'string'
+      ? requestProvenance.taskId
+      : null;
+  const provenanceTask = provenanceTaskId ? await getWorkspaceTask(env.DB, review.workspaceId, provenanceTaskId) : null;
+  const taskResult = asRecord(provenanceTask?.result);
+  const severityThreshold = typeof reviewPolicy.severityThreshold === 'string' ? reviewPolicy.severityThreshold : 'low';
+  const maxFindings = parsePositiveInteger(reviewPolicy.maxFindings, 100, 500);
+  const includeProvenance = parseBoolean(reviewPolicy.includeProvenance, true);
+  const includeValidationEvidence = parseBoolean(reviewPolicy.includeValidationEvidence, true);
+  const includeMarkdownSummary = parseBoolean(reviewFormat.includeMarkdownSummary, true);
+  const advisories =
+    reviewContextFilesConsidered > LARGE_DIFF_ADVISORY_THRESHOLD
+      ? [`Large diff detected (${reviewContextFilesConsidered} files). Consider smaller, focused commits for higher quality reviews.`]
+      : [];
+
+  const baseGoal =
+    typeof provenanceTask?.prompt === 'string' && provenanceTask.prompt.trim()
+      ? provenanceTask.prompt.trim()
+      : typeof requestProvenance.note === 'string' && requestProvenance.note.trim()
+        ? requestProvenance.note.trim()
+        : `Assess workspace deployment ${review.deploymentId} for review-first handoff readiness.`;
+  const baseConstraints = [
+    'Non-mutating review only.',
+    `Target limited to ${review.target.type}.`,
+    requestValidation.runTestsIfPresent === false
+      ? 'Tests were not required during deployment validation.'
+      : 'Tests were eligible during deployment validation.',
+    requestValidation.runBuildIfPresent === false
+      ? 'Build validation was not required during deployment validation.'
+      : 'Build validation was eligible during deployment validation.',
+  ];
+  const baseDecisions = [
+    typeof resultProvenance.trigger === 'string'
+      ? `Deployment trigger: ${resultProvenance.trigger}.`
+      : typeof requestProvenance.trigger === 'string'
+        ? `Deployment trigger: ${requestProvenance.trigger}.`
+        : 'Deployment trigger was not recorded.',
+    provenanceTask ? `Source task model: ${provenanceTask.model}.` : '',
+    typeof taskResult.summary === 'string' && taskResult.summary.trim() ? `Source task summary: ${taskResult.summary.trim()}.` : '',
+    parseStringArray(requestProvenance.sessionIds).length > 0
+      ? `Related Entire sessions: ${parseStringArray(requestProvenance.sessionIds).join(', ')}.`
+      : '',
+    intentSessionContext.length > 0 ? `Prompt-history context excerpts provided: ${intentSessionContext.length}.` : '',
+  ];
+  const promptGoal = approvedPolicy?.goal?.trim() || provenanceTask?.prompt?.trim() || baseGoal;
+  const promptConstraints = approvedPolicy ? Array.from(new Set([...approvedPolicy.constraints, ...baseConstraints])) : baseConstraints;
+  const promptDecisions = approvedPolicy
+    ? Array.from(new Set([...approvedPolicy.prohibitions.map((item) => `Must not: ${item}`), ...baseDecisions]))
+    : baseDecisions;
+
+  const transcriptUrl =
+    typeof requestProvenance.transcriptUrl === 'string' && requestProvenance.transcriptUrl.trim()
+      ? requestProvenance.transcriptUrl.trim()
+      : null;
+  const contextResolutionMode =
+    requestProvenance.contextResolution === 'branch_fallback' || requestProvenance.contextResolution === 'direct'
+      ? requestProvenance.contextResolution
+      : 'direct';
+  const contextResolutionOriginalCheckpointId =
+    typeof requestProvenance.contextResolutionOriginalCheckpointId === 'string' && requestProvenance.contextResolutionOriginalCheckpointId.trim()
+      ? requestProvenance.contextResolutionOriginalCheckpointId.trim()
+      : null;
+  const contextResolutionResolvedCheckpointId =
+    typeof requestProvenance.contextResolutionResolvedCheckpointId === 'string' && requestProvenance.contextResolutionResolvedCheckpointId.trim()
+      ? requestProvenance.contextResolutionResolvedCheckpointId.trim()
+      : null;
+  const contextResolutionResolvedCommitSha =
+    typeof requestProvenance.contextResolutionResolvedCommitSha === 'string' && requestProvenance.contextResolutionResolvedCommitSha.trim()
+      ? requestProvenance.contextResolutionResolvedCommitSha.trim()
+      : null;
+  const contextResolutionResolvedCommitMessage =
+    typeof requestProvenance.contextResolutionResolvedCommitMessage === 'string' && requestProvenance.contextResolutionResolvedCommitMessage.trim()
+      ? requestProvenance.contextResolutionResolvedCommitMessage.trim()
+      : null;
+  const provenanceRepo = readOptionalString(requestProvenance.repo);
+  const provenanceBranch = readOptionalString(requestProvenance.branch);
+  if (!provenanceRepo || !provenanceBranch) {
+    throw new Error('Review provenance must include repo and branch.');
+  }
+  const policyItems = extractPolicyItemsFromIntentContext(parseStringArray(requestProvenance.intentSessionContext));
+  const promptSummary = redactReviewText(
+    (typeof requestProvenance.note === 'string' ? requestProvenance.note.trim() : null) ||
+      `Review generated in ${review.mode} mode for deployment ${review.deploymentId}.`
+  );
+
+  return {
+    reviewPolicy,
+    reviewFormat,
+    requestValidation,
+    requestProvenance,
+    resultProvenance,
+    resultArtifact,
+    intentSessionContext,
+    derivedIntentSummary,
+    provenanceTask,
+    taskResult,
+    severityThreshold,
+    maxFindings,
+    includeProvenance,
+    includeValidationEvidence,
+    includeMarkdownSummary,
+    advisories,
+    promptGoal,
+    promptConstraints,
+    promptDecisions,
+    provenanceRepo,
+    provenanceBranch,
+    policyItems,
+    rawSessionPrompts,
+    promptSummary,
+    transcriptUrl,
+    contextResolutionMode,
+    contextResolutionOriginalCheckpointId,
+    contextResolutionResolvedCheckpointId,
+    contextResolutionResolvedCommitSha,
+    contextResolutionResolvedCommitMessage,
+  };
+}
