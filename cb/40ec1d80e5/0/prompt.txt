@@ -1,0 +1,13 @@
+go ahead and make a commit. Run prelight commands to test before we move on
+
+---
+
+What’s the next CLI clean up target? Also what else would you be doing after this?
+
+---
+
+I’m going to trust you to continue this refactor effort. You’ve done great so far. Be sure to keep working on these domain specific refactors, and make commits where it makes sense to commit your work. Before you commit, make sure tests are green. If not green, fix and run tests again til green. After a commit, run the preflight tests for Entire so we make sure the checkpoints are healthy and reviewable by nimbus.  I think we’re still working out phases before Phase 5 of @docs/refactor-audit.md. Follow it through. Your stopping point is going to be when we hit phase 5 and we start working on synax and local readability. Remember we are NOT touching the report-ui package yet. Do you have any questions?
+
+---
+
+Get started now.
