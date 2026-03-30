@@ -289,13 +289,13 @@ function toWorkspaceDependencyCacheResponse(record: WorkspaceDependencyCacheReco
   };
 }
 
-export class WorkspaceIdempotencyConflictError extends Error {
+class LegacyWorkspaceIdempotencyConflictError extends Error {
   constructor(
     public readonly key: string,
     public readonly type: WorkspaceOperationType
   ) {
     super(`Idempotency key conflict for ${type}: ${key}`);
-    this.name = 'WorkspaceIdempotencyConflictError';
+    this.name = 'LegacyWorkspaceIdempotencyConflictError';
   }
 }
 
@@ -315,12 +315,13 @@ class LegacyWorkspaceDeploymentIdempotencyConflictError extends Error {
 }
 export { WorkspaceDeploymentIdempotencyConflictError } from './db/deployments.js';
 
-export class ReviewIdempotencyConflictError extends Error {
+class LegacyReviewIdempotencyConflictError extends Error {
   constructor(public readonly key: string) {
     super(`Review idempotency key conflict: ${key}`);
-    this.name = 'ReviewIdempotencyConflictError';
+    this.name = 'LegacyReviewIdempotencyConflictError';
   }
 }
+export { ReviewIdempotencyConflictError } from './db/reviews.js';
 
 function isUniqueConstraintError(error: unknown): boolean {
   if (!(error instanceof Error)) {
@@ -357,23 +358,13 @@ function generatePrefixedId(prefix: string, length = 8): string {
   return `${prefix}_${id}`;
 }
 
-/**
- * Generate a unique job ID
- */
-export function generateJobId(): string {
-  return generatePrefixedId('job');
-}
+export { generateJobId } from './db/jobs.js';
 
 /**
  * Generate a unique workspace ID
  */
-export function generateWorkspaceId(): string {
-  return generatePrefixedId('ws');
-}
-
-export function generateWorkspaceOperationId(): string {
-  return generatePrefixedId('op');
-}
+export { generateWorkspaceId } from './db/workspaces.js';
+export { generateWorkspaceOperationId, WorkspaceIdempotencyConflictError } from './db/operations.js';
 
 export function generateWorkspaceArtifactId(): string {
   return generatePrefixedId('art');
@@ -934,7 +925,7 @@ interface ReviewRunListRecord {
 /**
  * Create a new checkpoint job in the database
  */
-export async function createCheckpointJob(
+async function legacyCreateCheckpointJob(
   db: D1Database,
   input: CreateCheckpointJobInput
 ): Promise<JobResponse> {
@@ -985,7 +976,7 @@ export async function createCheckpointJob(
 /**
  * Get a job by ID
  */
-export async function getJob(db: D1Database, id: string): Promise<JobResponse | null> {
+async function legacyGetJob(db: D1Database, id: string): Promise<JobResponse | null> {
   const result = await db
     .prepare('SELECT * FROM jobs WHERE id = ?')
     .bind(id)
@@ -1001,7 +992,7 @@ export async function getJob(db: D1Database, id: string): Promise<JobResponse | 
 /**
  * List all jobs, most recent first
  */
-export async function listJobs(db: D1Database, limit = 50): Promise<JobListItem[]> {
+async function legacyListJobs(db: D1Database, limit = 50): Promise<JobListItem[]> {
   const result = await db
     .prepare('SELECT * FROM jobs ORDER BY created_at DESC LIMIT ?')
     .bind(limit)
@@ -1013,7 +1004,7 @@ export async function listJobs(db: D1Database, limit = 50): Promise<JobListItem[
 /**
  * Delete a job by ID
  */
-export async function deleteJob(db: D1Database, id: string): Promise<void> {
+async function legacyDeleteJob(db: D1Database, id: string): Promise<void> {
   await db.prepare('DELETE FROM jobs WHERE id = ?').bind(id).run();
 }
 
@@ -1021,7 +1012,7 @@ export async function deleteJob(db: D1Database, id: string): Promise<void> {
  * Atomically claim a queued checkpoint job for execution.
  * Returns true when claim succeeds, false when another worker already claimed.
  */
-export async function claimQueuedCheckpointJob(db: D1Database, id: string): Promise<boolean> {
+async function legacyClaimQueuedCheckpointJob(db: D1Database, id: string): Promise<boolean> {
   const result = await db
     .prepare(
       `UPDATE jobs
@@ -1042,7 +1033,7 @@ export async function claimQueuedCheckpointJob(db: D1Database, id: string): Prom
 /**
  * Append a sequenced job event and return its sequence number.
  */
-export async function appendJobEvent(
+async function legacyAppendJobEvent(
   db: D1Database,
   input: {
     jobId: string;
@@ -1083,7 +1074,7 @@ export async function appendJobEvent(
 /**
  * List persisted job events from a given sequence.
  */
-export async function listJobEvents(
+async function legacyListJobEvents(
   db: D1Database,
   jobId: string,
   fromExclusive = 0,
@@ -1121,7 +1112,7 @@ export async function listJobEvents(
 /**
  * Update job status
  */
-export async function updateJobStatus(
+async function legacyUpdateJobStatus(
   db: D1Database,
   id: string,
   status: JobStatus,
@@ -1262,9 +1253,9 @@ export async function updateJobStatus(
 /**
  * Mark job as cancelled
  */
-export async function markJobCancelled(db: D1Database, id: string): Promise<void> {
+async function legacyMarkJobCancelled(db: D1Database, id: string): Promise<void> {
   const now = new Date().toISOString();
-  await updateJobStatus(db, id, 'cancelled', {
+  await legacyUpdateJobStatus(db, id, 'cancelled', {
     phase: 'cancelled',
     cancel_requested_at: now,
     cancelled_at: now,
@@ -1272,10 +1263,39 @@ export async function markJobCancelled(db: D1Database, id: string): Promise<void
   });
 }
 
+export {
+  appendJobEvent,
+  claimQueuedCheckpointJob,
+  createCheckpointJob,
+  deleteJob,
+  getJob,
+  listJobEvents,
+  listJobs,
+  markJobCancelled,
+  updateJobStatus,
+} from './db/jobs.js';
+export {
+  appendWorkspaceEvent,
+  createWorkspace,
+  getWorkspace,
+  getWorkspaceAccountId,
+  listWorkspaceEvents,
+  markWorkspaceDeleted,
+  markWorkspaceFailed,
+  markWorkspaceReady,
+  updateWorkspaceStatus,
+} from './db/workspaces.js';
+export {
+  claimWorkspaceOperationForExecution,
+  createWorkspaceOperation,
+  getWorkspaceOperation,
+  updateWorkspaceOperationStatus,
+} from './db/operations.js';
+
 /**
  * Create a new workspace in creating state.
  */
-export async function createWorkspace(
+async function legacyCreateWorkspace(
   db: D1Database,
   input: CreateWorkspaceInput
 ): Promise<WorkspaceResponse> {
@@ -1324,7 +1344,7 @@ export async function createWorkspace(
 /**
  * Get workspace by ID.
  */
-export async function getWorkspace(db: D1Database, id: string): Promise<WorkspaceResponse | null> {
+async function legacyGetWorkspace(db: D1Database, id: string): Promise<WorkspaceResponse | null> {
   const result = await db.prepare('SELECT * FROM workspaces WHERE id = ?').bind(id).first<WorkspaceRecord>();
 
   if (!result) {
@@ -1334,7 +1354,7 @@ export async function getWorkspace(db: D1Database, id: string): Promise<Workspac
   return toWorkspaceResponse(result);
 }
 
-export async function getWorkspaceAccountId(db: D1Database, id: string): Promise<string | null | undefined> {
+async function legacyGetWorkspaceAccountId(db: D1Database, id: string): Promise<string | null | undefined> {
   const result = await db
     .prepare('SELECT account_id FROM workspaces WHERE id = ?')
     .bind(id)
@@ -1348,7 +1368,7 @@ export async function getWorkspaceAccountId(db: D1Database, id: string): Promise
 /**
  * Update workspace status and selected metadata.
  */
-export async function updateWorkspaceStatus(
+async function legacyUpdateWorkspaceStatus(
   db: D1Database,
   id: string,
   status: WorkspaceStatus,
@@ -1402,8 +1422,8 @@ export async function updateWorkspaceStatus(
 /**
  * Mark workspace as ready.
  */
-export async function markWorkspaceReady(db: D1Database, id: string, baselineReady = true): Promise<boolean> {
-  return updateWorkspaceStatus(
+async function legacyMarkWorkspaceReady(db: D1Database, id: string, baselineReady = true): Promise<boolean> {
+  return legacyUpdateWorkspaceStatus(
     db,
     id,
     'ready',
@@ -1419,13 +1439,13 @@ export async function markWorkspaceReady(db: D1Database, id: string, baselineRea
 /**
  * Mark workspace as failed.
  */
-export async function markWorkspaceFailed(
+async function legacyMarkWorkspaceFailed(
   db: D1Database,
   id: string,
   message: string,
   errorCode: string | null = null
 ): Promise<boolean> {
-  return updateWorkspaceStatus(
+  return legacyUpdateWorkspaceStatus(
     db,
     id,
     'failed',
@@ -1440,8 +1460,8 @@ export async function markWorkspaceFailed(
 /**
  * Mark workspace as deleted.
  */
-export async function markWorkspaceDeleted(db: D1Database, id: string): Promise<boolean> {
-  return updateWorkspaceStatus(db, id, 'deleted', {
+async function legacyMarkWorkspaceDeleted(db: D1Database, id: string): Promise<boolean> {
+  return legacyUpdateWorkspaceStatus(db, id, 'deleted', {
     deleted_at: new Date().toISOString(),
   });
 }
@@ -1449,7 +1469,7 @@ export async function markWorkspaceDeleted(db: D1Database, id: string): Promise<
 /**
  * Append a sequenced workspace event and return sequence number.
  */
-export async function appendWorkspaceEvent(
+async function legacyAppendWorkspaceEvent(
   db: D1Database,
   input: {
     workspaceId: string;
@@ -1481,7 +1501,7 @@ export async function appendWorkspaceEvent(
 /**
  * List persisted workspace events from a given sequence.
  */
-export async function listWorkspaceEvents(
+async function legacyListWorkspaceEvents(
   db: D1Database,
   workspaceId: string,
   fromExclusive = 0,
@@ -1515,7 +1535,7 @@ export async function listWorkspaceEvents(
   });
 }
 
-export async function createWorkspaceOperation(
+async function legacyCreateWorkspaceOperation(
   db: D1Database,
   input: CreateWorkspaceOperationInput
 ): Promise<{ operation: WorkspaceOperationResponse; reused: boolean }> {
@@ -1532,10 +1552,10 @@ export async function createWorkspaceOperation(
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
     if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {
-      throw new WorkspaceIdempotencyConflictError(input.idempotencyKey, input.type);
+      throw new LegacyWorkspaceIdempotencyConflictError(input.idempotencyKey, input.type);
     }
 
-    const existingOperation = await getWorkspaceOperation(db, input.workspaceId, existingIdempotency.operation_id);
+    const existingOperation = await legacyGetWorkspaceOperation(db, input.workspaceId, existingIdempotency.operation_id);
     if (!existingOperation) {
       throw new Error(`Idempotency record references missing operation ${existingIdempotency.operation_id}`);
     }
@@ -1634,10 +1654,10 @@ export async function createWorkspaceOperation(
     }
     if (concurrentIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {
       await db.prepare('DELETE FROM workspace_operations WHERE id = ?').bind(operationId).run();
-      throw new WorkspaceIdempotencyConflictError(input.idempotencyKey, input.type);
+      throw new LegacyWorkspaceIdempotencyConflictError(input.idempotencyKey, input.type);
     }
 
-    const existingOperation = await getWorkspaceOperation(db, input.workspaceId, concurrentIdempotency.operation_id);
+    const existingOperation = await legacyGetWorkspaceOperation(db, input.workspaceId, concurrentIdempotency.operation_id);
     if (!existingOperation) {
       await db.prepare('DELETE FROM workspace_operations WHERE id = ?').bind(operationId).run();
       throw new Error(`Idempotency record references missing operation ${concurrentIdempotency.operation_id}`);
@@ -1649,7 +1669,7 @@ export async function createWorkspaceOperation(
   return { operation: toWorkspaceOperationResponse(operationRecord), reused: false };
 }
 
-export async function getWorkspaceOperation(
+async function legacyGetWorkspaceOperation(
   db: D1Database,
   workspaceId: string,
   operationId: string
@@ -1666,7 +1686,7 @@ export async function getWorkspaceOperation(
   return toWorkspaceOperationResponse(result);
 }
 
-export async function claimWorkspaceOperationForExecution(
+async function legacyClaimWorkspaceOperationForExecution(
   db: D1Database,
   workspaceId: string,
   operationId: string
@@ -1686,7 +1706,7 @@ export async function claimWorkspaceOperationForExecution(
   return (result.meta?.changes ?? 0) > 0;
 }
 
-export async function updateWorkspaceOperationStatus(
+async function legacyUpdateWorkspaceOperationStatus(
   db: D1Database,
   operationId: string,
   status: WorkspaceOperationStatus,
@@ -2727,7 +2747,7 @@ async function legacyHasWorkspaceDeploymentEvent(
   return Boolean(record);
 }
 
-export async function createReviewRun(
+async function legacyCreateReviewRun(
   db: D1Database,
   input: CreateReviewRunInput
 ): Promise<{ review: ReviewRunResponse; reused: boolean }> {
@@ -2744,10 +2764,10 @@ export async function createReviewRun(
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
     if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {
-      throw new ReviewIdempotencyConflictError(input.idempotencyKey);
+      throw new LegacyReviewIdempotencyConflictError(input.idempotencyKey);
     }
 
-    const existingReview = await getReviewRun(db, existingIdempotency.review_id);
+    const existingReview = await legacyGetReviewRun(db, existingIdempotency.review_id);
     if (!existingReview) {
       throw new Error(`Idempotency record references missing review ${existingIdempotency.review_id}`);
     }
@@ -2778,7 +2798,7 @@ export async function createReviewRun(
 
   if (existingReviewByKey) {
     if (existingReviewByKey.request_payload_sha256 !== input.requestPayloadSha256) {
-      throw new ReviewIdempotencyConflictError(input.idempotencyKey);
+      throw new LegacyReviewIdempotencyConflictError(input.idempotencyKey);
     }
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -2919,10 +2939,10 @@ export async function createReviewRun(
 
     if (concurrent.request_payload_sha256 !== input.requestPayloadSha256) {
       await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
-      throw new ReviewIdempotencyConflictError(input.idempotencyKey);
+      throw new LegacyReviewIdempotencyConflictError(input.idempotencyKey);
     }
 
-    const existingReview = await getReviewRun(db, concurrent.review_id);
+    const existingReview = await legacyGetReviewRun(db, concurrent.review_id);
     if (!existingReview) {
       await db.prepare('DELETE FROM review_runs WHERE id = ?').bind(input.id).run();
       throw new Error(`Idempotency record references missing review ${concurrent.review_id}`);
@@ -2935,7 +2955,7 @@ export async function createReviewRun(
   return { review: toReviewRunResponse(reviewRecord), reused: false };
 }
 
-export async function getReviewRun(db: D1Database, reviewId: string): Promise<ReviewRunResponse | null> {
+async function legacyGetReviewRun(db: D1Database, reviewId: string): Promise<ReviewRunResponse | null> {
   const record = await db.prepare('SELECT * FROM review_runs WHERE id = ?').bind(reviewId).first<ReviewRunRecord>();
   if (!record) {
     return null;
@@ -2944,7 +2964,7 @@ export async function getReviewRun(db: D1Database, reviewId: string): Promise<Re
   return toReviewRunResponse(record);
 }
 
-export async function listReviewRuns(
+async function legacyListReviewRuns(
   db: D1Database,
   options?: {
     limit?: number;
@@ -3042,7 +3062,7 @@ export async function listReviewRuns(
   });
 }
 
-export async function getReviewRunAccountId(db: D1Database, reviewId: string): Promise<string | null | undefined> {
+async function legacyGetReviewRunAccountId(db: D1Database, reviewId: string): Promise<string | null | undefined> {
   const result = await db
     .prepare('SELECT account_id FROM review_runs WHERE id = ?')
     .bind(reviewId)
@@ -3053,7 +3073,7 @@ export async function getReviewRunAccountId(db: D1Database, reviewId: string): P
   return result.account_id;
 }
 
-export async function getReviewRunByIdempotency(
+async function legacyGetReviewRunByIdempotency(
   db: D1Database,
   workspaceId: string,
   idempotencyKey: string,
@@ -3072,10 +3092,10 @@ export async function getReviewRunByIdempotency(
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
     if (existingIdempotency.request_payload_sha256 !== requestPayloadSha256) {
-      throw new ReviewIdempotencyConflictError(idempotencyKey);
+      throw new LegacyReviewIdempotencyConflictError(idempotencyKey);
     }
 
-    const review = await getReviewRun(db, existingIdempotency.review_id);
+    const review = await legacyGetReviewRun(db, existingIdempotency.review_id);
     if (!review) {
       throw new Error(`Idempotency record references missing review ${existingIdempotency.review_id}`);
     }
@@ -3102,13 +3122,13 @@ export async function getReviewRunByIdempotency(
   }
 
   if (existingReview.request_payload_sha256 !== requestPayloadSha256) {
-    throw new ReviewIdempotencyConflictError(idempotencyKey);
+    throw new LegacyReviewIdempotencyConflictError(idempotencyKey);
   }
 
   return toReviewRunResponse(existingReview);
 }
 
-export async function getReviewRunRequestPayload(
+async function legacyGetReviewRunRequestPayload(
   db: D1Database,
   reviewId: string
 ): Promise<Record<string, unknown> | null> {
@@ -3132,7 +3152,7 @@ export async function getReviewRunRequestPayload(
   }
 }
 
-export async function claimReviewRunForExecution(db: D1Database, reviewId: string): Promise<boolean> {
+async function legacyClaimReviewRunForExecution(db: D1Database, reviewId: string): Promise<boolean> {
   const now = new Date().toISOString();
   const result = await db
     .prepare(
@@ -3151,7 +3171,7 @@ export async function claimReviewRunForExecution(db: D1Database, reviewId: strin
   return (result.meta?.changes ?? 0) > 0;
 }
 
-export async function updateReviewRunStatus(
+async function legacyUpdateReviewRunStatus(
   db: D1Database,
   reviewId: string,
   status: ReviewRunStatus,
@@ -3200,7 +3220,7 @@ export async function updateReviewRunStatus(
   await db.prepare(`UPDATE review_runs SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
 }
 
-export async function updateReviewRunPolicy(
+async function legacyUpdateReviewRunPolicy(
   db: D1Database,
   reviewId: string,
   options: {
@@ -3231,7 +3251,7 @@ export async function updateReviewRunPolicy(
   await db.prepare(`UPDATE review_runs SET ${updates.join(', ')} WHERE id = ?`).bind(...values).run();
 }
 
-export async function appendReviewEvent(
+async function legacyAppendReviewEvent(
   db: D1Database,
   input: {
     reviewId: string;
@@ -3260,7 +3280,7 @@ export async function appendReviewEvent(
   return seq;
 }
 
-export async function listReviewEvents(
+async function legacyListReviewEvents(
   db: D1Database,
   reviewId: string,
   fromExclusive = 0,
@@ -3294,7 +3314,7 @@ export async function listReviewEvents(
   });
 }
 
-export async function hasReviewEvent(db: D1Database, reviewId: string, eventType: string): Promise<boolean> {
+async function legacyHasReviewEvent(db: D1Database, reviewId: string, eventType: string): Promise<boolean> {
   const record = await db
     .prepare(
       `SELECT 1
@@ -3308,7 +3328,7 @@ export async function hasReviewEvent(db: D1Database, reviewId: string, eventType
   return Boolean(record);
 }
 
-export async function replaceReviewFindings(
+async function legacyReplaceReviewFindings(
   db: D1Database,
   reviewId: string,
   findings: ReviewFinding[],
@@ -3352,7 +3372,7 @@ export async function replaceReviewFindings(
   }
 }
 
-export async function getHighestFindingNumberForBranch(
+async function legacyGetHighestFindingNumberForBranch(
   db: D1Database,
   repo: string,
   branch: string
@@ -3396,6 +3416,22 @@ export {
   upsertReviewCochangeCacheBatch,
   upsertWorkspaceDependencyCache,
 } from './db/caches.js';
+export {
+  appendReviewEvent,
+  claimReviewRunForExecution,
+  createReviewRun,
+  getHighestFindingNumberForBranch,
+  getReviewRun,
+  getReviewRunAccountId,
+  getReviewRunByIdempotency,
+  getReviewRunRequestPayload,
+  hasReviewEvent,
+  listReviewEvents,
+  listReviewRuns,
+  replaceReviewFindings,
+  updateReviewRunPolicy,
+  updateReviewRunStatus,
+} from './db/reviews.js';
 
 export async function updateWorkspaceDeploymentSummary(
   db: D1Database,
