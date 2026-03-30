@@ -1,28 +1,15 @@
 import * as p from '@clack/prompts';
 import { spawn } from 'child_process';
-import { once } from 'events';
-import { createReadStream, statSync } from 'fs';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'http';
-import { dirname, extname, join, resolve, sep } from 'path';
-import { fileURLToPath } from 'url';
-import { createProxyHeaders, createReviewEventsFanout, type ReviewEventsFanout } from './ui-events-fanout.js';
+import { createReviewEventsFanout } from './ui-events-fanout.js';
+import {
+  handleStaticRequest,
+  resolveMonorepoDistDir,
+  resolveMonorepoReportUiDir,
+  resolvePackagedDistDir,
+} from './ui-static.js';
 
 const LOCAL_HOST = '127.0.0.1';
-const MODULE_DIR = dirname(fileURLToPath(import.meta.url));
-
-const CONTENT_TYPES: Record<string, string> = {
-  '.css': 'text/css; charset=utf-8',
-  '.html': 'text/html; charset=utf-8',
-  '.ico': 'image/x-icon',
-  '.jpeg': 'image/jpeg',
-  '.jpg': 'image/jpeg',
-  '.js': 'application/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.map': 'application/json; charset=utf-8',
-  '.png': 'image/png',
-  '.svg': 'image/svg+xml; charset=utf-8',
-  '.txt': 'text/plain; charset=utf-8',
-};
 
 export interface UiServerSession {
   appUrl: string;
@@ -43,187 +30,6 @@ export function openBrowser(url: string): void {
     stdio: 'ignore',
   });
   child.unref();
-}
-
-function ensureFilePath(rootDir: string, requestPath: string): string | null {
-  const normalizedRoot = resolve(rootDir);
-  const candidate = resolve(normalizedRoot, `.${requestPath}`);
-  if (candidate !== normalizedRoot && !candidate.startsWith(`${normalizedRoot}${sep}`)) {
-    return null;
-  }
-  return candidate;
-}
-
-function fileExists(path: string): boolean {
-  try {
-    return statSync(path).isFile();
-  } catch {
-    return false;
-  }
-}
-
-function resolveStaticEntry(distDir: string, rawPathname: string): string | null {
-  let pathname = rawPathname;
-  try {
-    pathname = decodeURIComponent(rawPathname);
-  } catch {
-    pathname = rawPathname;
-  }
-
-  const indexPath = join(distDir, 'index.html');
-  if (pathname === '/' || pathname.startsWith('/reports/')) {
-    return fileExists(indexPath) ? indexPath : null;
-  }
-
-  const directFile = ensureFilePath(distDir, pathname);
-  if (directFile && fileExists(directFile)) {
-    return directFile;
-  }
-
-  if (!extname(pathname) && fileExists(indexPath)) {
-    return indexPath;
-  }
-
-  return null;
-}
-
-function contentTypeFor(path: string): string {
-  return CONTENT_TYPES[extname(path).toLowerCase()] ?? 'application/octet-stream';
-}
-
-async function readBody(request: IncomingMessage): Promise<Buffer> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    if (typeof chunk === 'string') {
-      chunks.push(Buffer.from(chunk));
-    } else {
-      chunks.push(chunk);
-    }
-  }
-  return Buffer.concat(chunks);
-}
-
-async function proxyApiRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  workerUrl: string,
-  apiKey: string | null,
-  reviewGithubToken: string | null,
-  openrouterApiKey: string | null
-): Promise<boolean> {
-  const requestUrl = new URL(request.url ?? '/', `http://${LOCAL_HOST}`);
-  if (!(requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/'))) {
-    return false;
-  }
-
-  const targetUrl = new URL(`${requestUrl.pathname}${requestUrl.search}`, workerUrl);
-  const method = (request.method ?? 'GET').toUpperCase();
-  const headers = createProxyHeaders(request.headers, {
-    apiKey,
-    reviewGithubToken,
-    openrouterApiKey,
-  });
-
-  const body = method === 'GET' || method === 'HEAD' ? undefined : await readBody(request);
-  const upstream = await fetch(targetUrl.toString(), {
-    method,
-    headers,
-    body,
-  });
-
-  response.statusCode = upstream.status;
-  response.statusMessage = upstream.statusText;
-  upstream.headers.forEach((value, key) => {
-    if (key.toLowerCase() === 'transfer-encoding') {
-      return;
-    }
-    response.setHeader(key, value);
-  });
-
-  if (!upstream.body || method === 'HEAD') {
-    response.end();
-    return true;
-  }
-
-  const reader = upstream.body.getReader();
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) {
-      break;
-    }
-    if (!value || value.byteLength === 0) {
-      continue;
-    }
-    if (!response.write(Buffer.from(value))) {
-      await once(response, 'drain');
-    }
-  }
-  response.end();
-  return true;
-}
-
-async function handleStaticRequest(
-  request: IncomingMessage,
-  response: ServerResponse,
-  options: {
-    distDir: string;
-    reviewEventsFanout: ReviewEventsFanout;
-    workerUrl: string;
-    apiKey: string | null;
-    reviewGithubToken: string | null;
-    openrouterApiKey: string | null;
-  }
-): Promise<void> {
-  try {
-    const handledReviewEvents = await options.reviewEventsFanout.handle(request, response);
-    if (handledReviewEvents) {
-      return;
-    }
-
-    const proxied = await proxyApiRequest(
-      request,
-      response,
-      options.workerUrl,
-      options.apiKey,
-      options.reviewGithubToken,
-      options.openrouterApiKey
-    );
-    if (proxied) {
-      return;
-    }
-
-    const requestUrl = new URL(request.url ?? '/', `http://${LOCAL_HOST}`);
-    const staticPath = resolveStaticEntry(options.distDir, requestUrl.pathname);
-    if (!staticPath) {
-      response.statusCode = 404;
-      response.setHeader('Content-Type', 'text/plain; charset=utf-8');
-      response.end('Not found');
-      return;
-    }
-
-    const stats = statSync(staticPath);
-    response.statusCode = 200;
-    response.setHeader('Content-Type', contentTypeFor(staticPath));
-    response.setHeader('Content-Length', String(stats.size));
-    if ((request.method ?? 'GET').toUpperCase() === 'HEAD') {
-      response.end();
-      return;
-    }
-
-    createReadStream(staticPath)
-      .on('error', () => {
-        if (!response.headersSent) {
-          response.statusCode = 500;
-          response.setHeader('Content-Type', 'text/plain; charset=utf-8');
-        }
-        response.end('Failed to read static file.');
-      })
-      .pipe(response);
-  } catch (error) {
-    response.statusCode = 502;
-    response.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    response.end(error instanceof Error ? error.message : 'Proxy error');
-  }
 }
 
 async function startStaticServer(options: {
@@ -265,40 +71,6 @@ async function startStaticServer(options: {
   });
 
   return server;
-}
-
-function resolvePackagedDistDir(): string | null {
-  const bundled = resolve(MODULE_DIR, '..', '..', '..', 'assets', 'report-ui');
-  if (fileExists(join(bundled, 'index.html'))) {
-    return bundled;
-  }
-  return null;
-}
-
-function resolveMonorepoDistDir(): string | null {
-  const candidates = [
-    resolve(process.cwd(), 'packages', 'report-ui', 'dist'),
-    resolve(MODULE_DIR, '..', '..', '..', '..', 'report-ui', 'dist'),
-  ];
-  for (const candidate of candidates) {
-    if (fileExists(join(candidate, 'index.html'))) {
-      return candidate;
-    }
-  }
-  return null;
-}
-
-function resolveMonorepoReportUiDir(): string | null {
-  const candidates = [
-    resolve(process.cwd(), 'packages', 'report-ui'),
-    resolve(MODULE_DIR, '..', '..', '..', '..', 'report-ui'),
-  ];
-  for (const candidate of candidates) {
-    if (fileExists(join(candidate, 'package.json'))) {
-      return candidate;
-    }
-  }
-  return null;
 }
 
 async function waitForServer(url: string, server: ReturnType<typeof spawn>, timeoutMs: number): Promise<void> {

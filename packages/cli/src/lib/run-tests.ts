@@ -18,6 +18,7 @@ import { runAdminProvisionKeyCommandTests } from '../commands/admin/provision-ke
 import { runJobListAppTests } from '../app/jobs/list.test.js';
 import { runJobWatchAppTests } from '../app/jobs/watch.test.js';
 import { runReviewUiSessionTests } from '../app/reviews/session.test.js';
+import { runReviewUiStaticTests } from '../app/reviews/ui-static.test.js';
 
 type TestCase = {
   name: string;
@@ -44,6 +45,7 @@ const TEST_CASES: TestCase[] = [
   { name: 'jobs-list-app', run: runJobListAppTests },
   { name: 'jobs-watch-app', run: runJobWatchAppTests },
   { name: 'review-ui-session', run: runReviewUiSessionTests },
+  { name: 'review-ui-static', run: runReviewUiStaticTests },
   { name: 'checkpoint-options', run: runCheckpointOptionsTests },
 ];
 
