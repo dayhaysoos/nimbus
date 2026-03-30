@@ -1,0 +1,802 @@
+import type { AuthContext, Env, ReviewApprovedPolicy, ReviewRunStatus, ReviewSessionIntentSummary } from '../../types.js';
+import {
+  appendReviewEvent,
+  getReviewRunAccountId,
+  getReviewRunRequestPayload,
+  getWorkspaceAccountId,
+  updateReviewRunStatus,
+} from '../../lib/db.js';
+import { createReviewQueueMessage } from '../../lib/review-queue.js';
+import { canAccessAccount } from '../../lib/authz.js';
+import { extractPolicyItemsFromIntentContext } from '../../lib/review-redaction.js';
+
+export const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',
+};
+
+export const REVIEW_STREAM_POLL_INTERVAL_MS = 1000;
+export const REVIEW_STREAM_HEARTBEAT_INTERVAL_MS = 1000;
+export const REVIEW_TERMINAL_EVENT_GRACE_MS = 1000;
+export const REVIEW_STREAM_STATUS_REFRESH_POLLS = 5;
+const REVIEW_STALE_RUNNING_GRACE_MS = 60_000;
+export const REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS = 120_000;
+
+function parseTimeoutMs(value: string | undefined, fallback: number): number {
+  if (typeof value !== 'string') {
+    return fallback;
+  }
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return fallback;
+  }
+  return parsed;
+}
+
+function parseMaxRetryCount(value: string | undefined, fallbackAttempts: number): number {
+  const parsedAttempts = Number.parseInt(value ?? '', 10);
+  const attempts = Number.isFinite(parsedAttempts) && parsedAttempts > 0 ? parsedAttempts : fallbackAttempts;
+  return Math.max(0, attempts - 1);
+}
+
+function hasLocalCochangeProvenance(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return false;
+  }
+  const record = payload as Record<string, unknown>;
+  const provenance = record.provenance;
+  if (!provenance || typeof provenance !== 'object' || Array.isArray(provenance)) {
+    return false;
+  }
+  const localCochange = (provenance as Record<string, unknown>).localCochange;
+  if (!localCochange || typeof localCochange !== 'object' || Array.isArray(localCochange)) {
+    return false;
+  }
+  const candidate = localCochange as Record<string, unknown>;
+  if (candidate.source !== 'local_git') {
+    return false;
+  }
+  if (!Object.prototype.hasOwnProperty.call(candidate, 'relatedByChangedPath')) {
+    return false;
+  }
+  const relatedByChangedPath = candidate.relatedByChangedPath;
+  return Boolean(relatedByChangedPath !== null && typeof relatedByChangedPath === 'object' && !Array.isArray(relatedByChangedPath));
+}
+
+function isValidScopedGithubToken(value: string): boolean {
+  const token = value.trim();
+  if (!token) {
+    return false;
+  }
+  return /^(ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})$/.test(token);
+}
+
+export async function recoverStaleRunningReviewIfNeeded(
+  env: Env,
+  reviewId: string,
+  review: { status: ReviewRunStatus; startedAt: string | null; updatedAt: string; createdAt: string; attemptCount: number },
+  cochangeGithubToken?: string | null,
+  openrouterApiKey?: string | null,
+  options?: { markFailedWhenRetryUnavailable?: boolean; noAuthTerminalGraceMs?: number }
+): Promise<void> {
+  if (review.status !== 'running') {
+    return;
+  }
+  const attemptTimeoutMs = parseTimeoutMs(env.ATTEMPT_TIMEOUT_MS, 600_000);
+  const staleThresholdMs = attemptTimeoutMs + REVIEW_STALE_RUNNING_GRACE_MS;
+  const startedMs = Date.parse(review.startedAt ?? review.updatedAt ?? review.createdAt);
+  if (!Number.isFinite(startedMs)) {
+    return;
+  }
+  const staleForMs = Date.now() - startedMs;
+  if (staleForMs < staleThresholdMs) {
+    return;
+  }
+
+  const maxRetries = parseMaxRetryCount(env.MAX_ATTEMPTS, 3);
+  const requestPayload = await getReviewRunRequestPayload(env.DB, reviewId);
+  const canRetryWithoutGithubToken = hasLocalCochangeProvenance(requestPayload);
+  const rawScopedToken = typeof cochangeGithubToken === 'string' && cochangeGithubToken.trim() ? cochangeGithubToken.trim() : null;
+  const scopedGithubToken = rawScopedToken && isValidScopedGithubToken(rawScopedToken) ? rawScopedToken : null;
+  const hasInvalidScopedToken = Boolean(rawScopedToken) && !scopedGithubToken;
+  if (review.attemptCount <= maxRetries && env.REVIEWS_QUEUE && (scopedGithubToken || canRetryWithoutGithubToken)) {
+    await updateReviewRunStatus(env.DB, reviewId, 'queued', {
+      report: null,
+      markdownSummary: null,
+      startedAt: null,
+      finishedAt: null,
+      errorCode: 'retry_scheduled',
+      errorMessage: `Review execution stalled in running state for ${Math.floor(staleForMs / 1000)}s.`,
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_retry_scheduled',
+      payload: {
+        attemptCount: review.attemptCount,
+        maxRetries,
+        reason: 'stale_running_timeout',
+        staleForSeconds: Math.floor(staleForMs / 1000),
+        authMode: scopedGithubToken ? 'scoped_request_token' : 'local_cochange_only',
+      },
+    });
+    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, scopedGithubToken, openrouterApiKey));
+    return;
+  }
+
+  if (options?.markFailedWhenRetryUnavailable === false) {
+    const noAuthTerminalGraceMs =
+      typeof options.noAuthTerminalGraceMs === 'number' && options.noAuthTerminalGraceMs >= 0
+        ? options.noAuthTerminalGraceMs
+        : REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS;
+    if (staleForMs < staleThresholdMs + noAuthTerminalGraceMs) {
+      return;
+    }
+  }
+
+  const missingTokenSuffix =
+    !scopedGithubToken && !canRetryWithoutGithubToken
+      ? ' No retry was scheduled because a fresh scoped GitHub token was not provided. Re-run review creation with X-Review-Github-Token (CLI: set REVIEW_CONTEXT_GITHUB_TOKEN).'
+      : '';
+  const invalidTokenSuffix = hasInvalidScopedToken
+    ? ' No retry was scheduled because the provided scoped GitHub token format is invalid.'
+    : '';
+  const retriesExhaustedSuffix = review.attemptCount > maxRetries ? ' No retry was scheduled because max retry attempts were exhausted.' : '';
+  const message = `Review execution timed out after ${Math.floor(staleForMs / 1000)}s in running state.${missingTokenSuffix}${invalidTokenSuffix}${retriesExhaustedSuffix}`;
+  await updateReviewRunStatus(env.DB, reviewId, 'failed', {
+    report: null,
+    markdownSummary: null,
+    errorCode: 'review_execution_timeout',
+    errorMessage: message,
+  });
+  await appendReviewEvent(env.DB, {
+    reviewId,
+    eventType: 'review_failed',
+    payload: {
+      code: 'review_execution_timeout',
+      message,
+    },
+  });
+}
+
+export async function validateRecoveredReviewRetryAuth(
+  env: Env,
+  reviewId: string,
+  shouldReenqueueRecoveredReview: boolean,
+  reviewGithubToken: string | null
+): Promise<Response | null> {
+  if (!shouldReenqueueRecoveredReview) {
+    return null;
+  }
+
+  if (reviewGithubToken && !isValidScopedGithubToken(reviewGithubToken)) {
+    return jsonResponse(
+      {
+        error: 'Scoped GitHub token format is invalid for retry. Expected ghp_* or github_pat_* token.',
+        code: 'invalid_token_format',
+      },
+      409
+    );
+  }
+
+  if (reviewGithubToken) {
+    return null;
+  }
+
+  const storedRequestPayload = await getReviewRunRequestPayload(env.DB, reviewId);
+  if (hasLocalCochangeProvenance(storedRequestPayload)) {
+    return null;
+  }
+
+  return jsonResponse(
+    {
+      error:
+        'Scoped GitHub token required for retry. Provide X-Review-Github-Token (CLI: set REVIEW_CONTEXT_GITHUB_TOKEN) when re-queueing recovered reviews without local co-change provenance.',
+      code: 'review_context_github_token_missing',
+    },
+    409
+  );
+}
+
+export function jsonResponse(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'Content-Type': 'application/json', ...corsHeaders },
+  });
+}
+
+export async function requireWorkspaceAccess(env: Env, workspaceId: string, authContext: AuthContext): Promise<Response | null> {
+  const accountId = await getWorkspaceAccountId(env.DB, workspaceId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Workspace not found' }, 404);
+  }
+  return null;
+}
+
+export async function requireReviewAccess(env: Env, reviewId: string, authContext: AuthContext): Promise<Response | null> {
+  const accountId = await getReviewRunAccountId(env.DB, reviewId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Review not found' }, 404);
+  }
+  return null;
+}
+
+export function formatSseData(payload: unknown): string {
+  return `data: ${JSON.stringify(payload)}\n\n`;
+}
+
+export function formatSseDataWithId(seq: number, payload: unknown): string {
+  return `id: ${seq}\ndata: ${JSON.stringify(payload)}\n\n`;
+}
+
+export function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function resolveFromSequence(request: Request): number {
+  const url = new URL(request.url);
+  const fromParam = Number.parseInt(url.searchParams.get('from') ?? '', 10);
+  const lastEventId = Number.parseInt(request.headers.get('Last-Event-ID') ?? '', 10);
+
+  if (Number.isFinite(lastEventId) && lastEventId >= 0) {
+    return lastEventId;
+  }
+  if (Number.isFinite(fromParam) && fromParam >= 0) {
+    return fromParam;
+  }
+  return 0;
+}
+
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function isSeverityThreshold(value: unknown): value is 'low' | 'medium' | 'high' | 'critical' {
+  return value === 'low' || value === 'medium' || value === 'high' || value === 'critical';
+}
+
+function normalizeLocalCochange(value: unknown): {
+  source: 'local_git';
+  checkpointsRef: string;
+  lookbackSessions: number;
+  topN: number;
+  sessionsScanned: number;
+  relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
+} | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const source = typeof value.source === 'string' && value.source.trim() ? value.source.trim() : null;
+  if (source !== 'local_git') {
+    return null;
+  }
+  const checkpointsRef =
+    typeof value.checkpointsRef === 'string' && value.checkpointsRef.trim()
+      ? value.checkpointsRef.trim().slice(0, 256)
+      : 'entire/checkpoints/v1';
+  const lookbackSessions =
+    typeof value.lookbackSessions === 'number' && Number.isFinite(value.lookbackSessions)
+      ? Math.max(1, Math.min(50, Math.floor(value.lookbackSessions)))
+      : 5;
+  const topN =
+    typeof value.topN === 'number' && Number.isFinite(value.topN)
+      ? Math.max(1, Math.min(100, Math.floor(value.topN)))
+      : 20;
+  const sessionsScanned =
+    typeof value.sessionsScanned === 'number' && Number.isFinite(value.sessionsScanned)
+      ? Math.max(0, Math.min(200, Math.floor(value.sessionsScanned)))
+      : 0;
+
+  const relatedByChangedPathRaw = isRecord(value.relatedByChangedPath) ? value.relatedByChangedPath : null;
+  if (!relatedByChangedPathRaw) {
+    return null;
+  }
+
+  const relatedByChangedPath = Object.entries(relatedByChangedPathRaw)
+    .slice(0, 400)
+    .reduce<Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>>((acc, [changedPath, entries]) => {
+      const key = changedPath.trim();
+      if (!key || !Array.isArray(entries)) {
+        return acc;
+      }
+      const normalizedEntries = entries
+        .slice(0, 400)
+        .flatMap((entry) => {
+          if (!isRecord(entry)) {
+            return [];
+          }
+          const path = typeof entry.path === 'string' ? entry.path.trim() : '';
+          const frequency =
+            typeof entry.frequency === 'number' && Number.isFinite(entry.frequency)
+              ? Math.max(0, Math.floor(entry.frequency))
+              : 0;
+          const sessionIds = Array.isArray(entry.sessionIds)
+            ? Array.from(
+                new Set(
+                  entry.sessionIds
+                    .filter((item): item is string => typeof item === 'string')
+                    .map((item) => item.trim())
+                    .filter(Boolean)
+                    .slice(0, 40)
+                )
+              )
+            : [];
+          if (!path || frequency <= 0) {
+            return [];
+          }
+          return [{ path, frequency, sessionIds }];
+        })
+        .sort((left, right) => right.frequency - left.frequency)
+        .slice(0, topN);
+      acc[key] = normalizedEntries;
+      return acc;
+    }, {});
+
+  return {
+    source: 'local_git',
+    checkpointsRef,
+    lookbackSessions,
+    topN,
+    sessionsScanned,
+    relatedByChangedPath,
+  };
+}
+
+export function normalizeRepoSlug(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined;
+  }
+  if (value.length > 255) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return undefined;
+  }
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed) ? trimmed : undefined;
+}
+
+export function normalizeBranchRef(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim()) {
+    return undefined;
+  }
+  if (value.length > 255) {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+export function normalizeIntentSummaryModel(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 120) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+export function readReviewGithubTokenHeader(request: Request): string | null {
+  const value = request.headers.get('X-Review-Github-Token');
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+export function readOpenrouterApiKeyHeader(request: Request): string | null {
+  const value = request.headers.get('X-Openrouter-Api-Key');
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+export function stripSensitiveTokenFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripSensitiveTokenFields(item));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+  const record = value as Record<string, unknown>;
+  return Object.entries(record).reduce<Record<string, unknown>>((result, [key, nested]) => {
+    const normalizedKey = key.toLowerCase();
+    if (
+      normalizedKey === 'x-review-github-token' ||
+      normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'x-openrouter-api-key' ||
+      normalizedKey === 'openrouter_api_key' ||
+      normalizedKey === 'authorization'
+    ) {
+      return result;
+    }
+    result[key] = stripSensitiveTokenFields(nested);
+    return result;
+  }, {});
+}
+
+export function withSortedKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => withSortedKeys(item));
+  }
+  if (!value || typeof value !== 'object') {
+    return value;
+  }
+
+  const record = value as Record<string, unknown>;
+  return Object.keys(record)
+    .sort()
+    .reduce<Record<string, unknown>>((result, key) => {
+      result[key] = withSortedKeys(record[key]);
+      return result;
+    }, {});
+}
+
+function normalizeStringList(value: unknown, maxItems = 20): string[] {
+  return Array.isArray(value)
+    ? Array.from(
+        new Set(
+          value
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      ).slice(0, maxItems)
+    : [];
+}
+
+function normalizePolicySentence(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function extractChangedPathsFromPatch(value: unknown, maxItems = 5): string[] {
+  if (typeof value !== 'string' || !value.trim()) {
+    return [];
+  }
+  const matches = value.matchAll(/^diff --git a\/[^\n\r]+ b\/([^\n\r]+)$/gm);
+  const paths = Array.from(matches, (match) => normalizePolicySentence(match[1] ?? ''))
+    .filter(Boolean)
+    .filter((path) => path !== '/dev/null');
+  return Array.from(new Set(paths)).slice(0, maxItems);
+}
+
+function extractPolicyHintsFromProvenance(provenance: Record<string, unknown>): {
+  goal: string | null;
+  prohibitions: string[];
+  constraints: string[];
+} {
+  const intentSessionContext = Array.isArray(provenance.intentSessionContext)
+    ? provenance.intentSessionContext
+        .filter((item): item is string => typeof item === 'string')
+        .map((item) => item.trim())
+        .filter(Boolean)
+    : [];
+
+  const goalCandidates: string[] = [];
+  const prohibitions: string[] = [];
+  const constraints: string[] = [];
+
+  for (const line of intentSessionContext) {
+    const goalMatch = line.match(/^goal\s*signal\s*:\s*(.+)$/i);
+    if (goalMatch) {
+      const goalText = normalizePolicySentence(goalMatch[1] ?? '');
+      if (goalText && !/^you are a code reviewer\b/i.test(goalText)) {
+        goalCandidates.push(goalText);
+      }
+      continue;
+    }
+
+    const prohibitionMatch = line.match(/^prohibition\s*:\s*(.+)$/i);
+    if (prohibitionMatch) {
+      const text = normalizePolicySentence(prohibitionMatch[1] ?? '');
+      if (text) {
+        prohibitions.push(text);
+      }
+      continue;
+    }
+
+    const constraintMatch = line.match(/^constraint\s*:\s*(.+)$/i);
+    if (constraintMatch) {
+      const text = normalizePolicySentence(constraintMatch[1] ?? '');
+      if (text) {
+        constraints.push(text);
+      }
+    }
+  }
+
+  if (prohibitions.length === 0 || constraints.length === 0) {
+    const policyHints = extractPolicyItemsFromIntentContext(intentSessionContext);
+    for (const hint of policyHints) {
+      if (/^prohibition\s*:/i.test(hint)) {
+        const text = normalizePolicySentence(hint.replace(/^prohibition\s*:\s*/i, ''));
+        if (text) {
+          prohibitions.push(text);
+        }
+        continue;
+      }
+    }
+  }
+
+  const rawSessionPrompts = typeof provenance.rawSessionPrompts === 'string' ? provenance.rawSessionPrompts : '';
+  const rawLines = rawSessionPrompts
+    .split(/\r?\n/)
+    .map((line) => normalizePolicySentence(line))
+    .filter(Boolean);
+  if (prohibitions.length === 0) {
+    for (const line of rawLines) {
+      if (/(?:\bdo not\b|\bdon't\b|\bmust not\b|\bnever\b|\bavoid\b)/i.test(line)) {
+        prohibitions.push(line);
+      }
+    }
+  }
+  if (constraints.length === 0) {
+    for (const line of rawLines) {
+      if (/(?:\bfocus on\b|\bprefer\b|\bensure\b|\bkeep\b|\brequire\b|\bshould\b)/i.test(line)) {
+        constraints.push(line);
+      }
+    }
+  }
+
+  if (constraints.length === 0) {
+    const changedPaths = extractChangedPathsFromPatch(provenance.commitDiffPatch, 5);
+    for (const path of changedPaths) {
+      constraints.push(`Prioritize review coverage for changed file: ${path}`);
+    }
+  }
+
+  return {
+    goal: goalCandidates[0] ?? null,
+    prohibitions: normalizeStringList(prohibitions, 5),
+    constraints: normalizeStringList(constraints, 5),
+  };
+}
+
+export function normalizeReviewPolicy(value: unknown): ReviewApprovedPolicy | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  const goal = typeof value.goal === 'string' && value.goal.trim() ? value.goal.trim() : null;
+  const policy: ReviewApprovedPolicy = {
+    goal,
+    prohibitions: normalizeStringList(value.prohibitions),
+    constraints: normalizeStringList(value.constraints),
+  };
+
+  if (!policy.goal && policy.prohibitions.length === 0 && policy.constraints.length === 0) {
+    return null;
+  }
+
+  return policy;
+}
+
+export function policyFromIntentSummary(summary: ReviewSessionIntentSummary | null): ReviewApprovedPolicy | null {
+  if (!summary) {
+    return null;
+  }
+
+  return normalizeReviewPolicy({
+    goal: summary.goal,
+    prohibitions: summary.prohibitions,
+    constraints: summary.constraints,
+  });
+}
+
+export function intentSummaryFromPolicy(policy: ReviewApprovedPolicy): ReviewSessionIntentSummary {
+  return {
+    goal: policy.goal,
+    prohibitions: policy.prohibitions,
+    constraints: policy.constraints,
+  };
+}
+
+export function fallbackDerivedPolicy(input: {
+  workspaceId: string;
+  deploymentId: string;
+  provenance: Record<string, unknown>;
+}): ReviewApprovedPolicy {
+  const hints = extractPolicyHintsFromProvenance(input.provenance);
+  const note = typeof input.provenance.note === 'string' && input.provenance.note.trim() ? input.provenance.note.trim() : null;
+  const goal = hints.goal ?? note ?? `Review deployment ${input.deploymentId} for workspace ${input.workspaceId}.`;
+  return (
+    normalizeReviewPolicy({
+      goal,
+      prohibitions: hints.prohibitions,
+      constraints: hints.constraints,
+    }) ?? {
+      goal,
+      prohibitions: [],
+      constraints: [],
+    }
+  );
+}
+
+export function isReviewStatusActive(status: ReviewRunStatus): boolean {
+  return (
+    status === 'policy_pending' ||
+    status === 'policy_ready' ||
+    status === 'policy_approved' ||
+    status === 'queued' ||
+    status === 'running'
+  );
+}
+
+export function buildReviewRequestPayload(input: {
+  workspaceId: string;
+  deploymentId: string;
+  policy: Record<string, unknown>;
+  format: Record<string, unknown>;
+  provenance: Record<string, unknown>;
+  repo: string;
+  branch: string;
+  model: string | undefined;
+}) {
+  const note = typeof input.provenance.note === 'string' && input.provenance.note.trim()
+    ? input.provenance.note.trim()
+    : null;
+  const transcriptUrl = typeof input.provenance.transcriptUrl === 'string' && input.provenance.transcriptUrl.trim()
+    ? input.provenance.transcriptUrl.trim()
+    : null;
+  const sessionIds = Array.isArray(input.provenance.sessionIds)
+    ? Array.from(new Set(input.provenance.sessionIds.filter((item): item is string => typeof item === 'string').map((item) => item.trim()).filter(Boolean)))
+    : [];
+  const intentSessionContext = Array.isArray(input.provenance.intentSessionContext)
+    ? Array.from(
+        new Set(
+          input.provenance.intentSessionContext
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+        )
+      )
+    : [];
+  const rawSessionPrompts =
+    typeof input.provenance.rawSessionPrompts === 'string' && input.provenance.rawSessionPrompts.trim()
+      ? input.provenance.rawSessionPrompts.trim().slice(0, 6000)
+      : null;
+  const intentSummaryModel = normalizeIntentSummaryModel(input.provenance.intentSummaryModel);
+  const commitSha = typeof input.provenance.commitSha === 'string' && input.provenance.commitSha.trim()
+    ? input.provenance.commitSha.trim()
+    : undefined;
+  const commitDiffPatch = typeof input.provenance.commitDiffPatch === 'string' && input.provenance.commitDiffPatch.trim()
+    ? input.provenance.commitDiffPatch
+    : undefined;
+  const commitDiffPatchSha256 =
+    typeof input.provenance.commitDiffPatchSha256 === 'string' && input.provenance.commitDiffPatchSha256.trim()
+      ? input.provenance.commitDiffPatchSha256.trim()
+      : undefined;
+  const commitDiffPatchTruncated = input.provenance.commitDiffPatchTruncated === true;
+  const commitDiffPatchOriginalChars =
+    typeof input.provenance.commitDiffPatchOriginalChars === 'number' && Number.isFinite(input.provenance.commitDiffPatchOriginalChars)
+      ? Math.max(0, Math.floor(input.provenance.commitDiffPatchOriginalChars))
+      : undefined;
+  const contextResolution =
+    input.provenance.contextResolution === 'branch_fallback' || input.provenance.contextResolution === 'direct'
+      ? input.provenance.contextResolution
+      : undefined;
+  const contextResolutionOriginalCheckpointId =
+    typeof input.provenance.contextResolutionOriginalCheckpointId === 'string' &&
+    input.provenance.contextResolutionOriginalCheckpointId.trim()
+      ? input.provenance.contextResolutionOriginalCheckpointId.trim()
+      : undefined;
+  const contextResolutionResolvedCheckpointId =
+    typeof input.provenance.contextResolutionResolvedCheckpointId === 'string' &&
+    input.provenance.contextResolutionResolvedCheckpointId.trim()
+      ? input.provenance.contextResolutionResolvedCheckpointId.trim()
+      : undefined;
+  const contextResolutionResolvedCommitSha =
+    typeof input.provenance.contextResolutionResolvedCommitSha === 'string' &&
+    input.provenance.contextResolutionResolvedCommitSha.trim()
+      ? input.provenance.contextResolutionResolvedCommitSha.trim()
+      : undefined;
+  const contextResolutionResolvedCommitMessage =
+    typeof input.provenance.contextResolutionResolvedCommitMessage === 'string' &&
+    input.provenance.contextResolutionResolvedCommitMessage.trim()
+      ? input.provenance.contextResolutionResolvedCommitMessage.trim()
+      : undefined;
+  const localCochange = normalizeLocalCochange(input.provenance.localCochange);
+  const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
+
+  const normalized = {
+    target: {
+      type: 'workspace_deployment' as const,
+      workspaceId: input.workspaceId,
+      deploymentId: input.deploymentId,
+    },
+    mode: 'report_only' as const,
+    policy: {
+      severityThreshold:
+        typeof input.policy.severityThreshold === 'string' && input.policy.severityThreshold.trim()
+          ? input.policy.severityThreshold.trim()
+          : 'low',
+      maxFindings: typeof input.policy.maxFindings === 'number' && Number.isFinite(input.policy.maxFindings)
+        ? Math.max(1, Math.min(500, Math.floor(input.policy.maxFindings)))
+        : 100,
+      includeProvenance: input.policy.includeProvenance !== false,
+      includeValidationEvidence: input.policy.includeValidationEvidence !== false,
+    },
+    format: {
+      primary: typeof input.format.primary === 'string' && input.format.primary.trim() ? input.format.primary.trim() : 'json',
+      includeMarkdownSummary: input.format.includeMarkdownSummary !== false,
+    },
+    provenance: {
+      trigger: 'api',
+      ...(note ? { note } : {}),
+      ...(transcriptUrl ? { transcriptUrl } : {}),
+      ...(sessionIds.length > 0 ? { sessionIds } : {}),
+      ...(intentSessionContext.length > 0 ? { intentSessionContext } : {}),
+      ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
+      ...(intentSummaryModel ? { intentSummaryModel } : {}),
+      ...(commitSha ? { commitSha } : {}),
+      ...(commitDiffPatch ? { commitDiffPatch } : {}),
+      ...(commitDiffPatchSha256 ? { commitDiffPatchSha256 } : {}),
+      ...(commitDiffPatchTruncated ? { commitDiffPatchTruncated } : {}),
+      ...(typeof commitDiffPatchOriginalChars === 'number' ? { commitDiffPatchOriginalChars } : {}),
+      ...(contextResolution ? { contextResolution } : {}),
+      ...(contextResolutionOriginalCheckpointId ? { contextResolutionOriginalCheckpointId } : {}),
+      ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),
+      ...(contextResolutionResolvedCommitSha ? { contextResolutionResolvedCommitSha } : {}),
+      ...(contextResolutionResolvedCommitMessage ? { contextResolutionResolvedCommitMessage } : {}),
+      repo: input.repo,
+      branch: input.branch,
+      ...(localCochange ? { localCochange } : {}),
+    },
+    ...(model ? { model } : {}),
+  };
+
+  const idempotencyPayload: Record<string, unknown> = {
+    target: normalized.target,
+    mode: normalized.mode,
+    provenance: normalized.provenance,
+  };
+
+  if (normalized.policy.severityThreshold !== 'low') {
+    idempotencyPayload.policy = {
+      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
+      severityThreshold: normalized.policy.severityThreshold,
+    };
+  }
+  if (normalized.policy.maxFindings !== 100) {
+    idempotencyPayload.policy = {
+      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
+      maxFindings: normalized.policy.maxFindings,
+    };
+  }
+  if (normalized.policy.includeProvenance !== true) {
+    idempotencyPayload.policy = {
+      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
+      includeProvenance: normalized.policy.includeProvenance,
+    };
+  }
+  if (normalized.policy.includeValidationEvidence !== true) {
+    idempotencyPayload.policy = {
+      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
+      includeValidationEvidence: normalized.policy.includeValidationEvidence,
+    };
+  }
+  if (normalized.format.primary !== 'json') {
+    idempotencyPayload.format = {
+      ...(idempotencyPayload.format as Record<string, unknown> | undefined),
+      primary: normalized.format.primary,
+    };
+  }
+  if (normalized.format.includeMarkdownSummary !== true) {
+    idempotencyPayload.format = {
+      ...(idempotencyPayload.format as Record<string, unknown> | undefined),
+      includeMarkdownSummary: normalized.format.includeMarkdownSummary,
+    };
+  }
+  if (normalized.model) {
+    idempotencyPayload.model = normalized.model;
+  }
+
+  return {
+    requestPayload: normalized,
+    idempotencyPayload: withSortedKeys(idempotencyPayload),
+  };
+}
+
+export async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
