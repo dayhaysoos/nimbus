@@ -1,23 +1,19 @@
 import { Route, Routes } from 'react-router-dom';
 import { ReportPage } from './components/ReportPage';
 import { PolicyPage } from './components/PolicyPage';
+import { ReviewHistoryPage } from './components/ReviewHistoryPage';
+import { BranchReviewsPage } from './components/BranchReviewsPage';
 
 export function App(): JSX.Element {
   return (
     <Routes>
+      <Route path="/" element={<ReviewHistoryPage />} />
+      <Route path="/branches/:repo/:branch" element={<BranchReviewsPage />} />
+      <Route path="/branches/:repo/:branch/reports/:reviewId" element={<ReportPage />} />
+      <Route path="/branches/:repo/:branch/policy/:reviewId" element={<PolicyPage />} />
       <Route path="/policy/:reviewId" element={<PolicyPage />} />
       <Route path="/reports/:reviewId" element={<ReportPage />} />
-      <Route
-        path="*"
-        element={
-          <main className="page">
-            <section className="card status-card">
-              <h1>Nimbus Report Viewer</h1>
-              <p>Open a report URL in the format /reports/&lt;reviewId&gt;.</p>
-            </section>
-          </main>
-        }
-      />
+      <Route path="*" element={<ReviewHistoryPage />} />
     </Routes>
   );
 }

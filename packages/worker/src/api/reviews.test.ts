@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { handleCreateReview, handleGetReview, handleGetReviewEvents } from './reviews.js';
+import { handleCreateReview, handleGetReview, handleGetReviewEvents, handleListReviews } from './reviews.js';
 
 function withRequiredProvenance(payload: Record<string, unknown>): Record<string, unknown> {
   const provenance =
@@ -37,6 +37,7 @@ function createReviewApiEnv(options?: {
   workerReviewGithubToken?: string;
   workspaceAccountId?: string | null;
   storedReviewRequestPayload?: Record<string, unknown>;
+  reviewListRows?: Array<Record<string, unknown>>;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -337,6 +338,50 @@ function createReviewApiEnv(options?: {
                     created_at: '2026-03-11T00:00:00.000Z',
                     updated_at: '2026-03-11T00:00:00.000Z',
                   } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+ORDER BY created_at DESC\s+LIMIT \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async all<T>() {
+                  return {
+                    results:
+                      options?.reviewListRows ??
+                      [
+                        {
+                          id: 'rev_list_1',
+                          workspace_id: 'ws_abc12345',
+                          deployment_id: 'dep_abcd1234',
+                          target_type: 'workspace_deployment',
+                          mode: 'report_only',
+                          status: 'queued',
+                          idempotency_key: 'idem-review',
+                          request_payload_json: '{}',
+                          request_payload_sha256: 'hash',
+                          provenance_json: '{}',
+                          repo: 'dayhaysoos/nimbus',
+                          branch: 'main',
+                          derived_policy_json: null,
+                          approved_policy_json: null,
+                          approved_policy_sha256: null,
+                          last_event_seq: 1,
+                          attempt_count: 0,
+                          started_at: null,
+                          finished_at: null,
+                          report_json: null,
+                          markdown_summary: null,
+                          error_code: null,
+                          error_message: null,
+                          created_at: '2026-03-11T00:00:00.000Z',
+                          updated_at: '2026-03-11T00:00:00.000Z',
+                        },
+                      ],
+                  } as unknown as T;
                 },
               };
             },
@@ -1177,6 +1222,24 @@ export async function runReviewApiTests(): Promise<void> {
     assert.match(text, /"type":"snapshot"/);
     assert.match(text, /"type":"review_succeeded"/);
     assert.match(text, /"type":"terminal"/);
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const response = await handleListReviews(new Request('https://example.com/api/reviews?limit=10'), env as never);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    const reviews = Array.isArray(body.reviews) ? body.reviews : [];
+    assert.equal(reviews.length, 1);
+    assert.equal((reviews[0] as Record<string, unknown>).id, 'rev_list_1');
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const response = await handleListReviews(new Request('https://example.com/api/reviews?repo=invalid_repo'), env as never);
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'invalid_review_query');
   }
 
   {

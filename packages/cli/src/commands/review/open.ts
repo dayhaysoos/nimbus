@@ -50,6 +50,10 @@ export interface OpenReviewFromCommitOptions {
   pollIntervalMs?: number;
 }
 
+export interface StartReviewUiOptions {
+  port?: number;
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolvePromise) => setTimeout(resolvePromise, ms));
 }
@@ -914,6 +918,65 @@ export async function openReviewFromCommitCommand(options?: OpenReviewFromCommit
       p.log.success(`Review completed: ${status}`);
     } else {
       p.log.warning(`Review completed: ${status}`);
+    }
+  } finally {
+    process.off('SIGINT', handleSignal);
+    process.off('SIGTERM', handleSignal);
+    await shutdown();
+    p.outro('Report UI stopped.');
+  }
+}
+
+export async function startReviewUiCommand(options?: StartReviewUiOptions): Promise<void> {
+  const port = options?.port ?? DEFAULT_OPEN_PORT;
+  if (!Number.isInteger(port) || port <= 0 || port > 65535) {
+    throw new Error('Invalid port. Use an integer between 1 and 65535.');
+  }
+
+  const workerUrl = getWorkerUrl();
+  const apiKey = process.env.NIMBUS_API_KEY?.trim() ?? null;
+  const reviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN?.trim() ?? null;
+  const openrouterApiKey = process.env.OPENROUTER_API_KEY?.trim() ?? null;
+
+  if (!apiKey) {
+    p.log.warning('NIMBUS_API_KEY is not set. Hosted worker requests may be rejected as unauthenticated.');
+  }
+
+  const uiSession = await startReportUiSession({
+    routePath: '/',
+    port,
+    workerUrl,
+    apiKey,
+    reviewGithubToken,
+    openrouterApiKey,
+  });
+
+  openBrowser(uiSession.appUrl);
+  p.log.success(`Opened ${uiSession.appUrl}`);
+  p.log.message('Report UI server running; press Ctrl+C to stop.');
+
+  let interrupted = false;
+  let shuttingDown = false;
+  const shutdown = async () => {
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
+    await uiSession.close().catch(() => undefined);
+  };
+  const handleSignal = () => {
+    interrupted = true;
+    void shutdown();
+  };
+
+  process.on('SIGINT', handleSignal);
+  process.on('SIGTERM', handleSignal);
+
+  try {
+    await uiSession.waitForExit();
+  } catch (error) {
+    if (!interrupted) {
+      throw error;
     }
   } finally {
     process.off('SIGINT', handleSignal);

@@ -1,11 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { parseGetReviewResponse } from '../lib/review';
 import type { GetReviewResponse, ReviewPolicyDraft, ReviewResponse } from '../types';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { cn } from '@/lib/utils';
+import { Button } from './ui/button';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/card';
+import { Input } from './ui/input';
+import { cn } from '../lib/utils';
 
 const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 
@@ -49,20 +49,11 @@ function normalizeEditablePolicy(policy: EditablePolicy): ReviewPolicyDraft {
   };
 }
 
-function StatusLayout({ children }: { children: React.ReactNode }): JSX.Element {
+function StatusLayout({ children }: { children: ReactNode }): JSX.Element {
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-3xl items-center justify-center px-5 py-12">
+    <main className="mx-auto flex min-h-screen w-full max-w-[1400px] items-center justify-center px-3 py-4">
       <div className="w-full">{children}</div>
     </main>
-  );
-}
-
-function ClauseHeader({ number, label }: { number: string; label: string }): JSX.Element {
-  return (
-    <div className="flex items-center gap-3 mb-1">
-      <span className="policy-clause-number">{number}</span>
-      <div className="h-px flex-1 bg-border/60" />
-    </div>
   );
 }
 
@@ -136,8 +127,9 @@ function PolicyListEditor(props: {
 }
 
 export function PolicyPage(): JSX.Element {
-  const { reviewId } = useParams<{ reviewId: string }>();
+  const { reviewId, repo, branch } = useParams<{ reviewId: string; repo: string; branch: string }>();
   const navigate = useNavigate();
+  const hasBranchContext = Boolean(repo && branch);
 
   const [state, setState] = useState<LoadState>('loading');
   const [review, setReview] = useState<ReviewResponse | null>(null);
@@ -212,9 +204,12 @@ export function PolicyPage(): JSX.Element {
       review.status === 'failed' ||
       review.status === 'cancelled'
     ) {
-      navigate(`/reports/${review.id}`);
+      const reportPath = hasBranchContext
+        ? `/branches/${encodeURIComponent(repo!)}/${encodeURIComponent(branch!)}/reports/${review.id}`
+        : `/reports/${review.id}`;
+      navigate(reportPath);
     }
-  }, [navigate, review]);
+  }, [navigate, review?.id, review?.status, hasBranchContext, repo, branch]);
 
   useEffect(() => {
     if (!review || review.status !== 'policy_pending') {
@@ -228,7 +223,7 @@ export function PolicyPage(): JSX.Element {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [review]);
+  }, [review?.id, review?.status]);
 
   useEffect(() => {
     if (!review || review.status !== 'policy_pending') {
@@ -242,11 +237,9 @@ export function PolicyPage(): JSX.Element {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [review, progressCycle]);
+  }, [review?.status, progressCycle]);
 
-  const progressLabel = useMemo(() => {
-    return DERIVATION_STEPS[progressCycle % DERIVATION_STEPS.length];
-  }, [progressCycle]);
+  const progressLabel = useMemo(() => DERIVATION_STEPS[progressCycle % DERIVATION_STEPS.length], [progressCycle]);
 
   const approvePolicy = async () => {
     if (!reviewId || approving) {
@@ -269,7 +262,10 @@ export function PolicyPage(): JSX.Element {
         throw new Error(body?.error ?? `Request failed (${response.status})`);
       }
 
-      navigate(`/reports/${reviewId}`);
+      const reportPath = hasBranchContext
+        ? `/branches/${encodeURIComponent(repo!)}/${encodeURIComponent(branch!)}/reports/${reviewId}`
+        : `/reports/${reviewId}`;
+      navigate(reportPath);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
       setState('error');
@@ -278,13 +274,12 @@ export function PolicyPage(): JSX.Element {
     }
   };
 
-  /* ── Loading ── */
   if (state === 'loading') {
     return (
       <StatusLayout>
         <div className="policy-fade-up text-center space-y-4">
           <p className="policy-clause-number">preparing</p>
-          <h1 className="policy-heading text-2xl text-foreground">Loading policy</h1>
+          <h1 className="policy-heading text-base text-foreground">Loading policy</h1>
           <p className="text-sm text-muted-foreground font-light">
             Review {reviewId ?? 'unknown'}
           </p>
@@ -298,7 +293,6 @@ export function PolicyPage(): JSX.Element {
     );
   }
 
-  /* ── Error ── */
   if (state === 'error') {
     return (
       <StatusLayout>
@@ -315,7 +309,6 @@ export function PolicyPage(): JSX.Element {
     );
   }
 
-  /* ── No data ── */
   if (!review) {
     return (
       <StatusLayout>
@@ -332,7 +325,6 @@ export function PolicyPage(): JSX.Element {
     );
   }
 
-  /* ── Deriving ── */
   if (review.status !== 'policy_ready') {
     return (
       <StatusLayout>
@@ -345,7 +337,7 @@ export function PolicyPage(): JSX.Element {
           </div>
 
           <div className="space-y-2">
-            <h1 className="policy-heading text-3xl md:text-4xl text-foreground leading-tight">
+            <h1 className="policy-heading text-lg text-foreground leading-tight">
               Policy draft in progress
             </h1>
             <p className="text-muted-foreground font-light text-base max-w-md mx-auto">
@@ -363,13 +355,29 @@ export function PolicyPage(): JSX.Element {
     );
   }
 
-  /* ── Policy editor ── */
   return (
-    <main className="mx-auto flex w-full max-w-6xl flex-col gap-4 px-6 py-4 md:py-6">
-      {/* Header + Goal row */}
-      <div className="policy-fade-up flex flex-col gap-1" style={{ animationDelay: '0ms' }}>
+    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
+      {/* Breadcrumbs */}
+      <nav className="policy-fade-up flex items-center gap-2 text-xs text-muted-foreground" style={{ animationDelay: '0ms' }}>
+        <Link to="/" className="hover:text-foreground transition-colors">Branches</Link>
+        {hasBranchContext && (
+          <>
+            <span className="text-muted-foreground/50">/</span>
+            <Link
+              to={`/branches/${encodeURIComponent(repo!)}/${encodeURIComponent(branch!)}`}
+              className="hover:text-foreground transition-colors truncate max-w-[240px]"
+            >
+              {branch}
+            </Link>
+          </>
+        )}
+        <span className="text-muted-foreground/50">/</span>
+        <span className="text-foreground font-medium font-mono truncate">{reviewId}</span>
+      </nav>
+
+      <div className="policy-fade-up flex flex-col gap-1" style={{ animationDelay: '20ms' }}>
         <div className="flex items-baseline justify-between gap-4">
-          <h1 className="policy-heading text-xl text-foreground tracking-tight">
+          <h1 className="policy-heading text-base text-foreground tracking-tight">
             Review policy
           </h1>
           <p className="text-xs text-muted-foreground/60 font-light shrink-0">
@@ -383,7 +391,6 @@ export function PolicyPage(): JSX.Element {
 
       <div className="h-px bg-border/60" />
 
-      {/* Goal */}
       <div
         className="policy-fade-up flex flex-col gap-1.5"
         style={{ animationDelay: '60ms' }}
@@ -391,7 +398,7 @@ export function PolicyPage(): JSX.Element {
         <div className="flex items-center gap-2">
           <span className="policy-clause-number">I.</span>
           <label className="policy-section-title text-sm">Goal</label>
-          <span className="text-xs text-muted-foreground font-light">— What should this review optimize for?</span>
+          <span className="text-xs text-muted-foreground font-light">- What should this review optimize for?</span>
         </div>
         <Input
           value={policyDraft.goal}
@@ -401,8 +408,7 @@ export function PolicyPage(): JSX.Element {
         />
       </div>
 
-      {/* Prohibitions & Preferences */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-2 md:grid-cols-2">
         <PolicyListEditor
           clause="II."
           title="Must Not"
@@ -462,14 +468,13 @@ export function PolicyPage(): JSX.Element {
         />
       </div>
 
-      {/* Approval */}
       <div
         className="policy-fade-up flex justify-end pt-1"
         style={{ animationDelay: '240ms' }}
       >
         <button
           type="button"
-          className="policy-approve-btn inline-flex items-center justify-center rounded-lg h-10 px-6 text-sm"
+          className="policy-approve-btn inline-flex items-center justify-center rounded-sm h-10 px-6 text-sm"
           onClick={approvePolicy}
           disabled={approving}
         >

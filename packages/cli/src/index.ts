@@ -34,7 +34,7 @@ import { reviewEventsCommand } from './commands/review/events.js';
 import { showReviewCommand } from './commands/review/show.js';
 import { exportReviewCommand } from './commands/review/export.js';
 import { reviewPreflightCommand } from './commands/review/preflight.js';
-import { openReviewFromCommitCommand } from './commands/review/open.js';
+import { openReviewFromCommitCommand, startReviewUiCommand } from './commands/review/open.js';
 import { reviewPolicyCommand } from './commands/review/policy.js';
 import { parseArgs } from './lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from './lib/review-policy.js';
@@ -125,6 +125,8 @@ Commands:
                        Show review status and summary
   review events <review-id>
                        Stream review lifecycle events
+  review start
+                       Start local report UI server at index page
   review open
                        Run one-command policy-first review flow in local UI
   review export <review-id>
@@ -161,7 +163,9 @@ Options:
   --intent-token-budget <n>
                       Token budget for Entire intent context capture (default: 1200)
   --intent-summary-model <name>
-                      Intent summary model override for this run
+                       Intent summary model override for this run
+  --strict-entire-context
+                      Require direct Entire checkpoint context (disable branch fallback)
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
@@ -212,7 +216,9 @@ Examples:
   nimbus review policy --commit HEAD
   nimbus review policy --commit HEAD --base origin/main --model anthropic/claude-sonnet-4.5 --json
   nimbus review show rev_abcd1234
-  nimbus review events rev_abcd1234
+   nimbus review events rev_abcd1234
+   nimbus review start
+   nimbus review start --port 2000
    nimbus review open
    nimbus review open --commit HEAD~1
   nimbus review export rev_abcd1234 --format markdown --out review.md
@@ -513,7 +519,11 @@ async function main(): Promise<void> {
 
         if (reviewAction === 'preflight') {
           const commitishArg = positional[1];
+          const baseFlag = flags.base;
+          const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
           await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {
+            baseRef,
+            strictEntireContext: Boolean(flags['strict-entire-context']),
             summarizeSession: (() => {
               const summarizeSessionFlag = flags['summarize-session'];
               if (typeof summarizeSessionFlag !== 'string') {
@@ -616,7 +626,20 @@ async function main(): Promise<void> {
           break;
         }
 
-        p.log.error('Unknown review command. Use: create, preflight, policy, show, events, open, export');
+        if (reviewAction === 'start') {
+          const unexpectedPositional = positional[1];
+          if (typeof unexpectedPositional === 'string' && unexpectedPositional.trim()) {
+            p.log.error('Usage: nimbus review start [--port <n>]');
+            process.exit(1);
+          }
+
+          await startReviewUiCommand({
+            port: parsePositiveIntegerFlag(flags.port),
+          });
+          break;
+        }
+
+        p.log.error('Unknown review command. Use: create, preflight, policy, show, events, start, open, export');
         process.exit(1);
       }
 

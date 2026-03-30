@@ -181,7 +181,7 @@ describe('ReportPage', () => {
     expect(screen.getByText(/strictly public fetch/i)).toBeInTheDocument();
   });
 
-  it('copies finding fix prompt and shows toast', async () => {
+  it('copies a finding and shows toast', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -200,8 +200,7 @@ describe('ReportPage', () => {
 
     await screen.findByText('A property is used without a null check.');
     const user = userEvent.setup();
-    const [copyFixPromptButton] = screen.getAllByRole('button', { name: 'Copy fix prompt' });
-    await user.click(copyFixPromptButton);
+    await user.click(screen.getByRole('button', { name: 'Copy' }));
 
     expect(await screen.findByText('Copied')).toBeInTheDocument();
   });
@@ -262,7 +261,7 @@ describe('ReportPage', () => {
       </MemoryRouter>
     );
 
-    await screen.findByText('Co-change context');
+    await screen.findByText(/baseline context only/i);
     expect(screen.getByText(/baseline context only/i)).toBeInTheDocument();
     expect(screen.getByText(/REVIEW_CONTEXT_GITHUB_TOKEN/)).toBeInTheDocument();
   });

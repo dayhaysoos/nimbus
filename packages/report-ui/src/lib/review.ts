@@ -1,8 +1,10 @@
 import type {
   GetReviewResponse,
+  ListReviewsResponse,
   ReviewCategory,
   ReviewFailureGuidance,
   ReviewFinding,
+  ReviewHistoryItem,
   ReviewPassType,
   ReviewRecommendation,
   ReviewResponse,
@@ -134,6 +136,20 @@ function readMode(value: unknown): 'report_only' {
     return value;
   }
   throw new Error('Invalid review payload: mode must be report_only.');
+}
+
+function readHistoryRiskLevel(value: unknown): ReviewHistoryItem['riskLevel'] {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return readRiskLevel(value);
+}
+
+function readHistoryRecommendation(value: unknown): ReviewHistoryItem['recommendation'] {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return readRecommendation(value);
 }
 
 function readNullableTimestamp(value: unknown, label: string): string | null {
@@ -371,6 +387,49 @@ export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
           : undefined,
     },
   };
+}
+
+export function parseListReviewsResponse(payload: unknown): ListReviewsResponse {
+  const root = asRecord(payload);
+  if (!Array.isArray(root.reviews)) {
+    throw new Error('Invalid review list payload: reviews must be an array.');
+  }
+
+  const reviews = root.reviews.map((item, index) => {
+    const record = asRecord(item);
+    const errorRecord = asRecord(record.error);
+
+    return {
+      id: readString(record.id, `reviews[${index}].id`),
+      workspaceId: readString(record.workspaceId, `reviews[${index}].workspaceId`),
+      deploymentId: readString(record.deploymentId, `reviews[${index}].deploymentId`),
+      repo: readString(record.repo, `reviews[${index}].repo`),
+      branch: readString(record.branch, `reviews[${index}].branch`),
+      status: readStatus(record.status),
+      createdAt: readString(record.createdAt, `reviews[${index}].createdAt`),
+      updatedAt: readString(record.updatedAt, `reviews[${index}].updatedAt`),
+      startedAt: readNullableTimestamp(record.startedAt, `reviews[${index}].startedAt`),
+      finishedAt: readNullableTimestamp(record.finishedAt, `reviews[${index}].finishedAt`),
+      findingCount:
+        record.findingCount === null
+          ? null
+          : Number.isInteger(record.findingCount) && (record.findingCount as number) >= 0
+            ? (record.findingCount as number)
+            : null,
+      riskLevel: readHistoryRiskLevel(record.riskLevel),
+      recommendation: readHistoryRecommendation(record.recommendation),
+      summaryText: readOptionalString(record.summaryText),
+      error:
+        Object.keys(errorRecord).length > 0
+          ? {
+              code: readString(errorRecord.code, `reviews[${index}].error.code`),
+              message: readString(errorRecord.message, `reviews[${index}].error.message`),
+            }
+          : undefined,
+    } satisfies ReviewHistoryItem;
+  });
+
+  return { reviews };
 }
 
 function defaultText(value: string | null | undefined, fallback: string): string {
