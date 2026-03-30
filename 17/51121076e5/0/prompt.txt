@@ -1,0 +1,1 @@
+Amazing. Make a commit for the current unstaged changes, then work on the next targets. Run prelight review for the commit you’re going to make just to make sure it’s still in tact
