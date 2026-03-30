@@ -2,7 +2,7 @@ import * as p from '@clack/prompts';
 import { deriveReviewPolicy, getReview, streamReviewEvents } from '../../clients/worker/reviews.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { formatEvent } from '../../commands/review/events.js';
-import { resolveReviewContext } from './create-from-commit.js';
+import { resolveReviewContext } from './context.js';
 import { openBrowser, startReportUiSession } from './ui-server.js';
 
 const DEFAULT_OPEN_PORT = 2000;
