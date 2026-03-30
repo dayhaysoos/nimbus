@@ -299,19 +299,21 @@ export class WorkspaceIdempotencyConflictError extends Error {
   }
 }
 
-export class WorkspaceTaskIdempotencyConflictError extends Error {
+class LegacyWorkspaceTaskIdempotencyConflictError extends Error {
   constructor(public readonly key: string) {
     super(`Task idempotency key conflict: ${key}`);
-    this.name = 'WorkspaceTaskIdempotencyConflictError';
+    this.name = 'LegacyWorkspaceTaskIdempotencyConflictError';
   }
 }
+export { WorkspaceTaskIdempotencyConflictError } from './db/tasks.js';
 
-export class WorkspaceDeploymentIdempotencyConflictError extends Error {
+class LegacyWorkspaceDeploymentIdempotencyConflictError extends Error {
   constructor(public readonly key: string) {
     super(`Deployment idempotency key conflict: ${key}`);
-    this.name = 'WorkspaceDeploymentIdempotencyConflictError';
+    this.name = 'LegacyWorkspaceDeploymentIdempotencyConflictError';
   }
 }
+export { WorkspaceDeploymentIdempotencyConflictError } from './db/deployments.js';
 
 export class ReviewIdempotencyConflictError extends Error {
   constructor(public readonly key: string) {
@@ -1760,8 +1762,20 @@ export {
   listWorkspaceArtifacts,
 } from './db/artifacts.js';
 export type { WorkspaceArtifactLookup } from './db/artifacts.js';
+export {
+  appendWorkspaceTaskEvent,
+  claimWorkspaceTaskForExecution,
+  createWorkspaceTask,
+  getWorkspaceTask,
+  getWorkspaceTaskRequestPayload,
+  getWorkspaceTaskToolPolicy,
+  hasWorkspaceTaskEvent,
+  listWorkspaceTaskEvents,
+  requestWorkspaceTaskCancel,
+  updateWorkspaceTaskStatus,
+} from './db/tasks.js';
 
-export async function createWorkspaceTask(
+async function legacyCreateWorkspaceTask(
   db: D1Database,
   input: CreateWorkspaceTaskInput
 ): Promise<{ task: WorkspaceTaskResponse; reused: boolean }> {
@@ -1778,10 +1792,10 @@ export async function createWorkspaceTask(
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
     if (existingIdempotency.request_payload_sha256 !== input.requestPayloadSha256) {
-      throw new WorkspaceTaskIdempotencyConflictError(input.idempotencyKey);
+      throw new LegacyWorkspaceTaskIdempotencyConflictError(input.idempotencyKey);
     }
 
-    const existingTask = await getWorkspaceTask(db, input.workspaceId, existingIdempotency.task_id);
+    const existingTask = await legacyGetWorkspaceTask(db, input.workspaceId, existingIdempotency.task_id);
     if (!existingTask) {
       throw new Error(`Idempotency record references missing task ${existingIdempotency.task_id}`);
     }
@@ -1882,10 +1896,10 @@ export async function createWorkspaceTask(
 
     if (concurrent.request_payload_sha256 !== input.requestPayloadSha256) {
       await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();
-      throw new WorkspaceTaskIdempotencyConflictError(input.idempotencyKey);
+      throw new LegacyWorkspaceTaskIdempotencyConflictError(input.idempotencyKey);
     }
 
-    const existingTask = await getWorkspaceTask(db, input.workspaceId, concurrent.task_id);
+    const existingTask = await legacyGetWorkspaceTask(db, input.workspaceId, concurrent.task_id);
     if (!existingTask) {
       await db.prepare('DELETE FROM workspace_tasks WHERE id = ?').bind(input.id).run();
       throw new Error(`Idempotency record references missing task ${concurrent.task_id}`);
@@ -1898,7 +1912,7 @@ export async function createWorkspaceTask(
   return { task: toWorkspaceTaskResponse(taskRecord), reused: false };
 }
 
-export async function getWorkspaceTask(
+async function legacyGetWorkspaceTask(
   db: D1Database,
   workspaceId: string,
   taskId: string
@@ -1915,7 +1929,7 @@ export async function getWorkspaceTask(
   return toWorkspaceTaskResponse(record);
 }
 
-export async function getWorkspaceTaskRequestPayload(
+async function legacyGetWorkspaceTaskRequestPayload(
   db: D1Database,
   taskId: string
 ): Promise<Record<string, unknown> | null> {
@@ -1939,7 +1953,7 @@ export async function getWorkspaceTaskRequestPayload(
   }
 }
 
-export async function getWorkspaceTaskToolPolicy(
+async function legacyGetWorkspaceTaskToolPolicy(
   db: D1Database,
   workspaceId: string,
   taskId: string
@@ -1964,7 +1978,7 @@ export async function getWorkspaceTaskToolPolicy(
   }
 }
 
-export async function claimWorkspaceTaskForExecution(
+async function legacyClaimWorkspaceTaskForExecution(
   db: D1Database,
   workspaceId: string,
   taskId: string
@@ -1985,7 +1999,7 @@ export async function claimWorkspaceTaskForExecution(
   return (result.meta?.changes ?? 0) > 0;
 }
 
-export async function updateWorkspaceTaskStatus(
+async function legacyUpdateWorkspaceTaskStatus(
   db: D1Database,
   taskId: string,
   status: WorkspaceTaskStatus,
@@ -2044,7 +2058,7 @@ export async function updateWorkspaceTaskStatus(
     .run();
 }
 
-export async function requestWorkspaceTaskCancel(
+async function legacyRequestWorkspaceTaskCancel(
   db: D1Database,
   workspaceId: string,
   taskId: string
@@ -2074,14 +2088,14 @@ export async function requestWorkspaceTaskCancel(
     .bind(now, now, taskId, workspaceId)
     .run();
 
-  const task = await getWorkspaceTask(db, workspaceId, taskId);
+  const task = await legacyGetWorkspaceTask(db, workspaceId, taskId);
   return {
     task,
     updated: (queuedResult.meta?.changes ?? 0) > 0 || (runningResult.meta?.changes ?? 0) > 0,
   };
 }
 
-export async function appendWorkspaceTaskEvent(
+async function legacyAppendWorkspaceTaskEvent(
   db: D1Database,
   input: {
     workspaceId: string;
@@ -2114,7 +2128,7 @@ export async function appendWorkspaceTaskEvent(
   return seq;
 }
 
-export async function listWorkspaceTaskEvents(
+async function legacyListWorkspaceTaskEvents(
   db: D1Database,
   workspaceId: string,
   taskId: string,
@@ -2149,7 +2163,7 @@ export async function listWorkspaceTaskEvents(
   });
 }
 
-export async function hasWorkspaceTaskEvent(
+async function legacyHasWorkspaceTaskEvent(
   db: D1Database,
   workspaceId: string,
   taskId: string,
@@ -2168,7 +2182,20 @@ export async function hasWorkspaceTaskEvent(
   return Boolean(record);
 }
 
-export async function createWorkspaceDeployment(
+export {
+  appendWorkspaceDeploymentEvent,
+  claimWorkspaceDeploymentForExecution,
+  createWorkspaceDeployment,
+  getWorkspaceDeployment,
+  getWorkspaceDeploymentRequestPayload,
+  hasWorkspaceDeploymentEvent,
+  listWorkspaceDeploymentEvents,
+  markWorkspaceDeploymentSucceededIfNotCancelled,
+  requestWorkspaceDeploymentCancel,
+  updateWorkspaceDeploymentStatus,
+} from './db/deployments.js';
+
+async function legacyCreateWorkspaceDeployment(
   db: D1Database,
   input: CreateWorkspaceDeploymentInput
 ): Promise<{ deployment: WorkspaceDeploymentResponse; reused: boolean }> {
@@ -2186,10 +2213,10 @@ export async function createWorkspaceDeployment(
 
   if (existingIdempotency && existingIdempotency.expires_at > now) {
     if (!acceptedHashes.has(existingIdempotency.request_payload_sha256)) {
-      throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
+      throw new LegacyWorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
     }
 
-    const existingDeployment = await getWorkspaceDeployment(db, input.workspaceId, existingIdempotency.deployment_id);
+    const existingDeployment = await legacyGetWorkspaceDeployment(db, input.workspaceId, existingIdempotency.deployment_id);
     if (!existingDeployment) {
       throw new Error(`Idempotency record references missing deployment ${existingIdempotency.deployment_id}`);
     }
@@ -2220,7 +2247,7 @@ export async function createWorkspaceDeployment(
 
   if (existingDeploymentByKey) {
     if (!acceptedHashes.has(existingDeploymentByKey.request_payload_sha256)) {
-      throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
+      throw new LegacyWorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
     }
 
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -2337,10 +2364,10 @@ export async function createWorkspaceDeployment(
 
     if (!acceptedHashes.has(concurrent.request_payload_sha256)) {
       await db.prepare('DELETE FROM workspace_deployments WHERE id = ?').bind(input.id).run();
-      throw new WorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
+      throw new LegacyWorkspaceDeploymentIdempotencyConflictError(input.idempotencyKey);
     }
 
-    const existingDeployment = await getWorkspaceDeployment(db, input.workspaceId, concurrent.deployment_id);
+    const existingDeployment = await legacyGetWorkspaceDeployment(db, input.workspaceId, concurrent.deployment_id);
     if (!existingDeployment) {
       await db.prepare('DELETE FROM workspace_deployments WHERE id = ?').bind(input.id).run();
       throw new Error(`Idempotency record references missing deployment ${concurrent.deployment_id}`);
@@ -2353,7 +2380,7 @@ export async function createWorkspaceDeployment(
   return { deployment: toWorkspaceDeploymentResponse(deploymentRecord), reused: false };
 }
 
-export async function getWorkspaceDeployment(
+async function legacyGetWorkspaceDeployment(
   db: D1Database,
   workspaceId: string,
   deploymentId: string
@@ -2370,7 +2397,7 @@ export async function getWorkspaceDeployment(
   return toWorkspaceDeploymentResponse(record);
 }
 
-export async function getWorkspaceDeploymentRequestPayload(
+async function legacyGetWorkspaceDeploymentRequestPayload(
   db: D1Database,
   deploymentId: string
 ): Promise<Record<string, unknown> | null> {
@@ -2394,7 +2421,7 @@ export async function getWorkspaceDeploymentRequestPayload(
   }
 }
 
-export async function claimWorkspaceDeploymentForExecution(
+async function legacyClaimWorkspaceDeploymentForExecution(
   db: D1Database,
   workspaceId: string,
   deploymentId: string
@@ -2415,7 +2442,7 @@ export async function claimWorkspaceDeploymentForExecution(
   return (result.meta?.changes ?? 0) > 0;
 }
 
-export async function updateWorkspaceDeploymentStatus(
+async function legacyUpdateWorkspaceDeploymentStatus(
   db: D1Database,
   deploymentId: string,
   status: WorkspaceDeploymentStatus,
@@ -2526,7 +2553,7 @@ export async function updateWorkspaceDeploymentStatus(
     .run();
 }
 
-export async function markWorkspaceDeploymentSucceededIfNotCancelled(
+async function legacyMarkWorkspaceDeploymentSucceededIfNotCancelled(
   db: D1Database,
   input: {
     workspaceId: string;
@@ -2576,7 +2603,7 @@ export async function markWorkspaceDeploymentSucceededIfNotCancelled(
   return (result.meta?.changes ?? 0) > 0;
 }
 
-export async function requestWorkspaceDeploymentCancel(
+async function legacyRequestWorkspaceDeploymentCancel(
   db: D1Database,
   workspaceId: string,
   deploymentId: string
@@ -2606,7 +2633,7 @@ export async function requestWorkspaceDeploymentCancel(
     .bind(now, now, deploymentId, workspaceId)
     .run();
 
-  const deployment = await getWorkspaceDeployment(db, workspaceId, deploymentId);
+  const deployment = await legacyGetWorkspaceDeployment(db, workspaceId, deploymentId);
 
   return {
     deployment,
@@ -2614,7 +2641,7 @@ export async function requestWorkspaceDeploymentCancel(
   };
 }
 
-export async function appendWorkspaceDeploymentEvent(
+async function legacyAppendWorkspaceDeploymentEvent(
   db: D1Database,
   input: {
     workspaceId: string;
@@ -2646,7 +2673,7 @@ export async function appendWorkspaceDeploymentEvent(
   return seq;
 }
 
-export async function listWorkspaceDeploymentEvents(
+async function legacyListWorkspaceDeploymentEvents(
   db: D1Database,
   workspaceId: string,
   deploymentId: string,
@@ -2681,7 +2708,7 @@ export async function listWorkspaceDeploymentEvents(
   });
 }
 
-export async function hasWorkspaceDeploymentEvent(
+async function legacyHasWorkspaceDeploymentEvent(
   db: D1Database,
   workspaceId: string,
   deploymentId: string,
