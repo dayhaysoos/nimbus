@@ -1,9 +1,5 @@
 import * as p from '@clack/prompts';
-import { provisionAdminKeyCommand } from '../commands/admin/provision-key.js';
-import { deployCheckpointCommand } from '../commands/deploy/checkpoint.js';
-import { resolveDeployCheckpointOptions } from '../commands/deploy/checkpoint-options.js';
 import { doctorCommand } from '../commands/doctor.js';
-import { registerRepoCommand } from '../commands/repo/register.js';
 import { createReviewCommand, createReviewFromCommitCommand } from '../commands/review/create.js';
 import { reviewEventsCommand } from '../commands/review/events.js';
 import { exportReviewCommand } from '../commands/review/export.js';
@@ -20,7 +16,10 @@ import { listWorkspaceFilesCommand } from '../commands/workspace/files.js';
 import { showWorkspaceCommand } from '../commands/workspace/show.js';
 import { listCommand } from '../commands/list.js';
 import { watchCommand } from '../commands/watch.js';
+import { dispatchAdminCommand } from './dispatch/admin.js';
 import { dispatchAuthCommand } from './dispatch/auth.js';
+import { dispatchDeployCommand } from './dispatch/deploy.js';
+import { dispatchRepoCommand } from './dispatch/repo.js';
 import type { ParsedCliArgs } from '../lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from '../lib/review-policy.js';
 import { parsePositiveIntegerFlag } from './argv.js';
@@ -360,37 +359,6 @@ async function handleReviewCommand(positional: string[], flags: CliFlags): Promi
   exitWithUsage('Unknown review command. Use: create, preflight, policy, show, events, start, open, export');
 }
 
-async function handleAdminCommand(positional: string[], flags: CliFlags): Promise<void> {
-  const adminAction = positional[0];
-  if (adminAction === 'provision-key') {
-    const labelFlag = flags.label;
-    const accountIdFlag = flags['account-id'];
-    const label = typeof labelFlag === 'string' ? labelFlag : '';
-    const accountId = typeof accountIdFlag === 'string' ? accountIdFlag : undefined;
-
-    await provisionAdminKeyCommand({
-      label,
-      accountId,
-      isAdmin: Boolean(flags.admin),
-    });
-    return;
-  }
-
-  exitWithUsage('Unknown admin command. Use: provision-key');
-}
-
-async function handleRepoCommand(positional: string[], flags: CliFlags): Promise<void> {
-  const repoAction = positional[0];
-  if (repoAction === 'register') {
-    const repoFlag = flags.repo;
-    const repo = typeof repoFlag === 'string' ? repoFlag : undefined;
-    await registerRepoCommand({ repo, dryRun: Boolean(flags['dry-run']), json: Boolean(flags.json) });
-    return;
-  }
-
-  exitWithUsage('Unknown repo command. Use: register');
-}
-
 export async function dispatchCliCommand({ command, flags, positional }: ParsedCliArgs): Promise<void> {
   switch (command) {
     case 'doctor': {
@@ -399,19 +367,7 @@ export async function dispatchCliCommand({ command, flags, positional }: ParsedC
     }
 
     case 'deploy': {
-      const deployTarget = positional[0];
-      const deployInput = positional[1];
-
-      if (deployTarget !== 'checkpoint') {
-        exitWithUsage('Missing or invalid deploy target. Usage: nimbus deploy checkpoint <checkpoint-id-or-commit-ish>');
-      }
-
-      if (!deployInput) {
-        exitWithUsage('Missing checkpoint ID or commit-ish. Usage: nimbus deploy checkpoint <checkpoint-id-or-commit-ish>');
-      }
-
-      const deployOptions = resolveDeployCheckpointOptions(flags);
-      await deployCheckpointCommand(deployInput, deployOptions);
+      await dispatchDeployCommand(positional, flags, exitWithUsage);
       return;
     }
 
@@ -426,12 +382,12 @@ export async function dispatchCliCommand({ command, flags, positional }: ParsedC
     }
 
     case 'admin': {
-      await handleAdminCommand(positional, flags);
+      await dispatchAdminCommand(positional, flags, exitWithUsage);
       return;
     }
 
     case 'repo': {
-      await handleRepoCommand(positional, flags);
+      await dispatchRepoCommand(positional, flags, exitWithUsage);
       return;
     }
 
