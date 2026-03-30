@@ -1,0 +1,33 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "2ae47581d737",
+  "session_id": "ses_2bf7ac20fffeao591yjAlUjAz1",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-30T20:55:08.544057Z",
+  "branch": "huge-refactor",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/cli/dispatch.ts",
+    "packages/cli/src/cli/dispatch/auth.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "8d372e6ab792",
+  "checkpoint_transcript_start": 6,
+  "transcript_lines_at_start": 6,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-30T20:55:08.514906Z",
+    "agent_lines": 25,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 25,
+    "agent_percentage": 100
+  }
+}
