@@ -1,6 +1,4 @@
 import * as p from '@clack/prompts';
-import { authExchangeCommand } from '../commands/auth/exchange.js';
-import { authHealthCommand } from '../commands/auth/health.js';
 import { provisionAdminKeyCommand } from '../commands/admin/provision-key.js';
 import { deployCheckpointCommand } from '../commands/deploy/checkpoint.js';
 import { resolveDeployCheckpointOptions } from '../commands/deploy/checkpoint-options.js';
@@ -22,6 +20,7 @@ import { listWorkspaceFilesCommand } from '../commands/workspace/files.js';
 import { showWorkspaceCommand } from '../commands/workspace/show.js';
 import { listCommand } from '../commands/list.js';
 import { watchCommand } from '../commands/watch.js';
+import { dispatchAuthCommand } from './dispatch/auth.js';
 import type { ParsedCliArgs } from '../lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from '../lib/review-policy.js';
 import { parsePositiveIntegerFlag } from './argv.js';
@@ -392,20 +391,6 @@ async function handleRepoCommand(positional: string[], flags: CliFlags): Promise
   exitWithUsage('Unknown repo command. Use: register');
 }
 
-async function handleAuthCommand(positional: string[], flags: CliFlags): Promise<void> {
-  const authAction = positional[0];
-  if (authAction === 'exchange') {
-    await authExchangeCommand({ json: Boolean(flags.json) });
-    return;
-  }
-  if (authAction === 'health') {
-    await authHealthCommand({ json: Boolean(flags.json) });
-    return;
-  }
-
-  exitWithUsage('Unknown auth command. Use: exchange, health');
-}
-
 export async function dispatchCliCommand({ command, flags, positional }: ParsedCliArgs): Promise<void> {
   switch (command) {
     case 'doctor': {
@@ -451,7 +436,7 @@ export async function dispatchCliCommand({ command, flags, positional }: ParsedC
     }
 
     case 'auth': {
-      await handleAuthCommand(positional, flags);
+      await dispatchAuthCommand(positional, flags, exitWithUsage);
       return;
     }
 
