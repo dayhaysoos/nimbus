@@ -1,0 +1,1 @@
+Is everything from the next-session hand off taken care of? If anything, I want you to add a doc inside docs. Make a new directory called entire and then make a doc explaining how to we fix entire if corruption happens again
