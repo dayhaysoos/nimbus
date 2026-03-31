@@ -15,11 +15,11 @@ export {
 } from './workspaces/operations.js';
 export {
   handleGetWorkspace,
-  handleGetWorkspaceDiff,
   handleGetWorkspaceEvents,
   handleGetWorkspaceFile,
   handleListWorkspaceFiles,
 } from './workspaces/query.js';
+export { handleGetWorkspaceDiff } from './workspaces/query-diff.js';
 export {
   assertWorkspaceRootSafe,
   parseDiffNameStatus,
