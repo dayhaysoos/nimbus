@@ -1,0 +1,12 @@
+so why did this fail?
+
+Run node packages/cli/dist/index.js review preflight "${HEAD_SHA}" --base "${BASE_REF}"
+┌  @dayhaysoos/nimbus
+25l│
+◇  Commit/checkpoint validation failed
+25h│
+■  Review preflight failed: git diff --no-ext-diff --unified=3 4b4de2c6698ae678b8068ed5454e25a17d531b22...e4485e07897b8f5ee333053656eae5c0246238ae failed: spawnSync git ENOBUFS
+
+---
+
+but it works locally for us right? We need a solution for this. There’s no way we can ship while this can be an issue
