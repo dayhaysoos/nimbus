@@ -1,0 +1,24 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "32face69abeb",
+  "session_id": "ses_2c3ac4beeffeB06TVwTcF7401V",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-31T16:24:24.979938Z",
+  "branch": "huge-refactor",
+  "checkpoints_count": 0,
+  "files_touched": [
+    ".gitleaks.toml"
+  ],
+  "agent": "OpenCode",
+  "model": "gpt-5.4",
+  "turn_id": "3786935b6932",
+  "initial_attribution": {
+    "calculated_at": "2026-03-31T16:24:24.979058Z",
+    "agent_lines": 12,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 12,
+    "agent_percentage": 100
+  }
+}
