@@ -99,12 +99,78 @@ interface WorkspaceDeployReporter {
   error: (text: string) => void;
 }
 
+interface DeployIntentContext {
+  note: string | null;
+  sessionIds: string[];
+  transcriptUrl: string | null;
+  intentSessionContext: string[];
+  rawSessionPrompts?: string | null;
+}
+
 const DEFAULT_REPORTER: WorkspaceDeployReporter = {
   message: (text) => p.log.message(text),
   success: (text) => p.log.success(text),
   warning: (text) => p.log.warning(text),
   error: (text) => p.log.error(text),
 };
+
+function buildEmptyDeployIntentContext(): DeployIntentContext {
+  return {
+    note: null,
+    sessionIds: [],
+    transcriptUrl: null,
+    intentSessionContext: [],
+    rawSessionPrompts: null,
+  };
+}
+
+async function isWorkspaceRouteReachable(workerUrl: string, workspaceId: string): Promise<boolean> {
+  try {
+    await getWorkspace(workerUrl, workspaceId);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Resolves Entire intent context used for deployment provenance.
+ * Explicit overrides win; otherwise checkpoint-backed context is required when the workspace has a checkpoint.
+ */
+async function resolveDeployIntentContext(
+  workspace: Awaited<ReturnType<typeof getWorkspace>>,
+  reporter: WorkspaceDeployReporter,
+  options?: {
+    summarizeSession?: 'auto' | 'always' | 'never';
+    intentTokenBudget?: number;
+    entireIntentContextOverride?: ReviewEntireContextResolution;
+  }
+): Promise<DeployIntentContext> {
+  const contextOverride = options?.entireIntentContextOverride;
+  if (contextOverride) {
+    return contextOverride.context;
+  }
+
+  if (!workspace.checkpointId) {
+    reporter.warning(
+      `Workspace ${workspace.id} has no checkpoint ID; proceeding without Entire checkpoint intent context.`
+    );
+    return buildEmptyDeployIntentContext();
+  }
+
+  try {
+    return await resolveEntireIntentContextForCommitFn(workspace.commitSha, process.cwd(), {
+      summarizeSession: options?.summarizeSession ?? 'auto',
+      tokenBudget: options?.intentTokenBudget,
+      checkpointId: workspace.checkpointId,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `Unable to resolve required Entire intent context for checkpoint ${workspace.checkpointId} at commit ${workspace.commitSha.slice(0, 12)}. ${message}`
+    );
+  }
+}
 
 export async function workspaceDeployCommand(
   workspaceId: string,
@@ -154,13 +220,7 @@ export async function workspaceDeployCommand(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('Worker error (404)')) {
-      let workspaceReachable = false;
-      try {
-        await getWorkspace(workerUrl, workspaceId);
-        workspaceReachable = true;
-      } catch {
-        workspaceReachable = false;
-      }
+      const workspaceReachable = await isWorkspaceRouteReachable(workerUrl, workspaceId);
       if (workspaceReachable) {
         throw new Error(
           'Deploy routes returned 404 while workspace routes are reachable. Redeploy worker from this branch, then run `pnpm run setup:worker`.'
@@ -209,34 +269,11 @@ export async function workspaceDeployCommand(
 
   const workspace = await getWorkspace(workerUrl, workspaceId);
   const contextOverride = options?.entireIntentContextOverride;
-  let entireIntentContext;
-  if (contextOverride) {
-    entireIntentContext = contextOverride.context;
-  } else if (!workspace.checkpointId) {
-    reporter.warning(
-      `Workspace ${workspaceId} has no checkpoint ID; proceeding without Entire checkpoint intent context.`
-    );
-    entireIntentContext = {
-      note: null,
-      sessionIds: [],
-      transcriptUrl: null,
-      intentSessionContext: [],
-      rawSessionPrompts: null,
-    };
-  } else {
-    try {
-      entireIntentContext = await resolveEntireIntentContextForCommitFn(workspace.commitSha, process.cwd(), {
-        summarizeSession: options?.summarizeSession ?? 'auto',
-        tokenBudget: options?.intentTokenBudget,
-        checkpointId: workspace.checkpointId,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      throw new Error(
-        `Unable to resolve required Entire intent context for checkpoint ${workspace.checkpointId} at commit ${workspace.commitSha.slice(0, 12)}. ${message}`
-      );
-    }
-  }
+  const entireIntentContext = await resolveDeployIntentContext(workspace, reporter, {
+    summarizeSession: options?.summarizeSession,
+    intentTokenBudget: options?.intentTokenBudget,
+    entireIntentContextOverride: contextOverride,
+  });
 
   reporter.success('Preflight passed');
   const repositorySlug = resolveRepositorySlugForProvenanceFn();

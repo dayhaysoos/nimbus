@@ -50,6 +50,14 @@ export interface ReviewContextFlowOverrides {
   resolveLocalCochange?: typeof resolveLocalCochangeForCommitFlow;
 }
 
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function buildReviewFlowStageError(stage: string, error: unknown): Error {
+  return new Error(`Review flow failed at ${stage}: ${toErrorMessage(error)}`);
+}
+
 let createWorkspaceForCommitFlow: (source: {
   commitSha: string;
   checkpointId: string | null;
@@ -76,6 +84,10 @@ export function setReviewContextFlowForTests(overrides: ReviewContextFlowOverrid
   resolveLocalCochangeForCommitFlow = overrides?.resolveLocalCochange ?? resolveCochangeFromLocalGit;
 }
 
+/**
+ * Orchestrates review context setup from a commit by validating Entire metadata,
+ * creating a workspace, deploying it, then assembling provenance for review creation.
+ */
 export async function resolveReviewContext(
   options?: ResolveReviewContextOptions
 ): Promise<ResolveReviewContextResult> {
@@ -121,9 +133,8 @@ export async function resolveReviewContext(
     commitDiffPatchOriginalChars = normalizedPatch.originalChars;
     spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Checkpoint resolution failed');
-    throw new Error(`Review flow failed at checkpoint resolution: ${message}`);
+    throw buildReviewFlowStageError('checkpoint resolution', error);
   }
 
   spinner.start('Validating Entire session metadata...');
@@ -151,9 +162,8 @@ export async function resolveReviewContext(
       );
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Entire session metadata validation failed');
-    throw new Error(`Review flow failed at checkpoint resolution: ${message}`);
+    throw buildReviewFlowStageError('checkpoint resolution', error);
   }
 
   spinner.start('Resolving local co-change context...');
@@ -171,7 +181,7 @@ export async function resolveReviewContext(
     }
   } catch (error) {
     localCochange = null;
-    const message = error instanceof Error ? error.message : String(error);
+    const message = toErrorMessage(error);
     if (!isExpectedLocalCochangeResolutionError(message)) {
       p.log.warning(`Local co-change resolution error: ${message}`);
     }
@@ -187,9 +197,8 @@ export async function resolveReviewContext(
       spinner.stop('Co-change token readiness confirmed');
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Co-change token readiness check failed');
-    throw new Error(`Review flow failed at checkpoint resolution: ${message}`);
+    throw buildReviewFlowStageError('checkpoint resolution', error);
   }
 
   spinner.start('Creating workspace...');
@@ -203,9 +212,8 @@ export async function resolveReviewContext(
     workspaceId = created.workspace.id;
     spinner.stop(`Workspace created: ${workspaceId}`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Workspace creation failed');
-    throw new Error(`Review flow failed at workspace creation: ${message}`);
+    throw buildReviewFlowStageError('workspace creation', error);
   }
 
   spinner.start('Deploying workspace...');
@@ -233,9 +241,8 @@ export async function resolveReviewContext(
     deploymentId = deployment.id;
     spinner.stop(`Deployment succeeded: ${deploymentId}`);
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Workspace deploy failed');
-    throw new Error(`Review flow failed at workspace deploy: ${message}`);
+    throw buildReviewFlowStageError('workspace deploy', error);
   }
 
   const resolvedProvenance: ReviewCreateProvenance = {
