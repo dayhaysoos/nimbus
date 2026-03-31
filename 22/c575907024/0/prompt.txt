@@ -1,0 +1,16 @@
+We made so many changes on this pr. Really curious why it didn’t find anything:
+
+Nimbus Findings
+rev_1o9rnilm · 5be58de7 · 0 findings
+
+Goal: Not specified
+
+No actionable findings.
+
+---
+
+I just merged everything. Accoding to the @docs/refactor-audit.md doc, we finished phase 4 right? The next phase is making the code more readible and improving upon it yeah?
+
+---
+
+I’m thinking about completely redoing the report-ui side that’s why we didn’t touch it. I’d like for you to make a doc in the docs directory. Name it refactor-audit-phase-5.md. the goal is for it to be a handoff file for the next session. Detail the plan for the refactoring as well as including the @docs/architecture/jsdoc-guidelines.md.
