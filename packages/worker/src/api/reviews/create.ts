@@ -12,18 +12,20 @@ import {
 } from '../../lib/db.js';
 import { createReviewQueueMessage } from '../../lib/review-queue.js';
 import {
-  buildReviewRequestPayload,
   isRecord,
   isSeverityThreshold,
   jsonResponse,
-  normalizeBranchRef,
-  normalizeRepoSlug,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   requireWorkspaceAccess,
+} from './shared.js';
+import {
+  buildReviewRequestPayload,
+  normalizeBranchRef,
+  normalizeRepoSlug,
   sha256Hex,
   stripSensitiveTokenFields,
-} from './shared.js';
+} from './request-shared.js';
 import { validateRecoveredReviewRetryAuth } from './recovery.js';
 
 export async function handleCreateReview(

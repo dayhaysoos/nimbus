@@ -1,5 +1,6 @@
 import type { AuthContext, Env, ReviewRunStatus } from '../../types.js';
 import { getReviewRun, listReviewEvents, listReviewRuns } from '../../lib/db.js';
+import { normalizeBranchRef, normalizeRepoSlug } from './request-shared.js';
 import {
   REVIEW_STREAM_HEARTBEAT_INTERVAL_MS,
   REVIEW_STREAM_POLL_INTERVAL_MS,
@@ -11,8 +12,6 @@ import {
   isRecord,
   isReviewStatusActive,
   jsonResponse,
-  normalizeBranchRef,
-  normalizeRepoSlug,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   requireReviewAccess,

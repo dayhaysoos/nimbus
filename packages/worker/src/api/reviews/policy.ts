@@ -19,16 +19,18 @@ import {
   policyFromIntentSummary,
 } from './policy-shared.js';
 import {
-  isRecord,
-  jsonResponse,
   normalizeBranchRef,
   normalizeRepoSlug,
+  sha256Hex,
+  withSortedKeys,
+} from './request-shared.js';
+import {
+  isRecord,
+  jsonResponse,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   requireReviewAccess,
   requireWorkspaceAccess,
-  sha256Hex,
-  withSortedKeys,
 } from './shared.js';
 
 export async function handleDeriveReviewPolicy(
