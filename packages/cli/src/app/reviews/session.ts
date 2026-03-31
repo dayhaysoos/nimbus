@@ -52,10 +52,14 @@ export function resolveReviewUiRuntimeContext(
 
 export async function runWithManagedUiSession<T>(
   uiSession: UiServerSession,
-  run: (options: { wasInterrupted: () => boolean }) => Promise<T>
+  run: (options: { wasInterrupted: () => boolean; waitForInterrupt: () => Promise<void> }) => Promise<T>
 ): Promise<T | undefined> {
   let interrupted = false;
   let shuttingDown = false;
+  let resolveInterrupted: (() => void) | null = null;
+  const interruptedPromise = new Promise<void>((resolve) => {
+    resolveInterrupted = resolve;
+  });
 
   const shutdown = async () => {
     if (shuttingDown) {
@@ -67,6 +71,7 @@ export async function runWithManagedUiSession<T>(
 
   const handleSignal = () => {
     interrupted = true;
+    resolveInterrupted?.();
     void shutdown();
   };
 
@@ -74,7 +79,10 @@ export async function runWithManagedUiSession<T>(
   process.on('SIGTERM', handleSignal);
 
   try {
-    return await run({ wasInterrupted: () => interrupted });
+    return await run({
+      wasInterrupted: () => interrupted,
+      waitForInterrupt: () => interruptedPromise,
+    });
   } catch (error) {
     if (interrupted) {
       return undefined;

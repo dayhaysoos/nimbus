@@ -1,6 +1,6 @@
 import * as p from '@clack/prompts';
 import { GitRepo } from '../../lib/checkpoint/git.js';
-import { parseCommitTrailers } from '../../lib/checkpoint/resolver.js';
+import { parseCommitTrailers, parseDeployInput, resolveCheckpointFromHistory } from '../../lib/checkpoint/resolver.js';
 import { resolveCochangeFromLocalGit, resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 import type { EntireIntentContext } from '../../lib/entire/context.js';
 
@@ -262,10 +262,33 @@ function resolveCommitContext(commitish: string, cwd = process.cwd(), options?: 
   if (resolveCommitForTests) {
     return resolveCommitForTests(commitish, options);
   }
+
   const git = new GitRepo(cwd);
-  const commitSha = git.resolveCommitSha(commitish);
-  const trailers = parseCommitTrailers(git.getCommitMessage(commitSha));
+  const parsedInput = parseDeployInput(commitish);
   const baseRef = typeof options?.baseRef === 'string' && options.baseRef.trim() ? options.baseRef.trim() : null;
+
+  let commitSha: string;
+  let trailers: ReturnType<typeof parseCommitTrailers>;
+  if (parsedInput.kind === 'checkpoint') {
+    try {
+      const ref = git.getCurrentBranchRef() ?? 'HEAD';
+      const commits = git.listCommits(ref);
+      const resolved = resolveCheckpointFromHistory(parsedInput.checkpointId, commits);
+      commitSha = resolved.selected.sha;
+      trailers = resolved.selected.trailers;
+    } catch (error) {
+      if (parsedInput.explicit) {
+        throw error;
+      }
+
+      commitSha = git.resolveCommitSha(commitish);
+      trailers = parseCommitTrailers(git.getCommitMessage(commitSha));
+    }
+  } else {
+    commitSha = git.resolveCommitSha(parsedInput.commitish);
+    trailers = parseCommitTrailers(git.getCommitMessage(commitSha));
+  }
+
   return {
     commitSha,
     checkpointId: trailers.checkpointId,

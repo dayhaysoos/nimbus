@@ -49,7 +49,7 @@ export async function openReviewFromCommitCommand(options?: OpenReviewFromCommit
   p.log.message('Streaming review events; press Ctrl+C to stop.');
 
   let terminalStatus: string | null = null;
-  await runWithManagedUiSession(uiSession, async ({ wasInterrupted }) => {
+  await runWithManagedUiSession(uiSession, async ({ wasInterrupted, waitForInterrupt }) => {
     const proxyWorkerUrl = `http://${LOCAL_HOST}:${runtime.port}`;
     await Promise.race([
       streamReviewEvents(proxyWorkerUrl, derived.reviewId, async (event) => {
@@ -75,6 +75,9 @@ export async function openReviewFromCommitCommand(options?: OpenReviewFromCommit
     } else {
       p.log.warning(`Review completed: ${status}`);
     }
+
+    p.log.message('Report UI server is still running; press Ctrl+C to stop.');
+    await Promise.race([uiSession.waitForExit(), waitForInterrupt()]);
   });
 }
 
