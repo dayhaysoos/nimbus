@@ -11,65 +11,12 @@ import {
 import { getWorkspaceSandbox } from './sandbox.js';
 import { hydrateWorkspaceToReady, WorkspaceReadyTransitionError } from './ready.js';
 import { jsonResponse, requireWorkspaceAccess } from './shared.js';
-
-function toHex(bytes: Uint8Array): string {
-  let result = '';
-  for (const byte of bytes) {
-    result += byte.toString(16).padStart(2, '0');
-  }
-  return result;
-}
-
-async function sha256Hex(input: BufferSource): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', input);
-  return toHex(new Uint8Array(digest));
-}
-
-function sourceBundleR2Key(workspaceId: string, commitSha: string): string {
-  return `workspaces/${workspaceId}/source/${commitSha}.tar.gz`;
-}
-
-function buildWorkspaceCreateFallback(input: {
-  workspaceId: string;
-  sourceType: 'checkpoint';
-  checkpointId: string | null;
-  commitSha: string;
-  sourceRef?: string;
-  sourceProjectRoot?: string;
-  sourceBundleKey: string;
-  sourceBundleSha256: string;
-  sourceBundleBytes: number;
-  sandboxId: string;
-  baselineReady: boolean;
-}): WorkspaceResponse {
-  const now = new Date().toISOString();
-  return {
-    id: input.workspaceId,
-    status: 'ready',
-    sourceType: input.sourceType,
-    checkpointId: input.checkpointId,
-    commitSha: input.commitSha,
-    sourceRef: input.sourceRef ?? null,
-    sourceProjectRoot: input.sourceProjectRoot ?? null,
-    sourceBundleKey: input.sourceBundleKey,
-    sourceBundleSha256: input.sourceBundleSha256,
-    sourceBundleBytes: input.sourceBundleBytes,
-    sandboxId: input.sandboxId,
-    baselineReady: input.baselineReady,
-    errorCode: null,
-    errorMessage: null,
-    lastDeploymentId: null,
-    lastDeploymentStatus: null,
-    lastDeployedUrl: null,
-    lastDeployedAt: null,
-    lastDeploymentErrorCode: null,
-    lastDeploymentErrorMessage: null,
-    createdAt: now,
-    updatedAt: now,
-    deletedAt: null,
-    eventsUrl: `/api/workspaces/${input.workspaceId}/events`,
-  };
-}
+import {
+  buildWorkspaceCreateFallback,
+  loadVerifiedWorkspaceSourceBundle,
+  sourceBundleR2Key,
+  uploadWorkspaceSourceBundle,
+} from './source-bundle.js';
 
 export async function handleCreateWorkspace(request: Request, env: Env, authContext?: AuthContext): Promise<Response> {
   if (!env.SOURCE_BUNDLES) {
@@ -93,18 +40,7 @@ export async function handleCreateWorkspace(request: Request, env: Env, authCont
   let baselineReady = true;
 
   try {
-    await env.SOURCE_BUNDLES.put(sourceBundleKey, parsed.bundleArrayBuffer, {
-      httpMetadata: {
-        contentType: parsed.bundle.type || 'application/gzip',
-      },
-      customMetadata: {
-        source_type: parsed.metadata.source.type,
-        checkpoint_id: parsed.metadata.source.checkpointId ?? '',
-        commit_sha: parsed.metadata.source.commitSha,
-        source_ref: parsed.metadata.source.ref ?? '',
-        source_project_root: parsed.metadata.source.projectRoot ?? '',
-      },
-    });
+    await uploadWorkspaceSourceBundle(env, sourceBundleKey, parsed);
     bundleUploaded = true;
 
     await createWorkspace(env.DB, {
@@ -239,16 +175,12 @@ export async function handleResetWorkspace(workspaceId: string, env: Env, authCo
       return jsonResponse({ error: 'Workspace has been deleted' }, 409);
     }
 
-    const bundle = await env.SOURCE_BUNDLES.get(workspace.sourceBundleKey);
-    if (!bundle) {
-      return jsonResponse({ error: 'Workspace source bundle not found' }, 404);
+    const sourceBytesOrResponse = await loadVerifiedWorkspaceSourceBundle(env, workspace);
+    if (sourceBytesOrResponse instanceof Response) {
+      const payload = (await sourceBytesOrResponse.json()) as { error: string };
+      return jsonResponse({ error: payload.error }, sourceBytesOrResponse.status);
     }
-
-    const sourceBytes = await bundle.arrayBuffer();
-    const sourceHash = await sha256Hex(sourceBytes);
-    if (sourceHash !== workspace.sourceBundleSha256) {
-      return jsonResponse({ error: 'Workspace source bundle checksum mismatch' }, 500);
-    }
+    const sourceBytes = sourceBytesOrResponse;
 
     await appendWorkspaceEvent(env.DB, {
       workspaceId,
