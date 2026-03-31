@@ -5,9 +5,11 @@ import { resolveBranchForFork } from './github-branch.js';
 import { createInstallationToken, githubRequest, resolveGitHubInstallationId } from './github-client.js';
 import {
   detectPotentialSecrets,
-  getWorkspaceSandbox,
   listOversizedWorkspaceFiles,
   workspaceHasChanges,
+} from './sandbox-analysis.js';
+import {
+  getWorkspaceSandbox,
   workspaceHasGitHead,
 } from './sandbox.js';
 import { executeForkCommitAndPushInSandbox } from './github-push.js';
