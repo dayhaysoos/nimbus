@@ -15,4 +15,5 @@ export {
   hasWorkspaceDeploymentEvent,
   listWorkspaceDeploymentEvents,
 } from './deployments/events.js';
+export { updateWorkspaceDeploymentSummary } from './deployments/summary.js';
 export { WorkspaceDeploymentIdempotencyConflictError } from './deployments/shared.js';
