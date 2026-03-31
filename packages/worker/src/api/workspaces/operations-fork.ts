@@ -1,5 +1,6 @@
 import { claimWorkspaceOperationForExecution, updateWorkspaceOperationStatus } from '../../lib/db.js';
 import type { Env, WorkspaceResponse } from '../../types.js';
+import { createGitHubAppJwt } from './github-auth.js';
 import {
   detectPotentialSecrets,
   getWorkspaceSandbox,
@@ -8,7 +9,6 @@ import {
   workspaceHasGitHead,
 } from './sandbox.js';
 import {
-  createGitHubAppJwt,
   createInstallationToken,
   enforceForkTargetPolicy,
   executeForkCommitAndPushInSandbox,
