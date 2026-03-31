@@ -4,9 +4,9 @@ export {
 } from './workspaces/artifacts.js';
 export {
   handleCreateWorkspace,
-  handleDeleteWorkspace,
   handleResetWorkspace,
 } from './workspaces/lifecycle.js';
+export { handleDeleteWorkspace } from './workspaces/delete.js';
 export {
   handleCreateWorkspaceGithubFork,
   handleCreateWorkspacePatchExport,
