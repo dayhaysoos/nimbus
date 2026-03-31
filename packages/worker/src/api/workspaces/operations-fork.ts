@@ -8,9 +8,9 @@ import {
   listOversizedWorkspaceFiles,
   workspaceHasChanges,
 } from './sandbox-analysis.js';
+import { workspaceHasGitHead } from './sandbox-git.js';
 import {
   getWorkspaceSandbox,
-  workspaceHasGitHead,
 } from './sandbox.js';
 import { executeForkCommitAndPushInSandbox } from './github-push.js';
 import {

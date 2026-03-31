@@ -5,12 +5,11 @@ import {
   updateWorkspaceOperationStatus,
 } from '../../lib/db.js';
 import type { Env, WorkspaceOperationType, WorkspaceResponse } from '../../types.js';
+import { runWorkspaceDiffAgainstHead, workspaceHasGitHead } from './sandbox-git.js';
 import {
   exportWorkspaceZipBase64,
   fromBase64,
   getWorkspaceSandbox,
-  runWorkspaceDiffAgainstHead,
-  workspaceHasGitHead,
 } from './sandbox.js';
 import { sanitizeErrorMessage } from './operations-helpers.js';
 

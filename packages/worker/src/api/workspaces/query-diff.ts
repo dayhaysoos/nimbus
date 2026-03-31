@@ -10,7 +10,8 @@ import {
   truncateChangedFilesByBytes,
   truncateUtf8,
 } from './query-helpers.js';
-import { getWorkspaceSandbox, runWorkspaceDiffAgainstHead, workspaceHasGitHead } from './sandbox.js';
+import { runWorkspaceDiffAgainstHead, workspaceHasGitHead } from './sandbox-git.js';
+import { getWorkspaceSandbox } from './sandbox.js';
 import { jsonResponse, requireWorkspaceAccess } from './shared.js';
 
 export async function handleGetWorkspaceDiff(

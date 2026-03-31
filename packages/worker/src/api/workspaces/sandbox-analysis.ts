@@ -1,5 +1,6 @@
 import type { SandboxClient } from './sandbox.js';
-import { runSandboxCommandWithOutput, runWorkspaceDiffAgainstHead, shellQuote, WORKSPACE_ROOT } from './sandbox.js';
+import { runWorkspaceDiffAgainstHead } from './sandbox-git.js';
+import { runSandboxCommandWithOutput, shellQuote, WORKSPACE_ROOT } from './sandbox.js';
 
 export async function listOversizedWorkspaceFiles(
   sandbox: SandboxClient,

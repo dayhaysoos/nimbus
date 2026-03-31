@@ -1,7 +1,7 @@
 import { appendWorkspaceEvent, markWorkspaceReady } from '../../lib/db.js';
 import type { Env } from '../../types.js';
+import { ensureWorkspaceGitBaseline } from './sandbox-git.js';
 import {
-  ensureWorkspaceGitBaseline,
   getWorkspaceSandbox,
   hydrateWorkspaceFilesystem,
 } from './sandbox.js';
