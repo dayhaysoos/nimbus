@@ -8,14 +8,12 @@ import {
   getWorkspace,
   markWorkspaceDeleted,
   markWorkspaceFailed,
-  markWorkspaceReady,
 } from '../../lib/db.js';
 import {
-  ensureWorkspaceGitBaseline,
   getWorkspaceSandbox,
-  hydrateWorkspaceFilesystem,
   isSandboxAlreadyGoneError,
 } from './sandbox.js';
+import { hydrateWorkspaceToReady, WorkspaceReadyTransitionError } from './ready.js';
 import { jsonResponse, requireWorkspaceAccess } from './shared.js';
 
 function toHex(bytes: Uint8Array): string {
@@ -138,27 +136,7 @@ export async function handleCreateWorkspace(request: Request, env: Env, authCont
       },
     });
 
-    await hydrateWorkspaceFilesystem(env, sandboxId, parsed.bundleArrayBuffer);
-    const workspaceSandbox = await getWorkspaceSandbox(env, sandboxId);
-    try {
-      await ensureWorkspaceGitBaseline(workspaceSandbox);
-    } catch (error) {
-      baselineReady = false;
-      const message = error instanceof Error ? error.message : String(error);
-      try {
-        await appendWorkspaceEvent(env.DB, {
-          workspaceId,
-          eventType: 'workspace_git_baseline_failed',
-          payload: { message },
-        });
-      } catch {
-        // Best-effort event only.
-      }
-    }
-    const markedReady = await markWorkspaceReady(env.DB, workspaceId, baselineReady);
-    if (!markedReady) {
-      return jsonResponse({ error: 'Workspace can no longer transition to ready (likely deleted)' }, 409);
-    }
+    ({ baselineReady } = await hydrateWorkspaceToReady(env, workspaceId, sandboxId, parsed.bundleArrayBuffer));
     workspaceReadyPersisted = true;
 
     await appendWorkspaceEvent(env.DB, {
@@ -177,6 +155,10 @@ export async function handleCreateWorkspace(request: Request, env: Env, authCont
     return jsonResponse({ workspace }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+
+    if (error instanceof WorkspaceReadyTransitionError) {
+      return jsonResponse({ error: error.message }, 409);
+    }
 
     if (workspaceReadyPersisted) {
       try {
@@ -278,27 +260,7 @@ export async function handleResetWorkspace(workspaceId: string, env: Env, authCo
       payload: {},
     });
 
-    await hydrateWorkspaceFilesystem(env, workspace.sandboxId, sourceBytes);
-    const workspaceSandbox = await getWorkspaceSandbox(env, workspace.sandboxId);
-    try {
-      await ensureWorkspaceGitBaseline(workspaceSandbox);
-    } catch (error) {
-      baselineReady = false;
-      const message = error instanceof Error ? error.message : String(error);
-      try {
-        await appendWorkspaceEvent(env.DB, {
-          workspaceId,
-          eventType: 'workspace_git_baseline_failed',
-          payload: { message },
-        });
-      } catch {
-        // Best-effort event only.
-      }
-    }
-    const markedReady = await markWorkspaceReady(env.DB, workspaceId, baselineReady);
-    if (!markedReady) {
-      return jsonResponse({ error: 'Workspace can no longer transition to ready (likely deleted)' }, 409);
-    }
+    ({ baselineReady } = await hydrateWorkspaceToReady(env, workspaceId, workspace.sandboxId, sourceBytes));
     workspaceReadyPersisted = true;
 
     await appendWorkspaceEvent(env.DB, {
@@ -311,6 +273,10 @@ export async function handleResetWorkspace(workspaceId: string, env: Env, authCo
     return jsonResponse({ workspace: refreshed });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+
+    if (error instanceof WorkspaceReadyTransitionError) {
+      return jsonResponse({ error: error.message }, 409);
+    }
 
     if (workspaceReadyPersisted) {
       try {
