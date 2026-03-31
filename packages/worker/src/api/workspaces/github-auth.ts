@@ -1,5 +1,5 @@
 import type { Env } from '../../types.js';
-import { OperationPreflightError } from './github.js';
+import { OperationPreflightError } from './github-validation.js';
 
 function base64UrlEncodeString(value: string): string {
   return btoa(value).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');

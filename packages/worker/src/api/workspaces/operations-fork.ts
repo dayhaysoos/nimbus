@@ -2,6 +2,7 @@ import { claimWorkspaceOperationForExecution, updateWorkspaceOperationStatus } f
 import type { Env, WorkspaceResponse } from '../../types.js';
 import { createGitHubAppJwt } from './github-auth.js';
 import { resolveBranchForFork } from './github-branch.js';
+import { createInstallationToken, githubRequest, resolveGitHubInstallationId } from './github-client.js';
 import {
   detectPotentialSecrets,
   getWorkspaceSandbox,
@@ -11,12 +12,9 @@ import {
 } from './sandbox.js';
 import { executeForkCommitAndPushInSandbox } from './github-push.js';
 import {
-  createInstallationToken,
   enforceForkTargetPolicy,
-  githubRequest,
   OperationPreflightError,
   parseForkGithubPayload,
-  resolveGitHubInstallationId,
 } from './github.js';
 import { sanitizeErrorMessage } from './operations-helpers.js';
 

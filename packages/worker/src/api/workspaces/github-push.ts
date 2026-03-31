@@ -4,7 +4,7 @@ import {
   shellQuote,
   WORKSPACE_ROOT,
 } from './sandbox.js';
-import { OperationPreflightError } from './github.js';
+import { OperationPreflightError } from './github-validation.js';
 
 export async function executeForkCommitAndPushInSandbox(
   sandbox: SandboxClient,

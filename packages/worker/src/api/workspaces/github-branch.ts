@@ -1,5 +1,6 @@
 import type { Env } from '../../types.js';
-import { githubRequest, OperationPreflightError } from './github.js';
+import { githubRequest } from './github-client.js';
+import { OperationPreflightError } from './github-validation.js';
 
 function formatTimestamp(date: Date): string {
   const yyyy = date.getUTCFullYear();
