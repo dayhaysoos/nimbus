@@ -8,10 +8,10 @@ import {
   workspaceHasChanges,
   workspaceHasGitHead,
 } from './sandbox.js';
+import { executeForkCommitAndPushInSandbox } from './github-push.js';
 import {
   createInstallationToken,
   enforceForkTargetPolicy,
-  executeForkCommitAndPushInSandbox,
   githubRequest,
   OperationPreflightError,
   parseForkGithubPayload,
