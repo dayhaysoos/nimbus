@@ -1,0 +1,9 @@
+how would you break artifacts up? It’s already kinda small, no? Also is there dead code that we can be deleting from this refactor?
+
+---
+
+what would you recommend doing next?
+
+---
+
+Do the sweep and then reassess if there’s any real phase 4 work left
