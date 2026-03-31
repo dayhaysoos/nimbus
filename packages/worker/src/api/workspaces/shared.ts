@@ -32,10 +32,7 @@ export async function requireWorkspaceAccess(
 
 export async function resolveWorkspaceOr404(env: Env, workspaceId: string): Promise<WorkspaceResponse | null> {
   const workspace = await getWorkspace(env.DB, workspaceId);
-  if (!workspace) {
-    return null;
-  }
-  if (workspace.status === 'deleted') {
+  if (!workspace || workspace.status === 'deleted') {
     return null;
   }
   return workspace;

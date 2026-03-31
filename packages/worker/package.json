@@ -10,7 +10,7 @@
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
     "cf-typegen": "wrangler types",
-    "test": "tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js"
+    "test": "rm -rf .test-dist && tsc -p tsconfig.test.json && node ../../scripts/run-discovered-tests.mjs .test-dist"
   },
   "dependencies": {
     "@cloudflare/sandbox": "^0.1.1",

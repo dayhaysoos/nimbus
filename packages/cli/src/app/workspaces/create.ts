@@ -28,6 +28,38 @@ export interface WorkspaceSourceSummary {
   projectRoot: string;
 }
 
+function resolveCheckpointIdForCommit(git: GitRepo, commitSha: string): string | null {
+  return parseCommitTrailers(git.getCommitMessage(commitSha)).checkpointId;
+}
+
+function resolveCommitFromParsedInput(
+  git: GitRepo,
+  checkpointOrCommitish: string,
+  sourceRef: string | null,
+  parsedInput: ReturnType<typeof parseDeployInput>
+): { commitSha: string; checkpointId: string | null } {
+  if (parsedInput.kind !== 'checkpoint') {
+    const commitSha = git.resolveCommitSha(parsedInput.commitish);
+    return { commitSha, checkpointId: resolveCheckpointIdForCommit(git, commitSha) };
+  }
+
+  try {
+    const commits = git.listCommits(sourceRef || 'HEAD');
+    const resolved = resolveCheckpointFromHistory(parsedInput.checkpointId, commits);
+    return {
+      commitSha: resolved.selected.sha,
+      checkpointId: resolved.selected.trailers.checkpointId,
+    };
+  } catch (error) {
+    if (parsedInput.explicit) {
+      throw error;
+    }
+
+    const commitSha = git.resolveCommitSha(checkpointOrCommitish.trim());
+    return { commitSha, checkpointId: resolveCheckpointIdForCommit(git, commitSha) };
+  }
+}
+
 function normalizeRelativePath(path: string): string {
   const trimmed = path.trim();
   if (!trimmed || trimmed === '.') {
@@ -51,28 +83,7 @@ export function resolveWorkspaceSource(checkpointOrCommitish: string, options: C
   const git = new GitRepo(process.cwd());
   const parsedInput = parseDeployInput(checkpointOrCommitish);
   const sourceRef = options.ref ?? git.getCurrentBranchRef();
-
-  let commitSha: string;
-  let checkpointId: string | null = null;
-
-  if (parsedInput.kind === 'checkpoint') {
-    try {
-      const commits = git.listCommits(sourceRef || 'HEAD');
-      const resolved = resolveCheckpointFromHistory(parsedInput.checkpointId, commits);
-      commitSha = resolved.selected.sha;
-      checkpointId = resolved.selected.trailers.checkpointId;
-    } catch (error) {
-      if (parsedInput.explicit) {
-        throw error;
-      }
-
-      commitSha = git.resolveCommitSha(checkpointOrCommitish.trim());
-      checkpointId = parseCommitTrailers(git.getCommitMessage(commitSha)).checkpointId;
-    }
-  } else {
-    commitSha = git.resolveCommitSha(parsedInput.commitish);
-    checkpointId = parseCommitTrailers(git.getCommitMessage(commitSha)).checkpointId;
-  }
+  const { commitSha, checkpointId } = resolveCommitFromParsedInput(git, checkpointOrCommitish, sourceRef, parsedInput);
 
   git.ensureNoSubmodules(commitSha);
   git.ensureNoGitLfs(commitSha);

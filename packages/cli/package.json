@@ -11,7 +11,7 @@
     "build": "tsc",
     "build:ui": "pnpm --dir ../.. --filter @dayhaysoos/nimbus-report-ui build && rm -rf ./assets/report-ui && mkdir -p ./assets && cp -R ../report-ui/dist ./assets/report-ui",
     "dev": "tsx src/index.ts",
-    "test": "tsc -p tsconfig.test.json && node .test-dist/lib/run-tests.js",
+    "test": "rm -rf .test-dist && tsc -p tsconfig.test.json && node ../../scripts/run-discovered-tests.mjs .test-dist",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

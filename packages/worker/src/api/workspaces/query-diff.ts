@@ -1,5 +1,4 @@
 import type { AuthContext, Env } from '../../types.js';
-import { getWorkspace } from '../../lib/db.js';
 import {
   DEFAULT_DIFF_MAX_BYTES,
   MAX_DIFF_MAX_BYTES,
@@ -12,7 +11,7 @@ import {
 import { parseMaxBytes } from './query-paths.js';
 import { runWorkspaceDiffAgainstHead, workspaceHasGitHead } from './sandbox-git.js';
 import { getWorkspaceSandbox } from './sandbox.js';
-import { jsonResponse, requireWorkspaceAccess } from './shared.js';
+import { jsonResponse, requireWorkspaceAccess, resolveWorkspaceOr404, workspaceNotReadyResponse } from './shared.js';
 
 export async function handleGetWorkspaceDiff(
   workspaceId: string,
@@ -26,18 +25,12 @@ export async function handleGetWorkspaceDiff(
       return accessResponse;
     }
 
-    const workspace = await getWorkspace(env.DB, workspaceId);
-    if (!workspace || workspace.status === 'deleted') {
+    const workspace = await resolveWorkspaceOr404(env, workspaceId);
+    if (!workspace) {
       return jsonResponse({ error: 'Workspace not found' }, 404);
     }
     if (workspace.status !== 'ready') {
-      return jsonResponse(
-        {
-          error: `Workspace is not ready (status: ${workspace.status})`,
-          status: workspace.status,
-        },
-        409
-      );
+      return workspaceNotReadyResponse(workspace);
     }
     if (!workspace.baselineReady) {
       return jsonResponse(

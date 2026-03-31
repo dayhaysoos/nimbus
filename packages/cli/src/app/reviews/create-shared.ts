@@ -9,6 +9,11 @@ export const COCHANGE_TOP_N = 20;
 
 export type ReviewCreateProvenance = NonNullable<Parameters<typeof createReview>[2]['provenance']>;
 
+function readRecordString(value: Record<string, unknown>, key: string): string | null {
+  const field = value[key];
+  return typeof field === 'string' ? field : null;
+}
+
 export function isExpectedLocalCochangeResolutionError(message: string): boolean {
   return (
     /not a git repository/i.test(message) ||
@@ -69,6 +74,10 @@ function normalizeBranchRefForProvenance(value: string): string | null {
   return normalized;
 }
 
+/**
+ * Resolves git provenance required by worker review creation.
+ * Falls back to GITHUB_HEAD_REF when local branch detection is unavailable (for CI detached-head runs).
+ */
 export function resolveReviewGitProvenance(): { repo: string; branch: string } {
   let branchCandidate = '';
   try {
@@ -119,12 +128,11 @@ export function formatReviewExecutionFailure(
   }
 
   if (lastFailureEvent) {
-    const eventType = typeof lastFailureEvent.type === 'string' ? lastFailureEvent.type : null;
-    const reason = typeof lastFailureEvent.reason === 'string' ? lastFailureEvent.reason : null;
-    const githubResponseBody =
-      typeof lastFailureEvent.githubResponseBody === 'string' ? lastFailureEvent.githubResponseBody : null;
-    const code = typeof lastFailureEvent.code === 'string' ? lastFailureEvent.code : null;
-    const message = typeof lastFailureEvent.message === 'string' ? lastFailureEvent.message : null;
+    const eventType = readRecordString(lastFailureEvent, 'type');
+    const reason = readRecordString(lastFailureEvent, 'reason');
+    const githubResponseBody = readRecordString(lastFailureEvent, 'githubResponseBody');
+    const code = readRecordString(lastFailureEvent, 'code');
+    const message = readRecordString(lastFailureEvent, 'message');
 
     if (eventType) {
       details.push(`event=${eventType}`);

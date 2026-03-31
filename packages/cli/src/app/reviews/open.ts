@@ -18,6 +18,14 @@ export interface StartReviewUiOptions {
   port?: number;
 }
 
+function logReviewCompletion(status: string): void {
+  if (status === 'succeeded') {
+    p.log.success(`Review completed: ${status}`);
+    return;
+  }
+  p.log.warning(`Review completed: ${status}`);
+}
+
 export async function openReviewFromCommitCommand(options?: OpenReviewFromCommitOptions): Promise<void> {
   const runtime = resolveReviewUiRuntimeContext({ port: options?.port });
 
@@ -70,11 +78,7 @@ export async function openReviewFromCommitCommand(options?: OpenReviewFromCommit
 
     const final = await getReview(proxyWorkerUrl, derived.reviewId);
     const status = terminalStatus ?? final.review.status;
-    if (status === 'succeeded') {
-      p.log.success(`Review completed: ${status}`);
-    } else {
-      p.log.warning(`Review completed: ${status}`);
-    }
+    logReviewCompletion(status);
 
     p.log.message('Report UI server is still running; press Ctrl+C to stop.');
     await Promise.race([uiSession.waitForExit(), waitForInterrupt()]);

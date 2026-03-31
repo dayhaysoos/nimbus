@@ -1,5 +1,46 @@
-import type { ReviewRunResponse } from '../../../types.js';
+import type { ReviewRunListItem, ReviewRunResponse } from '../../../types.js';
 import { ReviewIdempotencyConflictError, ReviewRunListRecord, toReviewRunResponse } from './shared.js';
+
+function resolveListLimit(limit: number | undefined): number {
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
+    return 100;
+  }
+  return Math.max(1, Math.min(200, Math.floor(limit)));
+}
+
+function toReviewRunListItem(record: ReviewRunListRecord): ReviewRunListItem {
+  const base: ReviewRunListItem = {
+    id: record.id,
+    workspaceId: record.workspace_id,
+    deploymentId: record.deployment_id,
+    repo: typeof record.repo === 'string' && record.repo.trim() ? record.repo.trim() : 'unknown/repo',
+    branch: typeof record.branch === 'string' && record.branch.trim() ? record.branch.trim() : 'unknown',
+    status: record.status,
+    createdAt: record.created_at,
+    updatedAt: record.updated_at,
+    startedAt: record.started_at,
+    finishedAt: record.finished_at,
+    findingCount:
+      typeof record.finding_count === 'number' && Number.isFinite(record.finding_count)
+        ? record.finding_count
+        : null,
+    riskLevel: record.risk_level,
+    recommendation: record.recommendation,
+    summaryText: typeof record.summary_text === 'string' ? record.summary_text : null,
+  };
+
+  if (!record.error_code || !record.error_message) {
+    return base;
+  }
+
+  return {
+    ...base,
+    error: {
+      code: record.error_code,
+      message: record.error_message,
+    },
+  };
+}
 
 export async function getReviewRun(db: D1Database, reviewId: string): Promise<ReviewRunResponse | null> {
   const record = await db.prepare('SELECT * FROM review_runs WHERE id = ?').bind(reviewId).first();
@@ -13,7 +54,7 @@ export async function listReviewRuns(
   db: D1Database,
   options?: { limit?: number; accountId?: string; repo?: string; branch?: string }
 ) {
-  const resolvedLimit = typeof options?.limit === 'number' && Number.isFinite(options.limit) ? Math.max(1, Math.min(200, Math.floor(options.limit))) : 100;
+  const resolvedLimit = resolveListLimit(options?.limit);
   const whereClauses: string[] = [];
   const values: Array<string | number> = [];
 
@@ -67,28 +108,7 @@ export async function listReviewRuns(
   values.push(resolvedLimit);
 
   const result = await db.prepare(query).bind(...values).all<ReviewRunListRecord>();
-  return result.results.map((record) => {
-    const response = {
-      id: record.id,
-      workspaceId: record.workspace_id,
-      deploymentId: record.deployment_id,
-      repo: typeof record.repo === 'string' && record.repo.trim() ? record.repo.trim() : 'unknown/repo',
-      branch: typeof record.branch === 'string' && record.branch.trim() ? record.branch.trim() : 'unknown',
-      status: record.status,
-      createdAt: record.created_at,
-      updatedAt: record.updated_at,
-      startedAt: record.started_at,
-      finishedAt: record.finished_at,
-      findingCount: typeof record.finding_count === 'number' && Number.isFinite(record.finding_count) ? record.finding_count : null,
-      riskLevel: record.risk_level,
-      recommendation: record.recommendation,
-      summaryText: typeof record.summary_text === 'string' ? record.summary_text : null,
-    };
-    if (record.error_code && record.error_message) {
-      (response as any).error = { code: record.error_code, message: record.error_message };
-    }
-    return response;
-  });
+  return result.results.map(toReviewRunListItem);
 }
 
 export async function getReviewRunAccountId(db: D1Database, reviewId: string): Promise<string | null | undefined> {

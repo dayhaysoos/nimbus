@@ -1,4 +1,4 @@
-import type { AuthContext, Env } from '../../types.js';
+import type { AuthContext, Env, WorkspaceResponse } from '../../types.js';
 import { getWorkspace } from '../../lib/db.js';
 import {
   assertWorkspaceRootSafe,
@@ -29,6 +29,24 @@ function workspaceNotReadyResponse(status: string): Response {
   );
 }
 
+function resolveWorkspaceFileApiError(error: unknown): Response {
+  if (isWorkspacePathValidationError(error)) {
+    return jsonResponse({ error: (error as Error).message }, 400);
+  }
+  const message = error instanceof Error ? error.message : String(error);
+  return jsonResponse({ error: message }, 500);
+}
+
+function ensureReadyWorkspace(workspace: WorkspaceResponse | null): WorkspaceResponse | Response {
+  if (!workspace || workspace.status === 'deleted') {
+    return jsonResponse({ error: 'Workspace not found' }, 404);
+  }
+  if (workspace.status !== 'ready') {
+    return workspaceNotReadyResponse(workspace.status);
+  }
+  return workspace;
+}
+
 export async function handleListWorkspaceFiles(
   workspaceId: string,
   request: Request,
@@ -41,13 +59,11 @@ export async function handleListWorkspaceFiles(
       return accessResponse;
     }
 
-    const workspace = await getWorkspace(env.DB, workspaceId);
-    if (!workspace || workspace.status === 'deleted') {
-      return jsonResponse({ error: 'Workspace not found' }, 404);
+    const resolvedWorkspace = ensureReadyWorkspace(await getWorkspace(env.DB, workspaceId));
+    if (resolvedWorkspace instanceof Response) {
+      return resolvedWorkspace;
     }
-    if (workspace.status !== 'ready') {
-      return workspaceNotReadyResponse(workspace.status);
-    }
+    const workspace = resolvedWorkspace;
 
     const url = new URL(request.url);
     const requestedPath = normalizeWorkspacePath(url.searchParams.get('path'));
@@ -83,12 +99,7 @@ export async function handleListWorkspaceFiles(
       entries,
     });
   } catch (error) {
-    if (isWorkspacePathValidationError(error)) {
-      return jsonResponse({ error: (error as Error).message }, 400);
-    }
-
-    const message = error instanceof Error ? error.message : String(error);
-    return jsonResponse({ error: message }, 500);
+    return resolveWorkspaceFileApiError(error);
   }
 }
 
@@ -104,13 +115,11 @@ export async function handleGetWorkspaceFile(
       return accessResponse;
     }
 
-    const workspace = await getWorkspace(env.DB, workspaceId);
-    if (!workspace || workspace.status === 'deleted') {
-      return jsonResponse({ error: 'Workspace not found' }, 404);
+    const resolvedWorkspace = ensureReadyWorkspace(await getWorkspace(env.DB, workspaceId));
+    if (resolvedWorkspace instanceof Response) {
+      return resolvedWorkspace;
     }
-    if (workspace.status !== 'ready') {
-      return workspaceNotReadyResponse(workspace.status);
-    }
+    const workspace = resolvedWorkspace;
 
     const url = new URL(request.url);
     const filePath = normalizeWorkspacePath(url.searchParams.get('path'), true);
@@ -152,11 +161,6 @@ export async function handleGetWorkspaceFile(
       content,
     });
   } catch (error) {
-    if (isWorkspacePathValidationError(error)) {
-      return jsonResponse({ error: (error as Error).message }, 400);
-    }
-
-    const message = error instanceof Error ? error.message : String(error);
-    return jsonResponse({ error: message }, 500);
+    return resolveWorkspaceFileApiError(error);
   }
 }
