@@ -1,0 +1,70 @@
+Can you investigate this from our gitleaks? Run gitleaks/gitleaks-action@v2
+[dayhaysoos] is an individual user. No license key is required.
+gitleaks version: 8.24.3
+Version to install: 8.24.3 (target directory: /tmp/gitleaks-8.24.3)
+Cache hit for: gitleaks-cache-8.24.3-linux-x64
+Received 5717457 of 5717457 (100.0%), 48.7 MBs/sec
+Cache Size: ~5 MB (5717457 B)
+/usr/bin/tar -xf /home/runner/work/_temp/50d1d9aa-0f22-4886-8928-14de01305428/cache.tzst -P -C /home/runner/work/nimbus/nimbus --use-compress-program unzstd
+Cache restored successfully
+Gitleaks restored from cache
+event type: pull_request
+gitleaks cmd: gitleaks detect --redact -v --exit-code=2 --report-format=sarif --report-path=results.sarif --log-level=debug --log-opts=--no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+/tmp/gitleaks-8.24.3/gitleaks detect --redact -v --exit-code=2 --report-format=sarif --report-path=results.sarif --log-level=debug --log-opts=--no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+4:05PM DBG using github.com/wasilibs/go-re2 regex engine
+4:05PM DBG using gitleaks config from GITLEAKS_CONFIG env var: .gitleaks.toml
+4:05PM DBG extending config with default config
+4:05PM DBG executing: /usr/bin/git -C . log -p -U0 --no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+4:05PM DBG SCM platform parsed from host host=github.com platform=github
+Finding:     ...= normalized.match(/REDACTED([\s\S]*?)-----END R...
+Secret:      REDACTED
+RuleID:      private-key
+Entropy:     5.205453
+File:        packages/worker/src/api/workspaces/github.ts
+Line:        180
+Commit:      45a877b19e3eabce65333c6ce73ec87e99ddb21e
+Author:      Nick DeJesus
+Email:       ndejesus1227@gmail.com
+Date:        2026-03-30T14:04:28Z
+Fingerprint: 45a877b19e3eabce65333c6ce73ec87e99ddb21e:packages/worker/src/api/workspaces/github.ts:private-key:180
+Link:        https://github.com/dayhaysoos/nimbus/blob/45a877b19e3eabce65333c6ce73ec87e99ddb21e/packages/worker/src/api/workspaces/github.ts#L180-L185
+
+4:05PM INF 28 commits scanned.
+4:05PM DBG Note: this number might be smaller than expected due to commits with no additions
+4:05PM INF scanned ~879070 bytes (879.07 KB) in 296ms
+4:05PM WRN leaks found: 1
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+Uploaded bytes 7160
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is 5ea60f86346aea0d610fd035f2aea02b88f9e9bd11dd26632195850c53d5c419
+Finalizing artifact upload
+Artifact gitleaks-results.sarif.zip successfully finalized. Artifact ID 6203418787
+Warning: Error encountered when attempting to write a comment on PR #28: HttpError: Resource not accessible by integration
+Likely an issue with too large of a diff for the comment to be written.
+All secrets that have been leaked will be reported in the summary and job artifact.
+Warning: 🛑 Leaks detected, see job summary for details
+
+---
+
+go with your recommendation
+
+---
+
+let’s install it locally so we can test gitleaks in the future
+
+---
+
+do it
+
+---
+
+what the fuck, git leaks just over turned my CPU pct by 1000%… how could that have happened?
