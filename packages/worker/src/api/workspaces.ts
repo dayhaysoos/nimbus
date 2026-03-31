@@ -16,10 +16,12 @@ export {
 export {
   handleGetWorkspace,
   handleGetWorkspaceEvents,
-  handleGetWorkspaceFile,
-  handleListWorkspaceFiles,
 } from './workspaces/query.js';
 export { handleGetWorkspaceDiff } from './workspaces/query-diff.js';
+export {
+  handleGetWorkspaceFile,
+  handleListWorkspaceFiles,
+} from './workspaces/query-files.js';
 export {
   assertWorkspaceRootSafe,
   parseDiffNameStatus,
