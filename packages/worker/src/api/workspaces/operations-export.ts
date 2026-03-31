@@ -7,10 +7,9 @@ import {
 import type { Env, WorkspaceOperationType, WorkspaceResponse } from '../../types.js';
 import { runWorkspaceDiffAgainstHead, workspaceHasGitHead } from './sandbox-git.js';
 import {
-  exportWorkspaceZipBase64,
-  fromBase64,
   getWorkspaceSandbox,
 } from './sandbox.js';
+import { exportWorkspaceZipBase64, fromBase64 } from './sandbox-filesystem.js';
 import { sanitizeErrorMessage } from './operations-helpers.js';
 
 function getArtifactsBucket(env: Env): R2Bucket | null {

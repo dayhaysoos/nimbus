@@ -12,11 +12,11 @@ import {
 import {
   executeSandboxCommand,
   getWorkspaceSandbox,
-  resolveWorkspaceRealPath,
   runSandboxCommandWithOutput,
   shellQuote,
   WORKSPACE_ROOT,
 } from './sandbox.js';
+import { resolveWorkspaceRealPath } from './sandbox-filesystem.js';
 import { jsonResponse, requireWorkspaceAccess } from './shared.js';
 
 function workspaceNotReadyResponse(status: string): Response {

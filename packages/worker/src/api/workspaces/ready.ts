@@ -1,9 +1,9 @@
 import { appendWorkspaceEvent, markWorkspaceReady } from '../../lib/db.js';
 import type { Env } from '../../types.js';
 import { ensureWorkspaceGitBaseline } from './sandbox-git.js';
+import { hydrateWorkspaceFilesystem } from './sandbox-filesystem.js';
 import {
   getWorkspaceSandbox,
-  hydrateWorkspaceFilesystem,
 } from './sandbox.js';
 
 export class WorkspaceReadyTransitionError extends Error {
