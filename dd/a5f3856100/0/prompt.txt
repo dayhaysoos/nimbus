@@ -1,0 +1,170 @@
+I think I’m ready to move on. Even though we didn’t touch the report-ui, it should still work ,right?
+
+---
+
+Okay, I’d like to run a local experience real quick. give me the pnpm —filter commands I’d need to do this.
+
+---
+
+So right now, after a review is done, the server shuts down: 3] review_analysis_output_validated 2026-03-31 14:14:39
+[24] review_analysis_agent_completed 2026-03-31 14:14:40
+[25] review_finalize_started 2026-03-31 14:14:40
+[26] review_analysis_findings_persisted 2026-03-31 14:14:41
+[27] review_analysis_succeeded 2026-03-31 14:14:41
+[28] review_succeeded 2026-03-31 14:14:41
+[terminal] status=succeeded
+│
+└  Report UI stopped.
+
+│
+■  terminated
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: node dist/index.js review open --commit HEAD
+nickdejesus@MacBook-Pro-6 nimbus %
+
+This was intentional before, but now I think it ruins the expierence.Can you make it so that the server never shuts off after a review? Eventually I want this to be an intereactive experience and that prevents this from happening.
+
+---
+
+Give me a commit or checkpoint ID to test a review on. Find a really big one
+
+---
+
+Give me the command I need to tst against this commit:
+
+23dee8a
+
+---
+
+isn’t there a command to use checkpoint id instead of commits? I’d like to test this checkpoint: 59ef8780d5ad
+
+---
+
+for some reason these are failing, can you investigate? 
+
+ Serving report UI assets from /Users/nickdejesus/Code/nimbus/packages/cli/assets/report-ui on 127.0.0.1:2000 with API proxy target https://nimbus-worker.ndejesus1227.workers.dev
+│
+■  listen EADDRINUSE: address already in use 127.0.0.1:2000
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: node dist/index.js review open --commit 909f67aefcff5d550cd6715aa238bbda79091f96
+nickdejesus@MacBook-Pro-6 nimbus % pnpm --filter @dayhaysoos/nimbus exec node dist/index.js review open --commit 23dee8a
+[dotenv@17.2.3] injecting env (5) from ../../.env -- tip: ⚙️   suppress all logs with { quiet: true }
+┌  @dayhaysoos/nimbus
+│
+◇  Checkpoint resolution failed
+│
+■  Review flow failed at checkpoint resolution: Commit 23dee8aca51e has no diff patch content. Review creation requires meaningful diff context.
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: node dist/index.js review open --commit 23dee8a
+nickdejesus@MacBook-Pro-6 nimbus % pnpm --filter @dayhaysoos/nimbus exec node dist/index.js review preflight 59ef8780d5ad
+[dotenv@17.2.3] injecting env (5) from ../../.env -- tip: 🔄  add secrets lifecycle management: https://dotenvx.com/ops
+┌  @dayhaysoos/nimbus
+│
+◇  Commit/checkpoint validation failed
+│
+■  Review preflight failed: git rev-parse --verify 59ef8780d5ad^{commit} failed: fatal: Needed a single revision
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: node dist/index.js review preflight 59ef8780d5ad
+nickdejesus@MacBook-Pro-6 nimbus %
+
+---
+
+review preflight and review open should both support checkpoint IDs. Fix this
+
+---
+
+the UI was terminated after a successful review run again. I thought I told you I didn’t want this happening anymore? Don’t do anything, explain why this still happened?
+
+---
+
+Can you fix it to be that way?
+
+---
+
+It keeps shutting down. Why is this happening? Explain again, don’t do anything:
+
+] review_analysis_provider_request_started 2026-03-31 15:25:30
+[22] review_analysis_model_output_received 2026-03-31 15:25:41
+[23] review_analysis_output_validated 2026-03-31 15:25:42
+[24] review_analysis_agent_completed 2026-03-31 15:25:43
+[25] review_finalize_started 2026-03-31 15:25:43
+[26] review_analysis_findings_persisted 2026-03-31 15:25:43
+[27] review_analysis_succeeded 2026-03-31 15:25:44
+[28] review_succeeded 2026-03-31 15:25:44
+[terminal] status=succeeded
+│
+└  Report UI stopped.
+
+│
+■  terminated
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: node dist/index.js review open --commit 24b7d7edc8d8 --port 2001
+nickdejesus@MacBook-Pro-6 nimbus % pnpm --filter @dayhaysoos/nimbus exec node dist/index.js review open --commit 24b7d7edc8d8 --port 2001
+[dotenv@17.2.3] injecting env (5) from ../../.env -- tip: 🔐  prevent building .env in docker: https://dotenvx.com/prebuild
+┌  @dayhaysoos/nimbus
+│
+◇  Resolved checkpoint 24b7d7edc8d8 from 909f67aefcff
+│
+◇  Entire session metadata is readable
+│
+◇  Resolved local co-change context from entire/checkpoints/v1 (5 sessions scanned)
+│
+◇  Co-change token check skipped (using local co-change context)
+│
+◇  Workspace created: ws_yjlfjtp2
+│
+◇  Deployment succeeded: dep_2gjziy7w
+│
+│  Starting policy derivation for workspace ws_yjlfjtp2, deployment dep_2gjziy7w
+│
+│  Serving report UI assets from /Users/nickdejesus/Code/nimbus/packages/cli/assets/report-ui on 127.0.0.1:2001 with API proxy target https://nimbus-worker.ndejesus1227.workers.dev
+│
+◆  Opened http://127.0.0.1:2001/policy/rev_vkm06ru3
+│
+│  Streaming review events; press Ctrl+C to stop.
+[1] review_created 2026-03-31 15:46:46
+[2] review_policy_derivation_started 2026-03-31 15:46:46
+[3] review_policy_derivation_completed 2026-03-31 15:46:54
+[snapshot] status=policy_ready
+[4] review_policy_approved 2026-03-31 15:46:57
+[5] review_enqueued 2026-03-31 15:46:57
+[6] review_context_assembly_started 2026-03-31 15:47:02
+[7] review_context_checkpoint_context_collected 2026-03-31 15:47:02
+[8] review_context_diff_collected 2026-03-31 15:47:03
+[9] review_context_changed_files_collected 2026-03-31 15:47:03
+[10] review_context_conventions_collected 2026-03-31 15:47:16
+[11] review_context_cochange_lookup_started 2026-03-31 15:47:16
+[12] review_context_cochange_lookup_completed 2026-03-31 15:47:20
+[13] review_context_budget_checked 2026-03-31 15:47:20
+[14] review_context_stored 2026-03-31 15:47:21
+[15] review_context_assembly_succeeded 2026-03-31 15:47:22
+[16] review_preflight_started 2026-03-31 15:47:22
+[17] review_preflight_completed 2026-03-31 15:47:22
+[18] review_analysis_started 2026-03-31 15:47:22
+[19] review_analysis_agent_started 2026-03-31 15:47:23
+[20] review_analysis_prompt_built 2026-03-31 15:47:26
+[21] review_analysis_provider_request_started 2026-03-31 15:47:26
+[22] review_analysis_model_output_received 2026-03-31 15:47:34
+[23] review_analysis_output_validated 2026-03-31 15:47:34
+[24] review_analysis_agent_completed 2026-03-31 15:47:35
+[25] review_finalize_started 2026-03-31 15:47:35
+[26] review_analysis_findings_persisted 2026-03-31 15:47:35
+[27] review_analysis_succeeded 2026-03-31 15:47:36
+[28] review_succeeded 2026-03-31 15:47:36
+[terminal] status=succeeded
+│
+└  Report UI stopped.
+
+│
+■  terminated
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_EXEC_FIRST_FAIL  Command failed with exit code 1: node dist/index.js review open --commit 24b7d7edc8d8 --port 2001
+nickdejesus@MacBook-Pro-6 nimbus %
+
+---
+
+okay to be really honest I think I want to totally revamp this CLi/UI experience (which is why I didn’t want too much work being done on the UI). I think maybe it might be a good idea to open a PR with the current branch first, despite this being in a somewhat broken state. What do you think?
+
+---
+
+open the PR for me right now
