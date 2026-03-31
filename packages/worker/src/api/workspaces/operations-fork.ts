@@ -1,6 +1,7 @@
 import { claimWorkspaceOperationForExecution, updateWorkspaceOperationStatus } from '../../lib/db.js';
 import type { Env, WorkspaceResponse } from '../../types.js';
 import { createGitHubAppJwt } from './github-auth.js';
+import { resolveBranchForFork } from './github-branch.js';
 import {
   detectPotentialSecrets,
   getWorkspaceSandbox,
@@ -15,7 +16,6 @@ import {
   githubRequest,
   OperationPreflightError,
   parseForkGithubPayload,
-  resolveBranchForFork,
   resolveGitHubInstallationId,
 } from './github.js';
 import { sanitizeErrorMessage } from './operations-helpers.js';
