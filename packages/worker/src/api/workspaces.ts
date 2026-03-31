@@ -15,8 +15,8 @@ export {
 } from './workspaces/operations.js';
 export {
   handleGetWorkspace,
-  handleGetWorkspaceEvents,
-} from './workspaces/query.js';
+} from './workspaces/query-workspace.js';
+export { handleGetWorkspaceEvents } from './workspaces/query-events.js';
 export { handleGetWorkspaceDiff } from './workspaces/query-diff.js';
 export {
   handleGetWorkspaceFile,
