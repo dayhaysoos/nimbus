@@ -26,3 +26,15 @@ regexes = [
   '''\b[a-f0-9]{64}\b''',
   '''repeat\((40|64)\)''',
 ]
+
+[[allowlists]]
+description = "Allow PEM parsing regex literals in workspace GitHub auth code"
+condition = "AND"
+paths = [
+  '''(^|/)packages/worker/src/api/workspaces/github(?:-auth)?\.ts$''',
+]
+regexTarget = "line"
+regexes = [
+  '''normalized\.match\(/-----BEGIN PRIVATE KEY-----\(\[\\s\\S]\*\?\)-----END PRIVATE KEY-----/''',
+  '''normalized\.match\(/-----BEGIN RSA PRIVATE KEY-----\(\[\\s\\S]\*\?\)-----END RSA PRIVATE KEY-----/''',
+]
