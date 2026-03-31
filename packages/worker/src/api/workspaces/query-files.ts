@@ -8,7 +8,7 @@ import {
   normalizeWorkspacePath,
   parseMaxBytes,
   parseWorkspaceListEntries,
-} from './query-helpers.js';
+} from './query-paths.js';
 import {
   executeSandboxCommand,
   getWorkspaceSandbox,

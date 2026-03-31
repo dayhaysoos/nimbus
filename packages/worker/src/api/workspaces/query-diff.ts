@@ -5,11 +5,11 @@ import {
   MAX_DIFF_MAX_BYTES,
   parseBooleanQueryParam,
   parseDiffNameStatus,
-  parseMaxBytes,
   trimNameStatusToCompleteRecords,
   truncateChangedFilesByBytes,
   truncateUtf8,
-} from './query-helpers.js';
+} from './query-diff-helpers.js';
+import { parseMaxBytes } from './query-paths.js';
 import { runWorkspaceDiffAgainstHead, workspaceHasGitHead } from './sandbox-git.js';
 import { getWorkspaceSandbox } from './sandbox.js';
 import { jsonResponse, requireWorkspaceAccess } from './shared.js';

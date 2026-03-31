@@ -3,6 +3,7 @@ import type { Env, WorkspaceResponse } from '../../types.js';
 import { createGitHubAppJwt } from './github-auth.js';
 import { resolveBranchForFork } from './github-branch.js';
 import { createInstallationToken, githubRequest, resolveGitHubInstallationId } from './github-client.js';
+import { enforceForkTargetPolicy, OperationPreflightError, parseForkGithubPayload } from './github-validation.js';
 import {
   detectPotentialSecrets,
   listOversizedWorkspaceFiles,
@@ -13,11 +14,6 @@ import {
   getWorkspaceSandbox,
 } from './sandbox.js';
 import { executeForkCommitAndPushInSandbox } from './github-push.js';
-import {
-  enforceForkTargetPolicy,
-  OperationPreflightError,
-  parseForkGithubPayload,
-} from './github.js';
 import { sanitizeErrorMessage } from './operations-helpers.js';
 
 export async function executeForkGithubWorkspaceOperation(

@@ -24,9 +24,11 @@ export {
 } from './workspaces/query-files.js';
 export {
   assertWorkspaceRootSafe,
-  parseDiffNameStatus,
   parseWorkspaceListEntries,
+} from './workspaces/query-paths.js';
+export {
+  parseDiffNameStatus,
   trimNameStatusToCompleteRecords,
   truncateChangedFilesByBytes,
   truncateUtf8,
-} from './workspaces/query-helpers.js';
+} from './workspaces/query-diff-helpers.js';
