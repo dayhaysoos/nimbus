@@ -1,6 +1,8 @@
 import { execFileSync } from 'child_process';
 import type { CommitHistoryEntry, TreeFileEntry } from './resolver.js';
 
+const LARGE_GIT_OUTPUT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+
 export function parseGitLogOutput(output: string): CommitHistoryEntry[] {
   const records = output.split('\u001e').map((record) => record.trim()).filter(Boolean);
   const commits: CommitHistoryEntry[] = [];
@@ -37,6 +39,13 @@ export function treeOutputHasSubmodule(output: string): boolean {
 }
 
 function normalizeGitError(error: unknown): string {
+  if (error && typeof error === 'object' && 'code' in error) {
+    const code = (error as { code?: unknown }).code;
+    if (code === 'ENOBUFS') {
+      return `git output exceeded the configured buffer limit (${LARGE_GIT_OUTPUT_MAX_BUFFER_BYTES} bytes)`;
+    }
+  }
+
   if (error && typeof error === 'object' && 'stderr' in error) {
     const stderr = (error as { stderr?: string | Buffer }).stderr;
     if (typeof stderr === 'string' && stderr.trim()) {
@@ -80,11 +89,12 @@ export class GitRepo {
     return this.cwd;
   }
 
-  run(args: string[]): string {
+  run(args: string[], options?: { maxBuffer?: number }): string {
     try {
       return execFileSync('git', args, {
         cwd: this.cwd,
         encoding: 'utf8',
+        maxBuffer: options?.maxBuffer,
         stdio: ['ignore', 'pipe', 'pipe'],
       }).toString();
     } catch (error) {
@@ -105,13 +115,17 @@ export class GitRepo {
   }
 
   getCommitPatch(sha: string): string {
-    return this.run(['show', '--format=', '--no-ext-diff', '--unified=3', sha]);
+    return this.run(['show', '--format=', '--no-ext-diff', '--unified=3', sha], {
+      maxBuffer: LARGE_GIT_OUTPUT_MAX_BUFFER_BYTES,
+    });
   }
 
   getRangePatch(baseRef: string, headSha: string): string {
     // Use three-dot range for PR-style diffs: merge-base(baseRef, headSha)..headSha.
     // This isolates branch-introduced changes relative to the base branch.
-    return this.run(['diff', '--no-ext-diff', '--unified=3', `${baseRef}...${headSha}`]);
+    return this.run(['diff', '--no-ext-diff', '--unified=3', `${baseRef}...${headSha}`], {
+      maxBuffer: LARGE_GIT_OUTPUT_MAX_BUFFER_BYTES,
+    });
   }
 
   listCommits(ref: string): CommitHistoryEntry[] {

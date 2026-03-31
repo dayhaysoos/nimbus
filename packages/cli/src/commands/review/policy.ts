@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { createReviewPolicy, getWorkerUrl } from '../../lib/api.js';
+import { createReviewPolicy } from '../../clients/worker/reviews.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { validateReviewCommitCheckpoint, validateReviewEntireIntentContext } from './preflight.js';
 
 function renderPolicyText(policy: {

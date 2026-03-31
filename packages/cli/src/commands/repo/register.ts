@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getWorkerUrl, registerRepo } from '../../lib/api.js';
+import { registerRepo } from '../../clients/worker/repos.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { detectRepoSlugFromGitOrigin } from '../../lib/git.js';
 
 const REPO_SLUG_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;

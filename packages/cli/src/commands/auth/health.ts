@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getAuthExchangeHealth, getWorkerUrl } from '../../lib/api.js';
+import { getAuthExchangeHealth } from '../../clients/worker/auth.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 
 export async function authHealthCommand(options?: { json?: boolean }): Promise<void> {
   const workerUrl = getWorkerUrl();

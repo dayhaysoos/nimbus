@@ -15,6 +15,10 @@ import { runEntireIntentContextTests } from './entire/context.test.js';
 import { runWorkspaceDeployCommandTests } from '../commands/workspace/deploy.test.js';
 import { runReviewCommandTests } from '../commands/review/review.test.js';
 import { runAdminProvisionKeyCommandTests } from '../commands/admin/provision-key.test.js';
+import { runJobListAppTests } from '../app/jobs/list.test.js';
+import { runJobWatchAppTests } from '../app/jobs/watch.test.js';
+import { runReviewUiSessionTests } from '../app/reviews/session.test.js';
+import { runReviewUiStaticTests } from '../app/reviews/ui-static.test.js';
 
 type TestCase = {
   name: string;
@@ -38,6 +42,10 @@ const TEST_CASES: TestCase[] = [
   { name: 'workspace-deploy-command', run: runWorkspaceDeployCommandTests },
   { name: 'review-command', run: runReviewCommandTests },
   { name: 'admin-provision-key-command', run: runAdminProvisionKeyCommandTests },
+  { name: 'jobs-list-app', run: runJobListAppTests },
+  { name: 'jobs-watch-app', run: runJobWatchAppTests },
+  { name: 'review-ui-session', run: runReviewUiSessionTests },
+  { name: 'review-ui-static', run: runReviewUiStaticTests },
   { name: 'checkpoint-options', run: runCheckpointOptionsTests },
 ];
 

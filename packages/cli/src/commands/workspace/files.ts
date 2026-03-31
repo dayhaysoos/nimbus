@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getWorkerUrl, listWorkspaceFiles } from '../../lib/api.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
+import { listWorkspaceFiles } from '../../clients/worker/workspaces.js';
 
 export async function listWorkspaceFilesCommand(workspaceId: string, path?: string): Promise<void> {
   const workerUrl = getWorkerUrl();

@@ -1,7 +1,8 @@
 import { mkdir, writeFile } from 'fs/promises';
 import { dirname, resolve } from 'path';
 import * as p from '@clack/prompts';
-import { getReview, getWorkerUrl } from '../../lib/api.js';
+import { getReview } from '../../clients/worker/reviews.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 
 export async function exportReviewCommand(
   reviewId: string,

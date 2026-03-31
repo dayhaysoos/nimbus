@@ -1,10 +1,13 @@
 import * as p from '@clack/prompts';
-import { getWorkerUrl, getJob } from '../lib/api.js';
-import { getShortModelName } from '../lib/models.js';
-import type { JobResponse, JobStatus } from '../lib/types.js';
-
-const POLL_INTERVAL = 2000; // 2 seconds
-const MAX_POLL_COUNT = 150; // 5 minutes max (150 * 2s)
+import {
+  describeWatchedJobStatus,
+  formatCancelledJobLines,
+  formatCompletedJobLines,
+  formatFailedJobLines,
+  formatWatchTimeoutLines,
+  watchJobUntilTerminal,
+} from '../app/jobs/watch.js';
+import { getWorkerUrl } from '../clients/worker/shared.js';
 
 /**
  * Watch command - poll job status until completion
@@ -18,50 +21,64 @@ export async function watchCommand(jobId: string): Promise<void> {
   }
 
   const spinner = p.spinner();
-  let lastStatus: JobStatus | undefined;
-  let pollCount = 0;
 
   try {
     spinner.start(`Watching job ${jobId}...`);
+    const outcome = await watchJobUntilTerminal(workerUrl, jobId, {
+      onStatusChange: (job) => {
+        const message = describeWatchedJobStatus(job);
+        if (message) {
+          spinner.message(message);
+        }
+      },
+    });
 
-    while (pollCount < MAX_POLL_COUNT) {
-      const job = await getJob(workerUrl, jobId);
-      pollCount++;
-
-      // Update spinner based on status
-      if (job.status !== lastStatus) {
-        lastStatus = job.status;
-        updateSpinner(spinner, job);
+    if (outcome.kind === 'completed') {
+      spinner.stop('Job completed');
+      console.log('');
+      p.log.success('Build completed successfully!');
+      console.log('');
+      if (outcome.job.previewUrl) {
+        p.log.info(`Sandbox URL: ${outcome.job.previewUrl}`);
       }
-
-      // Check for terminal states
-      if (job.status === 'completed') {
-        spinner.stop('Job completed');
-        displayJobResult(job);
-        process.exit(0);
+      if (outcome.job.deployedUrl) {
+        p.outro(`Deployed: ${outcome.job.deployedUrl}`);
       }
-
-      if (job.status === 'failed') {
-        spinner.stop('Job failed');
-        displayJobError(job);
-        process.exit(1);
-      }
-
-      if (job.status === 'cancelled') {
-        spinner.stop('Job cancelled');
-        displayJobCancelled(job);
-        process.exit(1);
-      }
-
-      // Wait before polling again
-      await sleep(POLL_INTERVAL);
+      renderLines(formatCompletedJobLines(outcome.job));
+      process.exit(0);
     }
 
-    // Timeout reached
+    if (outcome.kind === 'failed') {
+      spinner.stop('Job failed');
+      console.log('');
+      p.log.error('Build failed');
+      console.log('');
+      if (outcome.job.errorMessage) {
+        p.log.error(outcome.job.errorMessage);
+      }
+      if (outcome.job.previewUrl) {
+        console.log('');
+        p.log.info(`Sandbox URL: ${outcome.job.previewUrl}`);
+      }
+      renderLines(formatFailedJobLines(outcome.job));
+      process.exit(1);
+    }
+
+    if (outcome.kind === 'cancelled') {
+      spinner.stop('Job cancelled');
+      console.log('');
+      p.log.warning('Build cancelled');
+      console.log('');
+      renderLines(formatCancelledJobLines(outcome.job));
+      process.exit(1);
+    }
+
     spinner.stop('Timeout');
-    p.log.warning(`Job ${jobId} is still ${lastStatus || 'queued'} after 5 minutes.`);
-    p.log.info('The job may still be running. Check again later with:');
-    p.log.info(`  nimbus watch ${jobId}`);
+    const timeoutLines = formatWatchTimeoutLines(outcome);
+    p.log.warning(timeoutLines[0] ?? 'Job watch timed out.');
+    for (const line of timeoutLines.slice(1)) {
+      p.log.info(line);
+    }
     process.exit(1);
   } catch (error) {
     spinner.stop('Failed');
@@ -71,120 +88,8 @@ export async function watchCommand(jobId: string): Promise<void> {
   }
 }
 
-/**
- * Update spinner message based on job status
- */
-function updateSpinner(spinner: ReturnType<typeof p.spinner>, job: JobResponse): void {
-  switch (job.status) {
-    case 'queued':
-      spinner.message('Job is queued...');
-      break;
-    case 'running':
-      spinner.message('Job is running...');
-      break;
-    case 'cancelled':
-      spinner.message('Job was cancelled.');
-      break;
+function renderLines(lines: string[]): void {
+  for (const line of lines) {
+    console.log(line);
   }
-}
-
-/**
- * Display completed job result
- */
-function displayJobResult(job: JobResponse): void {
-  console.log('');
-  p.log.success('Build completed successfully!');
-  console.log('');
-
-  if (job.previewUrl) {
-    p.log.info(`Sandbox URL: ${job.previewUrl}`);
-  }
-
-  if (job.deployedUrl) {
-    p.outro(`Deployed: ${job.deployedUrl}`);
-  }
-
-  // Show summary
-  console.log('');
-  console.log('  Job Details:');
-  console.log(`    ID:       ${job.id}`);
-  console.log(`    Model:    ${getShortModelName(job.model)}`);
-  console.log(`    Files:    ${job.fileCount || 'N/A'}`);
-
-  if (job.startedAt && job.completedAt) {
-    const duration = calculateDuration(job.startedAt, job.completedAt);
-    console.log(`    Duration: ${duration}`);
-  }
-
-  console.log('');
-}
-
-/**
- * Display failed job error
- */
-function displayJobError(job: JobResponse): void {
-  console.log('');
-  p.log.error('Build failed');
-  console.log('');
-
-  if (job.errorMessage) {
-    p.log.error(job.errorMessage);
-  }
-
-  // Show sandbox URL when available for debugging
-  if (job.previewUrl) {
-    console.log('');
-    p.log.info(`Sandbox URL: ${job.previewUrl}`);
-  }
-
-  console.log('');
-  console.log('  Job Details:');
-  console.log(`    ID:       ${job.id}`);
-  console.log(`    Model:    ${getShortModelName(job.model)}`);
-  console.log(`    Prompt:   ${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? '...' : ''}`);
-  console.log('');
-}
-
-/**
- * Display cancelled job info
- */
-function displayJobCancelled(job: JobResponse): void {
-  console.log('');
-  p.log.warning('Build cancelled');
-  console.log('');
-
-  console.log('  Job Details:');
-  console.log(`    ID:       ${job.id}`);
-  console.log(`    Model:    ${getShortModelName(job.model)}`);
-  console.log(`    Prompt:   ${job.prompt.slice(0, 50)}${job.prompt.length > 50 ? '...' : ''}`);
-  console.log('');
-}
-
-/**
- * Calculate duration between two ISO dates
- */
-function calculateDuration(start: string, end: string): string {
-  const startDate = new Date(start);
-  const endDate = new Date(end);
-  const diffMs = endDate.getTime() - startDate.getTime();
-  const diffSeconds = Math.floor(diffMs / 1000);
-  const diffMinutes = Math.floor(diffSeconds / 60);
-
-  if (diffSeconds < 60) {
-    return `${diffSeconds}s`;
-  } else if (diffMinutes < 60) {
-    const remainingSeconds = diffSeconds % 60;
-    return `${diffMinutes}m ${remainingSeconds}s`;
-  } else {
-    const hours = Math.floor(diffMinutes / 60);
-    const remainingMinutes = diffMinutes % 60;
-    return `${hours}h ${remainingMinutes}m`;
-  }
-}
-
-/**
- * Sleep for a given number of milliseconds
- */
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
 }

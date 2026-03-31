@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getReview, getWorkerUrl } from '../../lib/api.js';
+import { getReview } from '../../clients/worker/reviews.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 
 export async function showReviewCommand(reviewId: string): Promise<void> {
   const workerUrl = getWorkerUrl();

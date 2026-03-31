@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getWorkerUrl, streamReviewEvents } from '../../lib/api.js';
+import { streamReviewEvents } from '../../clients/worker/reviews.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import type { ReviewEventEnvelope } from '../../lib/types.js';
 
 export function formatEvent(event: ReviewEventEnvelope): string {

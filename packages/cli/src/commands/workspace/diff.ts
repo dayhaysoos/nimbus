@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getWorkerUrl, getWorkspaceDiff } from '../../lib/api.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
+import { getWorkspaceDiff } from '../../clients/worker/workspaces.js';
 
 export interface WorkspaceDiffCommandOptions {
   includePatch?: boolean;

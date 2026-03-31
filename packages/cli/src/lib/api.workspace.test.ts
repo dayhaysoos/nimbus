@@ -6,7 +6,7 @@ import {
   getWorkspaceDiff,
   getWorkspaceFile,
   listWorkspaceFiles,
-} from './api.js';
+} from '../clients/worker/workspaces.js';
 
 export async function runWorkspaceApiTests(): Promise<void> {
   const originalFetch = globalThis.fetch;

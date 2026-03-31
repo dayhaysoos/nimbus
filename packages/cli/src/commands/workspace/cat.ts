@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { getWorkerUrl, getWorkspaceFile } from '../../lib/api.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
+import { getWorkspaceFile } from '../../clients/worker/workspaces.js';
 
 export async function catWorkspaceFileCommand(
   workspaceId: string,

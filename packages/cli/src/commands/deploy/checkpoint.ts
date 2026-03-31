@@ -1,7 +1,8 @@
 import { existsSync, readFileSync, readdirSync } from 'fs';
 import { resolve } from 'path';
 import * as p from '@clack/prompts';
-import { createCheckpointJob, getWorkerUrl } from '../../lib/api.js';
+import { createCheckpointJob } from '../../clients/worker/jobs.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import {
   buildSourceBundleFilename,
   createSourceArchiveFromCommit,

@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
-import { createAdminApiKey, getWorkerUrl } from '../../lib/api.js';
+import { createAdminApiKey } from '../../clients/worker/admin.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 
 type Reporter = {
   success: (message: string) => void;

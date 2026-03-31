@@ -48,6 +48,11 @@ interface CheckpointSessionReadResult {
   diagnostics: CheckpointReadabilityDiagnostics;
 }
 
+interface EntireTranscriptExtraction {
+  contextText: string;
+  rawPromptText: string | null;
+}
+
 const ENTIRE_CHECKPOINTS_REF_PREFERENCE = [
   'entire/checkpoints/v1',
   'refs/heads/entire/checkpoints/v1',
@@ -79,6 +84,83 @@ function readJsonObject(text: string): Record<string, unknown> {
 
 function readOptionalString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function collectTranscriptPartText(parts: unknown): string[] {
+  if (!Array.isArray(parts)) {
+    return [];
+  }
+
+  return parts
+    .flatMap((part) => {
+      if (!part || typeof part !== 'object' || Array.isArray(part)) {
+        return [];
+      }
+      const text = readOptionalString((part as Record<string, unknown>).text);
+      return text ? [text] : [];
+    })
+    .filter(Boolean);
+}
+
+export function extractEntireTranscriptText(transcriptText: string): EntireTranscriptExtraction | null {
+  const trimmed = transcriptText.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  let payload: unknown;
+  try {
+    payload = JSON.parse(trimmed);
+  } catch {
+    return null;
+  }
+
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    return null;
+  }
+
+  const messages = Array.isArray((payload as Record<string, unknown>).messages)
+    ? ((payload as Record<string, unknown>).messages as unknown[])
+    : [];
+  if (messages.length === 0) {
+    return null;
+  }
+
+  const userPromptBlocks: string[] = [];
+  for (const message of messages) {
+    if (!message || typeof message !== 'object' || Array.isArray(message)) {
+      continue;
+    }
+
+    const messageRecord = message as Record<string, unknown>;
+    const info = messageRecord.info;
+    const role =
+      info && typeof info === 'object' && !Array.isArray(info)
+        ? readOptionalString((info as Record<string, unknown>).role)
+        : null;
+    if (role !== 'user') {
+      continue;
+    }
+
+    const promptBlock = collectTranscriptPartText(messageRecord.parts).join('\n').trim();
+    if (promptBlock) {
+      userPromptBlocks.push(promptBlock);
+    }
+  }
+
+  if (userPromptBlocks.length === 0) {
+    return null;
+  }
+
+  const rawPromptText = userPromptBlocks.join('\n\n---\n\n').trim();
+  if (!rawPromptText) {
+    return null;
+  }
+
+  return {
+    contextText: rawPromptText,
+    rawPromptText,
+  };
 }
 
 function parseTouchedFilesFromSessionMetadata(value: unknown): string[] {
@@ -427,7 +509,8 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
     const metadataPathRaw = readOptionalString(item.metadata);
     const contextPathRaw = readOptionalString(item.context);
     const promptPathRaw = readOptionalString(item.prompt);
-    if (!metadataPathRaw || (!contextPathRaw && !promptPathRaw)) {
+    const transcriptPathRaw = readOptionalString(item.transcript);
+    if (!metadataPathRaw || (!contextPathRaw && !promptPathRaw && !transcriptPathRaw)) {
       continue;
     }
 
@@ -436,6 +519,7 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
     const metadataPath = normalizeBranchPath(metadataPathRaw);
     const contextPath = contextPathRaw ? normalizeBranchPath(contextPathRaw) : null;
     const promptPath = promptPathRaw ? normalizeBranchPath(promptPathRaw) : null;
+    const transcriptPath = transcriptPathRaw ? normalizeBranchPath(transcriptPathRaw) : null;
 
     try {
       const metadataText = git.run(['show', `${checkpointsRef}:${metadataPath}`]);
@@ -461,6 +545,19 @@ function readCheckpointSessionsFromBranch(git: GitRepo, checkpointId: string, ch
           rawPromptText = promptText.trim() ? promptText : null;
         } catch {
           rawPromptText = null;
+        }
+      }
+
+      if (!contextText.trim() && transcriptPath) {
+        try {
+          const transcriptText = git.run(['show', `${checkpointsRef}:${transcriptPath}`]);
+          const transcriptExtraction = extractEntireTranscriptText(transcriptText);
+          if (transcriptExtraction) {
+            contextText = transcriptExtraction.contextText;
+            rawPromptText = rawPromptText ?? transcriptExtraction.rawPromptText;
+          }
+        } catch {
+          // Ignore transcript fallbacks and continue with other available sources.
         }
       }
 
@@ -744,7 +841,7 @@ export async function resolveEntireIntentContextForCommit(
 
   if (!sawContextOrPromptPaths) {
     throw new Error(
-      `Checkpoint ${checkpointId} metadata exists but session entries had no context/prompt paths. Entire checkpoint integrity is incomplete for commit ${commitSha.slice(0, 12)}.`
+      `Checkpoint ${checkpointId} metadata exists but session entries had no context/prompt/transcript paths. Entire checkpoint integrity is incomplete for commit ${commitSha.slice(0, 12)}.`
     );
   }
 

@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { isValidEntireSessionId, selectEntireCheckpointsRef } from './context.js';
+import { extractEntireTranscriptText, isValidEntireSessionId, selectEntireCheckpointsRef } from './context.js';
 
 export function runEntireIntentContextTests(): void {
   assert.equal(isValidEntireSessionId('ses_abc123XYZ-09'), true);
@@ -28,5 +28,34 @@ export function runEntireIntentContextTests(): void {
   {
     const selected = selectEntireCheckpointsRef(() => false);
     assert.equal(selected, null);
+  }
+
+  {
+    const transcript = JSON.stringify({
+      messages: [
+        {
+          info: { role: 'user' },
+          parts: [{ type: 'text', text: 'First request.' }],
+        },
+        {
+          info: { role: 'assistant' },
+          parts: [{ type: 'text', text: 'Assistant reply.' }],
+        },
+        {
+          info: { role: 'user' },
+          parts: [{ type: 'text', text: 'Second request.' }],
+        },
+      ],
+    });
+
+    assert.deepEqual(extractEntireTranscriptText(transcript), {
+      contextText: 'First request.\n\n---\n\nSecond request.',
+      rawPromptText: 'First request.\n\n---\n\nSecond request.',
+    });
+  }
+
+  {
+    assert.equal(extractEntireTranscriptText('{"messages":[]}'), null);
+    assert.equal(extractEntireTranscriptText('not json'), null);
   }
 }
