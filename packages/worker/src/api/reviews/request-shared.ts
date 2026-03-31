@@ -158,6 +158,22 @@ export function withSortedKeys(value: unknown): unknown {
     }, {});
 }
 
+function assignIdempotencyNestedField(
+  payload: Record<string, unknown>,
+  section: 'policy' | 'format',
+  key: string,
+  value: unknown
+): void {
+  payload[section] = {
+    ...(payload[section] as Record<string, unknown> | undefined),
+    [key]: value,
+  };
+}
+
+/**
+ * Normalizes review create request payloads and derives the canonical idempotency subset.
+ * This keeps equivalent requests stable even when optional fields are omitted.
+ */
 export function buildReviewRequestPayload(input: {
   workspaceId: string;
   deploymentId: string;
@@ -288,40 +304,42 @@ export function buildReviewRequestPayload(input: {
   };
 
   if (normalized.policy.severityThreshold !== 'low') {
-    idempotencyPayload.policy = {
-      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
-      severityThreshold: normalized.policy.severityThreshold,
-    };
+    assignIdempotencyNestedField(
+      idempotencyPayload,
+      'policy',
+      'severityThreshold',
+      normalized.policy.severityThreshold
+    );
   }
   if (normalized.policy.maxFindings !== 100) {
-    idempotencyPayload.policy = {
-      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
-      maxFindings: normalized.policy.maxFindings,
-    };
+    assignIdempotencyNestedField(idempotencyPayload, 'policy', 'maxFindings', normalized.policy.maxFindings);
   }
   if (normalized.policy.includeProvenance !== true) {
-    idempotencyPayload.policy = {
-      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
-      includeProvenance: normalized.policy.includeProvenance,
-    };
+    assignIdempotencyNestedField(
+      idempotencyPayload,
+      'policy',
+      'includeProvenance',
+      normalized.policy.includeProvenance
+    );
   }
   if (normalized.policy.includeValidationEvidence !== true) {
-    idempotencyPayload.policy = {
-      ...(idempotencyPayload.policy as Record<string, unknown> | undefined),
-      includeValidationEvidence: normalized.policy.includeValidationEvidence,
-    };
+    assignIdempotencyNestedField(
+      idempotencyPayload,
+      'policy',
+      'includeValidationEvidence',
+      normalized.policy.includeValidationEvidence
+    );
   }
   if (normalized.format.primary !== 'json') {
-    idempotencyPayload.format = {
-      ...(idempotencyPayload.format as Record<string, unknown> | undefined),
-      primary: normalized.format.primary,
-    };
+    assignIdempotencyNestedField(idempotencyPayload, 'format', 'primary', normalized.format.primary);
   }
   if (normalized.format.includeMarkdownSummary !== true) {
-    idempotencyPayload.format = {
-      ...(idempotencyPayload.format as Record<string, unknown> | undefined),
-      includeMarkdownSummary: normalized.format.includeMarkdownSummary,
-    };
+    assignIdempotencyNestedField(
+      idempotencyPayload,
+      'format',
+      'includeMarkdownSummary',
+      normalized.format.includeMarkdownSummary
+    );
   }
   if (normalized.model) {
     idempotencyPayload.model = normalized.model;
