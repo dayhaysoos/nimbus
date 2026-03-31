@@ -1,0 +1,187 @@
+looks like this is a different issue:
+
+Run gitleaks/gitleaks-action@v2
+[dayhaysoos] is an individual user. No license key is required.
+gitleaks version: 8.24.3
+Version to install: 8.24.3 (target directory: /tmp/gitleaks-8.24.3)
+Cache hit for: gitleaks-cache-8.24.3-linux-x64
+Received 0 of 5717457 (0.0%), 0.0 MBs/sec
+Received 5717457 of 5717457 (100.0%), 5.0 MBs/sec
+Cache Size: ~5 MB (5717457 B)
+/usr/bin/tar -xf /home/runner/work/_temp/f26f6bea-e778-4953-9276-32bea17bc8d2/cache.tzst -P -C /home/runner/work/nimbus/nimbus --use-compress-program unzstd
+Cache restored successfully
+Gitleaks restored from cache
+event type: pull_request
+gitleaks cmd: gitleaks detect --redact -v --exit-code=2 --report-format=sarif --report-path=results.sarif --log-level=debug --log-opts=--no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+/tmp/gitleaks-8.24.3/gitleaks detect --redact -v --exit-code=2 --report-format=sarif --report-path=results.sarif --log-level=debug --log-opts=--no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+4:27PM DBG using github.com/wasilibs/go-re2 regex engine
+4:27PM DBG using gitleaks config from GITLEAKS_CONFIG env var: .gitleaks.toml
+4:27PM DBG extending config with default config
+4:27PM DBG executing: /usr/bin/git -C . log -p -U0 --no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+4:27PM DBG SCM platform parsed from host host=github.com platform=github
+Finding:     ...= normalized.match(/REDACTED([\s\S]*?)-----END R...
+Secret:      REDACTED
+RuleID:      private-key
+Entropy:     5.205453
+File:        packages/worker/src/api/workspaces/github.ts
+Line:        180
+Commit:      45a877b19e3eabce65333c6ce73ec87e99ddb21e
+Author:      Nick DeJesus
+Email:       ndejesus1227@gmail.com
+Date:        2026-03-30T14:04:28Z
+Fingerprint: 45a877b19e3eabce65333c6ce73ec87e99ddb21e:packages/worker/src/api/workspaces/github.ts:private-key:180
+Link:        https://github.com/dayhaysoos/nimbus/blob/45a877b19e3eabce65333c6ce73ec87e99ddb21e/packages/worker/src/api/workspaces/github.ts#L180-L185
+
+4:27PM INF 28 commits scanned.
+4:27PM DBG Note: this number might be smaller than expected due to commits with no additions
+4:27PM INF scanned ~879070 bytes (879.07 KB) in 307ms
+4:27PM WRN leaks found: 1
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+Uploaded bytes 7160
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is 0a3d053171e8f4713cd536160ff7681729ecb0ff4a2488bb0a73f555243a25a2
+Finalizing artifact upload
+Artifact gitleaks-results.sarif.zip successfully finalized. Artifact ID 6203864549
+Warning: Error encountered when attempting to write a comment on PR #28: HttpError: Resource not accessible by integration
+Likely an issue with too large of a diff for the comment to be written.
+All secrets that have been leaked will be reported in the summary and job artifact.
+Warning: 🛑 Leaks detected, see job summary for details
+
+---
+
+second run didn’t work at all:
+
+4s
+5s
+Run gitleaks/gitleaks-action@v2
+[dayhaysoos] is an individual user. No license key is required.
+gitleaks version: 8.24.3
+Version to install: 8.24.3 (target directory: /tmp/gitleaks-8.24.3)
+Cache hit for: gitleaks-cache-8.24.3-linux-x64
+Received 4194304 of 5717457 (73.4%), 4.0 MBs/sec
+Received 5717457 of 5717457 (100.0%), 5.3 MBs/sec
+Cache Size: ~5 MB (5717457 B)
+/usr/bin/tar -xf /home/runner/work/_temp/4d5dc42a-4f4f-4043-b3ed-1e20768ce983/cache.tzst -P -C /home/runner/work/nimbus/nimbus --use-compress-program unzstd
+Cache restored successfully
+Gitleaks restored from cache
+event type: pull_request
+gitleaks cmd: gitleaks detect --redact -v --exit-code=2 --report-format=sarif --report-path=results.sarif --log-level=debug --log-opts=--no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+/tmp/gitleaks-8.24.3/gitleaks detect --redact -v --exit-code=2 --report-format=sarif --report-path=results.sarif --log-level=debug --log-opts=--no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+4:32PM DBG using github.com/wasilibs/go-re2 regex engine
+4:32PM DBG using gitleaks config from GITLEAKS_CONFIG env var: .gitleaks.toml
+4:32PM DBG extending config with default config
+4:32PM DBG executing: /usr/bin/git -C . log -p -U0 --no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+4:32PM DBG SCM platform parsed from host host=github.com platform=github
+Finding:     ...= normalized.match(/REDACTED([\s\S]*?)-----END R...
+Secret:      REDACTED
+RuleID:      private-key
+Entropy:     5.205453
+File:        packages/worker/src/api/workspaces/github.ts
+Line:        180
+Commit:      45a877b19e3eabce65333c6ce73ec87e99ddb21e
+Author:      Nick DeJesus
+Email:       ndejesus1227@gmail.com
+Date:        2026-03-30T14:04:28Z
+Fingerprint: 45a877b19e3eabce65333c6ce73ec87e99ddb21e:packages/worker/src/api/workspaces/github.ts:private-key:180
+Link:        https://github.com/dayhaysoos/nimbus/blob/45a877b19e3eabce65333c6ce73ec87e99ddb21e/packages/worker/src/api/workspaces/github.ts#L180-L185
+
+4:32PM INF 28 commits scanned.
+4:32PM DBG Note: this number might be smaller than expected due to commits with no additions
+4:32PM INF scanned ~879070 bytes (879.07 KB) in 304ms
+4:32PM WRN leaks found: 1
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+Uploaded bytes 7160
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is 0c6656e20249fd63e4067cc8d1057bd64898af1b0071af9e759a82b541317ac7
+Finalizing artifact upload
+Artifact gitleaks-results.sarif.zip successfully finalized. Artifact ID 6203959420
+Warning: Error encountered when attempting to write a comment on PR #28: HttpError: Resource not accessible by integration
+Likely an issue with too large of a diff for the comment to be written.
+All secrets that have been leaked will be reported in the summary and job artifact.
+Warning: 🛑 Leaks detected, see job summary for details
+
+---
+
+Should we just close this PR and open a new one or something?
+
+---
+
+This is still failing:
+
+Run gitleaks/gitleaks-action@v2
+[dayhaysoos] is an individual user. No license key is required.
+gitleaks version: 8.24.3
+Version to install: 8.24.3 (target directory: /tmp/gitleaks-8.24.3)
+Cache hit for: gitleaks-cache-8.24.3-linux-x64
+Received 0 of 5717457 (0.0%), 0.0 MBs/sec
+Received 5717457 of 5717457 (100.0%), 4.7 MBs/sec
+Cache Size: ~5 MB (5717457 B)
+/usr/bin/tar -xf /home/runner/work/_temp/883bee31-aeb5-48d1-b666-6e4c5374309d/cache.tzst -P -C /home/runner/work/nimbus/nimbus --use-compress-program unzstd
+Cache restored successfully
+Gitleaks restored from cache
+event type: pull_request
+gitleaks cmd: gitleaks detect --redact -v --exit-code=2 --report-format=sarif --report-path=results.sarif --log-level=debug --log-opts=--no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+/tmp/gitleaks-8.24.3/gitleaks detect --redact -v --exit-code=2 --report-format=sarif --report-path=results.sarif --log-level=debug --log-opts=--no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+
+    ○
+    │╲
+    │ ○
+    ○ ░
+    ░    gitleaks
+
+4:49PM DBG using github.com/wasilibs/go-re2 regex engine
+4:49PM DBG using gitleaks config from GITLEAKS_CONFIG env var: .gitleaks.toml
+4:49PM DBG extending config with default config
+4:49PM DBG executing: /usr/bin/git -C . log -p -U0 --no-merges --first-parent d5979f12ab8d37af73ce45a19cd2d710485f6a3b^..59fdabdfe9196fd673a1d249cfc320a235e785f3
+4:49PM DBG SCM platform parsed from host host=github.com platform=github
+Finding:     ...= normalized.match(/REDACTED([\s\S]*?)-----END R...
+Secret:      REDACTED
+RuleID:      private-key
+Entropy:     5.205453
+File:        packages/worker/src/api/workspaces/github.ts
+Line:        180
+Commit:      45a877b19e3eabce65333c6ce73ec87e99ddb21e
+Author:      Nick DeJesus
+Email:       ndejesus1227@gmail.com
+Date:        2026-03-30T14:04:28Z
+Fingerprint: 45a877b19e3eabce65333c6ce73ec87e99ddb21e:packages/worker/src/api/workspaces/github.ts:private-key:180
+Link:        https://github.com/dayhaysoos/nimbus/blob/45a877b19e3eabce65333c6ce73ec87e99ddb21e/packages/worker/src/api/workspaces/github.ts#L180-L185
+
+4:49PM INF 28 commits scanned.
+4:49PM DBG Note: this number might be smaller than expected due to commits with no additions
+4:49PM INF scanned ~879070 bytes (879.07 KB) in 304ms
+4:49PM WRN leaks found: 1
+Artifact name is valid!
+Root directory input is valid!
+Beginning upload of artifact content to blob storage
+Uploaded bytes 7160
+Finished uploading artifact content to blob storage!
+SHA256 digest of uploaded artifact zip is 0fdaf89d1689abe4cdb4f4d4b1ac102e9e7d1a207c09b55c6cdb7bf80b71fb0f
+Finalizing artifact upload
+Artifact gitleaks-results.sarif.zip successfully finalized. Artifact ID 6204277108
+Warning: Error encountered when attempting to write a comment on PR #28: HttpError: Resource not accessible by integration
+Likely an issue with too large of a diff for the comment to be written.
+All secrets that have been leaked will be reported in the summary and job artifact.
+Warning: 🛑 Leaks detected, see job summary for details
+
+---
+
+let’s get rid of gitleaks for now and circle back to it later.
