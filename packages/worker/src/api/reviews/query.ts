@@ -1,7 +1,6 @@
 import type { AuthContext, Env, ReviewRunStatus } from '../../types.js';
 import { getReviewRun, listReviewEvents, listReviewRuns } from '../../lib/db.js';
 import {
-  REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS,
   REVIEW_STREAM_HEARTBEAT_INTERVAL_MS,
   REVIEW_STREAM_POLL_INTERVAL_MS,
   REVIEW_STREAM_STATUS_REFRESH_POLLS,
@@ -16,11 +15,11 @@ import {
   normalizeRepoSlug,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
-  recoverStaleRunningReviewIfNeeded,
   requireReviewAccess,
   resolveFromSequence,
   sleep,
 } from './shared.js';
+import { REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS, recoverStaleRunningReviewIfNeeded } from './recovery.js';
 
 export async function handleGetReview(
   reviewId: string,

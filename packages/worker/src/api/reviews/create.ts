@@ -23,8 +23,8 @@ import {
   requireWorkspaceAccess,
   sha256Hex,
   stripSensitiveTokenFields,
-  validateRecoveredReviewRetryAuth,
 } from './shared.js';
+import { validateRecoveredReviewRetryAuth } from './recovery.js';
 
 export async function handleCreateReview(
   request: Request,
