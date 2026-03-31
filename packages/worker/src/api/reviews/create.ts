@@ -8,9 +8,7 @@ import {
   getWorkspace,
   getWorkspaceAccountId,
   getWorkspaceDeployment,
-  hasReviewEvent,
 } from '../../lib/db.js';
-import { createReviewQueueMessage } from '../../lib/review-queue.js';
 import {
   isRecord,
   isSeverityThreshold,
@@ -26,7 +24,7 @@ import {
   sha256Hex,
   stripSensitiveTokenFields,
 } from './request-shared.js';
-import { validateRecoveredReviewRetryAuth } from './recovery.js';
+import { enqueueReviewRunIfNeeded } from './queue.js';
 
 export async function handleCreateReview(
   request: Request,
@@ -156,43 +154,13 @@ export async function handleCreateReview(
     );
     if (existingReview) {
       const created = { review: existingReview, reused: true };
-
-      if (created.review.status === 'queued') {
-        const alreadyEnqueued = await hasReviewEvent(env.DB, created.review.id, 'review_enqueued');
-        const shouldReenqueueRecoveredReview =
-          created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
-        const requiresOpenrouterRetryKey = created.review.error?.code === 'missing_openrouter_api_key';
-        if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-          const authRetryError = await validateRecoveredReviewRetryAuth(
-            env,
-            created.review.id,
-            shouldReenqueueRecoveredReview,
-            reviewGithubToken
-          );
-          if (authRetryError) {
-            return authRetryError;
-          }
-          if (shouldReenqueueRecoveredReview && requiresOpenrouterRetryKey && !openrouterApiKey) {
-            return jsonResponse(
-              {
-                error: 'OpenRouter API key required for retry',
-                code: 'missing_openrouter_api_key',
-              },
-              409
-            );
-          }
-          await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken, openrouterApiKey));
-
-          await appendReviewEvent(env.DB, {
-            reviewId: created.review.id,
-            eventType: 'review_enqueued',
-            payload: {
-              mode: 'queue',
-              reused: created.reused,
-              recovered: shouldReenqueueRecoveredReview,
-            },
-          });
-        }
+      const enqueueError = await enqueueReviewRunIfNeeded(env, created.review, {
+        reused: created.reused,
+        reviewGithubToken,
+        openrouterApiKey,
+      });
+      if (enqueueError) {
+        return enqueueError;
       }
 
       return jsonResponse(
@@ -259,42 +227,13 @@ export async function handleCreateReview(
       });
     }
 
-    if (created.review.status === 'queued') {
-      const alreadyEnqueued = await hasReviewEvent(env.DB, created.review.id, 'review_enqueued');
-      const shouldReenqueueRecoveredReview =
-        created.reused && (created.review.error?.code === 'retry_scheduled' || created.review.attemptCount > 0);
-      const requiresOpenrouterRetryKey = created.review.error?.code === 'missing_openrouter_api_key';
-      if (!alreadyEnqueued || shouldReenqueueRecoveredReview) {
-        const authRetryError = await validateRecoveredReviewRetryAuth(
-          env,
-          created.review.id,
-          shouldReenqueueRecoveredReview,
-          reviewGithubToken
-        );
-        if (authRetryError) {
-          return authRetryError;
-        }
-        if (shouldReenqueueRecoveredReview && requiresOpenrouterRetryKey && !openrouterApiKey) {
-          return jsonResponse(
-            {
-              error: 'OpenRouter API key required for retry',
-              code: 'missing_openrouter_api_key',
-            },
-            409
-          );
-        }
-        await env.REVIEWS_QUEUE.send(createReviewQueueMessage(created.review.id, reviewGithubToken, openrouterApiKey));
-
-        await appendReviewEvent(env.DB, {
-          reviewId: created.review.id,
-          eventType: 'review_enqueued',
-          payload: {
-            mode: 'queue',
-            reused: created.reused,
-            recovered: shouldReenqueueRecoveredReview,
-          },
-        });
-      }
+    const enqueueError = await enqueueReviewRunIfNeeded(env, created.review, {
+      reused: created.reused,
+      reviewGithubToken,
+      openrouterApiKey,
+    });
+    if (enqueueError) {
+      return enqueueError;
     }
 
     return jsonResponse(

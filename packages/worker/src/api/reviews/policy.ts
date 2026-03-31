@@ -10,7 +10,6 @@ import {
   updateReviewRunPolicy,
   updateReviewRunStatus,
 } from '../../lib/db.js';
-import { createReviewQueueMessage } from '../../lib/review-queue.js';
 import { summarizeReviewIntentPolicy } from '../../lib/review-runner.js';
 import {
   fallbackDerivedPolicy,
@@ -24,6 +23,7 @@ import {
   sha256Hex,
   withSortedKeys,
 } from './request-shared.js';
+import { enqueueApprovedReviewRun } from './queue.js';
 import {
   isRecord,
   jsonResponse,
@@ -323,17 +323,7 @@ export async function handleApproveReviewPolicy(
     });
 
     const openrouterApiKey = readOpenrouterApiKeyHeader(request);
-    await env.REVIEWS_QUEUE.send(
-      createReviewQueueMessage(reviewId, readReviewGithubTokenHeader(request), openrouterApiKey)
-    );
-    await appendReviewEvent(env.DB, {
-      reviewId,
-      eventType: 'review_enqueued',
-      payload: {
-        mode: 'queue',
-        policyApproved: true,
-      },
-    });
+    await enqueueApprovedReviewRun(env, reviewId, readReviewGithubTokenHeader(request), openrouterApiKey);
 
     return jsonResponse(
       {
