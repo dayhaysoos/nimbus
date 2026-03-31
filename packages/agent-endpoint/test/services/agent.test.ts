@@ -1,6 +1,6 @@
 import { strict as assert } from 'assert';
-import { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from './agent.js';
-import worker from '../index.js';
+import { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from '../../src/lib/agent.js';
+import worker from '../../src/index.js';
 
 type WorkerModule = {
   fetch(request: Request, env: Record<string, string | undefined>): Promise<Response>;

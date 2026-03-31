@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import worker from './index.js';
+import worker from '../../src/index.js';
 
 type WorkerModule = {
   fetch(request: Request, env: Record<string, string | undefined>): Promise<Response>;
