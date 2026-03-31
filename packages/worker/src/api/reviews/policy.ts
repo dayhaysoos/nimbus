@@ -14,13 +14,15 @@ import { createReviewQueueMessage } from '../../lib/review-queue.js';
 import { summarizeReviewIntentPolicy } from '../../lib/review-runner.js';
 import {
   fallbackDerivedPolicy,
+  normalizeIntentSummaryModel,
+  normalizeReviewPolicy,
+  policyFromIntentSummary,
+} from './policy-shared.js';
+import {
   isRecord,
   jsonResponse,
   normalizeBranchRef,
-  normalizeIntentSummaryModel,
   normalizeRepoSlug,
-  normalizeReviewPolicy,
-  policyFromIntentSummary,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   requireReviewAccess,
