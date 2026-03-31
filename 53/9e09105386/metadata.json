@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "539e09105386",
+  "strategy": "manual-commit",
+  "branch": "huge-refactor",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/worker/src/api/reviews/policy-shared.ts",
+    "packages/worker/src/api/reviews/policy.ts",
+    "packages/worker/src/api/reviews/shared.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/53/9e09105386/0/metadata.json",
+      "transcript": "/53/9e09105386/0/full.jsonl",
+      "content_hash": "/53/9e09105386/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  }
+}
