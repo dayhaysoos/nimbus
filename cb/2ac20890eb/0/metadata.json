@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.5.1",
+  "checkpoint_id": "cb2ac20890eb",
+  "session_id": "ses_2bf7ac20fffeao591yjAlUjAz1",
+  "strategy": "manual-commit",
+  "created_at": "2026-03-31T05:04:57.055911Z",
+  "branch": "huge-refactor",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/worker/src/api/reviews/query.ts",
+    "packages/worker/src/api/reviews/recovery.ts",
+    "packages/worker/src/api/reviews/shared.ts",
+    "packages/worker/src/api/reviews/create.ts"
+  ],
+  "agent": "OpenCode",
+  "model": "gpt-5.4",
+  "turn_id": "c10242e5acb4",
+  "checkpoint_transcript_start": 6,
+  "transcript_lines_at_start": 6,
+  "token_usage": {
+    "input_tokens": 0,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 0,
+    "output_tokens": 0,
+    "api_call_count": 0
+  },
+  "session_metrics": {
+    "turn_count": 12
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-03-31T05:04:57.029548Z",
+    "agent_lines": 188,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 188,
+    "agent_percentage": 100
+  }
+}
