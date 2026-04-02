@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "e95409394ae5",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-2-start-flow",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "packages/cli/src/app/reviews/session.ts",
+    "packages/cli/src/app/reviews/studio-create.ts",
+    "packages/cli/src/app/reviews/ui-dev-server.ts",
+    "packages/cli/src/app/reviews/ui-proxy.ts",
+    "packages/cli/src/app/reviews/ui-server.ts",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/types.ts",
+    "packages/report-ui/vite.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e9/5409394ae5/0/metadata.json",
+      "transcript": "/e9/5409394ae5/0/full.jsonl",
+      "content_hash": "/e9/5409394ae5/0/content_hash.txt",
+      "prompt": "/e9/5409394ae5/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5668672,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5436032,
+    "output_tokens": 34255,
+    "api_call_count": 59
+  }
+}

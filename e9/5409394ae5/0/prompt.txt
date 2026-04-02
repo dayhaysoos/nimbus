@@ -1,0 +1,47 @@
+make the pr for me using the gh CLI
+
+---
+
+Just merged to main, pulled and switched to main locally. What's next?
+
+---
+
+Yes, start a new branch and begin the work. I will test when you're done
+
+---
+
+looks like I'm getting some errors here? Is something wrong with our checkpoints?
+
+---
+
+New Review
+Target defaults to latest checkpoint on the current branch.
+
+Close
+Policy mode
+
+
+Auto policy
+
+Fast path. Policy is approved automatically.
+
+
+Review policy first
+
+Pause on policy draft before execution.
+
+Preflight
+
+Branch: feat/review-studio-slice-2-start-flow
+
+Checkpoint: unavailable
+
+FAIL Checkpoint target: This commit has no Entire-Checkpoint trailer. The last commit on this branch with valid checkpoint context was dc97dd3 ('feat(studio): implement slice 1 home and dev-ui runtime fixes') 1 commits ago.
+
+FAIL Entire context: Blocked until checkpoint target is available.
+
+This commit has no Entire-Checkpoint trailer. The last commit on this branch with valid checkpoint context was dc97dd3 ('feat(studio): implement slice 1 home and dev-ui runtime fixes') 1 commits ago.
+
+---
+
+gonna commit the whole thing and report back
