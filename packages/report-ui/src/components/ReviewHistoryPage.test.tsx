@@ -13,13 +13,19 @@ describe('ReviewHistoryPage', () => {
   });
 
   it('renders an empty state when no reviews are present', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/studio/context')) {
+        return {
+          ok: true,
+          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
+        };
+      }
+      return {
         ok: true,
         json: async () => ({ reviews: [] }),
-      })
-    );
+      };
+    }));
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -27,13 +33,20 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText(/No reviews yet\./)).toBeInTheDocument();
+    expect(await screen.findByText(/No reviews on this branch yet\./)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New Review' })).toBeInTheDocument();
   });
 
   it('renders review history links with newest first', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/studio/context')) {
+        return {
+          ok: true,
+          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
+        };
+      }
+      return {
         ok: true,
         json: async () => ({
           reviews: [
@@ -71,8 +84,8 @@ describe('ReviewHistoryPage', () => {
             },
           ],
         }),
-      })
-    );
+      };
+    }));
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -80,9 +93,10 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    const links = await screen.findAllByRole('link');
-    expect(links[0]).toHaveAttribute('href', '/branches/acme%2Fweb/main');
-    expect(links[1]).toHaveAttribute('href', '/branches/acme%2Fapi/main');
-    expect(screen.getByText('running')).toBeInTheDocument();
+    const resume = await screen.findByRole('button', { name: 'Resume active review' });
+    expect(resume).toBeInTheDocument();
+    const links = screen.getAllByRole('link');
+    expect(links.some((link) => link.getAttribute('href')?.includes('/reports/rev_newer'))).toBe(true);
+    expect(links.some((link) => link.getAttribute('href')?.includes('/branches/acme%2Fapi/main'))).toBe(true);
   });
 });

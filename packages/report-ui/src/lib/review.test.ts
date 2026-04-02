@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildFixPrompt, buildFindingText, findingCount, parseGetReviewResponse, parseListReviewsResponse } from './review';
+import {
+  buildFixPrompt,
+  buildFindingText,
+  findingCount,
+  parseGetReviewResponse,
+  parseListReviewsResponse,
+  parseStudioContextResponse,
+} from './review';
 import type { ReviewFinding, ReviewResponse } from '../types';
 
 const finding: ReviewFinding = {
@@ -159,5 +166,21 @@ describe('parseListReviewsResponse', () => {
 
   it('throws when reviews is not an array', () => {
     expect(() => parseListReviewsResponse({ reviews: null })).toThrow(/reviews must be an array/i);
+  });
+});
+
+describe('parseStudioContextResponse', () => {
+  it('parses local studio branch context', () => {
+    const payload = parseStudioContextResponse({
+      repo: 'acme/web',
+      branch: 'feature/home',
+      detectedAt: '2026-03-01T00:00:00.000Z',
+    });
+    expect(payload.repo).toBe('acme/web');
+    expect(payload.branch).toBe('feature/home');
+  });
+
+  it('throws when detectedAt is missing', () => {
+    expect(() => parseStudioContextResponse({ repo: 'acme/web', branch: 'main' })).toThrow(/detectedAt/i);
   });
 });

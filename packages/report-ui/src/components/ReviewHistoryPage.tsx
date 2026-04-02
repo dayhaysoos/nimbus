@@ -1,14 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { parseListReviewsResponse, parseStudioContextResponse } from '../lib/review';
+import type { ListReviewsResponse, ReviewHistoryItem, ReviewStatus, StudioContextResponse } from '../types';
 import { StatusPill } from './ui/StatusPill';
 import { Badge } from './ui/badge';
+import { Button } from './ui/button';
 import { Card } from './ui/card';
-import { cn } from '../lib/utils';
-import { parseListReviewsResponse } from '../lib/review';
-import type { ListReviewsResponse, ReviewHistoryItem, ReviewStatus } from '../types';
 
 const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 const REVIEW_LIST_POLL_MS = 3000;
+const BRANCH_CONTEXT_POLL_MS = 2000;
 const ACTIVE_STATUSES: ReadonlySet<ReviewStatus> = new Set([
   'policy_pending',
   'policy_ready',
@@ -18,49 +19,10 @@ const ACTIVE_STATUSES: ReadonlySet<ReviewStatus> = new Set([
 ]);
 
 interface BranchGroup {
+  key: string;
   repo: string;
   branch: string;
-  key: string;
   reviews: ReviewHistoryItem[];
-  latestReview: ReviewHistoryItem;
-  activeCount: number;
-  succeededCount: number;
-  failedCount: number;
-  totalFindings: number;
-  worstRisk: ReviewHistoryItem['riskLevel'];
-}
-
-const RISK_ORDER: Record<string, number> = { critical: 4, high: 3, medium: 2, low: 1 };
-
-function worstRiskLevel(reviews: ReviewHistoryItem[]): ReviewHistoryItem['riskLevel'] {
-  let worst: ReviewHistoryItem['riskLevel'] = null;
-  let worstScore = 0;
-  for (const r of reviews) {
-    if (r.riskLevel) {
-      const score = RISK_ORDER[r.riskLevel] ?? 0;
-      if (score > worstScore) {
-        worstScore = score;
-        worst = r.riskLevel;
-      }
-    }
-  }
-  return worst;
-}
-
-function riskLevelClass(riskLevel: ReviewHistoryItem['riskLevel']): string {
-  if (riskLevel === 'critical') {
-    return 'border-red-200 bg-red-50 text-red-800';
-  }
-  if (riskLevel === 'high') {
-    return 'border-orange-200 bg-orange-50 text-orange-800';
-  }
-  if (riskLevel === 'medium') {
-    return 'border-amber-200 bg-amber-50 text-amber-800';
-  }
-  if (riskLevel === 'low') {
-    return 'border-sky-200 bg-sky-50 text-sky-800';
-  }
-  return 'border-border bg-muted/40 text-muted-foreground';
 }
 
 function relativeTime(timestamp: string): string {
@@ -86,14 +48,23 @@ function relativeTime(timestamp: string): string {
   return inFuture ? `in ${absDays}d` : `${absDays}d ago`;
 }
 
-function latestStatus(reviews: ReviewHistoryItem[]): ReviewStatus {
-  return reviews[0]?.status ?? 'queued';
+function reviewDestinationPath(entry: ReviewHistoryItem): string {
+  const branchBase = `/branches/${encodeURIComponent(entry.repo)}/${encodeURIComponent(entry.branch)}`;
+  if (entry.status === 'policy_pending' || entry.status === 'policy_ready' || entry.status === 'policy_approved') {
+    return `${branchBase}/policy/${entry.id}`;
+  }
+  return `${branchBase}/reports/${entry.id}`;
 }
 
 export function ReviewHistoryPage(): JSX.Element {
   const [entries, setEntries] = useState<ReviewHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [studioContext, setStudioContext] = useState<StudioContextResponse | null>(null);
+  const [selectedBranchKey, setSelectedBranchKey] = useState<string | null>(null);
+  const [pendingBranchSwitchKey, setPendingBranchSwitchKey] = useState<string | null>(null);
+  const [lastDetectedBranchKey, setLastDetectedBranchKey] = useState<string | null>(null);
+  const [showNewReviewPanel, setShowNewReviewPanel] = useState(false);
 
   const fetchReviews = useCallback(async () => {
     const response = await fetch(`${API_BASE}/api/reviews?limit=100`);
@@ -109,11 +80,30 @@ export function ReviewHistoryPage(): JSX.Element {
     setErrorMessage(null);
   }, []);
 
+  const fetchStudioContext = useCallback(async () => {
+    const response = await fetch(`${API_BASE}/api/studio/context`);
+    if (!response.ok) {
+      throw new Error(`Failed to load studio context (${response.status})`);
+    }
+    const payload = parseStudioContextResponse(await response.json());
+    setStudioContext(payload);
+    const detectedKey = payload.repo && payload.branch ? `${payload.repo}/${payload.branch}` : null;
+    if (!selectedBranchKey && detectedKey) {
+      setSelectedBranchKey(detectedKey);
+    }
+    if (detectedKey && lastDetectedBranchKey && detectedKey !== lastDetectedBranchKey && selectedBranchKey && detectedKey !== selectedBranchKey) {
+      setPendingBranchSwitchKey(detectedKey);
+    }
+    if (detectedKey) {
+      setLastDetectedBranchKey(detectedKey);
+    }
+  }, [lastDetectedBranchKey, selectedBranchKey]);
+
   useEffect(() => {
     let cancelled = false;
     const refresh = async () => {
       try {
-        await fetchReviews();
+        await Promise.all([fetchReviews(), fetchStudioContext()]);
       } catch (error) {
         if (!cancelled) {
           setErrorMessage(error instanceof Error ? error.message : String(error));
@@ -125,211 +115,198 @@ export function ReviewHistoryPage(): JSX.Element {
       }
     };
     void refresh();
-    const timer = window.setInterval(() => { void refresh(); }, REVIEW_LIST_POLL_MS);
-    return () => { cancelled = true; window.clearInterval(timer); };
-  }, [fetchReviews]);
+    const reviewTimer = window.setInterval(() => {
+      void fetchReviews().catch((error) => {
+        if (!cancelled) {
+          setErrorMessage(error instanceof Error ? error.message : String(error));
+        }
+      });
+    }, REVIEW_LIST_POLL_MS);
+    const branchTimer = window.setInterval(() => {
+      void fetchStudioContext().catch(() => undefined);
+    }, BRANCH_CONTEXT_POLL_MS);
+    return () => {
+      cancelled = true;
+      window.clearInterval(reviewTimer);
+      window.clearInterval(branchTimer);
+    };
+  }, [fetchReviews, fetchStudioContext]);
 
   const branches = useMemo((): BranchGroup[] => {
-    const map = new Map<string, ReviewHistoryItem[]>();
-
-    // Sort all entries newest first
     const sorted = [...entries].sort((a, b) => {
       const aTime = new Date(a.createdAt).getTime() || 0;
       const bTime = new Date(b.createdAt).getTime() || 0;
       return bTime - aTime;
     });
-
+    const map = new Map<string, BranchGroup>();
     for (const entry of sorted) {
       const key = `${entry.repo}/${entry.branch}`;
       const existing = map.get(key);
       if (existing) {
-        existing.push(entry);
+        existing.reviews.push(entry);
       } else {
-        map.set(key, [entry]);
+        map.set(key, {
+          key,
+          repo: entry.repo,
+          branch: entry.branch,
+          reviews: [entry],
+        });
       }
     }
-
-    const groups: BranchGroup[] = [];
-    for (const [key, reviews] of map) {
-      const first = reviews[0]!;
-      let activeCount = 0;
-      let succeededCount = 0;
-      let failedCount = 0;
-      let totalFindings = 0;
-
-      for (const r of reviews) {
-        if (ACTIVE_STATUSES.has(r.status)) {
-          activeCount++;
-        }
-        if (r.status === 'succeeded') {
-          succeededCount++;
-        }
-        if (r.status === 'failed') {
-          failedCount++;
-        }
-        totalFindings += r.findingCount ?? 0;
-      }
-
-      groups.push({
-        repo: first.repo,
-        branch: first.branch,
-        key,
-        reviews,
-        latestReview: first,
-        activeCount,
-        succeededCount,
-        failedCount,
-        totalFindings,
-        worstRisk: worstRiskLevel(reviews),
-      });
-    }
-
-    // Sort branches by most recent review
-    groups.sort((a, b) => {
-      const aTime = new Date(a.latestReview.createdAt).getTime() || 0;
-      const bTime = new Date(b.latestReview.createdAt).getTime() || 0;
+    return Array.from(map.values()).sort((a, b) => {
+      const aTime = new Date(a.reviews[0]?.createdAt ?? 0).getTime() || 0;
+      const bTime = new Date(b.reviews[0]?.createdAt ?? 0).getTime() || 0;
       return bTime - aTime;
     });
-
-    return groups;
   }, [entries]);
 
-  const globalStats = useMemo(() => {
-    const active = entries.filter((e) => ACTIVE_STATUSES.has(e.status)).length;
-    const succeeded = entries.filter((e) => e.status === 'succeeded').length;
-    return {
-      totalReviews: entries.length,
-      totalBranches: branches.length,
-      active,
-      passRate: entries.length > 0 ? Math.round((succeeded / entries.length) * 100) : 0,
-    };
-  }, [entries, branches]);
+  const fallbackBranchKey = branches[0]?.key ?? null;
+  const activeBranchKey = selectedBranchKey ?? fallbackBranchKey;
+  const activeBranch = branches.find((b) => b.key === activeBranchKey) ?? branches[0] ?? null;
+  const recentReviews = (activeBranch?.reviews ?? []).slice(0, 3);
+  const activeReview = (activeBranch?.reviews ?? []).find((r) => ACTIVE_STATUSES.has(r.status)) ?? null;
+  const otherBranches = branches.filter((b) => b.key !== activeBranch?.key);
 
   return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
-      {/* Header */}
-      <header className="policy-fade-up flex flex-col gap-2" style={{ animationDelay: '0ms' }}>
-        <div className="flex items-center justify-between gap-3">
-          <h1 className="policy-heading text-base text-foreground tracking-tight">Nimbus Reviews</h1>
-          {globalStats.active > 0 && (
-            <Badge variant="outline" className="rounded-full border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-blue-800">
-              {globalStats.active} active
-            </Badge>
-          )}
-        </div>
-        <p className="text-sm text-muted-foreground font-light">
-          Select a branch to view its review history.
-        </p>
+    <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-3 py-3">
+      <header className="flex flex-col gap-2">
+        <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Review Studio</p>
+        <h1 className="policy-heading text-base text-foreground tracking-tight">Home</h1>
       </header>
 
-      <div className="h-px bg-border/60" />
-
-      {/* Global stats */}
-      <section className="policy-fade-up grid grid-cols-2 sm:grid-cols-4 gap-2" style={{ animationDelay: '40ms' }}>
-        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Branches</p>
-          <p className="text-sm font-semibold text-foreground">{globalStats.totalBranches}</p>
-        </div>
-        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Total reviews</p>
-          <p className="text-sm font-semibold text-foreground">{globalStats.totalReviews}</p>
-        </div>
-        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Pass rate</p>
-          <p className="text-sm font-semibold text-foreground">
-            {globalStats.totalReviews === 0 ? 'n/a' : `${globalStats.passRate}%`}
+      {pendingBranchSwitchKey && (
+        <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <p>
+            Branch changed to <span className="font-mono">{pendingBranchSwitchKey.split('/').slice(1).join('/') || pendingBranchSwitchKey}</span>. Switch context?
           </p>
-        </div>
-        <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2">
-          <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Active</p>
-          <p className="text-sm font-semibold text-foreground">{globalStats.active}</p>
-        </div>
-      </section>
-
-      {/* Branch list */}
-      {loading ? (
-        <div className="policy-fade-up text-center py-8 space-y-3">
-          <p className="text-sm text-muted-foreground font-light">Loading branches...</p>
-          <div className="flex items-center justify-center gap-2">
-            <span className="policy-derivation-dot" />
-            <span className="policy-derivation-dot" />
-            <span className="policy-derivation-dot" />
+          <div className="mt-2">
+            <Button
+              size="sm"
+              onClick={() => {
+                setSelectedBranchKey(pendingBranchSwitchKey);
+                setPendingBranchSwitchKey(null);
+              }}
+            >
+              Switch context
+            </Button>
           </div>
         </div>
-      ) : errorMessage ? (
-        <div className="card status-card">
-          <h2>Unable to load reviews</h2>
-          <p>{errorMessage}</p>
-        </div>
-      ) : branches.length === 0 ? (
-        <div className="border border-border/50 bg-card/60 rounded-sm px-3 py-4 text-center">
-          <p className="text-sm text-muted-foreground font-light">
-            No reviews yet. Run <code className="text-xs bg-muted/50 px-1.5 py-0.5 rounded">nimbus review open</code> to create your first review.
-          </p>
-        </div>
-      ) : (
-        <ul className="flex flex-col gap-2">
-          {branches.map((group, index) => (
-            <li key={group.key} className="report-finding-enter" style={{ animationDelay: `${60 + index * 40}ms` }}>
-              <Link to={`/branches/${encodeURIComponent(group.repo)}/${encodeURIComponent(group.branch)}`}>
-                <Card className="px-3 py-2 transition-colors hover:bg-accent/30">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h2 className="text-sm font-semibold text-foreground truncate">{group.branch}</h2>
-                        <span className="text-xs text-muted-foreground/60 font-mono truncate">{group.repo}</span>
-                      </div>
+      )}
 
-                      <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-                        <StatusPill status={latestStatus(group.reviews)} />
-                        {group.worstRisk && (
-                          <Badge
-                            variant="outline"
-                            className={cn(
-                              'rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]',
-                              riskLevelClass(group.worstRisk)
-                            )}
-                          >
-                            {group.worstRisk} risk
-                          </Badge>
-                        )}
-                        <span className="text-xs text-muted-foreground">
-                          {group.reviews.length} review{group.reviews.length === 1 ? '' : 's'}
-                        </span>
-                        {group.totalFindings > 0 && (
-                          <span className="text-xs text-muted-foreground">
-                            {group.totalFindings} finding{group.totalFindings === 1 ? '' : 's'}
-                          </span>
-                        )}
-                      </div>
-
-                      {group.latestReview.summaryText && (
-                        <p className="mt-1.5 text-sm text-foreground/70 font-light line-clamp-1">
-                          {group.latestReview.summaryText}
-                        </p>
-                      )}
-                    </div>
-
-                    <div className="text-right shrink-0">
-                      <p className="text-xs text-muted-foreground">{relativeTime(group.latestReview.createdAt)}</p>
-                      <div className="flex gap-1 mt-1 justify-end">
-                        {group.succeededCount > 0 && (
-                          <span className="text-[10px] font-medium text-emerald-700">{group.succeededCount} passed</span>
-                        )}
-                        {group.failedCount > 0 && (
-                          <span className="text-[10px] font-medium text-red-700">{group.failedCount} failed</span>
-                        )}
-                        {group.activeCount > 0 && (
-                          <span className="text-[10px] font-medium text-blue-700">{group.activeCount} active</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                </Card>
+      <Card className="p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Current branch context</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">{activeBranch?.branch ?? studioContext?.branch ?? 'unknown'}</p>
+            <p className="text-xs text-muted-foreground">{activeBranch?.repo ?? studioContext?.repo ?? 'repo unavailable'}</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button size="sm" onClick={() => setShowNewReviewPanel(true)}>
+              New Review
+            </Button>
+            {activeReview && (
+              <Link to={reviewDestinationPath(activeReview)}>
+                <Button size="sm" variant="outline">
+                  Resume active review
+                </Button>
               </Link>
-            </li>
-          ))}
-        </ul>
+            )}
+          </div>
+        </div>
+      </Card>
+
+      {showNewReviewPanel && (
+        <Card className="p-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-semibold text-foreground">New Review</h2>
+              <p className="mt-1 text-sm text-muted-foreground">Slide-over start flow lands in Slice 2. For now, start from CLI and reopen Studio.</p>
+              <p className="mt-2 text-xs font-mono text-foreground/80">nimbus review create --commit HEAD --open-studio</p>
+            </div>
+            <Button size="sm" variant="ghost" onClick={() => setShowNewReviewPanel(false)}>
+              Close
+            </Button>
+          </div>
+        </Card>
+      )}
+
+      {loading ? (
+        <div className="text-center py-8">
+          <p className="text-sm text-muted-foreground">Loading home view…</p>
+        </div>
+      ) : errorMessage ? (
+        <Card className="p-4">
+          <h2 className="text-sm font-semibold">Unable to load Studio Home</h2>
+          <p className="mt-1 text-sm text-muted-foreground">{errorMessage}</p>
+        </Card>
+      ) : (
+        <>
+          <section className="space-y-2">
+            <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Recent reviews (current branch)</h2>
+            {recentReviews.length === 0 ? (
+              <Card className="p-4">
+                <p className="text-sm text-muted-foreground">No reviews on this branch yet.</p>
+              </Card>
+            ) : (
+              <ul className="flex flex-col gap-2">
+                {recentReviews.map((entry) => (
+                  <li key={entry.id}>
+                    <Link to={reviewDestinationPath(entry)}>
+                      <Card className="px-3 py-2 transition-colors hover:bg-accent/30">
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <StatusPill status={entry.status} />
+                            <span className="text-xs font-mono text-muted-foreground">{entry.id}</span>
+                            <Badge variant="outline" className="text-[10px] uppercase">
+                              {entry.findingCount ?? 0} findings
+                            </Badge>
+                          </div>
+                          <span className="text-xs text-muted-foreground">{relativeTime(entry.createdAt)}</span>
+                        </div>
+                        {entry.summaryText && (
+                          <p className="mt-1 text-sm text-foreground/80">{entry.summaryText}</p>
+                        )}
+                      </Card>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="space-y-2">
+            <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Branch list</h2>
+            {otherBranches.length === 0 ? (
+              <Card className="p-3">
+                <p className="text-sm text-muted-foreground">No other branch review history yet.</p>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+                {otherBranches.map((branchGroup) => (
+                  <Card key={branchGroup.key} className="px-3 py-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-foreground">{branchGroup.branch}</p>
+                        <p className="text-xs text-muted-foreground">{branchGroup.repo}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-[10px] uppercase">
+                          {branchGroup.reviews.length} reviews
+                        </Badge>
+                        <Button size="sm" variant="outline" onClick={() => setSelectedBranchKey(branchGroup.key)}>
+                          View in Home
+                        </Button>
+                        <Link to={`/branches/${encodeURIComponent(branchGroup.repo)}/${encodeURIComponent(branchGroup.branch)}`}>
+                          <Button size="sm" variant="ghost">History</Button>
+                        </Link>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </section>
+        </>
       )}
     </main>
   );

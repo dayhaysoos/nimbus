@@ -1,8 +1,11 @@
 import { once } from 'events';
 import type { IncomingMessage, ServerResponse } from 'http';
+import { GitRepo } from '../../lib/checkpoint/git.js';
+import { detectRepoSlugFromGitOrigin } from '../../lib/git.js';
 import { createProxyHeaders } from './ui-events-fanout.js';
 
 const LOCAL_HOST = '127.0.0.1';
+const STUDIO_CONTEXT_PATH = '/api/studio/context';
 
 async function readBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -25,6 +28,43 @@ export async function proxyApiRequest(
   openrouterApiKey: string | null
 ): Promise<boolean> {
   const requestUrl = new URL(request.url ?? '/', `http://${LOCAL_HOST}`);
+  if (requestUrl.pathname === STUDIO_CONTEXT_PATH) {
+    const method = (request.method ?? 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') {
+      response.statusCode = 405;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(JSON.stringify({ error: 'Method not allowed' }));
+      return true;
+    }
+
+    let repo: string | null = null;
+    let branch: string | null = null;
+    try {
+      repo = detectRepoSlugFromGitOrigin();
+    } catch {
+      repo = null;
+    }
+    try {
+      branch = new GitRepo(process.cwd()).getCurrentBranchRef();
+    } catch {
+      branch = null;
+    }
+
+    const payload = {
+      repo,
+      branch,
+      detectedAt: new Date().toISOString(),
+    };
+    response.statusCode = 200;
+    response.setHeader('Content-Type', 'application/json; charset=utf-8');
+    if (method === 'HEAD') {
+      response.end();
+      return true;
+    }
+    response.end(JSON.stringify(payload));
+    return true;
+  }
+
   if (!(requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/'))) {
     return false;
   }
