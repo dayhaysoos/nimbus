@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "10c27e387687",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-1-home",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "packages/cli/src/app/reviews/open.ts",
+    "packages/cli/src/app/reviews/session.ts",
+    "packages/cli/src/app/reviews/ui-dev-server.ts",
+    "packages/cli/src/app/reviews/ui-server.ts",
+    "packages/cli/src/app/reviews/ui-static-server.ts",
+    "packages/cli/src/cli/dispatch/review.ts",
+    "packages/cli/src/cli/help.ts",
+    "packages/cli/test/app/reviews/session.test.ts",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx",
+    "packages/report-ui/vite.config.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/10/c27e387687/0/metadata.json",
+      "transcript": "/10/c27e387687/0/full.jsonl",
+      "content_hash": "/10/c27e387687/0/content_hash.txt",
+      "prompt": "/10/c27e387687/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 9029426,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8179712,
+    "output_tokens": 28876,
+    "api_call_count": 77
+  }
+}

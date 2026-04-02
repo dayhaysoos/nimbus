@@ -1,0 +1,119 @@
+it worked ust fine, however help me understand this: Current branch context
+
+feat/review-studio-slice-1-home
+
+dayhaysoos/nimbus
+
+Viewing context: feat/review-studio-slice-0 what does it mean I'm on the current branch but I'm viewing context from the previous branch?
+
+---
+
+I don't see the current branch in thebranch list. Does it only list branches that have been pushed?
+
+---
+
+I see.. I'm not sure if I like this to be honest. It's kind of confusing. The "View In Home" button and "viewing context" doesn't really make sense and I don't think there's a design we can do to communicate what's happening. I think right now we need to figure out a better way to go about this. Perhaps instead of "View in home" and the "history" buttons. We should make the whole card in the branch list clickable, and when you click it would basically navigate to the history page
+
+---
+
+I'm thinking maybe I don't care about the most recent reviews. I thought it was a good idea but it feels like a lot of clutter now. Maybe hide it for now and if we want we can add it back later?
+
+---
+
+question, why do I have to run build every time you make an update? What happened to HMR? That was working before
+
+---
+
+yeah do that please then give me the command so I can run and test
+
+---
+
+Didn't I tell you to hide the recent reviews? Or do we need to run build first to see those changes?
+
+---
+
+looks like I'm getting errors: │
+│  Started Studio runtime.
+nickdejesus@MacBook-Pro-6 nimbus %  pnpm --filter @dayhaysoos/nimbus build
+  node packages/cli/dist/index.js review studio --stop
+  node packages/cli/dist/index.js review studio --dev-ui
+
+> @dayhaysoos/nimbus@0.1.0 prebuild /Users/nickdejesus/Code/nimbus/packages/cli
+> pnpm run build:ui
+
+
+> @dayhaysoos/nimbus@0.1.0 build:ui /Users/nickdejesus/Code/nimbus/packages/cli
+> pnpm --dir ../.. --filter @dayhaysoos/nimbus-report-ui build && rm -rf ./assets/report-ui && mkdir -p ./assets && cp -R ../report-ui/dist ./assets/report-ui
+
+
+> @dayhaysoos/nimbus-report-ui@0.0.1 build /Users/nickdejesus/Code/nimbus/packages/report-ui
+> tsc -b && vite build
+
+vite v5.4.21 building for production...
+✓ 61 modules transformed.
+dist/index.html                   0.74 kB │ gzip:   0.40 kB
+dist/assets/index-BzahcJNF.css   30.42 kB │ gzip:   6.94 kB
+dist/assets/index-LaXf92RV.js   353.56 kB │ gzip: 109.67 kB
+✓ built in 1.13s
+
+> @dayhaysoos/nimbus@0.1.0 build /Users/nickdejesus/Code/nimbus/packages/cli
+> tsc
+
+src/cli/dispatch/review.ts:253:9 - error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+253     if (flags.dev-ui && flags.status) {
+            ~~~~~~~~~
+
+src/cli/dispatch/review.ts:253:19 - error TS2304: Cannot find name 'ui'.
+
+253     if (flags.dev-ui && flags.status) {
+                      ~~
+
+src/cli/dispatch/review.ts:256:9 - error TS2362: The left-hand side of an arithmetic operation must be of type 'any', 'number', 'bigint' or an enum type.
+
+256     if (flags.dev-ui && flags.stop) {
+            ~~~~~~~~~
+
+src/cli/dispatch/review.ts:256:19 - error TS2304: Cannot find name 'ui'.
+
+256     if (flags.dev-ui && flags.stop) {
+                      ~~
+
+
+Found 4 errors in the same file, starting at: src/cli/dispatch/review.ts:253
+
+/Users/nickdejesus/Code/nimbus/packages/cli:
+ ERR_PNPM_RECURSIVE_RUN_FIRST_FAIL  @dayhaysoos/nimbus@0.1.0 build: `tsc`
+Exit status 2
+[dotenv@17.2.3] injecting env (5) from .env -- tip: ⚙️  suppress all logs with { quiet: true }
+┌  @dayhaysoos/nimbus
+│
+■  ui is not defined
+[dotenv@17.2.3] injecting env (5) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+┌  @dayhaysoos/nimbus
+│
+■  ui is not defined
+nickdejesus@MacBook-Pro-6 nimbus %
+
+---
+
+how come it says repo unavailable and the branch is unknown? Review Studio
+
+Home
+Current branch context
+
+unknown
+
+repo unavailable
+
+---
+
+Can you fix these?
+
+---
+
+Did you fix it? if you haven't then do so
+
+---
+
+I think the UI experience has been okay so far. are we in a goodplace to make a PR for this and merge into main in your opinion?
