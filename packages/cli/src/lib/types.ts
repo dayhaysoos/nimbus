@@ -238,6 +238,8 @@ export type ReviewRunStatus =
   | 'succeeded'
   | 'failed'
   | 'cancelled';
+export type ReviewPolicyMode = 'none' | 'auto' | 'review';
+export type ReviewBasis = 'checkpoint' | 'environment';
 export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ReviewConfidence = 'high' | 'medium' | 'low';
 export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
@@ -287,6 +289,8 @@ export interface ReviewRunResponse {
   };
   mode: 'report_only';
   status: ReviewRunStatus;
+  policyMode?: ReviewPolicyMode;
+  reviewBasis?: ReviewBasis;
   idempotencyKey: string;
   attemptCount: number;
   derivedPolicy?: {
@@ -348,6 +352,11 @@ export interface ReviewPolicyDeriveResponse {
     prohibitions: string[];
     constraints: string[];
   };
+}
+
+export interface ReviewPolicyApproveResponse {
+  reviewId: string;
+  approvedPolicySha256: string;
 }
 
 export interface ReviewPolicyResponse {

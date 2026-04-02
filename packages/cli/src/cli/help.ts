@@ -26,7 +26,7 @@ Commands:
   workspace deploy <workspace-id>
                        Run deploy preflight, queue deploy, and poll status
   review create --commit [commit-ish]
-                        Create workspace+deployment+review and block until review completion
+                        Create workspace+deployment+review (default policy mode: none)
   review create --workspace <id> --deployment <id>
                        Create a report-only review run for an existing deployment
   review preflight [commit-ish]
@@ -37,10 +37,10 @@ Commands:
                        Show review status and summary
   review events <review-id>
                        Stream review lifecycle events
-  review start
-                       Start local report UI server at index page
+  review studio
+                       Launch or reuse local Review Studio
   review open
-                       Run one-command policy-first review flow in local UI
+                       Compatibility alias for policy-review + Studio handoff
   review export <review-id>
                         Export a review as markdown or json
   admin provision-key  Provision a hosted API key (admin only)
@@ -81,6 +81,13 @@ Options:
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
+  --policy-mode <mode>
+                     Review policy mode (none|auto|review)
+  --auto-policy      Sugar for --policy-mode auto
+  --policy           Sugar for --policy-mode review
+  --open-studio      Open/reuse Review Studio after review creation
+  --status          Show Review Studio runtime status
+  --stop            Stop Review Studio runtime for this repo
   --base <ref>        Diff base ref for review create (uses <base>...<commit>)
   --repo <owner/repo> Repository slug override for repo register
   --dry-run           Validate repo register inputs without API call
@@ -119,6 +126,9 @@ Examples:
   nimbus workspace deploy ws_abc12345 --tests --build
   nimbus review create --commit HEAD
   nimbus review create --commit main~1
+  nimbus review create --commit HEAD --policy-mode none
+  nimbus review create --commit HEAD --auto-policy
+  nimbus review create --commit HEAD --policy --open-studio
   nimbus review create --commit HEAD --project-root apps/web
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
@@ -129,8 +139,10 @@ Examples:
   nimbus review policy --commit HEAD --base origin/main --model anthropic/claude-sonnet-4.5 --json
   nimbus review show rev_abcd1234
    nimbus review events rev_abcd1234
-   nimbus review start
-   nimbus review start --port 2000
+   nimbus review studio
+   nimbus review studio --port 2000
+   nimbus review studio --status
+   nimbus review studio --stop
    nimbus review open
    nimbus review open --commit HEAD~1
   nimbus review export rev_abcd1234 --format markdown --out review.md

@@ -19,7 +19,9 @@ import {
 } from './policy-shared.js';
 import {
   normalizeBranchRef,
+  normalizePolicyMode,
   normalizeRepoSlug,
+  normalizeReviewBasis,
   sha256Hex,
   withSortedKeys,
 } from './request-shared.js';
@@ -108,6 +110,30 @@ export async function handleDeriveReviewPolicy(
     }
 
     const provenance = isRecord(payload.provenance) ? payload.provenance : {};
+    const policyMode = normalizePolicyMode(payload.policyMode);
+    const reviewBasis = normalizeReviewBasis(payload.reviewBasis);
+    const rawPolicyMode = typeof payload.policyMode === 'string' ? payload.policyMode.trim() : payload.policyMode;
+    const rawReviewBasis = typeof payload.reviewBasis === 'string' ? payload.reviewBasis.trim() : payload.reviewBasis;
+    if (payload.policyMode !== undefined && policyMode !== rawPolicyMode) {
+      return jsonResponse(
+        {
+          error: 'Invalid policyMode',
+          code: 'invalid_review_policy_mode',
+          allowedPolicyModes: ['none', 'auto', 'review'],
+        },
+        400
+      );
+    }
+    if (payload.reviewBasis !== undefined && reviewBasis !== rawReviewBasis) {
+      return jsonResponse(
+        {
+          error: 'Invalid reviewBasis',
+          code: 'invalid_review_basis',
+          allowedReviewBasis: ['checkpoint', 'environment'],
+        },
+        400
+      );
+    }
     const reviewRepo = normalizeRepoSlug(provenance.repo);
     const reviewBranch = normalizeBranchRef(provenance.branch);
     if (!reviewRepo || !reviewBranch) {
@@ -139,6 +165,8 @@ export async function handleDeriveReviewPolicy(
         deploymentId,
       },
       mode: 'report_only' as const,
+      policyMode: policyMode === 'none' ? 'review' : policyMode,
+      reviewBasis,
       provenance,
     };
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(withSortedKeys(requestPayload)));

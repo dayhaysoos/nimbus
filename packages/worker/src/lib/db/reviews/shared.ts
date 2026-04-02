@@ -1,7 +1,9 @@
 import type {
   ReviewApprovedPolicy,
+  ReviewBasis,
   ReviewContextRef,
   ReviewFinding,
+  ReviewPolicyMode,
   ReviewRecommendation,
   ReviewReport,
   ReviewRunListItem,
@@ -211,6 +213,8 @@ export function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse 
   const provenance = parseJsonOrFallback<Record<string, unknown>>(record.provenance_json, {});
   const report = parseJsonOrFallback<ReviewReport | null>(record.report_json, null);
   const requestPayload = parseJsonOrFallback<Record<string, unknown>>(record.request_payload_json, {});
+  const policyMode = requestPayload.policyMode as ReviewPolicyMode | undefined;
+  const reviewBasis = requestPayload.reviewBasis as ReviewBasis | undefined;
   const requestProvenance = requestPayload && typeof requestPayload.provenance === 'object' && requestPayload.provenance !== null
     ? (requestPayload.provenance as Record<string, unknown>)
     : {};
@@ -239,6 +243,8 @@ export function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse 
     },
     mode: record.mode,
     status: record.status,
+    ...(policyMode === 'none' || policyMode === 'auto' || policyMode === 'review' ? { policyMode } : {}),
+    ...(reviewBasis === 'checkpoint' || reviewBasis === 'environment' ? { reviewBasis } : {}),
     idempotencyKey: record.idempotency_key,
     attemptCount: record.attempt_count,
     ...(derivedPolicy ? { derivedPolicy } : {}),

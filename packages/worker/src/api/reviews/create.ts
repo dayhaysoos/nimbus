@@ -20,7 +20,9 @@ import {
 import {
   buildReviewRequestPayload,
   normalizeBranchRef,
+  normalizePolicyMode,
   normalizeRepoSlug,
+  normalizeReviewBasis,
   sha256Hex,
   stripSensitiveTokenFields,
 } from './request-shared.js';
@@ -105,6 +107,30 @@ export async function handleCreateReview(
     const policy = isRecord(payload.policy) ? payload.policy : {};
     const format = isRecord(payload.format) ? payload.format : {};
     const provenance = isRecord(payload.provenance) ? payload.provenance : {};
+    const policyMode = normalizePolicyMode(payload.policyMode);
+    const reviewBasis = normalizeReviewBasis(payload.reviewBasis);
+    const rawPolicyMode = typeof payload.policyMode === 'string' ? payload.policyMode.trim() : payload.policyMode;
+    const rawReviewBasis = typeof payload.reviewBasis === 'string' ? payload.reviewBasis.trim() : payload.reviewBasis;
+    if (payload.policyMode !== undefined && policyMode !== rawPolicyMode) {
+      return jsonResponse(
+        {
+          error: 'Invalid policyMode',
+          code: 'invalid_review_policy_mode',
+          allowedPolicyModes: ['none', 'auto', 'review'],
+        },
+        400
+      );
+    }
+    if (payload.reviewBasis !== undefined && reviewBasis !== rawReviewBasis) {
+      return jsonResponse(
+        {
+          error: 'Invalid reviewBasis',
+          code: 'invalid_review_basis',
+          allowedReviewBasis: ['checkpoint', 'environment'],
+        },
+        400
+      );
+    }
     if (payload.model !== undefined && (typeof payload.model !== 'string' || !payload.model.trim())) {
       return jsonResponse({ error: 'model must be a non-empty string when provided' }, 400);
     }
@@ -136,6 +162,8 @@ export async function handleCreateReview(
     const { requestPayload, idempotencyPayload } = buildReviewRequestPayload({
       workspaceId,
       deploymentId,
+      policyMode,
+      reviewBasis,
       policy,
       format,
       provenance,
@@ -223,6 +251,8 @@ export async function handleCreateReview(
           workspaceId,
           deploymentId,
           mode: 'report_only',
+          policyMode,
+          reviewBasis,
         },
       });
     }

@@ -495,6 +495,8 @@ export type ReviewRunStatus =
   | 'cancelled';
 export type ReviewTargetType = 'workspace_deployment';
 export type ReviewMode = 'report_only';
+export type ReviewPolicyMode = 'none' | 'auto' | 'review';
+export type ReviewBasis = 'checkpoint' | 'environment';
 export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ReviewConfidence = 'high' | 'medium' | 'low';
 export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
@@ -741,6 +743,8 @@ export interface ReviewRunResponse {
   };
   mode: ReviewMode;
   status: ReviewRunStatus;
+  policyMode?: ReviewPolicyMode;
+  reviewBasis?: ReviewBasis;
   idempotencyKey: string;
   attemptCount: number;
   derivedPolicy?: ReviewApprovedPolicy;

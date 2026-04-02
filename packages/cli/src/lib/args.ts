@@ -29,6 +29,7 @@ const LONG_VALUE_FLAGS = new Set([
   'base',
   'repo',
   'port',
+  'policy-mode',
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',

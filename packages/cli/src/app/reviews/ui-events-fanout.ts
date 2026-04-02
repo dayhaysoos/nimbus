@@ -42,6 +42,8 @@ export function createProxyHeaders(
 
 interface ReviewEventsChannel {
   replay: string[];
+  replaySeqs: Set<number>;
+  highestSeq: number;
   subscribers: Set<ServerResponse>;
   upstreamAbortController: AbortController | null;
   upstreamTask: Promise<void> | null;
@@ -61,6 +63,25 @@ export function createReviewEventsFanout(options: {
   openrouterApiKey: string | null;
 }): ReviewEventsFanout {
   const channels = new Map<string, ReviewEventsChannel>();
+
+  const parseFrameSequence = (frameBody: string): number | null => {
+    const dataLines = frameBody
+      .split('\n')
+      .map((line) => line.trim())
+      .filter((line) => line.startsWith('data:'))
+      .map((line) => line.slice(5).trim());
+    if (dataLines.length === 0) {
+      return null;
+    }
+    try {
+      const payload = JSON.parse(dataLines.join('\n')) as Record<string, unknown>;
+      return typeof payload.seq === 'number' && Number.isFinite(payload.seq) && payload.seq >= 0
+        ? Math.floor(payload.seq)
+        : null;
+    } catch {
+      return null;
+    }
+  };
 
   const isTerminalFrame = (frameBody: string): boolean => {
     const dataLines = frameBody
@@ -120,6 +141,8 @@ export function createReviewEventsFanout(options: {
     }
     const channel: ReviewEventsChannel = {
       replay: [],
+      replaySeqs: new Set<number>(),
+      highestSeq: 0,
       subscribers: new Set<ServerResponse>(),
       upstreamAbortController: null,
       upstreamTask: null,
@@ -131,12 +154,35 @@ export function createReviewEventsFanout(options: {
   };
 
   const pushReplay = (channel: ReviewEventsChannel, frame: string): void => {
+    const seq = parseFrameSequence(frame);
+    if (typeof seq === 'number') {
+      if (channel.replaySeqs.has(seq)) {
+        return;
+      }
+      channel.replaySeqs.add(seq);
+      channel.highestSeq = Math.max(channel.highestSeq, seq);
+    }
     channel.replay.push(frame);
     if (channel.replay.length > REVIEW_EVENTS_REPLAY_LIMIT) {
-      channel.replay.splice(0, channel.replay.length - REVIEW_EVENTS_REPLAY_LIMIT);
+      const overflow = channel.replay.length - REVIEW_EVENTS_REPLAY_LIMIT;
+      const removed = channel.replay.splice(0, overflow);
+      for (const removedFrame of removed) {
+        const removedSeq = parseFrameSequence(removedFrame);
+        if (typeof removedSeq === 'number') {
+          channel.replaySeqs.delete(removedSeq);
+        }
+      }
     }
     if (channel.replay.length > REVIEW_EVENTS_REPLAY_HARD_CAP) {
-      channel.replay = channel.replay.slice(-REVIEW_EVENTS_REPLAY_LIMIT);
+      const retained = channel.replay.slice(-REVIEW_EVENTS_REPLAY_LIMIT);
+      channel.replay = retained;
+      channel.replaySeqs.clear();
+      for (const retainedFrame of retained) {
+        const retainedSeq = parseFrameSequence(retainedFrame);
+        if (typeof retainedSeq === 'number') {
+          channel.replaySeqs.add(retainedSeq);
+        }
+      }
     }
   };
 
@@ -173,6 +219,9 @@ export function createReviewEventsFanout(options: {
     channel.upstreamAbortController = controller;
     channel.upstreamTask = (async () => {
       const targetUrl = new URL(`/api/reviews/${encodeURIComponent(reviewId)}/events`, options.workerUrl);
+      if (channel.highestSeq > 0) {
+        targetUrl.searchParams.set('from', String(channel.highestSeq + 1));
+      }
       const upstreamResponse = await fetch(targetUrl.toString(), {
         method: 'GET',
         headers: createProxyHeaders(
@@ -294,7 +343,13 @@ export function createReviewEventsFanout(options: {
       return true;
     }
 
+    const fromParam = Number.parseInt(requestUrl.searchParams.get('from') ?? '', 10);
+    const minSeq = Number.isFinite(fromParam) && fromParam > 0 ? Math.floor(fromParam) : 0;
     for (const frame of channel.replay) {
+      const seq = parseFrameSequence(frame);
+      if (typeof seq === 'number' && seq < minSeq) {
+        continue;
+      }
       response.write(frame);
     }
 

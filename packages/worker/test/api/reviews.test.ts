@@ -597,6 +597,57 @@ export async function runReviewApiTests(): Promise<void> {
     const { env, state } = createReviewApiEnv();
     const request = new Request('https://example.com/api/reviews', {
       method: 'POST',
+      body: JSON.stringify(
+        withRequiredProvenance({
+          target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+          policyMode: 'auto',
+          reviewBasis: 'environment',
+        })
+      ),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-policy-mode-auto' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 202);
+    assert.equal(state.createdRequestPayload?.policyMode, 'auto');
+    assert.equal(state.createdRequestPayload?.reviewBasis, 'environment');
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify(
+        withRequiredProvenance({
+          target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+          policyMode: 'invalid',
+        })
+      ),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-policy-mode-invalid' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
+      body: JSON.stringify(
+        withRequiredProvenance({
+          target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
+          reviewBasis: 'invalid',
+        })
+      ),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-review-review-basis-invalid' },
+    });
+    const response = await handleCreateReview(request, env as never, ctx);
+    assert.equal(response.status, 400);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv();
+    const request = new Request('https://example.com/api/reviews', {
+      method: 'POST',
       body: JSON.stringify({
         ...withRequiredProvenance({
           target: { type: 'workspace_deployment', workspaceId: 'ws_abc12345', deploymentId: 'dep_abcd1234' },
