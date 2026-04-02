@@ -1,8 +1,11 @@
 import type {
+  ReviewBasis,
   ReviewCreateResponse,
   ReviewEventEnvelope,
   ReviewGetResponse,
+  ReviewPolicyApproveResponse,
   ReviewPolicyDeriveResponse,
+  ReviewPolicyMode,
   ReviewPolicyResponse,
 } from '../../lib/types.js';
 import { throwWorkerError, withReviewHeaders, workerFetch } from './shared.js';
@@ -17,6 +20,8 @@ export async function createReview(
       deploymentId: string;
     };
     mode: 'report_only';
+    policyMode?: ReviewPolicyMode;
+    reviewBasis?: ReviewBasis;
     policy?: {
       severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
       maxFindings?: number;
@@ -98,6 +103,8 @@ export async function deriveReviewPolicy(
   payload: {
     workspaceId: string;
     deploymentId: string;
+    policyMode?: Exclude<ReviewPolicyMode, 'none'>;
+    reviewBasis?: ReviewBasis;
     provenance?: Record<string, unknown>;
   }
 ): Promise<ReviewPolicyDeriveResponse> {
@@ -114,6 +121,32 @@ export async function deriveReviewPolicy(
   }
 
   return response.json() as Promise<ReviewPolicyDeriveResponse>;
+}
+
+export async function approveReviewPolicy(
+  workerUrl: string,
+  reviewId: string,
+  payload: {
+    approvedPolicy: {
+      goal: string | null;
+      prohibitions: string[];
+      constraints: string[];
+    };
+  }
+): Promise<ReviewPolicyApproveResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/${encodeURIComponent(reviewId)}/policy/approve`, {
+    method: 'POST',
+    headers: withReviewHeaders({
+      'Content-Type': 'application/json',
+    }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<ReviewPolicyApproveResponse>;
 }
 
 export async function getReview(workerUrl: string, reviewId: string): Promise<ReviewGetResponse> {

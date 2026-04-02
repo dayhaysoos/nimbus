@@ -117,6 +117,22 @@ export function normalizeBranchRef(value: unknown): string | undefined {
   return trimmed ? trimmed : undefined;
 }
 
+export function normalizePolicyMode(value: unknown): 'none' | 'auto' | 'review' {
+  const candidate = typeof value === 'string' ? value.trim() : value;
+  if (candidate === 'none' || candidate === 'auto' || candidate === 'review') {
+    return candidate;
+  }
+  return 'none';
+}
+
+export function normalizeReviewBasis(value: unknown): 'checkpoint' | 'environment' {
+  const candidate = typeof value === 'string' ? value.trim() : value;
+  if (candidate === 'checkpoint' || candidate === 'environment') {
+    return candidate;
+  }
+  return 'checkpoint';
+}
+
 export function stripSensitiveTokenFields(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => stripSensitiveTokenFields(item));
@@ -177,6 +193,8 @@ function assignIdempotencyNestedField(
 export function buildReviewRequestPayload(input: {
   workspaceId: string;
   deploymentId: string;
+  policyMode: unknown;
+  reviewBasis: unknown;
   policy: Record<string, unknown>;
   format: Record<string, unknown>;
   provenance: Record<string, unknown>;
@@ -249,6 +267,8 @@ export function buildReviewRequestPayload(input: {
       : undefined;
   const localCochange = normalizeLocalCochange(input.provenance.localCochange);
   const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
+  const policyMode = normalizePolicyMode(input.policyMode);
+  const reviewBasis = normalizeReviewBasis(input.reviewBasis);
 
   const normalized = {
     target: {
@@ -257,6 +277,8 @@ export function buildReviewRequestPayload(input: {
       deploymentId: input.deploymentId,
     },
     mode: 'report_only' as const,
+    policyMode,
+    reviewBasis,
     policy: {
       severityThreshold:
         typeof input.policy.severityThreshold === 'string' && input.policy.severityThreshold.trim()
@@ -300,6 +322,8 @@ export function buildReviewRequestPayload(input: {
   const idempotencyPayload: Record<string, unknown> = {
     target: normalized.target,
     mode: normalized.mode,
+    policyMode: normalized.policyMode,
+    reviewBasis: normalized.reviewBasis,
     provenance: normalized.provenance,
   };
 

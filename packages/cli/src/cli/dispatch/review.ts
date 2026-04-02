@@ -2,7 +2,7 @@ import * as p from '@clack/prompts';
 import { createReviewCommand, createReviewFromCommitCommand } from '../../commands/review/create.js';
 import { reviewEventsCommand } from '../../commands/review/events.js';
 import { exportReviewCommand } from '../../commands/review/export.js';
-import { openReviewFromCommitCommand, startReviewUiCommand } from '../../commands/review/open.js';
+import { openReviewFromCommitCommand, startReviewStudioCommand } from '../../commands/review/open.js';
 import { reviewPolicyCommand } from '../../commands/review/policy.js';
 import { reviewPreflightCommand } from '../../commands/review/preflight.js';
 import { showReviewCommand } from '../../commands/review/show.js';
@@ -12,6 +12,47 @@ import { parsePositiveIntegerFlag } from '../argv.js';
 import { parseSummarizeSessionFlag } from './flags.js';
 
 type CliFlags = ParsedCliArgs['flags'];
+type ReviewPolicyMode = 'none' | 'auto' | 'review';
+
+function normalizePolicyMode(raw: string | undefined): ReviewPolicyMode | null {
+  if (raw === 'none' || raw === 'auto' || raw === 'review') {
+    return raw;
+  }
+  return null;
+}
+
+function resolvePolicyMode(flags: CliFlags, exitWithUsage: (message: string) => never): ReviewPolicyMode {
+  const policyModeFlag = flags['policy-mode'];
+  const canonicalPolicyMode =
+    typeof policyModeFlag === 'string' && policyModeFlag.trim() ? normalizePolicyMode(policyModeFlag.trim()) : null;
+  if (typeof policyModeFlag === 'string' && policyModeFlag.trim() && !canonicalPolicyMode) {
+    exitWithUsage('Invalid --policy-mode value. Use one of: none, auto, review.');
+  }
+
+  const autoPolicy = Boolean(flags['auto-policy']);
+  const reviewPolicy = Boolean(flags.policy);
+  if (autoPolicy && reviewPolicy) {
+    exitWithUsage('Usage error: --auto-policy and --policy cannot be used together.');
+  }
+
+  if (canonicalPolicyMode && autoPolicy && canonicalPolicyMode !== 'auto') {
+    exitWithUsage('Usage error: --policy-mode conflicts with --auto-policy.');
+  }
+  if (canonicalPolicyMode && reviewPolicy && canonicalPolicyMode !== 'review') {
+    exitWithUsage('Usage error: --policy-mode conflicts with --policy.');
+  }
+
+  if (canonicalPolicyMode) {
+    return canonicalPolicyMode;
+  }
+  if (autoPolicy) {
+    return 'auto';
+  }
+  if (reviewPolicy) {
+    return 'review';
+  }
+  return 'none';
+}
 
 export async function dispatchReviewCommand(
   positional: string[],
@@ -45,6 +86,9 @@ export async function dispatchReviewCommand(
     const outputReviewIdPathForCommand = outputReviewIdFlag === true ? '' : outputReviewIdPath;
     const severityThreshold = parseReviewSeverityThreshold(flags['severity-threshold']);
     const maxFindings = parseReviewMaxFindings(flags['max-findings']);
+    const policyMode = resolvePolicyMode(flags, exitWithUsage);
+    const openStudio = Boolean(flags['open-studio']);
+    const openStudioPort = parsePositiveIntegerFlag(flags.port);
     const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;
     const hasWorkspaceInputs = Boolean(workspaceId || deploymentId);
     const unexpectedPositional = positional[1];
@@ -69,6 +113,9 @@ export async function dispatchReviewCommand(
         idempotencyKey,
         severityThreshold,
         maxFindings,
+        policyMode,
+        openStudio,
+        openStudioPort,
         model,
         intentSummaryModel,
         includeProvenance: !Boolean(flags['no-provenance']),
@@ -86,6 +133,9 @@ export async function dispatchReviewCommand(
       idempotencyKey,
       severityThreshold,
       maxFindings,
+      policyMode,
+      openStudio,
+      openStudioPort,
       model,
       intentSummaryModel,
       includeProvenance: !Boolean(flags['no-provenance']),
@@ -172,44 +222,43 @@ export async function dispatchReviewCommand(
       exitWithUsage('Usage: nimbus review open [--commit <commit-ish>] [--port <n>] [--base <ref>] [--project-root <path>]');
     }
 
-    const workspaceFlag = flags.workspace;
-    const deploymentFlag = flags.deployment;
-    if (typeof workspaceFlag === 'string' || typeof deploymentFlag === 'string') {
-      exitWithUsage('review open no longer accepts --workspace/--deployment. It now resolves workspace and deployment automatically from git context.');
-    }
-
-    const port = parsePositiveIntegerFlag(flags.port);
-    const commitFlag = flags.commit;
-    const commitish = typeof commitFlag === 'string' ? commitFlag : commitFlag === true ? 'HEAD' : 'HEAD';
-    const baseFlag = flags.base;
-    const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
-    const projectRootFlag = flags['project-root'];
-    const projectRoot = typeof projectRootFlag === 'string' && projectRootFlag.trim() ? projectRootFlag.trim() : undefined;
-    const idempotencyKeyFlag = flags['idempotency-key'];
-    const idempotencyKey = typeof idempotencyKeyFlag === 'string' && idempotencyKeyFlag.trim() ? idempotencyKeyFlag.trim() : undefined;
-
     await openReviewFromCommitCommand({
-      port,
-      commitish,
-      baseRef,
-      projectRoot,
-      idempotencyKey,
+      port: parsePositiveIntegerFlag(flags.port),
+      commitish: typeof flags.commit === 'string' ? flags.commit : 'HEAD',
+      baseRef: typeof flags.base === 'string' && flags.base.trim() ? flags.base.trim() : undefined,
+      projectRoot: typeof flags['project-root'] === 'string' && flags['project-root'].trim() ? flags['project-root'].trim() : undefined,
+      idempotencyKey:
+        typeof flags['idempotency-key'] === 'string' && flags['idempotency-key'].trim()
+          ? flags['idempotency-key'].trim()
+          : undefined,
       pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),
     });
     return;
   }
 
-  if (reviewAction === 'start') {
+  if (reviewAction === 'studio' || reviewAction === 'start') {
     const unexpectedPositional = positional[1];
     if (typeof unexpectedPositional === 'string' && unexpectedPositional.trim()) {
-      exitWithUsage('Usage: nimbus review start [--port <n>]');
+      exitWithUsage('Usage: nimbus review studio [--port <n>]');
+    }
+    if (flags.serve && flags.status) {
+      exitWithUsage('Usage error: --serve and --status cannot be used together.');
+    }
+    if (flags.serve && flags.stop) {
+      exitWithUsage('Usage error: --serve and --stop cannot be used together.');
+    }
+    if (flags.status && flags.stop) {
+      exitWithUsage('Usage error: --status and --stop cannot be used together.');
     }
 
-    await startReviewUiCommand({
+    await startReviewStudioCommand({
       port: parsePositiveIntegerFlag(flags.port),
+      serve: Boolean(flags.serve),
+      status: Boolean(flags.status),
+      stop: Boolean(flags.stop),
     });
     return;
   }
 
-  exitWithUsage('Unknown review command. Use: create, preflight, policy, show, events, start, open, export');
+  exitWithUsage('Unknown review command. Use: create, preflight, policy, show, events, studio, open, export');
 }

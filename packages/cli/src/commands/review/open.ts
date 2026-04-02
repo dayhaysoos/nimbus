@@ -1,2 +1,2 @@
-export { openReviewFromCommitCommand, startReviewUiCommand } from '../../app/reviews/open.js';
-export type { OpenReviewFromCommitOptions, StartReviewUiOptions } from '../../app/reviews/open.js';
+export { openReviewFromCommitCommand, startReviewStudioCommand } from '../../app/reviews/open.js';
+export type { OpenReviewFromCommitOptions, StartReviewStudioOptions } from '../../app/reviews/open.js';

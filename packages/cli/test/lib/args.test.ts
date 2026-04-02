@@ -106,6 +106,20 @@ export function runArgsParsingTests(): void {
     assert.deepEqual(parsed.positional, ['open']);
   }
 
+  {
+    const parsed = parseArgs([
+      'review',
+      'create',
+      '--policy-mode',
+      'auto',
+      '--auto-policy',
+      '--open-studio',
+    ]);
+    assert.equal(parsed.flags['policy-mode'], 'auto');
+    assert.equal(parsed.flags['auto-policy'], true);
+    assert.equal(parsed.flags['open-studio'], true);
+  }
+
   assert.throws(
     () => parseArgs(['deploy', 'checkpoint', 'HEAD', '--ref']),
     /Missing value for --ref/

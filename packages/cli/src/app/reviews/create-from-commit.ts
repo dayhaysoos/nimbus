@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import { mkdir, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, resolve } from 'path';
-import { createReview, getReview, streamReviewEvents } from '../../clients/worker/reviews.js';
+import { approveReviewPolicy, createReview, deriveReviewPolicy, getReview, streamReviewEvents } from '../../clients/worker/reviews.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { formatEvent } from '../../commands/review/events.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
@@ -19,8 +19,11 @@ import {
   ReviewCreateProvenance,
   sleep,
 } from './create-shared.js';
+import { startReviewStudioCommand } from './open.js';
 
 let createReviewForCommitFlow: typeof createReview = createReview;
+let deriveReviewPolicyForCommitFlow: typeof deriveReviewPolicy = deriveReviewPolicy;
+let approveReviewPolicyForCommitFlow: typeof approveReviewPolicy = approveReviewPolicy;
 let streamReviewEventsForCommitFlow: typeof streamReviewEvents = streamReviewEvents;
 let getReviewForCommitFlow: typeof getReview = getReview;
 
@@ -36,6 +39,8 @@ export function setReviewCreateFlowForTests(
         streamReviewEvents?: typeof streamReviewEventsForCommitFlow;
         getReview?: typeof getReviewForCommitFlow;
         resolveLocalCochange?: ReviewContextFlowOverrides['resolveLocalCochange'];
+        deriveReviewPolicy?: typeof deriveReviewPolicyForCommitFlow;
+        approveReviewPolicy?: typeof approveReviewPolicyForCommitFlow;
       }
     | null
 ): void {
@@ -50,6 +55,8 @@ export function setReviewCreateFlowForTests(
       : null
   );
   createReviewForCommitFlow = overrides?.createReview ?? createReview;
+  deriveReviewPolicyForCommitFlow = overrides?.deriveReviewPolicy ?? deriveReviewPolicy;
+  approveReviewPolicyForCommitFlow = overrides?.approveReviewPolicy ?? approveReviewPolicy;
   streamReviewEventsForCommitFlow = overrides?.streamReviewEvents ?? streamReviewEvents;
   getReviewForCommitFlow = overrides?.getReview ?? getReview;
 }
@@ -88,6 +95,10 @@ export async function createReviewFromCommitCommand(
     outputReviewIdPath?: string;
     projectRoot?: string;
     idempotencyKey?: string;
+    policyMode?: 'none' | 'auto' | 'review';
+    reviewBasis?: 'checkpoint' | 'environment';
+    openStudio?: boolean;
+    openStudioPort?: number;
     severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
     maxFindings?: number;
     model?: string;
@@ -107,6 +118,8 @@ export async function createReviewFromCommitCommand(
   let reviewId = '';
   let reviewResultUrl = '';
   let resolvedProvenance: ReviewCreateProvenance | null = null;
+  const policyMode = options?.policyMode ?? 'none';
+  const reviewBasis = options?.reviewBasis ?? 'checkpoint';
   const spinner = p.spinner();
 
   const resolved = await resolveReviewContext({
@@ -123,28 +136,48 @@ export async function createReviewFromCommitCommand(
 
   spinner.start('Creating review...');
   try {
-    const reviewIdempotencyKey = options?.idempotencyKey?.trim()
-      ? deriveIdempotencyKey(options.idempotencyKey, 'review')
-      : buildIdempotencyKey(workspaceId, deploymentId);
-    const response = await createReviewForCommitFlow(workerUrl, reviewIdempotencyKey, {
-      target: {
-        type: 'workspace_deployment',
+    if (policyMode === 'none') {
+      const reviewIdempotencyKey = options?.idempotencyKey?.trim()
+        ? deriveIdempotencyKey(options.idempotencyKey, 'review')
+        : buildIdempotencyKey(workspaceId, deploymentId);
+      const response = await createReviewForCommitFlow(workerUrl, reviewIdempotencyKey, {
+        target: {
+          type: 'workspace_deployment',
+          workspaceId,
+          deploymentId,
+        },
+        mode: 'report_only',
+        policyMode,
+        reviewBasis,
+        policy: {
+          severityThreshold: options?.severityThreshold ?? 'low',
+          maxFindings: options?.maxFindings,
+          includeProvenance: options?.includeProvenance ?? true,
+          includeValidationEvidence: options?.includeValidationEvidence ?? true,
+        },
+        model: options?.model,
+        provenance: resolvedProvenance ?? undefined,
+      });
+      reviewId = response.reviewId;
+      reviewResultUrl = normalizeResultUrl(workerUrl, response.resultUrl);
+      spinner.stop(`Review queued: ${reviewId}`);
+    } else {
+      const derived = await deriveReviewPolicyForCommitFlow(workerUrl, {
         workspaceId,
         deploymentId,
-      },
-      mode: 'report_only',
-      policy: {
-        severityThreshold: options?.severityThreshold ?? 'low',
-        maxFindings: options?.maxFindings,
-        includeProvenance: options?.includeProvenance ?? true,
-        includeValidationEvidence: options?.includeValidationEvidence ?? true,
-      },
-      model: options?.model,
-      provenance: resolvedProvenance ?? undefined,
-    });
-    reviewId = response.reviewId;
-    reviewResultUrl = normalizeResultUrl(workerUrl, response.resultUrl);
-    spinner.stop(`Review queued: ${reviewId}`);
+        policyMode,
+        reviewBasis,
+        provenance: resolvedProvenance ?? undefined,
+      });
+      reviewId = derived.reviewId;
+      reviewResultUrl = normalizeResultUrl(workerUrl, `/api/reviews/${encodeURIComponent(reviewId)}`);
+      if (policyMode === 'auto') {
+        await approveReviewPolicyForCommitFlow(workerUrl, reviewId, { approvedPolicy: derived.derivedPolicy });
+        spinner.stop(`Policy auto-approved; review queued: ${reviewId}`);
+      } else {
+        spinner.stop(`Policy ready for review: ${reviewId}`);
+      }
+    }
 
     const outputReviewIdRaw = options?.outputReviewIdPath;
     const outputReviewIdPath = outputReviewIdRaw?.trim();
@@ -188,6 +221,22 @@ export async function createReviewFromCommitCommand(
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Review creation failed');
     throw new Error(`Review flow failed at review creation: ${message}`);
+  }
+
+  if (options?.openStudio) {
+    await startReviewStudioCommand({
+      port: options.openStudioPort,
+      routePath:
+        policyMode === 'review'
+          ? `/policy/${encodeURIComponent(reviewId)}`
+          : `/reports/${encodeURIComponent(reviewId)}`,
+    });
+  }
+
+  if (policyMode === 'review') {
+    p.log.message('Policy review is required before execution. Open the policy page and approve to start the run.');
+    console.log(`Report URL: ${reviewResultUrl}`);
+    return;
   }
 
   p.log.info(`Streaming review events for ${reviewId}`);
