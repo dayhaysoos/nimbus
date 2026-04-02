@@ -34,6 +34,7 @@ Ship a seamless review loop that feels continuous from launch to rerun:
 4. New review start must be idempotent (disable CTA, request keying, worker dedupe).
 5. OpenRouter key handling must follow request override > env fallback, with redaction and no persistence.
 6. Review environments default to detached ephemeral worktrees with mode-based retention (`review` and `edit`).
+7. Payload, event envelope, and retention defaults must match the implementation appendix in `review-studio-experience.md`.
 
 ## Phase 0: Technical foundation for seamless flow
 

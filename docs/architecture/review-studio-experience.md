@@ -343,6 +343,195 @@ Metadata requirements per environment:
 - parent review id
 - branch/ref provenance
 
+## Implementation appendix: contracts and defaults
+
+This appendix is intentionally concrete so implementation agents can execute without guessing.
+
+## A) Studio -> Worker start payload contract
+
+Studio sends a single normalized payload for policy/run start.
+
+```json
+{
+  "idempotencyKey": "studio-start-<uuid>",
+  "target": {
+    "type": "workspace_deployment",
+    "workspaceId": "ws_abc12345",
+    "deploymentId": "dep_abc12345"
+  },
+  "mode": "report_only",
+  "policyMode": "auto|review_first",
+  "provenance": {
+    "repo": "owner/repo",
+    "branch": "feature/x",
+    "commitSha": "<40-char sha>",
+    "note": "optional",
+    "sessionIds": ["ses_x"],
+    "transcriptUrl": null,
+    "intentSessionContext": ["string"],
+    "rawSessionPrompts": "string",
+    "contextResolution": "direct|branch_fallback",
+    "contextResolutionOriginalCheckpointId": "chk_original",
+    "contextResolutionResolvedCheckpointId": "chk_resolved",
+    "contextResolutionResolvedCommitSha": "<40-char sha>",
+    "contextResolutionResolvedCommitMessage": "commit subject",
+    "localCochange": {
+      "source": "local_git",
+      "checkpointsRef": "entire/checkpoints/v1",
+      "lookbackSessions": 10,
+      "topN": 20,
+      "sessionsScanned": 8,
+      "relatedByChangedPath": {}
+    }
+  },
+  "requestedBy": {
+    "surface": "studio_ui",
+    "studioSessionId": "st_abc123"
+  }
+}
+```
+
+Contract rules:
+
+1. Studio is the source of truth for branch/checkpoint/Entire/co-change fields.
+2. Worker must not attempt local git/Entire discovery in this flow.
+3. Worker stores provenance as received (with normal validation/sanitization).
+
+## B) Worker -> Studio event envelope (SSE)
+
+Canonical envelope:
+
+```json
+{
+  "seq": 42,
+  "createdAt": "2026-04-01T12:34:56.000Z",
+  "reviewId": "rev_abc12345",
+  "type": "review_progress",
+  "status": "queued|running|succeeded|failed|cancelled",
+  "stage": "policy|queue|analysis|finalize",
+  "message": "human-readable progress",
+  "details": {}
+}
+```
+
+Terminal event (required):
+
+```json
+{
+  "seq": 99,
+  "createdAt": "2026-04-01T12:39:56.000Z",
+  "reviewId": "rev_abc12345",
+  "type": "terminal",
+  "status": "succeeded"
+}
+```
+
+Failure event (required fields):
+
+```json
+{
+  "seq": 77,
+  "createdAt": "2026-04-01T12:37:12.000Z",
+  "reviewId": "rev_abc12345",
+  "type": "review_failed",
+  "status": "failed",
+  "error": {
+    "code": "review_context_cochange_failed",
+    "message": "redacted message"
+  }
+}
+```
+
+## C) Studio -> Browser WebSocket envelopes
+
+Studio forwards two channels from the same source stream.
+
+Curated (default visible):
+
+```json
+{
+  "channel": "curated",
+  "reviewId": "rev_abc12345",
+  "seq": 42,
+  "status": "running",
+  "stage": "analysis",
+  "summary": "Review agent is analyzing changed files (pass 2/3).",
+  "timestamp": "2026-04-01T12:35:11.000Z"
+}
+```
+
+Raw (toggle):
+
+```json
+{
+  "channel": "raw",
+  "reviewId": "rev_abc12345",
+  "seq": 42,
+  "event": {}
+}
+```
+
+Curation rules:
+
+1. Curated summaries are derived from worker events only.
+2. Do not invent synthetic completion/failure states.
+3. Redaction rules apply equally to curated and raw channels.
+
+## D) Idempotency behavior contract
+
+1. UI disables `Start Review` after first click until acknowledgement.
+2. Studio always generates and sends a per-attempt idempotency key.
+3. Worker returns existing run when idempotency key already exists.
+4. Studio treats duplicate response as success and routes to existing review.
+
+## E) Worktree retention defaults (locked)
+
+Mode defaults:
+
+- `review` mode TTL: 24 hours since `lastTouchedAt`
+- `edit` mode TTL: 14 days since `lastTouchedAt`
+
+Sweep behavior:
+
+1. Run sweep on Studio startup and every 6 hours.
+2. Sweep only `review` mode by default.
+3. `edit` mode is sweep-eligible only after TTL and only if not pinned.
+
+Never auto-delete when any of the following is true:
+
+1. environment is active/locked by running session
+2. environment is pinned
+3. unexported edits are detected
+4. mode is `edit` and TTL has not elapsed
+
+Recommended explicit actions surfaced in UI:
+
+1. `Keep environment` (sets pinned)
+2. `Promote to edit session`
+3. `Archive and cleanup`
+
+## F) Minimal repo-local config shape
+
+Path: `.nimbus/studio.json` (must be gitignored)
+
+```json
+{
+  "version": 1,
+  "review": {
+    "policyMode": "auto"
+  },
+  "ui": {
+    "showRawThinkingByDefault": false
+  }
+}
+```
+
+Constraints:
+
+1. No secrets in this file.
+2. Unknown keys tolerated for forward compatibility.
+3. Invalid file falls back to safe defaults and logs a warning.
+
 ## Non-goals for this phase
 
 1. No framework migration decision in this spec (e.g., TanStack Start).
