@@ -10,6 +10,9 @@ This directory tracks the architecture of Nimbus as it exists today and as it ev
 - `deployment-flow.md`: workspace deployment preflight, execution, polling, and cancellation
 - `auth-flow.md`: hosted auth and GitHub OIDC exchange model
 - `report-ui-flow.md`: report UI data loading, polling, routing, and user-visible states
+- `review-studio-experience.md`: locked UX and product decisions for Review Studio
+- `review-studio-experience-build-plan.md`: phased build plan and owner guardrails for Review Studio
+- `review-studio-implementation-plan.md`: repo-specific implementation plan with file-level targets and rollout order
 - `adr/`: architecture decision records for major structural changes
 
 ## Current Coverage

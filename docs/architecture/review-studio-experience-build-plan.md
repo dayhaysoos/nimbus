@@ -35,6 +35,21 @@ Ship a seamless review loop that feels continuous from launch to rerun:
 5. OpenRouter key handling must follow request override > env fallback, with redaction and no persistence.
 6. Review environments default to detached ephemeral worktrees with mode-based retention (`review` and `edit`).
 7. Payload, event envelope, and retention defaults must match the implementation appendix in `review-studio-experience.md`.
+8. Command surface must follow the locked taxonomy in `review-studio-experience.md`:
+   - `nimbus review studio` launches/reuses Studio without implicitly creating a review
+   - `nimbus review create` is the canonical review-start command
+   - `--policy-mode none|auto|review` is canonical
+   - `--auto-policy` and `--policy` are sugar only
+   - `nimbus review open` is compatibility-only during transition
+9. Policy mode defaults must remain stable:
+   - bare `nimbus review create` defaults to `none`
+   - Studio uses saved repo preference when available
+   - first-run Studio default is `auto`
+10. Fix-loop semantics must remain stable:
+   - checkpoint is immutable provenance anchor
+   - agent remediation happens in mutable environment state
+   - follow-up validation reviews run against current environment state
+   - local apply/export is always explicit
 
 ## Phase 0: Technical foundation for seamless flow
 
@@ -53,6 +68,19 @@ Install the runtime scaffolding required for the UX to behave consistently.
    - mode metadata (`review` | `edit`)
    - startup stale sweep for safe `review` environments only
    - explicit keep/archive/cleanup action hooks
+6. CLI taxonomy is implemented consistently enough to unblock UI and docs work:
+   - `review studio`
+   - `review create --policy-mode ...`
+   - compatibility handling for `review open`
+7. Default policy-mode behavior is implemented consistently across CLI and Studio surfaces.
+8. Studio lifecycle and replay scaffolding exist:
+   - detached service startup/reuse
+   - runtime metadata
+   - replay cursor persistence for active reviews
+9. Environment remediation path is wired enough to preserve the product model:
+   - `Fix with agent`
+   - mutable environment reuse/promotion
+   - `Review current environment` path for validation
 
 ### Acceptance checks
 
@@ -61,6 +89,10 @@ Install the runtime scaffolding required for the UX to behave consistently.
 3. Policy mode preference survives Studio restart for same repo.
 4. No secrets are written to config files or surfaced in logs/events.
 5. Worktree metadata is created for every Studio-started review.
+6. Canonical help text and command routing reflect the locked taxonomy.
+7. Bare CLI create defaults to `none`, while Studio create defaults follow saved preference then `auto`.
+8. Active reviews can survive Studio/browser restart and resume from worker truth plus replay.
+9. Fix-loop actions do not implicitly apply changes back to the local repo.
 
 ## Build sequence
 
@@ -76,18 +108,21 @@ Use this section to coordinate work across agents without breaking the approved 
    - local Entire/checkpoint/co-change resolution and normalized payload assembly
    - repo-local preference persistence (`.nimbus/studio.json`)
    - worktree manager (`review`/`edit` modes, metadata, safe sweeps)
+   - CLI command routing for `review studio`, canonical `review create`, and transitional alias handling for `review open`
+   - detached Studio service lifecycle, runtime metadata, replay cursor persistence, and environment export/apply entrypoints
 
 2. Worker owner
    - policy derivation/approval lifecycle endpoints and state transitions
    - review run persistence/events as source of truth
    - idempotent run-start handling and dedupe behavior
    - OpenRouter key precedence and redaction-safe handling
+   - stable policy mode contract (`none|auto|review`) at the API boundary
 
 3. UI owner
    - Home control-center surface and branch-context rendering
    - New Review slide-over with policy mode and preflight card
    - single-route run lifecycle UI with `Agent Thinking` panel
-   - completion/failure recovery actions and parallel run clarity
+   - completion/failure recovery actions, `Fix with agent`, `Review current environment`, and parallel run clarity
 
 ## Recommended execution order (cross-owner)
 
@@ -113,10 +148,12 @@ Use this section to coordinate work across agents without breaking the approved 
 3. Run lifecycle checkpoint
    - State machine labels and terminal statuses are frozen for UI mapping.
    - Recovery action intents and parameters are frozen.
+   - Fix-loop actions distinguish fresh rerun from current-environment validation.
 
 4. Parallel/worktree checkpoint
    - Environment metadata schema is frozen (`review`/`edit`, pinned, timestamps, parent ids).
    - Cleanup safety rules are enforced before exposing bulk cleanup actions.
+   - Runtime metadata and replay cursor placement are frozen.
 
 ## Phase A: Home as control center
 
@@ -172,10 +209,12 @@ Keep users on one continuous screen through queued/running/completed/failed.
 ### Deliverables
 
 1. One route morphs across states:
+   - Policy pending / ready / approved
    - Queued
    - Running
    - Completed
    - Failed
+   - Cancelled
 2. Default progress area is quiet summary (status, stage, elapsed).
 3. `Agent Thinking` panel is expandable.
 4. `Agent Thinking` supports:
@@ -199,18 +238,21 @@ Turn output into immediate next action.
 ### Deliverables
 
 1. Completed state prioritizes:
-   - `Act on findings`
+   - `Fix with agent`
    - `Run another review`
 2. `Run another review` pre-fills same branch + latest checkpoint.
 3. Failed state prioritizes recovery actions:
    - `Retry same inputs`
    - `Retry with policy review`
 4. Diagnostics are present but visually secondary.
+5. Validation path from mutable environment is available after agent remediation:
+   - `Review current environment`
 
 ### Acceptance checks
 
 1. User can launch follow-up review in one click after applying fixes.
 2. Failure path offers immediate retry without forcing page reset.
+3. Agent remediation loop can continue in mutable environment without implicitly starting a fresh checkpoint review.
 
 ## Phase E: Parallel review clarity
 
@@ -224,7 +266,7 @@ Allow parallel runs without confusion.
 2. Every run surface clearly shows branch + target context.
 3. Home and recent activity do not collapse or hide active parallel runs.
 4. Each parallel review uses isolated detached worktree environment metadata.
-5. `review` mode environments can be promoted to `edit` mode for follow-up code changes.
+5. `review` mode environments can be promoted to `edit` mode for agent-driven follow-up changes.
 
 ### Acceptance checks
 
@@ -244,8 +286,21 @@ Run these scenarios before marking phase complete:
 7. Parallel path: start two runs and resume each from Home correctly.
 8. Terminal optionality: after launch, full loop works from UI alone.
 9. Worktree lifecycle: review run creates detached environment; keep/archive/cleanup controls behave safely.
-10. Edit intent path: promoted `edit` environments are retained and not swept as stale `review` environments.
-11. Security path: request-level OpenRouter key override works and no key material appears in persisted config/logs.
+10. Agent remediation path: `Fix with agent` uses mutable environment state rather than direct local editing.
+11. Validation path: `Review current environment` reviews current mutable environment state, not the original checkpoint snapshot.
+12. Edit intent path: promoted `edit` environments are retained and not swept as stale `review` environments.
+13. Replay path: browser refresh or Studio restart restores active run view and catches up from worker events without losing state.
+14. Export/apply path: environment changes only reach the local repo through explicit user action.
+15. Security path: request-level OpenRouter key override works and no key material appears in persisted config/logs.
+16. CLI taxonomy path:
+    - `nimbus review studio` opens Studio only
+    - `nimbus review create --policy-mode none|auto|review` behaves distinctly and correctly
+    - `--auto-policy` and `--policy` behave as sugar
+    - `nimbus review open` routes through compatibility behavior without becoming the primary documented path
+17. Default policy path:
+    - bare `nimbus review create` behaves as `--policy-mode none`
+    - Studio create uses saved repo preference when present
+    - first-run Studio create defaults to `auto`
 
 ## Prioritized backlog after v1
 
