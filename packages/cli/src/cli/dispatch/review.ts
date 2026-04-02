@@ -250,12 +250,19 @@ export async function dispatchReviewCommand(
     if (flags.status && flags.stop) {
       exitWithUsage('Usage error: --status and --stop cannot be used together.');
     }
+    if (flags['dev-ui'] && flags.status) {
+      exitWithUsage('Usage error: --dev-ui and --status cannot be used together.');
+    }
+    if (flags['dev-ui'] && flags.stop) {
+      exitWithUsage('Usage error: --dev-ui and --stop cannot be used together.');
+    }
 
     await startReviewStudioCommand({
       port: parsePositiveIntegerFlag(flags.port),
       serve: Boolean(flags.serve),
       status: Boolean(flags.status),
       stop: Boolean(flags.stop),
+      devUi: Boolean(flags['dev-ui']),
     });
     return;
   }

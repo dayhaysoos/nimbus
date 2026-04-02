@@ -23,6 +23,7 @@ export interface StartReviewStudioOptions {
   serve?: boolean;
   status?: boolean;
   stop?: boolean;
+  devUi?: boolean;
 }
 
 export async function openReviewFromCommitCommand(options?: OpenReviewFromCommitOptions): Promise<void> {
@@ -42,12 +43,12 @@ export async function openReviewFromCommitCommand(options?: OpenReviewFromCommit
 
 export async function startReviewStudioCommand(options?: StartReviewStudioOptions): Promise<void> {
   if (options?.serve) {
-    const runtime = resolveReviewUiRuntimeContext({ port: options.port });
+    const runtime = resolveReviewUiRuntimeContext({ port: options.port, preferDevUi: options.devUi });
     await runStudioServeProcess(runtime);
     return;
   }
 
-  const runtime = resolveReviewUiRuntimeContext({ port: options?.port });
+  const runtime = resolveReviewUiRuntimeContext({ port: options?.port, preferDevUi: options?.devUi });
   if (options?.status) {
     const studioStatus = await getReviewStudioRuntimeStatus(runtime);
     if (studioStatus.running) {

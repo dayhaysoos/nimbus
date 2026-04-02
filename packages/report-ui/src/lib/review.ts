@@ -9,6 +9,7 @@ import type {
   ReviewRecommendation,
   ReviewResponse,
   ReviewSeverity,
+  StudioContextResponse,
   ReviewStatus,
 } from '../types';
 
@@ -430,6 +431,27 @@ export function parseListReviewsResponse(payload: unknown): ListReviewsResponse 
   });
 
   return { reviews };
+}
+
+export function parseStudioContextResponse(payload: unknown): StudioContextResponse {
+  const root = asRecord(payload);
+  const repo = root.repo;
+  const branch = root.branch;
+  const detectedAt = root.detectedAt;
+  if (repo !== null && repo !== undefined && typeof repo !== 'string') {
+    throw new Error('Invalid studio context payload: repo must be a string or null.');
+  }
+  if (branch !== null && branch !== undefined && typeof branch !== 'string') {
+    throw new Error('Invalid studio context payload: branch must be a string or null.');
+  }
+  if (typeof detectedAt !== 'string' || !detectedAt.trim()) {
+    throw new Error('Invalid studio context payload: detectedAt must be a non-empty string.');
+  }
+  return {
+    repo: typeof repo === 'string' ? repo : null,
+    branch: typeof branch === 'string' ? branch : null,
+    detectedAt,
+  };
 }
 
 function defaultText(value: string | null | undefined, fallback: string): string {

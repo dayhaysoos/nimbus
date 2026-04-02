@@ -26,6 +26,7 @@ export interface ReviewUiRuntimeContext {
   apiKey: string | null;
   reviewGithubToken: string | null;
   openrouterApiKey: string | null;
+  preferDevUi: boolean;
 }
 
 export interface StudioRuntimeMetadata {
@@ -36,6 +37,7 @@ export interface StudioRuntimeMetadata {
   repoRoot: string;
   startedAt: string;
   replayCursors: Record<string, number>;
+  uiMode?: 'static' | 'dev';
 }
 
 export interface StudioPreferences {
@@ -175,15 +177,19 @@ async function waitForProcessExit(pid: number, timeoutMs = 5_000): Promise<boole
   return false;
 }
 
-function buildDetachedStudioSpawnArgs(port: number): string[] {
+function buildDetachedStudioSpawnArgs(port: number, preferDevUi: boolean): string[] {
   if (!process.argv[1]) {
     throw new Error('Unable to resolve current CLI entrypoint for detached Studio launch.');
   }
-  return [...process.execArgv, process.argv[1], 'review', 'studio', '--serve', '--port', String(port)];
+  const args = [...process.execArgv, process.argv[1], 'review', 'studio', '--serve', '--port', String(port)];
+  if (preferDevUi) {
+    args.push('--dev-ui');
+  }
+  return args;
 }
 
-function launchDetachedStudioProcess(repoRoot: string, port: number): number {
-  const child = spawn(process.execPath, buildDetachedStudioSpawnArgs(port), {
+function launchDetachedStudioProcess(repoRoot: string, port: number, preferDevUi: boolean): number {
+  const child = spawn(process.execPath, buildDetachedStudioSpawnArgs(port, preferDevUi), {
     cwd: repoRoot,
     detached: true,
     stdio: 'ignore',
@@ -214,6 +220,7 @@ async function waitForStudioReadiness(port: number, timeoutMs = STUDIO_READY_TIM
 export function resolveReviewUiRuntimeContext(
   options?: {
     port?: number;
+    preferDevUi?: boolean;
     reporter?: ReviewUiReporter;
   }
 ): ReviewUiRuntimeContext {
@@ -237,6 +244,7 @@ export function resolveReviewUiRuntimeContext(
     apiKey,
     reviewGithubToken,
     openrouterApiKey,
+    preferDevUi: Boolean(options?.preferDevUi),
   };
 }
 
@@ -250,13 +258,23 @@ export async function ensureReviewStudioRuntime(
 
   const existing = await readRuntimeMetadata(repoRoot);
   if (existing && existing.port === runtime.port && (await isStudioRuntimeHealthy(existing))) {
-    return {
-      appUrl: `http://${LOCAL_HOST}:${runtime.port}${routePath}`,
-      reused: true,
-    };
+    const existingIsDev = existing.uiMode === 'dev';
+    if (runtime.preferDevUi && !existingIsDev) {
+      try {
+        process.kill(existing.pid, 'SIGTERM');
+        await waitForProcessExit(existing.pid);
+      } catch {
+      }
+      await clearRuntimeMetadata(repoRoot);
+    } else {
+      return {
+        appUrl: `http://${LOCAL_HOST}:${runtime.port}${routePath}`,
+        reused: true,
+      };
+    }
   }
 
-  const pid = launchDetachedStudioProcess(repoRoot, runtime.port);
+  const pid = launchDetachedStudioProcess(repoRoot, runtime.port, runtime.preferDevUi);
   await writeRuntimeMetadata(repoRoot, {
     schemaVersion: STUDIO_SCHEMA_VERSION,
     pid,
@@ -288,6 +306,7 @@ export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Pr
     apiKey: runtime.apiKey,
     reviewGithubToken: runtime.reviewGithubToken,
     openrouterApiKey: runtime.openrouterApiKey,
+    preferDevServer: runtime.preferDevUi,
   });
 
   await writeRuntimeMetadata(repoRoot, {
@@ -298,6 +317,7 @@ export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Pr
     repoRoot,
     startedAt: new Date().toISOString(),
     replayCursors: {},
+    uiMode: uiSession.uiMode,
   });
 
   let shuttingDown = false;
@@ -346,9 +366,9 @@ export async function getReviewStudioRuntimeStatus(
       };
     }
     return {
+      appUrl: `http://${LOCAL_HOST}:${runtime.port}/`,
       running: false,
       stale: false,
-      appUrl: `http://${LOCAL_HOST}:${runtime.port}/`,
       runtime: null,
     };
   }

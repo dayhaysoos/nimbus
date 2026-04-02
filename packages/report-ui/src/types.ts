@@ -178,6 +178,12 @@ export interface ListReviewsResponse {
   reviews: ReviewHistoryItem[];
 }
 
+export interface StudioContextResponse {
+  repo: string | null;
+  branch: string | null;
+  detectedAt: string;
+}
+
 export interface ReviewFailureGuidance {
   headline: string;
   details: string;

@@ -63,6 +63,7 @@ export async function runReviewUiSessionTests(): Promise<void> {
     {
       const tempRepo = await mkdtemp(join(tmpdir(), 'nimbus-studio-runtime-'));
       const runtimeDir = join(tempRepo, '.nimbus', 'studio');
+      const testPort = 43217;
       try {
         await mkdir(runtimeDir, { recursive: true });
         await writeFile(
@@ -70,7 +71,7 @@ export async function runReviewUiSessionTests(): Promise<void> {
           `${JSON.stringify({
             schemaVersion: 1,
             pid: 424242,
-            port: 2000,
+            port: testPort,
             workerUrl: 'https://worker.example.com',
             repoRoot: tempRepo,
             startedAt: '2026-01-01T00:00:00.000Z',
@@ -96,7 +97,7 @@ export async function runReviewUiSessionTests(): Promise<void> {
             return true;
           }) as typeof process.kill;
 
-          const runtime = resolveReviewUiRuntimeContext({ port: 2000 });
+          const runtime = resolveReviewUiRuntimeContext({ port: testPort });
           const status = await getReviewStudioRuntimeStatus(runtime, { repoRoot: tempRepo });
           assert.equal(status.running, true);
           assert.equal(status.stale, false);
