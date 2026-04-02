@@ -87,17 +87,33 @@ export function ReviewHistoryPage(): JSX.Element {
     }
     const payload = parseStudioContextResponse(await response.json());
     setStudioContext(payload);
-    const detectedKey = payload.repo && payload.branch ? `${payload.repo}/${payload.branch}` : null;
-    if (!selectedBranchKey && detectedKey) {
+  }, []);
+
+  useEffect(() => {
+    const detectedKey = studioContext?.repo && studioContext?.branch ? `${studioContext.repo}/${studioContext.branch}` : null;
+    if (!detectedKey) {
+      return;
+    }
+    if (!selectedBranchKey) {
       setSelectedBranchKey(detectedKey);
     }
-    if (detectedKey && lastDetectedBranchKey && detectedKey !== lastDetectedBranchKey && selectedBranchKey && detectedKey !== selectedBranchKey) {
-      setPendingBranchSwitchKey(detectedKey);
-    }
-    if (detectedKey) {
+    if (!lastDetectedBranchKey) {
       setLastDetectedBranchKey(detectedKey);
+      return;
     }
-  }, [lastDetectedBranchKey, selectedBranchKey]);
+    if (detectedKey !== lastDetectedBranchKey) {
+      if (selectedBranchKey && detectedKey !== selectedBranchKey) {
+        setPendingBranchSwitchKey(detectedKey);
+      } else {
+        setPendingBranchSwitchKey(null);
+      }
+      setLastDetectedBranchKey(detectedKey);
+      return;
+    }
+    if (pendingBranchSwitchKey && selectedBranchKey && detectedKey === selectedBranchKey) {
+      setPendingBranchSwitchKey(null);
+    }
+  }, [studioContext, selectedBranchKey, lastDetectedBranchKey, pendingBranchSwitchKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -163,6 +179,14 @@ export function ReviewHistoryPage(): JSX.Element {
   const fallbackBranchKey = branches[0]?.key ?? null;
   const activeBranchKey = selectedBranchKey ?? fallbackBranchKey;
   const activeBranch = branches.find((b) => b.key === activeBranchKey) ?? branches[0] ?? null;
+  const detectedBranchLabel = studioContext?.branch ?? 'unknown';
+  const detectedRepoLabel = studioContext?.repo ?? 'repo unavailable';
+  const viewingDifferentContext = Boolean(
+    activeBranch &&
+    studioContext?.repo &&
+    studioContext?.branch &&
+    activeBranch.key !== `${studioContext.repo}/${studioContext.branch}`
+  );
   const recentReviews = (activeBranch?.reviews ?? []).slice(0, 3);
   const activeReview = (activeBranch?.reviews ?? []).find((r) => ACTIVE_STATUSES.has(r.status)) ?? null;
   const otherBranches = branches.filter((b) => b.key !== activeBranch?.key);
@@ -197,8 +221,13 @@ export function ReviewHistoryPage(): JSX.Element {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Current branch context</p>
-            <p className="mt-1 text-sm font-semibold text-foreground">{activeBranch?.branch ?? studioContext?.branch ?? 'unknown'}</p>
-            <p className="text-xs text-muted-foreground">{activeBranch?.repo ?? studioContext?.repo ?? 'repo unavailable'}</p>
+            <p className="mt-1 text-sm font-semibold text-foreground">{detectedBranchLabel}</p>
+            <p className="text-xs text-muted-foreground">{detectedRepoLabel}</p>
+            {viewingDifferentContext && (
+              <p className="mt-1 text-xs text-amber-700">
+                Viewing context: {activeBranch?.branch}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => setShowNewReviewPanel(true)}>
