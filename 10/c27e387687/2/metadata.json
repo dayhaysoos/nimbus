@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "10c27e387687",
+  "session_id": "019d4f73-67a7-7b03-861d-a24ef4c88307",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-02T20:20:12.168753Z",
+  "branch": "feat/review-studio-slice-1-home",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/app/reviews/open.ts",
+    "packages/cli/src/app/reviews/session.ts",
+    "packages/cli/src/app/reviews/ui-dev-server.ts",
+    "packages/cli/src/app/reviews/ui-server.ts",
+    "packages/cli/src/app/reviews/ui-static-server.ts",
+    "packages/cli/src/cli/dispatch/review.ts",
+    "packages/cli/src/cli/help.ts",
+    "packages/cli/test/app/reviews/session.test.ts",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx",
+    "packages/report-ui/vite.config.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.3-codex",
+  "turn_id": "f91db391470c",
+  "token_usage": {
+    "input_tokens": 926090,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 886528,
+    "output_tokens": 10167,
+    "api_call_count": 41
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-02T20:20:12.09649Z",
+    "agent_lines": 233,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 233,
+    "agent_percentage": 100
+  }
+}

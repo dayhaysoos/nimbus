@@ -3,7 +3,7 @@
   "checkpoint_id": "10c27e387687",
   "strategy": "manual-commit",
   "branch": "feat/review-studio-slice-1-home",
-  "checkpoints_count": 11,
+  "checkpoints_count": 12,
   "files_touched": [
     "packages/cli/src/app/reviews/open.ts",
     "packages/cli/src/app/reviews/session.ts",
@@ -29,13 +29,19 @@
       "transcript": "/10/c27e387687/1/full.jsonl",
       "content_hash": "/10/c27e387687/1/content_hash.txt",
       "prompt": "/10/c27e387687/1/prompt.txt"
+    },
+    {
+      "metadata": "/10/c27e387687/2/metadata.json",
+      "transcript": "/10/c27e387687/2/full.jsonl",
+      "content_hash": "/10/c27e387687/2/content_hash.txt",
+      "prompt": "/10/c27e387687/2/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 9502602,
+    "input_tokens": 10428692,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 8618496,
-    "output_tokens": 38688,
-    "api_call_count": 96
+    "cache_read_tokens": 9505024,
+    "output_tokens": 48855,
+    "api_call_count": 137
   }
 }
