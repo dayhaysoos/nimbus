@@ -1,0 +1,99 @@
+Read the Review Studio docs and implement Slice 0 only.
+
+  Required docs:
+  - docs/architecture/review-studio-experience.md
+  - docs/architecture/review-studio-experience-build-plan.md
+  - docs/architecture/review-studio-implementation-plan.md
+
+  Before making any code changes:
+  1. Read those docs carefully.
+  2. Summarize Slice 0 in terms of concrete repo changes and exact files you plan to touch.
+  3. Create a new git branch for this work. Name it something like `review-studio-slice-0` unless a better repo-consistent naming pattern is obvious.
+  4. Do not go beyond Slice 0.
+
+  Scope is limited to Slice 0 from the delivery plan:
+  - canonical CLI taxonomy
+  - detached Studio runtime startup/reuse
+  - worker contract support for `policyMode` and `reviewBasis`
+  - replay/resume scaffolding only as needed for Slice 0
+
+  Locked requirements you must preserve:
+  - `nimbus review studio` is the canonical Studio launch command
+  - `nimbus review create` remains the canonical review-start command
+  - `--policy-mode none|auto|review` is canonical
+  - `--auto-policy` and `--policy` are sugar
+  - bare `nimbus review create` defaults to `--policy-mode none`
+  - Studio uses saved repo preference when available, first-run Studio default is `auto`
+  - `nimbus review open` is compatibility-only during transition
+  - checkpoint/commit is immutable provenance anchor
+  - follow-up validation reviews use `reviewBasis = environment`
+  - local apply/export remains explicit
+
+  Implementation rules:
+  - keep changes aligned to the existing architecture; do not invent a parallel Studio system
+  - prefer modifying existing CLI/runtime/report-ui/worker codepaths
+  - keep `review open` working as a compatibility path, but stop treating it as the primary concept
+  - if you need to choose between broad refactor and narrow implementation, choose the narrow implementation that satisfies Slice 0
+  - run relevant tests for anything you change
+
+  Expected deliverables in this session:
+  - code changes for Slice 0 only
+  - tests updated/added for Slice 0
+  - a concise summary of what was changed
+  - explicit note of anything you intentionally deferred because it belongs to later slices
+
+---
+
+So what should I do to test this? should we make a commit right now, then I run those new commands myself or would that not work quite yet?
+
+---
+
+Everything worked out as expected. Is there anything you think we should try to do before we commit and move on to the next stage?
+
+---
+
+The only thing is when I run studio, it seems to run in the background. I can't tell if it's running ornot, whenI refresh the localhost server it's always showing the website even if I exit out the terminal. We should do something about that no?
+
+---
+
+can you kill the server that's stuck right now? The stop command doesn't work on it
+
+---
+
+running it just starts the server again or re using the existing runtime: 
+│  Reused existing Studio runtime.
+nickdejesus@MacBook-Pro-6 nimbus % node packages/cli/dist/index.js review studio       
+[dotenv@17.2.3] injecting env (5) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+┌  @dayhaysoos/nimbus
+│
+◆  Opened http://127.0.0.1:2000/
+│
+│  Started Studio runtime.
+nickdejesus@MacBook-Pro-6 nimbus % node packages/cli/dist/index.js review studio --stop
+[dotenv@17.2.3] injecting env (5) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+┌  @dayhaysoos/nimbus
+│
+◆  Opened http://127.0.0.1:2000/
+│
+│  Reused existing Studio runtime.
+nickdejesus@MacBook-Pro-6 nimbus %
+
+---
+
+perfect:   Reused existing Studio runtime.
+nickdejesus@MacBook-Pro-6 nimbus % node packages/cli/dist/index.js review studio --status
+[dotenv@17.2.3] injecting env (5) from .env -- tip: ⚙️  write to custom object with { processEnv: myObject }
+┌  @dayhaysoos/nimbus
+│
+◆  Studio runtime is running at http://127.0.0.1:2000/
+nickdejesus@MacBook-Pro-6 nimbus %  node packages/cli/dist/index.js review studio --stop
+[dotenv@17.2.3] injecting env (5) from .env -- tip: 🔑 add access controls to secrets: https://dotenvx.com/ops
+┌  @dayhaysoos/nimbus
+│
+◆  Stopped Studio runtime.
+nickdejesus@MacBook-Pro-6 nimbus %  node packages/cli/dist/index.js review studio --status
+[dotenv@17.2.3] injecting env (5) from .env -- tip: 👥 sync secrets across teammates & machines: https://dotenvx.com/ops
+┌  @dayhaysoos/nimbus
+│
+▲  Studio runtime is not running.
+nickdejesus@MacBook-Pro-6 nimbus %

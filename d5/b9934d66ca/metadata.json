@@ -1,0 +1,44 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "d5b9934d66ca",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-0",
+  "checkpoints_count": 7,
+  "files_touched": [
+    ".gitignore",
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/reviews/create-from-deployment.ts",
+    "packages/cli/src/app/reviews/open.ts",
+    "packages/cli/src/app/reviews/session.ts",
+    "packages/cli/src/app/reviews/ui-events-fanout.ts",
+    "packages/cli/src/cli/dispatch/review.ts",
+    "packages/cli/src/cli/help.ts",
+    "packages/cli/src/clients/worker/reviews.ts",
+    "packages/cli/src/commands/review/open.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/cli/test/app/reviews/session.test.ts",
+    "packages/cli/test/lib/args.test.ts",
+    "packages/worker/src/api/reviews/create.ts",
+    "packages/worker/src/api/reviews/policy.ts",
+    "packages/worker/src/api/reviews/request-shared.ts",
+    "packages/worker/src/lib/db/reviews/shared.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/test/api/reviews.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/d5/b9934d66ca/0/metadata.json",
+      "transcript": "/d5/b9934d66ca/0/full.jsonl",
+      "content_hash": "/d5/b9934d66ca/0/content_hash.txt",
+      "prompt": "/d5/b9934d66ca/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 11019875,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 10785664,
+    "output_tokens": 53728,
+    "api_call_count": 112
+  }
+}
