@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "26695628c5ae",
+  "session_id": "019d4c8b-db43-7f22-86de-bb2c1dea8484",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-02T04:56:41.673605Z",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/architecture/README.md",
+    "docs/architecture/review-studio-experience-build-plan.md",
+    "docs/architecture/review-studio-experience.md"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.3-codex",
+  "turn_id": "0c944f9459e6",
+  "token_usage": {
+    "input_tokens": 15412,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9728,
+    "output_tokens": 17,
+    "api_call_count": 1
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-02T04:56:41.632364Z",
+    "agent_lines": 0,
+    "human_added": 1058,
+    "human_modified": 11,
+    "human_removed": 0,
+    "total_committed": 1058,
+    "agent_percentage": 0
+  }
+}

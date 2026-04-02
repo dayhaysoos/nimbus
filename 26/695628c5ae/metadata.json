@@ -1,0 +1,27 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "26695628c5ae",
+  "strategy": "manual-commit",
+  "branch": "main",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "docs/architecture/README.md",
+    "docs/architecture/review-studio-experience-build-plan.md",
+    "docs/architecture/review-studio-experience.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/26/695628c5ae/0/metadata.json",
+      "transcript": "/26/695628c5ae/0/full.jsonl",
+      "content_hash": "/26/695628c5ae/0/content_hash.txt",
+      "prompt": "/26/695628c5ae/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 15412,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9728,
+    "output_tokens": 17,
+    "api_call_count": 1
+  }
+}
