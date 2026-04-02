@@ -67,6 +67,7 @@ export async function startStaticServerSession(options: {
 
   return {
     appUrl,
+    uiMode: 'static',
     close: async () => {
       if (!server.listening) {
         return;

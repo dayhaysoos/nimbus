@@ -12,6 +12,7 @@ const LOCAL_HOST = '127.0.0.1';
 
 export interface UiServerSession {
   appUrl: string;
+  uiMode: 'static' | 'dev';
   close: () => Promise<void>;
   waitForExit: () => Promise<void>;
 }
@@ -34,7 +35,21 @@ export async function startReportUiSession(options: {
   apiKey: string | null;
   reviewGithubToken: string | null;
   openrouterApiKey: string | null;
+  preferDevServer?: boolean;
 }): Promise<UiServerSession> {
+  if (options.preferDevServer) {
+    const reportUiDir = resolveMonorepoReportUiDir();
+    if (!reportUiDir) {
+      throw new Error('Unable to locate monorepo report-ui package for --dev-ui mode.');
+    }
+    return startDevServerSession({
+      routePath: options.routePath,
+      reportUiDir,
+      workerUrl: options.workerUrl,
+      port: options.port,
+    });
+  }
+
   const bundledDistDir = resolvePackagedDistDir();
   const monorepoDistDir = resolveMonorepoDistDir();
   const distDir = bundledDistDir ?? monorepoDistDir;

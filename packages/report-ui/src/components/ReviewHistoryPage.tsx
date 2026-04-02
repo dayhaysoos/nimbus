@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { parseListReviewsResponse, parseStudioContextResponse } from '../lib/review';
 import type { ListReviewsResponse, ReviewHistoryItem, ReviewStatus, StudioContextResponse } from '../types';
-import { StatusPill } from './ui/StatusPill';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -23,29 +22,6 @@ interface BranchGroup {
   repo: string;
   branch: string;
   reviews: ReviewHistoryItem[];
-}
-
-function relativeTime(timestamp: string): string {
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return 'unknown';
-  }
-  const diffMs = Date.now() - date.getTime();
-  const absSeconds = Math.floor(Math.abs(diffMs) / 1000);
-  if (absSeconds < 60) {
-    return 'just now';
-  }
-  const inFuture = diffMs < 0;
-  const absMinutes = Math.floor(absSeconds / 60);
-  if (absMinutes < 60) {
-    return inFuture ? `in ${absMinutes}m` : `${absMinutes}m ago`;
-  }
-  const absHours = Math.floor(absMinutes / 60);
-  if (absHours < 24) {
-    return inFuture ? `in ${absHours}h` : `${absHours}h ago`;
-  }
-  const absDays = Math.floor(absHours / 24);
-  return inFuture ? `in ${absDays}d` : `${absDays}d ago`;
 }
 
 function reviewDestinationPath(entry: ReviewHistoryItem): string {
@@ -176,20 +152,11 @@ export function ReviewHistoryPage(): JSX.Element {
     });
   }, [entries]);
 
-  const fallbackBranchKey = branches[0]?.key ?? null;
-  const activeBranchKey = selectedBranchKey ?? fallbackBranchKey;
-  const activeBranch = branches.find((b) => b.key === activeBranchKey) ?? branches[0] ?? null;
+  const activeBranch = selectedBranchKey ? (branches.find((b) => b.key === selectedBranchKey) ?? null) : null;
   const detectedBranchLabel = studioContext?.branch ?? 'unknown';
   const detectedRepoLabel = studioContext?.repo ?? 'repo unavailable';
-  const viewingDifferentContext = Boolean(
-    activeBranch &&
-    studioContext?.repo &&
-    studioContext?.branch &&
-    activeBranch.key !== `${studioContext.repo}/${studioContext.branch}`
-  );
-  const recentReviews = (activeBranch?.reviews ?? []).slice(0, 3);
   const activeReview = (activeBranch?.reviews ?? []).find((r) => ACTIVE_STATUSES.has(r.status)) ?? null;
-  const otherBranches = branches.filter((b) => b.key !== activeBranch?.key);
+  const otherBranches = activeBranch ? branches.filter((b) => b.key !== activeBranch.key) : branches;
 
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-3 py-3">
@@ -223,11 +190,6 @@ export function ReviewHistoryPage(): JSX.Element {
             <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Current branch context</p>
             <p className="mt-1 text-sm font-semibold text-foreground">{detectedBranchLabel}</p>
             <p className="text-xs text-muted-foreground">{detectedRepoLabel}</p>
-            {viewingDifferentContext && (
-              <p className="mt-1 text-xs text-amber-700">
-                Viewing context: {activeBranch?.branch}
-              </p>
-            )}
           </div>
           <div className="flex items-center gap-2">
             <Button size="sm" onClick={() => setShowNewReviewPanel(true)}>
@@ -271,39 +233,6 @@ export function ReviewHistoryPage(): JSX.Element {
       ) : (
         <>
           <section className="space-y-2">
-            <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Recent reviews (current branch)</h2>
-            {recentReviews.length === 0 ? (
-              <Card className="p-4">
-                <p className="text-sm text-muted-foreground">No reviews on this branch yet.</p>
-              </Card>
-            ) : (
-              <ul className="flex flex-col gap-2">
-                {recentReviews.map((entry) => (
-                  <li key={entry.id}>
-                    <Link to={reviewDestinationPath(entry)}>
-                      <Card className="px-3 py-2 transition-colors hover:bg-accent/30">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="flex items-center gap-2">
-                            <StatusPill status={entry.status} />
-                            <span className="text-xs font-mono text-muted-foreground">{entry.id}</span>
-                            <Badge variant="outline" className="text-[10px] uppercase">
-                              {entry.findingCount ?? 0} findings
-                            </Badge>
-                          </div>
-                          <span className="text-xs text-muted-foreground">{relativeTime(entry.createdAt)}</span>
-                        </div>
-                        {entry.summaryText && (
-                          <p className="mt-1 text-sm text-foreground/80">{entry.summaryText}</p>
-                        )}
-                      </Card>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </section>
-
-          <section className="space-y-2">
             <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Branch list</h2>
             {otherBranches.length === 0 ? (
               <Card className="p-3">
@@ -312,25 +241,23 @@ export function ReviewHistoryPage(): JSX.Element {
             ) : (
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
                 {otherBranches.map((branchGroup) => (
-                  <Card key={branchGroup.key} className="px-3 py-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold text-foreground">{branchGroup.branch}</p>
-                        <p className="text-xs text-muted-foreground">{branchGroup.repo}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
+                  <Link
+                    key={branchGroup.key}
+                    to={`/branches/${encodeURIComponent(branchGroup.repo)}/${encodeURIComponent(branchGroup.branch)}`}
+                    className="block"
+                  >
+                    <Card className="px-3 py-2 transition-colors hover:bg-accent/30">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-foreground">{branchGroup.branch}</p>
+                          <p className="text-xs text-muted-foreground">{branchGroup.repo}</p>
+                        </div>
                         <Badge variant="outline" className="text-[10px] uppercase">
                           {branchGroup.reviews.length} reviews
                         </Badge>
-                        <Button size="sm" variant="outline" onClick={() => setSelectedBranchKey(branchGroup.key)}>
-                          View in Home
-                        </Button>
-                        <Link to={`/branches/${encodeURIComponent(branchGroup.repo)}/${encodeURIComponent(branchGroup.branch)}`}>
-                          <Button size="sm" variant="ghost">History</Button>
-                        </Link>
                       </div>
-                    </div>
-                  </Card>
+                    </Card>
+                  </Link>
                 ))}
               </div>
             )}

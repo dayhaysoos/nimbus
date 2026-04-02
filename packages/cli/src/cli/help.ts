@@ -88,6 +88,7 @@ Options:
   --open-studio      Open/reuse Review Studio after review creation
   --status          Show Review Studio runtime status
   --stop            Stop Review Studio runtime for this repo
+  --dev-ui          Force Vite dev server for Review Studio (enables HMR)
   --base <ref>        Diff base ref for review create (uses <base>...<commit>)
   --repo <owner/repo> Repository slug override for repo register
   --dry-run           Validate repo register inputs without API call
@@ -140,6 +141,7 @@ Examples:
   nimbus review show rev_abcd1234
    nimbus review events rev_abcd1234
    nimbus review studio
+   nimbus review studio --dev-ui
    nimbus review studio --port 2000
    nimbus review studio --status
    nimbus review studio --stop

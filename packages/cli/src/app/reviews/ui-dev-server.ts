@@ -73,6 +73,7 @@ export async function startDevServerSession(options: {
 
   return {
     appUrl,
+    uiMode: 'dev',
     close: async () => {
       if (server.exitCode === null) {
         server.kill('SIGTERM');
