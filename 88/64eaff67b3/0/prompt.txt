@@ -1,0 +1,5 @@
+I switched to main and it showed up in the UI to switch context. But when I switched back to the branch I was on, it didn't remove that. Also I just realized it thinks the current branch is the previous branch: Current branch context
+
+feat/review-studio-slice-0
+
+dayhaysoos/nimbus
