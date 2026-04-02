@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "2703b0cd2e8b",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-1-home",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "packages/cli/src/app/reviews/ui-proxy.ts",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/27/03b0cd2e8b/0/metadata.json",
+      "transcript": "/27/03b0cd2e8b/0/full.jsonl",
+      "content_hash": "/27/03b0cd2e8b/0/content_hash.txt",
+      "prompt": "/27/03b0cd2e8b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5125973,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4112128,
+    "output_tokens": 17949,
+    "api_call_count": 40
+  }
+}

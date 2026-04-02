@@ -1,0 +1,25 @@
+I just committed and pushed. Make the PR for me.
+
+---
+
+Wait I have the github CLI installed. Use the gh commands
+
+---
+
+I just merged to main. What's next?
+
+---
+
+Yes go ahead and kick that off
+
+---
+
+walk me through what I need to do to test this work
+
+---
+
+hmm I'd have to add the current commits to switch branches
+
+---
+
+hmm I switched to a git worktree.. how do I go back? I think I'm jjust gonna commit and test from here
