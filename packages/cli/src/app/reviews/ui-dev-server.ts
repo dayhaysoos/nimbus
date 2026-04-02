@@ -32,25 +32,28 @@ async function waitForServer(url: string, server: ReturnType<typeof spawn>, time
 export async function startDevServerSession(options: {
   routePath: string;
   reportUiDir: string;
+  repoRoot?: string;
   workerUrl: string;
   port: number;
 }): Promise<UiServerSession> {
   const appUrl = `http://${LOCAL_HOST}:${options.port}${options.routePath}`;
+  const repoRoot = options.repoRoot ?? process.cwd();
   const env: NodeJS.ProcessEnv = {
     ...process.env,
     NIMBUS_API_PROXY_TARGET: options.workerUrl,
+    NIMBUS_STUDIO_REPO_ROOT: repoRoot,
     VITE_HOST: LOCAL_HOST,
     VITE_PORT: String(options.port),
   };
   delete env.VITE_NIMBUS_API_BASE_URL;
 
   const pnpmCommand = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
-  const serverArgs = ['dev', '--', '--host', LOCAL_HOST, '--port', String(options.port), '--strictPort'];
+  const serverArgs = ['--dir', options.reportUiDir, 'dev', '--', '--host', LOCAL_HOST, '--port', String(options.port), '--strictPort'];
 
   p.log.message(`Starting report UI dev server on ${LOCAL_HOST}:${options.port} with API proxy target ${options.workerUrl}`);
 
   const server = spawn(pnpmCommand, serverArgs, {
-    cwd: options.reportUiDir,
+    cwd: repoRoot,
     env,
     stdio: ['inherit', 'pipe', 'pipe'],
   });

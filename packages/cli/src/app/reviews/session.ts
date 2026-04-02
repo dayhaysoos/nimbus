@@ -96,6 +96,10 @@ async function ensureStudioPreferenceFile(repoRoot: string): Promise<void> {
   await writeJsonFile(paths.preferencesPath, initial);
 }
 
+function isValidStudioPolicyMode(value: unknown): value is StudioPreferences['policyMode'] {
+  return value === 'auto' || value === 'review';
+}
+
 async function readRuntimeMetadata(repoRoot: string): Promise<StudioRuntimeMetadata | null> {
   const paths = resolveStudioPaths(repoRoot);
   const parsed = await readJsonFile<StudioRuntimeMetadata>(paths.runtimePath);
@@ -307,6 +311,7 @@ export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Pr
     reviewGithubToken: runtime.reviewGithubToken,
     openrouterApiKey: runtime.openrouterApiKey,
     preferDevServer: runtime.preferDevUi,
+    repoRoot,
   });
 
   await writeRuntimeMetadata(repoRoot, {
@@ -436,6 +441,38 @@ export async function stopReviewStudioRuntime(
 
 export async function readStudioPreferencesForTests(repoRoot: string): Promise<StudioPreferences | null> {
   return readJsonFile<StudioPreferences>(resolveStudioPaths(repoRoot).preferencesPath);
+}
+
+export async function readStudioPreferences(options?: { repoRoot?: string }): Promise<StudioPreferences> {
+  const repoRoot = options?.repoRoot ?? resolveRepoRoot();
+  await ensureStudioPreferenceFile(repoRoot);
+  const existing = await readJsonFile<StudioPreferences>(resolveStudioPaths(repoRoot).preferencesPath);
+  if (existing?.schemaVersion === STUDIO_SCHEMA_VERSION && isValidStudioPolicyMode(existing.policyMode)) {
+    return existing;
+  }
+  const fallback: StudioPreferences = {
+    schemaVersion: STUDIO_SCHEMA_VERSION,
+    policyMode: 'auto',
+  };
+  await writeJsonFile(resolveStudioPaths(repoRoot).preferencesPath, fallback);
+  return fallback;
+}
+
+export async function updateStudioPolicyMode(
+  policyMode: StudioPreferences['policyMode'],
+  options?: { repoRoot?: string }
+): Promise<StudioPreferences> {
+  if (!isValidStudioPolicyMode(policyMode)) {
+    throw new Error('Invalid Studio policy mode. Use auto or review.');
+  }
+  const repoRoot = options?.repoRoot ?? resolveRepoRoot();
+  await ensureStudioPreferenceFile(repoRoot);
+  const next: StudioPreferences = {
+    schemaVersion: STUDIO_SCHEMA_VERSION,
+    policyMode,
+  };
+  await writeJsonFile(resolveStudioPaths(repoRoot).preferencesPath, next);
+  return next;
 }
 
 export async function readStudioRuntimeForTests(repoRoot: string): Promise<StudioRuntimeMetadata | null> {

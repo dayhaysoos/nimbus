@@ -1,10 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { execFileSync } from 'child_process';
+import { resolveStudioNewReviewPreflight, startStudioNewReview } from '../cli/src/app/reviews/studio-create';
 
 const REPORT_UI_MARKER = 'nimbus-report-ui';
 const REPORT_UI_HEALTH_PATH = '/__nimbus/report-ui-health';
 const STUDIO_CONTEXT_PATH = '/api/studio/context';
+const STUDIO_NEW_REVIEW_PREFLIGHT_PATH = '/api/studio/new-review/preflight';
+const STUDIO_NEW_REVIEW_START_PATH = '/api/studio/new-review/start';
 const REPO_SLUG_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 function parseRepoSlug(remoteUrl: string): string | null {
@@ -58,6 +61,35 @@ function readGitRepoSlug(): string | null {
     return null;
   }
 }
+
+function readRawRequestBody(
+  req: {
+    on: (event: 'data', listener: (chunk: Buffer | string) => void) => void;
+    once: (event: 'end' | 'error', listener: (error?: Error) => void) => void;
+  }
+): Promise<Buffer> {
+  return new Promise((resolvePromise, rejectPromise) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk) => {
+      if (typeof chunk === 'string') {
+        chunks.push(Buffer.from(chunk));
+      } else {
+        chunks.push(chunk);
+      }
+    });
+    req.once('end', () => {
+      resolvePromise(Buffer.concat(chunks));
+    });
+    req.once('error', (error) => {
+      rejectPromise(error);
+    });
+  });
+}
+
+type BodyReadableRequest = {
+  on: (event: 'data', listener: (chunk: Buffer | string) => void) => void;
+  once: (event: 'end' | 'error', listener: (error?: Error) => void) => void;
+};
 
 function reportUiHealthPlugin() {
   return {
@@ -133,34 +165,104 @@ function studioContextPlugin() {
     }) {
       server.middlewares.use((req, res, next) => {
         const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
-        if (requestUrl.pathname !== STUDIO_CONTEXT_PATH) {
+        if (
+          requestUrl.pathname !== STUDIO_CONTEXT_PATH &&
+          requestUrl.pathname !== STUDIO_NEW_REVIEW_PREFLIGHT_PATH &&
+          requestUrl.pathname !== STUDIO_NEW_REVIEW_START_PATH
+        ) {
           next();
           return;
         }
 
         const method = (req.method ?? 'GET').toUpperCase();
-        if (method !== 'GET' && method !== 'HEAD') {
+        if (requestUrl.pathname === STUDIO_CONTEXT_PATH) {
+          if (method !== 'GET' && method !== 'HEAD') {
+            res.statusCode = 405;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+            return;
+          }
+
+          const body = JSON.stringify({
+            repo: readGitRepoSlug(),
+            branch: readGitBranch(),
+            detectedAt: new Date().toISOString(),
+          });
+
+          res.statusCode = 200;
+          res.setHeader('Cache-Control', 'no-store');
+          res.setHeader('Content-Type', 'application/json; charset=utf-8');
+          res.setHeader('Content-Length', String(Buffer.byteLength(body, 'utf8')));
+          if (method === 'HEAD') {
+            res.end();
+            return;
+          }
+          res.end(body);
+          return;
+        }
+
+        if (requestUrl.pathname === STUDIO_NEW_REVIEW_PREFLIGHT_PATH) {
+          if (method !== 'GET' && method !== 'HEAD') {
+            res.statusCode = 405;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+            return;
+          }
+          void resolveStudioNewReviewPreflight()
+            .then((payload) => {
+              const body = JSON.stringify(payload);
+              res.statusCode = 200;
+              res.setHeader('Cache-Control', 'no-store');
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.setHeader('Content-Length', String(Buffer.byteLength(body, 'utf8')));
+              if (method === 'HEAD') {
+                res.end();
+                return;
+              }
+              res.end(body);
+            })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              res.statusCode = 500;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ error: `Failed to load Studio preflight: ${message}` }));
+            });
+          return;
+        }
+
+        if (method !== 'POST') {
           res.statusCode = 405;
           res.setHeader('Content-Type', 'application/json; charset=utf-8');
           res.end(JSON.stringify({ error: 'Method not allowed' }));
           return;
         }
 
-        const body = JSON.stringify({
-          repo: readGitRepoSlug(),
-          branch: readGitBranch(),
-          detectedAt: new Date().toISOString(),
-        });
-
-        res.statusCode = 200;
-        res.setHeader('Cache-Control', 'no-store');
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Content-Length', String(Buffer.byteLength(body, 'utf8')));
-        if (method === 'HEAD') {
-          res.end();
-          return;
-        }
-        res.end(body);
+        void readRawRequestBody(req as unknown as BodyReadableRequest)
+          .then((rawBody) => {
+            const payload = JSON.parse(rawBody.toString('utf8')) as { policyMode?: unknown };
+            const policyMode = payload?.policyMode;
+            if (policyMode !== 'auto' && policyMode !== 'review') {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json; charset=utf-8');
+              res.end(JSON.stringify({ error: 'Invalid policyMode. Use auto or review.' }));
+              return;
+            }
+            return startStudioNewReview({ policyMode });
+          })
+          .then((started) => {
+            if (!started) {
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify(started));
+          })
+          .catch((error: unknown) => {
+            const message = error instanceof Error ? error.message : String(error);
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: `Failed to start review: ${message}` }));
+          });
       });
     },
   };

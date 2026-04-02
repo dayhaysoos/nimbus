@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
@@ -142,5 +142,106 @@ describe('ReviewHistoryPage', () => {
     expect(await screen.findByText('main')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Resume active review' })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /feature-x/i })).toBeInTheDocument();
+  });
+
+  it('starts a review from the New Review panel', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/studio/context')) {
+        return {
+          ok: true,
+          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
+        };
+      }
+      if (url.includes('/api/studio/new-review/preflight')) {
+        return {
+          ok: true,
+          json: async () => ({
+            repo: 'acme/web',
+            branch: 'main',
+            policyMode: 'auto',
+            checkpointId: 'cp_123',
+            commitSha: 'abcdef123456',
+            ready: true,
+            checks: [
+              { code: 'checkpoint', label: 'Checkpoint target', ok: true, detail: 'Resolved checkpoint cp_123.' },
+              { code: 'entire_context', label: 'Entire context', ok: true, detail: 'Context is readable.' },
+            ],
+          }),
+        };
+      }
+      if (url.includes('/api/studio/new-review/start')) {
+        expect(init?.method).toBe('POST');
+        return {
+          ok: true,
+          json: async () => ({
+            reviewId: 'rev_new',
+            routePath: '/reports/rev_new',
+            policyMode: 'auto',
+            status: 'queued',
+          }),
+        };
+      }
+      if (url.includes('/api/reviews/rev_new')) {
+        return {
+          ok: true,
+          json: async () => ({
+            review: {
+              id: 'rev_new',
+              workspaceId: 'ws_new',
+              deploymentId: 'dep_new',
+              target: {
+                type: 'workspace_deployment',
+                workspaceId: 'ws_new',
+                deploymentId: 'dep_new',
+              },
+              mode: 'report_only',
+              status: 'queued',
+              idempotencyKey: 'idem_new',
+              attemptCount: 1,
+              createdAt: '2026-03-01T00:00:00.000Z',
+              updatedAt: '2026-03-01T00:00:00.000Z',
+              startedAt: null,
+              finishedAt: null,
+              findings: [],
+              evidence: [],
+              provenance: {
+                sessionIds: [],
+                promptSummary: null,
+              },
+              markdownSummary: null,
+            },
+          }),
+        };
+      }
+      if (url.includes('/api/reviews?limit=100')) {
+        return {
+          ok: true,
+          json: async () => ({ reviews: [] }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ reviews: [] }),
+      };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'New Review' }));
+    expect(await screen.findByRole('button', { name: 'Start Review' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start Review' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining('/api/studio/new-review/start'),
+        expect.objectContaining({ method: 'POST' })
+      );
+    });
   });
 });
