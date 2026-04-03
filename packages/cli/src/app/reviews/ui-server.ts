@@ -36,6 +36,7 @@ export async function startReportUiSession(options: {
   reviewGithubToken: string | null;
   openrouterApiKey: string | null;
   preferDevServer?: boolean;
+  repoRoot?: string;
 }): Promise<UiServerSession> {
   if (options.preferDevServer) {
     const reportUiDir = resolveMonorepoReportUiDir();
@@ -45,6 +46,7 @@ export async function startReportUiSession(options: {
     return startDevServerSession({
       routePath: options.routePath,
       reportUiDir,
+      repoRoot: options.repoRoot,
       workerUrl: options.workerUrl,
       port: options.port,
     });
@@ -77,6 +79,7 @@ export async function startReportUiSession(options: {
   return startDevServerSession({
     routePath: options.routePath,
     reportUiDir,
+    repoRoot: options.repoRoot,
     workerUrl: options.workerUrl,
     port: options.port,
   });

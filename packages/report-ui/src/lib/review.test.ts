@@ -6,6 +6,8 @@ import {
   parseGetReviewResponse,
   parseListReviewsResponse,
   parseStudioContextResponse,
+  parseStudioNewReviewPreflightResponse,
+  parseStudioNewReviewStartResponse,
 } from './review';
 import type { ReviewFinding, ReviewResponse } from '../types';
 
@@ -182,5 +184,42 @@ describe('parseStudioContextResponse', () => {
 
   it('throws when detectedAt is missing', () => {
     expect(() => parseStudioContextResponse({ repo: 'acme/web', branch: 'main' })).toThrow(/detectedAt/i);
+  });
+});
+
+describe('studio new review payloads', () => {
+  it('parses preflight payload', () => {
+    const payload = parseStudioNewReviewPreflightResponse({
+      repo: 'acme/web',
+      branch: 'main',
+      policyMode: 'auto',
+      checkpointId: 'cp_123',
+      commitSha: 'abcdef1234567890',
+      ready: true,
+      checks: [
+        {
+          code: 'checkpoint',
+          label: 'Checkpoint target',
+          ok: true,
+          detail: 'Resolved checkpoint cp_123.',
+        },
+      ],
+    });
+
+    expect(payload.ready).toBe(true);
+    expect(payload.policyMode).toBe('auto');
+    expect(payload.checks[0]?.code).toBe('checkpoint');
+  });
+
+  it('parses start payload', () => {
+    const payload = parseStudioNewReviewStartResponse({
+      reviewId: 'rev_123',
+      routePath: '/reports/rev_123',
+      policyMode: 'auto',
+      status: 'queued',
+    });
+
+    expect(payload.reviewId).toBe('rev_123');
+    expect(payload.routePath).toBe('/reports/rev_123');
   });
 });

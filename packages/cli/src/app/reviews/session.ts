@@ -5,6 +5,7 @@ import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
+import { startStudioPreflightBackgroundPolling, stopStudioPreflightBackgroundPolling } from './studio-preflight-cache.js';
 import { startReportUiSession } from './ui-server.js';
 
 export const DEFAULT_OPEN_PORT = 2000;
@@ -94,6 +95,10 @@ async function ensureStudioPreferenceFile(repoRoot: string): Promise<void> {
     policyMode: 'auto',
   };
   await writeJsonFile(paths.preferencesPath, initial);
+}
+
+function isValidStudioPolicyMode(value: unknown): value is StudioPreferences['policyMode'] {
+  return value === 'auto' || value === 'review';
 }
 
 async function readRuntimeMetadata(repoRoot: string): Promise<StudioRuntimeMetadata | null> {
@@ -299,26 +304,42 @@ export async function ensureReviewStudioRuntime(
 export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Promise<void> {
   const repoRoot = resolveRepoRoot();
   await ensureStudioPreferenceFile(repoRoot);
-  const uiSession = await startReportUiSession({
-    routePath: '/',
-    port: runtime.port,
-    workerUrl: runtime.workerUrl,
-    apiKey: runtime.apiKey,
-    reviewGithubToken: runtime.reviewGithubToken,
-    openrouterApiKey: runtime.openrouterApiKey,
-    preferDevServer: runtime.preferDevUi,
-  });
+  startStudioPreflightBackgroundPolling({ repoRoot });
+  let uiSession: Awaited<ReturnType<typeof startReportUiSession>> | null = null;
+  try {
+    uiSession = await startReportUiSession({
+      routePath: '/',
+      port: runtime.port,
+      workerUrl: runtime.workerUrl,
+      apiKey: runtime.apiKey,
+      reviewGithubToken: runtime.reviewGithubToken,
+      openrouterApiKey: runtime.openrouterApiKey,
+      preferDevServer: runtime.preferDevUi,
+      repoRoot,
+    });
 
-  await writeRuntimeMetadata(repoRoot, {
-    schemaVersion: STUDIO_SCHEMA_VERSION,
-    pid: process.pid,
-    port: runtime.port,
-    workerUrl: runtime.workerUrl,
-    repoRoot,
-    startedAt: new Date().toISOString(),
-    replayCursors: {},
-    uiMode: uiSession.uiMode,
-  });
+    await writeRuntimeMetadata(repoRoot, {
+      schemaVersion: STUDIO_SCHEMA_VERSION,
+      pid: process.pid,
+      port: runtime.port,
+      workerUrl: runtime.workerUrl,
+      repoRoot,
+      startedAt: new Date().toISOString(),
+      replayCursors: {},
+      uiMode: uiSession.uiMode,
+    });
+  } catch (error) {
+    stopStudioPreflightBackgroundPolling();
+    if (uiSession) {
+      await uiSession.close().catch(() => undefined);
+    }
+    throw error;
+  }
+  const activeSession = uiSession;
+  if (!activeSession) {
+    stopStudioPreflightBackgroundPolling();
+    throw new Error('Studio UI session did not initialize.');
+  }
 
   let shuttingDown = false;
   const shutdown = async () => {
@@ -326,7 +347,8 @@ export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Pr
       return;
     }
     shuttingDown = true;
-    await uiSession.close().catch(() => undefined);
+    stopStudioPreflightBackgroundPolling();
+    await activeSession.close().catch(() => undefined);
     await clearRuntimeMetadataIfOwned(repoRoot, process.pid);
   };
   const handleSignal = () => {
@@ -336,7 +358,7 @@ export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Pr
   process.on('SIGINT', handleSignal);
   process.on('SIGTERM', handleSignal);
   try {
-    await uiSession.waitForExit();
+    await activeSession.waitForExit();
   } finally {
     process.off('SIGINT', handleSignal);
     process.off('SIGTERM', handleSignal);
@@ -434,8 +456,59 @@ export async function stopReviewStudioRuntime(
   return { stopped, stale };
 }
 
+export async function clearStaleReviewStudioRuntimeMetadata(
+  runtime: ReviewUiRuntimeContext,
+  options?: { repoRoot?: string }
+): Promise<boolean> {
+  const repoRoot = options?.repoRoot ?? resolveRepoRoot();
+  const runtimeMetadata = await readRuntimeMetadata(repoRoot);
+  if (!runtimeMetadata) {
+    return false;
+  }
+  if (runtimeMetadata.port !== runtime.port) {
+    return false;
+  }
+  if (await isStudioRuntimeHealthy(runtimeMetadata)) {
+    return false;
+  }
+  await clearRuntimeMetadata(repoRoot);
+  return true;
+}
+
 export async function readStudioPreferencesForTests(repoRoot: string): Promise<StudioPreferences | null> {
   return readJsonFile<StudioPreferences>(resolveStudioPaths(repoRoot).preferencesPath);
+}
+
+export async function readStudioPreferences(options?: { repoRoot?: string }): Promise<StudioPreferences> {
+  const repoRoot = options?.repoRoot ?? resolveRepoRoot();
+  await ensureStudioPreferenceFile(repoRoot);
+  const existing = await readJsonFile<StudioPreferences>(resolveStudioPaths(repoRoot).preferencesPath);
+  if (existing?.schemaVersion === STUDIO_SCHEMA_VERSION && isValidStudioPolicyMode(existing.policyMode)) {
+    return existing;
+  }
+  const fallback: StudioPreferences = {
+    schemaVersion: STUDIO_SCHEMA_VERSION,
+    policyMode: 'auto',
+  };
+  await writeJsonFile(resolveStudioPaths(repoRoot).preferencesPath, fallback);
+  return fallback;
+}
+
+export async function updateStudioPolicyMode(
+  policyMode: StudioPreferences['policyMode'],
+  options?: { repoRoot?: string }
+): Promise<StudioPreferences> {
+  if (!isValidStudioPolicyMode(policyMode)) {
+    throw new Error('Invalid Studio policy mode. Use auto or review.');
+  }
+  const repoRoot = options?.repoRoot ?? resolveRepoRoot();
+  await ensureStudioPreferenceFile(repoRoot);
+  const next: StudioPreferences = {
+    schemaVersion: STUDIO_SCHEMA_VERSION,
+    policyMode,
+  };
+  await writeJsonFile(resolveStudioPaths(repoRoot).preferencesPath, next);
+  return next;
 }
 
 export async function readStudioRuntimeForTests(repoRoot: string): Promise<StudioRuntimeMetadata | null> {

@@ -184,6 +184,36 @@ export interface StudioContextResponse {
   detectedAt: string;
 }
 
+export type StudioPolicyMode = 'auto' | 'review';
+
+export interface StudioNewReviewPreflightCheck {
+  code: 'checkpoint' | 'entire_context';
+  label: string;
+  ok: boolean;
+  detail: string;
+}
+
+export interface StudioNewReviewPreflightResponse {
+  repo: string | null;
+  branch: string | null;
+  policyMode: StudioPolicyMode;
+  checkpointId: string | null;
+  commitSha: string | null;
+  ready: boolean;
+  checks: StudioNewReviewPreflightCheck[];
+  error?: {
+    code: 'checkpoint_unavailable' | 'entire_context_unavailable' | 'unknown';
+    message: string;
+  };
+}
+
+export interface StudioNewReviewStartResponse {
+  reviewId: string;
+  routePath: string;
+  policyMode: StudioPolicyMode;
+  status: 'policy_ready' | 'queued';
+}
+
 export interface ReviewFailureGuidance {
   headline: string;
   details: string;

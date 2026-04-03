@@ -98,6 +98,7 @@ export async function createReviewCommand(
     await startReviewStudioCommand({
       port: options.openStudioPort,
       routePath: policyMode === 'review' ? `/policy/${encodeURIComponent(reviewId)}` : `/reports/${encodeURIComponent(reviewId)}`,
+      detach: true,
     });
   }
 }

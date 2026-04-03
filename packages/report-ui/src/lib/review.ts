@@ -9,6 +9,8 @@ import type {
   ReviewRecommendation,
   ReviewResponse,
   ReviewSeverity,
+  StudioNewReviewPreflightResponse,
+  StudioNewReviewStartResponse,
   StudioContextResponse,
   ReviewStatus,
 } from '../types';
@@ -451,6 +453,90 @@ export function parseStudioContextResponse(payload: unknown): StudioContextRespo
     repo: typeof repo === 'string' ? repo : null,
     branch: typeof branch === 'string' ? branch : null,
     detectedAt,
+  };
+}
+
+export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioNewReviewPreflightResponse {
+  const root = asRecord(payload);
+  const repo = root.repo;
+  const branch = root.branch;
+  if (repo !== null && repo !== undefined && typeof repo !== 'string') {
+    throw new Error('Invalid Studio preflight payload: repo must be a string or null.');
+  }
+  if (branch !== null && branch !== undefined && typeof branch !== 'string') {
+    throw new Error('Invalid Studio preflight payload: branch must be a string or null.');
+  }
+  if (root.policyMode !== 'auto' && root.policyMode !== 'review') {
+    throw new Error('Invalid Studio preflight payload: policyMode must be auto or review.');
+  }
+  if (root.checkpointId !== null && root.checkpointId !== undefined && typeof root.checkpointId !== 'string') {
+    throw new Error('Invalid Studio preflight payload: checkpointId must be a string or null.');
+  }
+  if (root.commitSha !== null && root.commitSha !== undefined && typeof root.commitSha !== 'string') {
+    throw new Error('Invalid Studio preflight payload: commitSha must be a string or null.');
+  }
+  if (typeof root.ready !== 'boolean') {
+    throw new Error('Invalid Studio preflight payload: ready must be boolean.');
+  }
+  if (!Array.isArray(root.checks)) {
+    throw new Error('Invalid Studio preflight payload: checks must be an array.');
+  }
+  const checks = root.checks.map((item, index) => {
+    const check = asRecord(item);
+    if (check.code !== 'checkpoint' && check.code !== 'entire_context') {
+      throw new Error(`Invalid Studio preflight payload: checks[${index}].code is invalid.`);
+    }
+    return {
+      code: check.code as 'checkpoint' | 'entire_context',
+      label: readString(check.label, `checks[${index}].label`),
+      ok: Boolean(check.ok),
+      detail: readString(check.detail, `checks[${index}].detail`),
+    };
+  });
+
+  const errorRecord = asRecord(root.error);
+  const error =
+    Object.keys(errorRecord).length > 0
+      ? {
+          code: (
+            errorRecord.code === 'checkpoint_unavailable' ||
+            errorRecord.code === 'entire_context_unavailable' ||
+            errorRecord.code === 'unknown'
+              ? errorRecord.code
+              : 'unknown'
+          ) as 'checkpoint_unavailable' | 'entire_context_unavailable' | 'unknown',
+          message: readString(errorRecord.message, 'error.message'),
+        }
+      : undefined;
+
+  return {
+    repo: typeof repo === 'string' ? repo : null,
+    branch: typeof branch === 'string' ? branch : null,
+    policyMode: root.policyMode,
+    checkpointId: typeof root.checkpointId === 'string' ? root.checkpointId : null,
+    commitSha: typeof root.commitSha === 'string' ? root.commitSha : null,
+    ready: root.ready,
+    checks,
+    error,
+  };
+}
+
+export function parseStudioNewReviewStartResponse(payload: unknown): StudioNewReviewStartResponse {
+  const root = asRecord(payload);
+  const reviewId = readString(root.reviewId, 'reviewId');
+  const routePath = readString(root.routePath, 'routePath');
+  if (root.policyMode !== 'auto' && root.policyMode !== 'review') {
+    throw new Error('Invalid Studio start payload: policyMode must be auto or review.');
+  }
+  if (root.status !== 'policy_ready' && root.status !== 'queued') {
+    throw new Error('Invalid Studio start payload: status must be policy_ready or queued.');
+  }
+
+  return {
+    reviewId,
+    routePath,
+    policyMode: root.policyMode,
+    status: root.status,
   };
 }
 

@@ -2,10 +2,22 @@ import { once } from 'events';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import { detectRepoSlugFromGitOrigin } from '../../lib/git.js';
+import { startStudioNewReview } from './studio-create.js';
+import { getStudioNewReviewPreflightCached } from './studio-preflight-cache.js';
 import { createProxyHeaders } from './ui-events-fanout.js';
 
 const LOCAL_HOST = '127.0.0.1';
 const STUDIO_CONTEXT_PATH = '/api/studio/context';
+const STUDIO_NEW_REVIEW_PREFLIGHT_PATH = '/api/studio/new-review/preflight';
+const STUDIO_NEW_REVIEW_START_PATH = '/api/studio/new-review/start';
+
+function resolveRepoRootSafe(): string | undefined {
+  try {
+    return new GitRepo(process.cwd()).getRepoRoot();
+  } catch {
+    return undefined;
+  }
+}
 
 async function readBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -65,6 +77,67 @@ export async function proxyApiRequest(
     return true;
   }
 
+  if (requestUrl.pathname === STUDIO_NEW_REVIEW_PREFLIGHT_PATH) {
+    const method = (request.method ?? 'GET').toUpperCase();
+    if (method !== 'GET' && method !== 'HEAD') {
+      response.statusCode = 405;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(JSON.stringify({ error: 'Method not allowed' }));
+      return true;
+    }
+    try {
+      const payload = await getStudioNewReviewPreflightCached({ repoRoot: resolveRepoRootSafe() });
+      response.statusCode = 200;
+      response.setHeader('Cache-Control', 'no-store');
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      if (method === 'HEAD') {
+        response.end();
+        return true;
+      }
+      response.end(JSON.stringify(payload));
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      response.statusCode = 500;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(JSON.stringify({ error: `Failed to load Studio preflight: ${message}` }));
+      return true;
+    }
+  }
+
+  if (requestUrl.pathname === STUDIO_NEW_REVIEW_START_PATH) {
+    const method = (request.method ?? 'POST').toUpperCase();
+    if (method !== 'POST') {
+      response.statusCode = 405;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(JSON.stringify({ error: 'Method not allowed' }));
+      return true;
+    }
+    try {
+      const body = await readBody(request);
+      const payload = JSON.parse(body.toString('utf8')) as { policyMode?: unknown };
+      const policyMode = payload?.policyMode;
+      if (policyMode !== 'auto' && policyMode !== 'review') {
+        response.statusCode = 400;
+        response.setHeader('Content-Type', 'application/json; charset=utf-8');
+        response.end(JSON.stringify({ error: 'Invalid policyMode. Use auto or review.' }));
+        return true;
+      }
+
+      const started = await startStudioNewReview({ policyMode, repoRoot: resolveRepoRootSafe() });
+      response.statusCode = 200;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(JSON.stringify(started));
+      return true;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      response.statusCode = 500;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(JSON.stringify({ error: `Failed to start review: ${message}` }));
+      return true;
+    }
+  }
+
   if (!(requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/'))) {
     return false;
   }
@@ -77,7 +150,7 @@ export async function proxyApiRequest(
     openrouterApiKey,
   });
 
-  const body = method === 'GET' || method === 'HEAD' ? undefined : await readBody(request);
+  const body = method === 'GET' || method === 'HEAD' ? undefined : new Uint8Array(await readBody(request));
   const upstream = await fetch(targetUrl.toString(), {
     method,
     headers,

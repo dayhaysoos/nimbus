@@ -28,6 +28,12 @@ interface CommitResolution {
   commitDiffPatch: string;
 }
 
+type SpinnerLike = {
+  start: (message: string) => void;
+  message: (message: string) => void;
+  stop: (message?: string) => void;
+};
+
 export interface ResolveReviewContextOptions {
   commitish?: string;
   baseRef?: string;
@@ -93,7 +99,14 @@ export async function resolveReviewContext(
 ): Promise<ResolveReviewContextResult> {
   const commitish = options?.commitish?.trim() || 'HEAD';
   const projectRoot = options?.projectRoot?.trim() || '.';
-  const spinner = p.spinner();
+  const spinner: SpinnerLike =
+    process.stdout.isTTY && process.stderr.isTTY
+      ? p.spinner()
+      : {
+          start: () => undefined,
+          message: () => undefined,
+          stop: () => undefined,
+        };
 
   let commitSha = '';
   let checkpointId = '';

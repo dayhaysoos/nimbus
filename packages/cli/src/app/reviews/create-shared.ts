@@ -78,10 +78,10 @@ function normalizeBranchRefForProvenance(value: string): string | null {
  * Resolves git provenance required by worker review creation.
  * Falls back to GITHUB_HEAD_REF when local branch detection is unavailable (for CI detached-head runs).
  */
-export function resolveReviewGitProvenance(): { repo: string; branch: string } {
+export function resolveReviewGitProvenance(cwd = process.cwd()): { repo: string; branch: string } {
   let branchCandidate = '';
   try {
-    branchCandidate = new GitRepo(process.cwd()).getCurrentBranchRef() ?? '';
+    branchCandidate = new GitRepo(cwd).getCurrentBranchRef() ?? '';
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     throw new Error(`Could not resolve current git branch: ${details}`);
@@ -107,7 +107,7 @@ export function resolveReviewGitProvenance(): { repo: string; branch: string } {
 
   let repo = '';
   try {
-    repo = detectRepoSlugFromGitOrigin();
+    repo = detectRepoSlugFromGitOrigin(cwd);
   } catch (error) {
     const details = error instanceof Error ? error.message : String(error);
     throw new Error(`Could not resolve git repo slug from origin: ${details}`);
