@@ -1,6 +1,7 @@
 import { approveReviewPolicy, deriveReviewPolicy } from '../../clients/worker/reviews.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { validateReviewCommitCheckpoint, validateReviewEntireIntentContext } from '../../commands/review/preflight.js';
+import { GitRepo } from '../../lib/checkpoint/git.js';
 import { resolveReviewContext } from './context.js';
 import { resolveReviewGitProvenance } from './create-shared.js';
 import { readStudioPreferences, updateStudioPolicyMode } from './session.js';
@@ -48,13 +49,27 @@ function normalizeStudioPolicyMode(value: string | null | undefined): StudioRevi
   return value === 'review' ? 'review' : 'auto';
 }
 
-export async function resolveStudioNewReviewPreflight(): Promise<StudioNewReviewPreflightResult> {
-  const preferences = await readStudioPreferences();
+function resolveStudioRepoRoot(explicitRepoRoot?: string): string {
+  if (explicitRepoRoot?.trim()) {
+    return explicitRepoRoot.trim();
+  }
+  try {
+    return new GitRepo(process.cwd()).getRepoRoot();
+  } catch {
+    return process.cwd();
+  }
+}
+
+export async function resolveStudioNewReviewPreflight(options?: {
+  repoRoot?: string;
+}): Promise<StudioNewReviewPreflightResult> {
+  const repoRoot = resolveStudioRepoRoot(options?.repoRoot);
+  const preferences = await readStudioPreferences({ repoRoot });
   const policyMode = normalizeStudioPolicyMode(preferences.policyMode);
   let repo: string | null = null;
   let branch: string | null = null;
   try {
-    const gitProvenance = resolveReviewGitProvenance();
+    const gitProvenance = resolveReviewGitProvenance(repoRoot);
     repo = gitProvenance.repo;
     branch = gitProvenance.branch;
   } catch {
@@ -65,7 +80,7 @@ export async function resolveStudioNewReviewPreflight(): Promise<StudioNewReview
   let commitSha: string | null = null;
   let checkpointId: string | null = null;
   try {
-    const checkpoint = validateReviewCommitCheckpoint('HEAD', process.cwd());
+    const checkpoint = validateReviewCommitCheckpoint('HEAD', repoRoot);
     commitSha = checkpoint.commitSha;
     checkpointId = checkpoint.checkpointId;
   } catch (error) {
@@ -108,7 +123,7 @@ export async function resolveStudioNewReviewPreflight(): Promise<StudioNewReview
         summarizeSession: 'auto',
         allowBranchFallback: true,
       },
-      process.cwd()
+      repoRoot
     );
     const contextDetail =
       context.contextResolution === 'branch_fallback'
@@ -169,14 +184,16 @@ export async function resolveStudioNewReviewPreflight(): Promise<StudioNewReview
 
 export async function startStudioNewReview(options: {
   policyMode: StudioReviewPolicyMode;
+  repoRoot?: string;
 }): Promise<StudioNewReviewStartResult> {
   const policyMode = normalizeStudioPolicyMode(options.policyMode);
+  const repoRoot = resolveStudioRepoRoot(options.repoRoot);
   const workerUrl = getWorkerUrl();
   if (!workerUrl) {
     throw new Error('NIMBUS_WORKER_URL environment variable is required');
   }
 
-  await updateStudioPolicyMode(policyMode);
+  await updateStudioPolicyMode(policyMode, { repoRoot });
   const resolved = await resolveReviewContext({
     commitish: 'HEAD',
     projectRoot: '.',

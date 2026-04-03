@@ -239,7 +239,7 @@ export async function dispatchReviewCommand(
   if (reviewAction === 'studio' || reviewAction === 'start') {
     const unexpectedPositional = positional[1];
     if (typeof unexpectedPositional === 'string' && unexpectedPositional.trim()) {
-      exitWithUsage('Usage: nimbus review studio [--port <n>]');
+      exitWithUsage('Usage: nimbus review studio [--port <n>] [--detach]');
     }
     if (flags.serve && flags.status) {
       exitWithUsage('Usage error: --serve and --status cannot be used together.');
@@ -256,6 +256,15 @@ export async function dispatchReviewCommand(
     if (flags['dev-ui'] && flags.stop) {
       exitWithUsage('Usage error: --dev-ui and --stop cannot be used together.');
     }
+    if (flags.detach && flags.serve) {
+      exitWithUsage('Usage error: --detach and --serve cannot be used together.');
+    }
+    if (flags.detach && flags.status) {
+      exitWithUsage('Usage error: --detach and --status cannot be used together.');
+    }
+    if (flags.detach && flags.stop) {
+      exitWithUsage('Usage error: --detach and --stop cannot be used together.');
+    }
 
     await startReviewStudioCommand({
       port: parsePositiveIntegerFlag(flags.port),
@@ -263,6 +272,7 @@ export async function dispatchReviewCommand(
       status: Boolean(flags.status),
       stop: Boolean(flags.stop),
       devUi: Boolean(flags['dev-ui']),
+      detach: Boolean(flags.detach),
     });
     return;
   }

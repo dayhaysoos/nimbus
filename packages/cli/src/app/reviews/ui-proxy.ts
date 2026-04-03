@@ -2,13 +2,22 @@ import { once } from 'events';
 import type { IncomingMessage, ServerResponse } from 'http';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import { detectRepoSlugFromGitOrigin } from '../../lib/git.js';
-import { resolveStudioNewReviewPreflight, startStudioNewReview } from './studio-create.js';
+import { startStudioNewReview } from './studio-create.js';
+import { getStudioNewReviewPreflightCached } from './studio-preflight-cache.js';
 import { createProxyHeaders } from './ui-events-fanout.js';
 
 const LOCAL_HOST = '127.0.0.1';
 const STUDIO_CONTEXT_PATH = '/api/studio/context';
 const STUDIO_NEW_REVIEW_PREFLIGHT_PATH = '/api/studio/new-review/preflight';
 const STUDIO_NEW_REVIEW_START_PATH = '/api/studio/new-review/start';
+
+function resolveRepoRootSafe(): string | undefined {
+  try {
+    return new GitRepo(process.cwd()).getRepoRoot();
+  } catch {
+    return undefined;
+  }
+}
 
 async function readBody(request: IncomingMessage): Promise<Buffer> {
   const chunks: Buffer[] = [];
@@ -77,7 +86,7 @@ export async function proxyApiRequest(
       return true;
     }
     try {
-      const payload = await resolveStudioNewReviewPreflight();
+      const payload = await getStudioNewReviewPreflightCached({ repoRoot: resolveRepoRootSafe() });
       response.statusCode = 200;
       response.setHeader('Cache-Control', 'no-store');
       response.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -115,7 +124,7 @@ export async function proxyApiRequest(
         return true;
       }
 
-      const started = await startStudioNewReview({ policyMode });
+      const started = await startStudioNewReview({ policyMode, repoRoot: resolveRepoRootSafe() });
       response.statusCode = 200;
       response.setHeader('Content-Type', 'application/json; charset=utf-8');
       response.end(JSON.stringify(started));

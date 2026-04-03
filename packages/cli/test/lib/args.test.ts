@@ -107,6 +107,13 @@ export function runArgsParsingTests(): void {
   }
 
   {
+    const parsed = parseArgs(['review', 'studio', '--detach', '--dev-ui']);
+    assert.equal(parsed.flags.detach, true);
+    assert.equal(parsed.flags['dev-ui'], true);
+    assert.deepEqual(parsed.positional, ['studio']);
+  }
+
+  {
     const parsed = parseArgs([
       'review',
       'create',

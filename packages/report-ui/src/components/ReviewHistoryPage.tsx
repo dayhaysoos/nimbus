@@ -19,8 +19,8 @@ import { Button } from './ui/button';
 import { Card } from './ui/card';
 
 const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
-const REVIEW_LIST_POLL_MS = 3000;
-const BRANCH_CONTEXT_POLL_MS = 2000;
+const REVIEW_LIST_POLL_MS = 30_000;
+const BRANCH_CONTEXT_POLL_MS = 10_000;
 const ACTIVE_STATUSES: ReadonlySet<ReviewStatus> = new Set([
   'policy_pending',
   'policy_ready',
@@ -42,6 +42,10 @@ function reviewDestinationPath(entry: ReviewHistoryItem): string {
     return `${branchBase}/policy/${entry.id}`;
   }
   return `${branchBase}/reports/${entry.id}`;
+}
+
+function branchDestinationPath(repo: string, branch: string): string {
+  return `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}`;
 }
 
 export function ReviewHistoryPage(): JSX.Element {
@@ -132,6 +136,7 @@ export function ReviewHistoryPage(): JSX.Element {
 
   useEffect(() => {
     let cancelled = false;
+    const canRefresh = () => !cancelled && document.visibilityState === 'visible';
     const refresh = async () => {
       try {
         await Promise.all([fetchReviews(), fetchStudioContext()]);
@@ -147,6 +152,9 @@ export function ReviewHistoryPage(): JSX.Element {
     };
     void refresh();
     const reviewTimer = window.setInterval(() => {
+      if (!canRefresh()) {
+        return;
+      }
       void fetchReviews().catch((error) => {
         if (!cancelled) {
           setErrorMessage(error instanceof Error ? error.message : String(error));
@@ -154,12 +162,27 @@ export function ReviewHistoryPage(): JSX.Element {
       });
     }, REVIEW_LIST_POLL_MS);
     const branchTimer = window.setInterval(() => {
+      if (!canRefresh()) {
+        return;
+      }
       void fetchStudioContext().catch(() => undefined);
     }, BRANCH_CONTEXT_POLL_MS);
+    const onVisibilityChange = () => {
+      if (!canRefresh()) {
+        return;
+      }
+      void Promise.all([fetchReviews(), fetchStudioContext()]).catch((error) => {
+        if (!cancelled) {
+          setErrorMessage(error instanceof Error ? error.message : String(error));
+        }
+      });
+    };
+    document.addEventListener('visibilitychange', onVisibilityChange);
     return () => {
       cancelled = true;
       window.clearInterval(reviewTimer);
       window.clearInterval(branchTimer);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
     };
   }, [fetchReviews, fetchStudioContext]);
 
@@ -203,6 +226,12 @@ export function ReviewHistoryPage(): JSX.Element {
   const detectedRepoLabel = studioContext?.repo ?? 'repo unavailable';
   const activeReview = (activeBranch?.reviews ?? []).find((r) => ACTIVE_STATUSES.has(r.status)) ?? null;
   const otherBranches = activeBranch ? branches.filter((b) => b.key !== activeBranch.key) : branches;
+  const currentBranchPath =
+    studioContext?.repo && studioContext?.branch
+      ? branchDestinationPath(studioContext.repo, studioContext.branch)
+      : activeBranch
+        ? branchDestinationPath(activeBranch.repo, activeBranch.branch)
+        : null;
 
   const startNewReview = useCallback(async () => {
     setNewReviewStarting(true);
@@ -257,11 +286,19 @@ export function ReviewHistoryPage(): JSX.Element {
 
       <Card className="p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Current branch context</p>
-            <p className="mt-1 text-sm font-semibold text-foreground">{detectedBranchLabel}</p>
-            <p className="text-xs text-muted-foreground">{detectedRepoLabel}</p>
-          </div>
+          {currentBranchPath ? (
+            <Link to={currentBranchPath} className="block rounded-sm px-1 py-0.5 transition-colors hover:bg-accent/30">
+              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Current branch context</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{detectedBranchLabel}</p>
+              <p className="text-xs text-muted-foreground">{detectedRepoLabel}</p>
+            </Link>
+          ) : (
+            <div>
+              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Current branch context</p>
+              <p className="mt-1 text-sm font-semibold text-foreground">{detectedBranchLabel}</p>
+              <p className="text-xs text-muted-foreground">{detectedRepoLabel}</p>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <Button
               size="sm"
@@ -394,7 +431,7 @@ export function ReviewHistoryPage(): JSX.Element {
                 {otherBranches.map((branchGroup) => (
                   <Link
                     key={branchGroup.key}
-                    to={`/branches/${encodeURIComponent(branchGroup.repo)}/${encodeURIComponent(branchGroup.branch)}`}
+                    to={branchDestinationPath(branchGroup.repo, branchGroup.branch)}
                     className="block"
                   >
                     <Card className="px-3 py-2 transition-colors hover:bg-accent/30">

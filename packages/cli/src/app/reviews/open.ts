@@ -1,5 +1,6 @@
 import * as p from '@clack/prompts';
 import {
+  clearStaleReviewStudioRuntimeMetadata,
   ensureReviewStudioRuntime,
   getReviewStudioRuntimeStatus,
   resolveReviewUiRuntimeContext,
@@ -24,6 +25,7 @@ export interface StartReviewStudioOptions {
   status?: boolean;
   stop?: boolean;
   devUi?: boolean;
+  detach?: boolean;
 }
 
 export async function openReviewFromCommitCommand(options?: OpenReviewFromCommitOptions): Promise<void> {
@@ -82,6 +84,41 @@ export async function startReviewStudioCommand(options?: StartReviewStudioOption
   }
 
   const routePath = options?.routePath ?? '/';
+  const detach = options?.detach ?? Boolean(options?.routePath);
+  if (!detach) {
+    const appUrl = `http://127.0.0.1:${runtime.port}${routePath}`;
+    const status = await getReviewStudioRuntimeStatus(runtime);
+    if (status.running) {
+      if (!status.runtime) {
+        throw new Error(
+          `Port ${runtime.port} is already in use by a non-Nimbus process. Use --port <n> or stop that process.`
+        );
+      }
+      const stopped = await stopReviewStudioRuntime(runtime);
+      if (!stopped.stopped) {
+        if (stopped.stale) {
+          throw new Error(
+            `Could not stop existing Studio runtime on port ${runtime.port}. Runtime state is stale; run \`nimbus review studio --stop\` and retry.`
+          );
+        }
+        throw new Error(
+          `Could not stop existing Studio runtime on port ${runtime.port}. Please retry or use a different --port.`
+        );
+      }
+      p.log.message('Stopped existing Studio runtime to start foreground session.');
+    } else if (status.stale) {
+      const cleared = await clearStaleReviewStudioRuntimeMetadata(runtime);
+      if (cleared) {
+        p.log.warning('Cleared stale Studio runtime metadata before foreground start.');
+      }
+    }
+
+    openBrowser(appUrl);
+    p.log.success(`Opened ${appUrl}`);
+    await runStudioServeProcess(runtime);
+    return;
+  }
+
   const studio = await ensureReviewStudioRuntime(runtime, { routePath });
   openBrowser(studio.appUrl);
   p.log.success(`Opened ${studio.appUrl}`);

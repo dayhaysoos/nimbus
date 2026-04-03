@@ -5,6 +5,7 @@ import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
+import { startStudioPreflightBackgroundPolling, stopStudioPreflightBackgroundPolling } from './studio-preflight-cache.js';
 import { startReportUiSession } from './ui-server.js';
 
 export const DEFAULT_OPEN_PORT = 2000;
@@ -303,27 +304,42 @@ export async function ensureReviewStudioRuntime(
 export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Promise<void> {
   const repoRoot = resolveRepoRoot();
   await ensureStudioPreferenceFile(repoRoot);
-  const uiSession = await startReportUiSession({
-    routePath: '/',
-    port: runtime.port,
-    workerUrl: runtime.workerUrl,
-    apiKey: runtime.apiKey,
-    reviewGithubToken: runtime.reviewGithubToken,
-    openrouterApiKey: runtime.openrouterApiKey,
-    preferDevServer: runtime.preferDevUi,
-    repoRoot,
-  });
+  startStudioPreflightBackgroundPolling({ repoRoot });
+  let uiSession: Awaited<ReturnType<typeof startReportUiSession>> | null = null;
+  try {
+    uiSession = await startReportUiSession({
+      routePath: '/',
+      port: runtime.port,
+      workerUrl: runtime.workerUrl,
+      apiKey: runtime.apiKey,
+      reviewGithubToken: runtime.reviewGithubToken,
+      openrouterApiKey: runtime.openrouterApiKey,
+      preferDevServer: runtime.preferDevUi,
+      repoRoot,
+    });
 
-  await writeRuntimeMetadata(repoRoot, {
-    schemaVersion: STUDIO_SCHEMA_VERSION,
-    pid: process.pid,
-    port: runtime.port,
-    workerUrl: runtime.workerUrl,
-    repoRoot,
-    startedAt: new Date().toISOString(),
-    replayCursors: {},
-    uiMode: uiSession.uiMode,
-  });
+    await writeRuntimeMetadata(repoRoot, {
+      schemaVersion: STUDIO_SCHEMA_VERSION,
+      pid: process.pid,
+      port: runtime.port,
+      workerUrl: runtime.workerUrl,
+      repoRoot,
+      startedAt: new Date().toISOString(),
+      replayCursors: {},
+      uiMode: uiSession.uiMode,
+    });
+  } catch (error) {
+    stopStudioPreflightBackgroundPolling();
+    if (uiSession) {
+      await uiSession.close().catch(() => undefined);
+    }
+    throw error;
+  }
+  const activeSession = uiSession;
+  if (!activeSession) {
+    stopStudioPreflightBackgroundPolling();
+    throw new Error('Studio UI session did not initialize.');
+  }
 
   let shuttingDown = false;
   const shutdown = async () => {
@@ -331,7 +347,8 @@ export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Pr
       return;
     }
     shuttingDown = true;
-    await uiSession.close().catch(() => undefined);
+    stopStudioPreflightBackgroundPolling();
+    await activeSession.close().catch(() => undefined);
     await clearRuntimeMetadataIfOwned(repoRoot, process.pid);
   };
   const handleSignal = () => {
@@ -341,7 +358,7 @@ export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Pr
   process.on('SIGINT', handleSignal);
   process.on('SIGTERM', handleSignal);
   try {
-    await uiSession.waitForExit();
+    await activeSession.waitForExit();
   } finally {
     process.off('SIGINT', handleSignal);
     process.off('SIGTERM', handleSignal);
@@ -437,6 +454,25 @@ export async function stopReviewStudioRuntime(
     }
   }
   return { stopped, stale };
+}
+
+export async function clearStaleReviewStudioRuntimeMetadata(
+  runtime: ReviewUiRuntimeContext,
+  options?: { repoRoot?: string }
+): Promise<boolean> {
+  const repoRoot = options?.repoRoot ?? resolveRepoRoot();
+  const runtimeMetadata = await readRuntimeMetadata(repoRoot);
+  if (!runtimeMetadata) {
+    return false;
+  }
+  if (runtimeMetadata.port !== runtime.port) {
+    return false;
+  }
+  if (await isStudioRuntimeHealthy(runtimeMetadata)) {
+    return false;
+  }
+  await clearRuntimeMetadata(repoRoot);
+  return true;
 }
 
 export async function readStudioPreferencesForTests(repoRoot: string): Promise<StudioPreferences | null> {

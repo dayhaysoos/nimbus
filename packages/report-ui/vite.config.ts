@@ -1,7 +1,12 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { execFileSync } from 'child_process';
-import { resolveStudioNewReviewPreflight, startStudioNewReview } from '../cli/src/app/reviews/studio-create';
+import { startStudioNewReview } from '../cli/src/app/reviews/studio-create';
+import {
+  getStudioNewReviewPreflightCached,
+  startStudioPreflightBackgroundPolling,
+  stopStudioPreflightBackgroundPolling,
+} from '../cli/src/app/reviews/studio-preflight-cache';
 
 const REPORT_UI_MARKER = 'nimbus-report-ui';
 const REPORT_UI_HEALTH_PATH = '/__nimbus/report-ui-health';
@@ -149,6 +154,9 @@ function studioContextPlugin() {
   return {
     name: 'nimbus-studio-context',
     configureServer(server: {
+      httpServer?: {
+        once: (event: 'close', listener: () => void) => void;
+      };
       middlewares: {
         use: (
           handler: (
@@ -163,6 +171,11 @@ function studioContextPlugin() {
         ) => void;
       };
     }) {
+      const repoRoot = process.env.NIMBUS_STUDIO_REPO_ROOT?.trim() || process.cwd();
+      startStudioPreflightBackgroundPolling({ repoRoot });
+      server.httpServer?.once('close', () => {
+        stopStudioPreflightBackgroundPolling();
+      });
       server.middlewares.use((req, res, next) => {
         const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
         if (
@@ -208,7 +221,7 @@ function studioContextPlugin() {
             res.end(JSON.stringify({ error: 'Method not allowed' }));
             return;
           }
-          void resolveStudioNewReviewPreflight()
+          void getStudioNewReviewPreflightCached({ repoRoot })
             .then((payload) => {
               const body = JSON.stringify(payload);
               res.statusCode = 200;
@@ -247,7 +260,7 @@ function studioContextPlugin() {
               res.end(JSON.stringify({ error: 'Invalid policyMode. Use auto or review.' }));
               return;
             }
-            return startStudioNewReview({ policyMode });
+            return startStudioNewReview({ policyMode, repoRoot });
           })
           .then((started) => {
             if (!started) {

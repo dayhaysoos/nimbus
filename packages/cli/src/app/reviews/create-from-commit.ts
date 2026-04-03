@@ -230,6 +230,7 @@ export async function createReviewFromCommitCommand(
         policyMode === 'review'
           ? `/policy/${encodeURIComponent(reviewId)}`
           : `/reports/${encodeURIComponent(reviewId)}`,
+      detach: true,
     });
   }
 

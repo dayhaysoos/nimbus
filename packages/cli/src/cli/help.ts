@@ -38,7 +38,7 @@ Commands:
   review events <review-id>
                        Stream review lifecycle events
   review studio
-                       Launch or reuse local Review Studio
+                       Launch local Review Studio in foreground (interactive)
   review open
                        Compatibility alias for policy-review + Studio handoff
   review export <review-id>
@@ -89,6 +89,7 @@ Options:
   --status          Show Review Studio runtime status
   --stop            Stop Review Studio runtime for this repo
   --dev-ui          Force Vite dev server for Review Studio (enables HMR)
+  --detach          Run Review Studio in detached background mode
   --base <ref>        Diff base ref for review create (uses <base>...<commit>)
   --repo <owner/repo> Repository slug override for repo register
   --dry-run           Validate repo register inputs without API call
@@ -141,6 +142,7 @@ Examples:
   nimbus review show rev_abcd1234
    nimbus review events rev_abcd1234
    nimbus review studio
+   nimbus review studio --detach
    nimbus review studio --dev-ui
    nimbus review studio --port 2000
    nimbus review studio --status

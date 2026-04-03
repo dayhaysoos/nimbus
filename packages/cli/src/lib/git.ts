@@ -26,10 +26,11 @@ function parseRepoSlug(remoteUrl: string): string | null {
   }
 }
 
-export function detectRepoSlugFromGitOrigin(): string {
+export function detectRepoSlugFromGitOrigin(cwd = process.cwd()): string {
   let origin = '';
   try {
     origin = execFileSync('git', ['remote', 'get-url', 'origin'], {
+      cwd,
       encoding: 'utf8',
       stdio: ['ignore', 'pipe', 'pipe'],
     }).trim();
