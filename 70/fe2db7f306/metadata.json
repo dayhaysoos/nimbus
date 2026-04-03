@@ -3,7 +3,7 @@
   "checkpoint_id": "70fe2db7f306",
   "strategy": "manual-commit",
   "branch": "feat/review-studio-slice-2-start-flow",
-  "checkpoints_count": 22,
+  "checkpoints_count": 23,
   "files_touched": [
     "packages/cli/src/app/reviews/context.ts",
     "packages/cli/src/app/reviews/create-from-commit.ts",
@@ -39,13 +39,19 @@
       "transcript": "/70/fe2db7f306/2/full.jsonl",
       "content_hash": "/70/fe2db7f306/2/content_hash.txt",
       "prompt": "/70/fe2db7f306/2/prompt.txt"
+    },
+    {
+      "metadata": "/70/fe2db7f306/3/metadata.json",
+      "transcript": "/70/fe2db7f306/3/full.jsonl",
+      "content_hash": "/70/fe2db7f306/3/content_hash.txt",
+      "prompt": "/70/fe2db7f306/3/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 16739795,
+    "input_tokens": 17325761,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 15694848,
-    "output_tokens": 67030,
-    "api_call_count": 159
+    "cache_read_tokens": 16240128,
+    "output_tokens": 80392,
+    "api_call_count": 180
   }
 }
