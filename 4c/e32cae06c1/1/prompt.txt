@@ -1,0 +1,1 @@
+Review the code changes introduced by commit 37788067384bbb5774762e095cb6bc023100f146 ("review-studio: clarify branch targeting and branch-scoped navigation"). Provide prioritized, actionable findings.
