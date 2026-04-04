@@ -1,0 +1,92 @@
+You are working in the `dayhaysoos/nimbus` repo. We just completed and merged Review Studio Slice 2. Start from `main` and create a new branch for
+  Slice 3 work.
+
+  Primary goal:
+  Implement the next Review Studio slice focused on UX/design/flow polish, while preserving the existing architecture and canonical CLI/runtime
+  behavior.
+
+  Before writing code:
+  1) Read these docs fully:
+  - docs/architecture/review-studio-experience.md
+  - docs/architecture/review-studio-experience-build-plan.md
+  - docs/architecture/review-studio-implementation-plan.md
+
+  2) Summarize Slice 3 scope as concrete repo changes:
+  - exact files you plan to touch
+  - what UX/design problems each change solves
+  - what is explicitly deferred to later slices
+
+  3) Create a new branch from main with a repo-consistent name (suggested: `feat/review-studio-slice-3-ux-polish`).
+
+  Context from prior slices:
+  - Slice 0 and Slice 2 are merged.
+  - `nimbus review studio` exists and is foreground-first.
+  - `--detach` is explicit.
+  - `review open` is compatibility-path only.
+  - Studio preflight/start flow exists.
+  - Some confusing UI states were observed around “current branch context” vs “viewing context”.
+
+  What I want emphasized this slice:
+  - Design quality and clarity of interaction model, not just correctness.
+  - Reduce confusion in branch/review context presentation.
+  - Improve visual hierarchy and language choices in Home/history/start flows.
+  - Make actions feel obvious and intentional.
+  - Reduce clutter where needed (recent reviews can stay hidden unless clearly justified).
+
+  Design/UX requirements:
+  - Keep existing architecture; do not invent a parallel Studio system.
+  - Favor small, coherent UI changes over broad refactors.
+  - Use clear labels and state language that matches actual behavior.
+  - Ensure any displayed context always matches action targets.
+  - Make the current-branch card behavior and branch-list behavior intuitive.
+  - Preserve mobile/desktop usability.
+  - Preserve existing visual language unless intentionally improving it; no random redesign drift.
+  - If changing terminology (“View in home”, “Viewing context”, etc.), explain rationale and consistency rules.
+
+  Behavioral guardrails (must preserve):
+  - `nimbus review studio` is canonical Studio launch command.
+  - `nimbus review create` remains canonical review-start command.
+  - `--policy-mode none|auto|review` canonical; sugar flags unchanged.
+  - Bare `nimbus review create` defaults to `--policy-mode none`.
+  - Studio repo preference behavior remains intact.
+  - Checkpoint/commit provenance rules unchanged.
+  - Follow-up validation reviews still use `reviewBasis = environment`.
+  - Local apply/export remains explicit.
+
+  Implementation expectations:
+  - Prefer modifying existing CLI/runtime/report-ui/worker paths.
+  - No unnecessary backend contract expansion unless required for UX correctness.
+  - If tradeoffs are needed, choose narrow, shippable implementation.
+
+  Testing expectations:
+  - Add/update tests for changed behavior (UI logic + CLI/runtime where relevant).
+  - Run relevant build/tests and report results clearly.
+  - Include manual test steps for UX validation (exact commands and expected on-screen outcomes).
+
+  Deliverables in this session:
+  1) Code changes for Slice 3 UX/design/flow scope only.
+  2) Updated/added tests.
+  3) Concise summary of what changed and why.
+  4) Explicit deferred list for later slices.
+  5) PR-ready description with:
+     - user-facing improvements
+     - behavioral invariants preserved
+     - test evidence
+
+  Collaboration style:
+  - Start with a short plan after reading docs.
+  - Then implement directly.
+  - Keep updates concise and pragmatic.
+  - Do not stop at analysis; ship end-to-end unless blocked.
+
+---
+
+give me the pnpm --filter versions of the commands to do manual testing since we're working directly in the package
+
+---
+
+I want to test the work we've done by making a checkpoint. I'm thinking the best thing we can do right now is commit just SOME of the changes made in this branch, not everything. Can we make a commit in a way that is scored to domain/feature? Which files would that entail?
+
+---
+
+go ahead and stage it

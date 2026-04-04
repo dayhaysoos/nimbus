@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "b14beb14f08b",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/reviews/create-from-deployment.ts",
+    "packages/cli/src/app/reviews/create-shared.ts",
+    "packages/cli/src/app/reviews/studio-create.ts",
+    "packages/cli/src/app/reviews/ui-proxy.ts",
+    "packages/cli/test/app/reviews/studio-create.test.ts",
+    "packages/report-ui/src/components/BranchReviewsPage.tsx",
+    "packages/report-ui/src/components/PolicyPage.tsx",
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx",
+    "packages/report-ui/src/lib/review.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b1/4beb14f08b/0/metadata.json",
+      "transcript": "/b1/4beb14f08b/0/full.jsonl",
+      "content_hash": "/b1/4beb14f08b/0/content_hash.txt",
+      "prompt": "/b1/4beb14f08b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 5572088,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 5209088,
+    "output_tokens": 61538,
+    "api_call_count": 62
+  }
+}
