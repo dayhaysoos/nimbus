@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "4ce32cae06c1",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 17,
+  "files_touched": [
+    "packages/cli/src/lib/entire/context.ts",
+    "packages/cli/test/lib/entire/context.test.ts",
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/types.ts",
+    "packages/worker/src/lib/db/reviews/shared.ts",
+    "packages/worker/src/lib/review-runner/cochange.ts",
+    "packages/worker/src/lib/review-runner/context-helpers.ts",
+    "packages/worker/src/lib/review-runner/context.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/output.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/test/lib/db.review.test.ts",
+    "packages/worker/test/lib/review-cochange.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/4c/e32cae06c1/0/metadata.json",
+      "transcript": "/4c/e32cae06c1/0/full.jsonl",
+      "content_hash": "/4c/e32cae06c1/0/content_hash.txt",
+      "prompt": "/4c/e32cae06c1/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 17822004,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 16436096,
+    "output_tokens": 78381,
+    "api_call_count": 144
+  }
+}
