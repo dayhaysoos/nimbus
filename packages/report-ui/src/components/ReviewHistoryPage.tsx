@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import { CompactHistoryText } from './CompactHistoryText';
 import {
   parseListReviewsResponse,
   parseStudioContextResponse,
@@ -14,6 +15,7 @@ import type {
   StudioNewReviewPreflightResponse,
   StudioPolicyMode,
 } from '../types';
+import { StatusPill } from './ui/StatusPill';
 import { Badge } from './ui/badge';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
@@ -29,11 +31,32 @@ const ACTIVE_STATUSES: ReadonlySet<ReviewStatus> = new Set([
   'running',
 ]);
 
-interface BranchGroup {
-  key: string;
+interface StudioBranchRef {
   repo: string;
   branch: string;
+}
+
+interface BranchGroup extends StudioBranchRef {
+  key: string;
   reviews: ReviewHistoryItem[];
+}
+
+function toStudioBranchRef(input: { repo: string | null; branch: string | null } | null | undefined): StudioBranchRef | null {
+  if (!input?.repo || !input.branch) {
+    return null;
+  }
+  return {
+    repo: input.repo,
+    branch: input.branch,
+  };
+}
+
+function branchRefKey(branch: StudioBranchRef): string {
+  return `${branch.repo}\u0000${branch.branch}`;
+}
+
+function sameBranchRef(left: StudioBranchRef | null, right: StudioBranchRef | null): boolean {
+  return Boolean(left && right && left.repo === right.repo && left.branch === right.branch);
 }
 
 function reviewDestinationPath(entry: ReviewHistoryItem): string {
@@ -48,15 +71,49 @@ function branchDestinationPath(repo: string, branch: string): string {
   return `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}`;
 }
 
+function relativeTime(timestamp: string | null): string {
+  if (!timestamp) {
+    return 'unknown';
+  }
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown';
+  }
+  const diffMs = Date.now() - date.getTime();
+  const absSeconds = Math.floor(Math.abs(diffMs) / 1000);
+  if (absSeconds < 60) {
+    return 'just now';
+  }
+  const inFuture = diffMs < 0;
+  const absMinutes = Math.floor(absSeconds / 60);
+  if (absMinutes < 60) {
+    return inFuture ? `in ${absMinutes}m` : `${absMinutes}m ago`;
+  }
+  const absHours = Math.floor(absMinutes / 60);
+  if (absHours < 24) {
+    return inFuture ? `in ${absHours}h` : `${absHours}h ago`;
+  }
+  const absDays = Math.floor(absHours / 24);
+  return inFuture ? `in ${absDays}d` : `${absDays}d ago`;
+}
+
+function branchSummary(group: BranchGroup): string {
+  const latest = group.reviews[0];
+  if (!latest) {
+    return 'No reviews yet.';
+  }
+  return latest.summaryText?.trim() || `Latest review ${latest.id}`;
+}
+
 export function ReviewHistoryPage(): JSX.Element {
   const navigate = useNavigate();
   const [entries, setEntries] = useState<ReviewHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [studioContext, setStudioContext] = useState<StudioContextResponse | null>(null);
-  const [selectedBranchKey, setSelectedBranchKey] = useState<string | null>(null);
-  const [pendingBranchSwitchKey, setPendingBranchSwitchKey] = useState<string | null>(null);
-  const [lastDetectedBranchKey, setLastDetectedBranchKey] = useState<string | null>(null);
+  const [homeBranch, setHomeBranch] = useState<StudioBranchRef | null>(null);
+  const [pendingBranchSwitch, setPendingBranchSwitch] = useState<StudioBranchRef | null>(null);
+  const [lastDetectedBranch, setLastDetectedBranch] = useState<StudioBranchRef | null>(null);
   const [showNewReviewPanel, setShowNewReviewPanel] = useState(false);
   const [newReviewPolicyMode, setNewReviewPolicyMode] = useState<StudioPolicyMode>('auto');
   const [newReviewPreflight, setNewReviewPreflight] = useState<StudioNewReviewPreflightResponse | null>(null);
@@ -64,6 +121,15 @@ export function ReviewHistoryPage(): JSX.Element {
   const [newReviewPreflightError, setNewReviewPreflightError] = useState<string | null>(null);
   const [newReviewStarting, setNewReviewStarting] = useState(false);
   const [newReviewStartError, setNewReviewStartError] = useState<string | null>(null);
+
+  const detectedBranch = useMemo(() => toStudioBranchRef(studioContext), [studioContext]);
+
+  const closeNewReviewPanel = useCallback(() => {
+    setShowNewReviewPanel(false);
+    setNewReviewPreflight(null);
+    setNewReviewPreflightError(null);
+    setNewReviewStartError(null);
+  }, []);
 
   const fetchReviews = useCallback(async () => {
     const response = await fetch(`${API_BASE}/api/reviews?limit=100`);
@@ -109,30 +175,32 @@ export function ReviewHistoryPage(): JSX.Element {
   }, []);
 
   useEffect(() => {
-    const detectedKey = studioContext?.repo && studioContext?.branch ? `${studioContext.repo}/${studioContext.branch}` : null;
-    if (!detectedKey) {
+    if (!detectedBranch) {
       return;
     }
-    if (!selectedBranchKey) {
-      setSelectedBranchKey(detectedKey);
+    if (!homeBranch) {
+      setHomeBranch(detectedBranch);
     }
-    if (!lastDetectedBranchKey) {
-      setLastDetectedBranchKey(detectedKey);
+    if (!lastDetectedBranch) {
+      setLastDetectedBranch(detectedBranch);
       return;
     }
-    if (detectedKey !== lastDetectedBranchKey) {
-      if (selectedBranchKey && detectedKey !== selectedBranchKey) {
-        setPendingBranchSwitchKey(detectedKey);
+    if (!sameBranchRef(detectedBranch, lastDetectedBranch)) {
+      if (homeBranch && !sameBranchRef(detectedBranch, homeBranch)) {
+        setPendingBranchSwitch(detectedBranch);
+        if (showNewReviewPanel) {
+          closeNewReviewPanel();
+        }
       } else {
-        setPendingBranchSwitchKey(null);
+        setPendingBranchSwitch(null);
       }
-      setLastDetectedBranchKey(detectedKey);
+      setLastDetectedBranch(detectedBranch);
       return;
     }
-    if (pendingBranchSwitchKey && selectedBranchKey && detectedKey === selectedBranchKey) {
-      setPendingBranchSwitchKey(null);
+    if (pendingBranchSwitch && homeBranch && sameBranchRef(detectedBranch, homeBranch)) {
+      setPendingBranchSwitch(null);
     }
-  }, [studioContext, selectedBranchKey, lastDetectedBranchKey, pendingBranchSwitchKey]);
+  }, [closeNewReviewPanel, detectedBranch, homeBranch, lastDetectedBranch, pendingBranchSwitch, showNewReviewPanel]);
 
   useEffect(() => {
     let cancelled = false;
@@ -201,7 +269,8 @@ export function ReviewHistoryPage(): JSX.Element {
     });
     const map = new Map<string, BranchGroup>();
     for (const entry of sorted) {
-      const key = `${entry.repo}/${entry.branch}`;
+      const ref = { repo: entry.repo, branch: entry.branch };
+      const key = branchRefKey(ref);
       const existing = map.get(key);
       if (existing) {
         existing.reviews.push(entry);
@@ -221,19 +290,20 @@ export function ReviewHistoryPage(): JSX.Element {
     });
   }, [entries]);
 
-  const activeBranch = selectedBranchKey ? (branches.find((b) => b.key === selectedBranchKey) ?? null) : null;
-  const detectedBranchLabel = studioContext?.branch ?? 'unknown';
-  const detectedRepoLabel = studioContext?.repo ?? 'repo unavailable';
-  const activeReview = (activeBranch?.reviews ?? []).find((r) => ACTIVE_STATUSES.has(r.status)) ?? null;
-  const otherBranches = activeBranch ? branches.filter((b) => b.key !== activeBranch.key) : branches;
-  const currentBranchPath =
-    studioContext?.repo && studioContext?.branch
-      ? branchDestinationPath(studioContext.repo, studioContext.branch)
-      : activeBranch
-        ? branchDestinationPath(activeBranch.repo, activeBranch.branch)
-        : null;
+  const homeBranchKey = homeBranch ? branchRefKey(homeBranch) : null;
+  const homeBranchGroup = homeBranchKey ? (branches.find((branchGroup) => branchGroup.key === homeBranchKey) ?? null) : null;
+  const homeBranchReviews = homeBranchGroup?.reviews ?? [];
+  const recentHomeReviews = homeBranchReviews.slice(0, 3);
+  const activeReview = homeBranchReviews.find((review) => ACTIVE_STATUSES.has(review.status)) ?? null;
+  const latestHomeReview = homeBranchReviews[0] ?? null;
+  const otherBranches = homeBranchKey ? branches.filter((branchGroup) => branchGroup.key !== homeBranchKey) : branches;
+  const homeBranchPath = homeBranch ? branchDestinationPath(homeBranch.repo, homeBranch.branch) : null;
+  const canStartNewReview = Boolean(homeBranch && detectedBranch && sameBranchRef(homeBranch, detectedBranch) && !pendingBranchSwitch);
 
   const startNewReview = useCallback(async () => {
+    if (!homeBranch) {
+      return;
+    }
     setNewReviewStarting(true);
     setNewReviewStartError(null);
     try {
@@ -242,94 +312,134 @@ export function ReviewHistoryPage(): JSX.Element {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ policyMode: newReviewPolicyMode }),
+        body: JSON.stringify({
+          policyMode: newReviewPolicyMode,
+          repo: homeBranch.repo,
+          branch: homeBranch.branch,
+        }),
       });
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? `Failed to start review (${response.status})`);
       }
       const started = parseStudioNewReviewStartResponse(await response.json());
-      setShowNewReviewPanel(false);
+      closeNewReviewPanel();
       navigate(started.routePath);
     } catch (error) {
       setNewReviewStartError(error instanceof Error ? error.message : String(error));
     } finally {
       setNewReviewStarting(false);
     }
-  }, [navigate, newReviewPolicyMode]);
+  }, [closeNewReviewPanel, homeBranch, navigate, newReviewPolicyMode]);
 
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-3 py-3">
       <header className="flex flex-col gap-2">
         <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Review Studio</p>
-        <h1 className="policy-heading text-base text-foreground tracking-tight">Home</h1>
+        <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
+          <div>
+            <h1 className="policy-heading text-base text-foreground tracking-tight">Home</h1>
+            <p className="text-sm text-muted-foreground">
+              Start from the branch you intend to review, then browse other branch history without changing that target.
+            </p>
+          </div>
+        </div>
       </header>
 
-      {pendingBranchSwitchKey && (
-        <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+      {pendingBranchSwitch && (
+        <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
           <p>
-            Branch changed to <span className="font-mono">{pendingBranchSwitchKey.split('/').slice(1).join('/') || pendingBranchSwitchKey}</span>. Switch context?
+            Working branch changed to <span className="font-mono">{pendingBranchSwitch.branch}</span>. Switch Home before starting another review so the target stays explicit.
           </p>
           <div className="mt-2">
             <Button
               size="sm"
               onClick={() => {
-                setSelectedBranchKey(pendingBranchSwitchKey);
-                setPendingBranchSwitchKey(null);
+                setHomeBranch(pendingBranchSwitch);
+                setPendingBranchSwitch(null);
               }}
             >
-              Switch context
+              Switch Home to {pendingBranchSwitch.branch}
             </Button>
           </div>
         </div>
       )}
 
       <Card className="p-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          {currentBranchPath ? (
-            <Link to={currentBranchPath} className="block rounded-sm px-1 py-0.5 transition-colors hover:bg-accent/30">
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Current branch context</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{detectedBranchLabel}</p>
-              <p className="text-xs text-muted-foreground">{detectedRepoLabel}</p>
-            </Link>
-          ) : (
-            <div>
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Current branch context</p>
-              <p className="mt-1 text-sm font-semibold text-foreground">{detectedBranchLabel}</p>
-              <p className="text-xs text-muted-foreground">{detectedRepoLabel}</p>
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1.5">
+              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Home branch</p>
+              <h2 className="text-lg font-semibold tracking-tight text-foreground">
+                {homeBranch?.branch ?? detectedBranch?.branch ?? 'Branch unavailable'}
+              </h2>
+              <p className="text-sm text-muted-foreground">{homeBranch?.repo ?? detectedBranch?.repo ?? 'Repo unavailable'}</p>
+              <p className="max-w-2xl text-sm text-muted-foreground">
+                {pendingBranchSwitch
+                  ? `Home is still focused on ${homeBranch?.branch ?? 'the previous branch'}. Resume history here if needed, or switch before starting a new review.`
+                  : 'New Review and Resume active review both target this branch.'}
+              </p>
             </div>
-          )}
-          <div className="flex items-center gap-2">
-            <Button
-              size="sm"
-              onClick={() => {
-                setNewReviewStartError(null);
-                setNewReviewPreflightError(null);
-                setShowNewReviewPanel(true);
-              }}
-            >
-              New Review
-            </Button>
-            {activeReview && (
-              <Link to={reviewDestinationPath(activeReview)}>
-                <Button size="sm" variant="outline">
-                  Resume active review
-                </Button>
-              </Link>
-            )}
+
+            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+              <Button
+                size="sm"
+                onClick={() => {
+                  setNewReviewStartError(null);
+                  setNewReviewPreflightError(null);
+                  setShowNewReviewPanel(true);
+                }}
+                disabled={!canStartNewReview}
+              >
+                New Review
+              </Button>
+              {activeReview && (
+                <Link to={reviewDestinationPath(activeReview)}>
+                  <Button size="sm" variant="outline">
+                    Resume active review
+                  </Button>
+                </Link>
+              )}
+              {homeBranchPath && (
+                <Link to={homeBranchPath}>
+                  <Button size="sm" variant="ghost">
+                    View branch history
+                  </Button>
+                </Link>
+              )}
+            </div>
           </div>
+
+          <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2.5">
+              <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Active review</dt>
+              <dd className="mt-1 text-sm font-semibold text-foreground">
+                {activeReview ? activeReview.id : 'None on this branch'}
+              </dd>
+            </div>
+            <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2.5">
+              <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Recent reviews</dt>
+              <dd className="mt-1 text-sm font-semibold text-foreground">{homeBranchReviews.length}</dd>
+            </div>
+            <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2.5">
+              <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Latest update</dt>
+              <dd className="mt-1 text-sm font-semibold text-foreground">{relativeTime(latestHomeReview?.updatedAt ?? latestHomeReview?.createdAt ?? null)}</dd>
+            </div>
+          </dl>
         </div>
       </Card>
 
       {showNewReviewPanel && (
         <Card className="p-4">
-          <div className="space-y-3">
+          <div className="space-y-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-foreground">New Review</h2>
-                <p className="mt-1 text-sm text-muted-foreground">Target defaults to latest checkpoint on the current branch.</p>
+                <h2 className="text-sm font-semibold text-foreground">Start review</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Nimbus will review the latest checkpoint on <span className="font-mono text-foreground">{homeBranch?.branch ?? detectedBranch?.branch ?? 'this branch'}</span>.
+                </p>
               </div>
-              <Button size="sm" variant="ghost" onClick={() => setShowNewReviewPanel(false)} disabled={newReviewStarting}>
+              <Button size="sm" variant="ghost" onClick={closeNewReviewPanel} disabled={newReviewStarting}>
                 Close
               </Button>
             </div>
@@ -340,52 +450,66 @@ export function ReviewHistoryPage(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => setNewReviewPolicyMode('auto')}
-                  className={`rounded-sm border px-3 py-2 text-left text-sm ${
+                  className={`rounded-sm border px-3 py-3 text-left text-sm ${
                     newReviewPolicyMode === 'auto' ? 'border-primary bg-accent/30' : 'border-border bg-background'
                   }`}
                 >
                   <p className="font-medium text-foreground">Auto policy</p>
-                  <p className="text-xs text-muted-foreground">Fast path. Policy is approved automatically.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Derive and approve policy automatically, then queue the review.</p>
                 </button>
                 <button
                   type="button"
                   onClick={() => setNewReviewPolicyMode('review')}
-                  className={`rounded-sm border px-3 py-2 text-left text-sm ${
+                  className={`rounded-sm border px-3 py-3 text-left text-sm ${
                     newReviewPolicyMode === 'review' ? 'border-primary bg-accent/30' : 'border-border bg-background'
                   }`}
                 >
                   <p className="font-medium text-foreground">Review policy first</p>
-                  <p className="text-xs text-muted-foreground">Pause on policy draft before execution.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Pause on the derived policy so you can review or edit it before execution.</p>
                 </button>
               </div>
             </div>
 
             <div className="rounded-sm border border-border bg-muted/20 p-3">
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Preflight</p>
+              <div className="flex items-baseline justify-between gap-3">
+                <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Preflight</p>
+                <p className="text-xs text-muted-foreground">Action target must match the Home branch above.</p>
+              </div>
               {newReviewPreflightLoading ? (
                 <p className="mt-2 text-sm text-muted-foreground">Checking branch, checkpoint, and context…</p>
               ) : newReviewPreflightError ? (
                 <p className="mt-2 text-sm text-red-700">{newReviewPreflightError}</p>
               ) : newReviewPreflight ? (
-                <div className="mt-2 space-y-2 text-sm">
-                  <p className="text-foreground">
-                    Branch: <span className="font-mono">{newReviewPreflight.branch ?? 'unknown'}</span>
-                  </p>
-                  <p className="text-foreground">
-                    Checkpoint:{' '}
-                    <span className="font-mono">
-                      {newReviewPreflight.checkpointId ?? 'unavailable'}
-                    </span>
-                  </p>
-                  <div className="space-y-1">
+                <div className="mt-3 space-y-3 text-sm">
+                  <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <div>
+                      <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Branch</dt>
+                      <dd className="mt-1 font-mono text-foreground">{newReviewPreflight.branch ?? 'unknown'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Checkpoint</dt>
+                      <dd className="mt-1 font-mono text-foreground">{newReviewPreflight.checkpointId ?? 'unavailable'}</dd>
+                    </div>
+                    <div>
+                      <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Policy mode</dt>
+                      <dd className="mt-1 text-foreground">{newReviewPolicyMode === 'auto' ? 'Auto policy' : 'Review policy first'}</dd>
+                    </div>
+                  </dl>
+                  <div className="space-y-2">
                     {newReviewPreflight.checks.map((check) => (
-                      <p key={check.code} className={check.ok ? 'text-foreground' : 'text-red-700'}>
-                        {check.ok ? 'OK' : 'FAIL'} {check.label}: {check.detail}
-                      </p>
+                      <div key={check.code} className="rounded-sm border border-border/70 bg-card/80 px-3 py-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-sm font-medium text-foreground">{check.label}</p>
+                          <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">
+                            {check.ok ? 'Ready' : 'Blocked'}
+                          </Badge>
+                        </div>
+                        <p className={`mt-1 text-sm ${check.ok ? 'text-muted-foreground' : 'text-red-700'}`}>{check.detail}</p>
+                      </div>
                     ))}
                   </div>
                   {!newReviewPreflight.ready && newReviewPreflight.error && (
-                    <p className="text-red-700">{newReviewPreflight.error.message}</p>
+                    <p className="text-sm text-red-700">{newReviewPreflight.error.message}</p>
                   )}
                 </div>
               ) : null}
@@ -400,7 +524,7 @@ export function ReviewHistoryPage(): JSX.Element {
               <Button
                 size="sm"
                 onClick={() => void startNewReview()}
-                disabled={newReviewStarting || newReviewPreflightLoading || !newReviewPreflight?.ready}
+                disabled={newReviewStarting || newReviewPreflightLoading || !newReviewPreflight?.ready || !canStartNewReview}
               >
                 {newReviewStarting ? 'Starting…' : 'Start Review'}
               </Button>
@@ -420,33 +544,85 @@ export function ReviewHistoryPage(): JSX.Element {
         </Card>
       ) : (
         <>
+          {recentHomeReviews.length > 0 ? (
+            <section className="space-y-2">
+              <div className="flex items-baseline justify-between gap-3">
+                <div>
+                  <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Recent on this branch</h2>
+                  <p className="text-sm text-muted-foreground">Keep momentum on the branch Home is currently targeting.</p>
+                </div>
+                {homeBranchPath && (
+                  <Link to={homeBranchPath} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
+                    Open full history
+                  </Link>
+                )}
+              </div>
+              <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
+                {recentHomeReviews.map((entry) => (
+                  <Link key={entry.id} to={reviewDestinationPath(entry)} className="block">
+                    <Card className="h-full px-3 py-3 transition-colors hover:bg-accent/30">
+                      <div className="flex items-start justify-between gap-2">
+                        <StatusPill status={entry.status} />
+                        <span className="text-xs text-muted-foreground">{relativeTime(entry.updatedAt || entry.createdAt)}</span>
+                      </div>
+                      <CompactHistoryText className="mt-2 text-sm text-foreground/85" text={entry.summaryText ?? entry.id} />
+                      <p className="mt-2 text-[11px] text-muted-foreground font-mono">{entry.id}</p>
+                    </Card>
+                  </Link>
+                ))}
+              </div>
+            </section>
+          ) : (
+            <Card className="p-3">
+              <p className="text-sm text-muted-foreground">
+                No reviews on this branch yet. Start one from the current Home branch when you are ready.
+              </p>
+            </Card>
+          )}
+
           <section className="space-y-2">
-            <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Branch list</h2>
+            <div>
+              <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Browse other branches</h2>
+              <p className="text-sm text-muted-foreground">History only. New reviews still start from the Home branch above.</p>
+            </div>
             {otherBranches.length === 0 ? (
               <Card className="p-3">
                 <p className="text-sm text-muted-foreground">No other branch review history yet.</p>
               </Card>
             ) : (
               <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {otherBranches.map((branchGroup) => (
-                  <Link
-                    key={branchGroup.key}
-                    to={branchDestinationPath(branchGroup.repo, branchGroup.branch)}
-                    className="block"
-                  >
-                    <Card className="px-3 py-2 transition-colors hover:bg-accent/30">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{branchGroup.branch}</p>
-                          <p className="text-xs text-muted-foreground">{branchGroup.repo}</p>
+                {otherBranches.map((branchGroup) => {
+                  const latest = branchGroup.reviews[0];
+                  const hasActive = branchGroup.reviews.some((review) => ACTIVE_STATUSES.has(review.status));
+                  return (
+                    <Link
+                      key={branchGroup.key}
+                      to={branchDestinationPath(branchGroup.repo, branchGroup.branch)}
+                      className="block"
+                    >
+                      <Card className="h-full px-3 py-3 transition-colors hover:bg-accent/30">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-semibold text-foreground">{branchGroup.branch}</p>
+                              {hasActive && (
+                                <Badge variant="outline" className="rounded-full border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-blue-800">
+                                  Active
+                                </Badge>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{branchGroup.repo}</p>
+                          </div>
+                          <span className="text-xs text-muted-foreground">{latest ? relativeTime(latest.updatedAt || latest.createdAt) : 'unknown'}</span>
                         </div>
-                        <Badge variant="outline" className="text-[10px] uppercase">
-                          {branchGroup.reviews.length} reviews
-                        </Badge>
-                      </div>
-                    </Card>
-                  </Link>
-                ))}
+                        <CompactHistoryText className="mt-2 text-sm text-foreground/80" text={branchSummary(branchGroup)} />
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {branchGroup.reviews.length} review{branchGroup.reviews.length === 1 ? '' : 's'}
+                        </p>
+                      </Card>
+                    </Link>
+                  );
+                })}
               </div>
             )}
           </section>

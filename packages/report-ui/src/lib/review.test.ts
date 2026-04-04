@@ -214,12 +214,12 @@ describe('studio new review payloads', () => {
   it('parses start payload', () => {
     const payload = parseStudioNewReviewStartResponse({
       reviewId: 'rev_123',
-      routePath: '/reports/rev_123',
+      routePath: '/branches/acme%2Fweb/main/reports/rev_123',
       policyMode: 'auto',
       status: 'queued',
     });
 
     expect(payload.reviewId).toBe('rev_123');
-    expect(payload.routePath).toBe('/reports/rev_123');
+    expect(payload.routePath).toBe('/branches/acme%2Fweb/main/reports/rev_123');
   });
 });

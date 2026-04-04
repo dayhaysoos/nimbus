@@ -863,7 +863,7 @@ export function ReportPage(): JSX.Element {
 
       {/* Breadcrumbs */}
       <nav className="policy-fade-up flex items-center gap-2 text-xs text-muted-foreground" style={{ animationDelay: '0ms' }}>
-        <Link to="/" className="hover:text-foreground transition-colors">Branches</Link>
+        <Link to="/" className="hover:text-foreground transition-colors">Studio Home</Link>
         {hasBranchContext && (
           <>
             <span className="text-muted-foreground/50">/</span>
@@ -881,7 +881,10 @@ export function ReportPage(): JSX.Element {
 
       <section className={cn('policy-fade-up card space-y-3 border', verdictTone.containerClass)} style={{ animationDelay: '40ms' }}>
         <div className="summary-header">
-          <h1 className="policy-heading text-base text-foreground">Review {review.id}</h1>
+          <div>
+            <h1 className="policy-heading text-base text-foreground">Review {review.id}</h1>
+            {hasBranchContext && <p className="text-sm text-muted-foreground">Viewing results for {branch}.</p>}
+          </div>
           <StatusPill status={review.status} />
         </div>
 

@@ -12,7 +12,7 @@ describe('ReviewHistoryPage', () => {
     cleanup();
   });
 
-  it('renders an empty state when no reviews are present', async () => {
+  it('renders the current-branch empty state when no reviews are present', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/api/studio/context')) {
@@ -33,11 +33,11 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText(/No other branch review history yet\./)).toBeInTheDocument();
+    expect(await screen.findByText(/No reviews on this branch yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New Review' })).toBeInTheDocument();
   });
 
-  it('renders branch list links', async () => {
+  it('keeps current-branch history separate from browse-only branch history', async () => {
     vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/api/studio/context')) {
@@ -51,7 +51,7 @@ describe('ReviewHistoryPage', () => {
         json: async () => ({
           reviews: [
             {
-              id: 'rev_newer',
+              id: 'rev_current',
               workspaceId: 'ws_1',
               deploymentId: 'dep_1',
               repo: 'acme/web',
@@ -67,11 +67,11 @@ describe('ReviewHistoryPage', () => {
               summaryText: 'Potentially unsafe mutation found in request handler.',
             },
             {
-              id: 'rev_older',
+              id: 'rev_other',
               workspaceId: 'ws_2',
               deploymentId: 'dep_2',
-              repo: 'acme/api',
-              branch: 'main',
+              repo: 'acme/web',
+              branch: 'feature-x',
               status: 'succeeded',
               createdAt: '2026-03-01T00:00:00.000Z',
               updatedAt: '2026-03-01T00:00:01.000Z',
@@ -93,10 +93,11 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    const resume = await screen.findByRole('button', { name: 'Resume active review' });
-    expect(resume).toBeInTheDocument();
-    const links = screen.getAllByRole('link');
-    expect(links.some((link) => link.getAttribute('href')?.includes('/branches/acme%2Fapi/main'))).toBe(true);
+    expect(await screen.findByText(/Recent on this branch/i)).toBeInTheDocument();
+    expect(screen.getByText(/Potentially unsafe mutation found in request handler/i)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Resume active review' })).toBeInTheDocument();
+    expect(screen.getByText(/Browse other branches/i)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /feature-x/i })).toBeInTheDocument();
   });
 
   it('does not resume from a different branch when current context has no reviews', async () => {
@@ -144,7 +145,7 @@ describe('ReviewHistoryPage', () => {
     expect(screen.getByRole('link', { name: /feature-x/i })).toBeInTheDocument();
   });
 
-  it('starts a review from the New Review panel', async () => {
+  it('starts a review from the Home branch and lands on the branch-scoped report route', async () => {
     const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input);
       if (url.includes('/api/studio/context')) {
@@ -172,11 +173,16 @@ describe('ReviewHistoryPage', () => {
       }
       if (url.includes('/api/studio/new-review/start')) {
         expect(init?.method).toBe('POST');
+        expect(JSON.parse(String(init?.body))).toEqual({
+          policyMode: 'auto',
+          repo: 'acme/web',
+          branch: 'main',
+        });
         return {
           ok: true,
           json: async () => ({
             reviewId: 'rev_new',
-            routePath: '/reports/rev_new',
+            routePath: '/branches/acme%2Fweb/main/reports/rev_new',
             policyMode: 'auto',
             status: 'queued',
           }),
@@ -243,5 +249,7 @@ describe('ReviewHistoryPage', () => {
         expect.objectContaining({ method: 'POST' })
       );
     });
+
+    expect(await screen.findByText('Viewing results for main.')).toBeInTheDocument();
   });
 });

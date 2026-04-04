@@ -93,6 +93,27 @@ describe('ReportPage', () => {
     expect(screen.getByText('Raw JSON')).toBeInTheDocument();
   });
 
+  it('renders branch-scoped breadcrumbs when opened from Studio Home', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ review: mockReview }),
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/branches/acme%2Fweb/main/reports/review_123']}>
+        <Routes>
+          <Route path="/branches/:repo/:branch/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Studio Home')).toBeInTheDocument();
+    expect(screen.getByText('Viewing results for main.')).toBeInTheDocument();
+  });
+
   it('renders running review state', async () => {
     vi.stubGlobal(
       'fetch',

@@ -359,7 +359,7 @@ export function PolicyPage(): JSX.Element {
     <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
       {/* Breadcrumbs */}
       <nav className="policy-fade-up flex items-center gap-2 text-xs text-muted-foreground" style={{ animationDelay: '0ms' }}>
-        <Link to="/" className="hover:text-foreground transition-colors">Branches</Link>
+        <Link to="/" className="hover:text-foreground transition-colors">Studio Home</Link>
         {hasBranchContext && (
           <>
             <span className="text-muted-foreground/50">/</span>
@@ -385,7 +385,9 @@ export function PolicyPage(): JSX.Element {
           </p>
         </div>
         <p className="text-muted-foreground font-light text-sm">
-          Confirm or edit this policy before Nimbus starts the review.
+          {hasBranchContext
+            ? `Confirm or edit this policy before Nimbus starts the review for ${branch}.`
+            : 'Confirm or edit this policy before Nimbus starts the review.'}
         </p>
       </div>
 

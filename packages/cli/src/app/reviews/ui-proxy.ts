@@ -115,7 +115,11 @@ export async function proxyApiRequest(
     }
     try {
       const body = await readBody(request);
-      const payload = JSON.parse(body.toString('utf8')) as { policyMode?: unknown };
+      const payload = JSON.parse(body.toString('utf8')) as {
+        policyMode?: unknown;
+        repo?: unknown;
+        branch?: unknown;
+      };
       const policyMode = payload?.policyMode;
       if (policyMode !== 'auto' && policyMode !== 'review') {
         response.statusCode = 400;
@@ -124,7 +128,14 @@ export async function proxyApiRequest(
         return true;
       }
 
-      const started = await startStudioNewReview({ policyMode, repoRoot: resolveRepoRootSafe() });
+      const expectedRepo = typeof payload.repo === 'string' ? payload.repo : null;
+      const expectedBranch = typeof payload.branch === 'string' ? payload.branch : null;
+      const started = await startStudioNewReview({
+        policyMode,
+        repoRoot: resolveRepoRootSafe(),
+        expectedRepo,
+        expectedBranch,
+      });
       response.statusCode = 200;
       response.setHeader('Content-Type', 'application/json; charset=utf-8');
       response.end(JSON.stringify(started));

@@ -3,7 +3,7 @@ import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { validateReviewCommitCheckpoint, validateReviewEntireIntentContext } from '../../commands/review/preflight.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import { resolveReviewContext } from './context.js';
-import { resolveReviewGitProvenance } from './create-shared.js';
+import { buildStudioReviewRoutePath, resolveReviewGitProvenance } from './create-shared.js';
 import { readStudioPreferences, updateStudioPolicyMode } from './session.js';
 
 export type StudioReviewPolicyMode = 'auto' | 'review';
@@ -58,6 +58,23 @@ function resolveStudioRepoRoot(explicitRepoRoot?: string): string {
   } catch {
     return process.cwd();
   }
+}
+
+function normalizeExpectedContextField(value: string | null | undefined): string | null {
+  const normalized = value?.trim();
+  return normalized ? normalized : null;
+}
+
+export function studioBranchContextMatchesExpected(
+  current: { repo: string; branch: string },
+  expected?: { repo?: string | null; branch?: string | null }
+): boolean {
+  const expectedRepo = normalizeExpectedContextField(expected?.repo);
+  const expectedBranch = normalizeExpectedContextField(expected?.branch);
+  if (!expectedRepo || !expectedBranch) {
+    return true;
+  }
+  return current.repo === expectedRepo && current.branch === expectedBranch;
 }
 
 export async function resolveStudioNewReviewPreflight(options?: {
@@ -185,12 +202,26 @@ export async function resolveStudioNewReviewPreflight(options?: {
 export async function startStudioNewReview(options: {
   policyMode: StudioReviewPolicyMode;
   repoRoot?: string;
+  expectedRepo?: string | null;
+  expectedBranch?: string | null;
 }): Promise<StudioNewReviewStartResult> {
   const policyMode = normalizeStudioPolicyMode(options.policyMode);
   const repoRoot = resolveStudioRepoRoot(options.repoRoot);
   const workerUrl = getWorkerUrl();
   if (!workerUrl) {
     throw new Error('NIMBUS_WORKER_URL environment variable is required');
+  }
+
+  const gitProvenance = resolveReviewGitProvenance(repoRoot);
+  if (
+    !studioBranchContextMatchesExpected(gitProvenance, {
+      repo: options.expectedRepo,
+      branch: options.expectedBranch,
+    })
+  ) {
+    throw new Error(
+      `Studio context changed to ${gitProvenance.branch} (${gitProvenance.repo}). Switch context in Home, then retry.`
+    );
   }
 
   await updateStudioPolicyMode(policyMode, { repoRoot });
@@ -210,7 +241,12 @@ export async function startStudioNewReview(options: {
 
     return {
       reviewId: derived.reviewId,
-      routePath: `/policy/${encodeURIComponent(derived.reviewId)}`,
+      routePath: buildStudioReviewRoutePath({
+        reviewId: derived.reviewId,
+        route: 'policy',
+        repo: resolved.resolvedProvenance.repo,
+        branch: resolved.resolvedProvenance.branch,
+      }),
       policyMode,
       status: 'policy_ready',
     };
@@ -229,7 +265,12 @@ export async function startStudioNewReview(options: {
 
   return {
     reviewId: derived.reviewId,
-    routePath: `/reports/${encodeURIComponent(derived.reviewId)}`,
+    routePath: buildStudioReviewRoutePath({
+      reviewId: derived.reviewId,
+      route: 'reports',
+      repo: resolved.resolvedProvenance.repo,
+      branch: resolved.resolvedProvenance.branch,
+    }),
     policyMode,
     status: 'queued',
   };
