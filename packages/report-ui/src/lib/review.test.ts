@@ -106,6 +106,11 @@ describe('parseGetReviewResponse', () => {
           promptSummary: 'Review generated in report_only mode for deployment dep_1.',
           outputSchemaVersion: 'v2',
           passArchitecture: 'single',
+          reviewedFiles: {
+            changed: ['src/report.tsx'],
+            related: ['src/context.ts'],
+            conventions: ['package.json'],
+          },
           advisories: ['Large diff detected (31 files). Consider smaller, focused commits for higher quality reviews.'],
           contextResolution: {
             contextResolution: 'branch_fallback',
@@ -121,6 +126,7 @@ describe('parseGetReviewResponse', () => {
 
     expect(payload.review.provenance.outputSchemaVersion).toBe('v2');
     expect(payload.review.furtherPassesLowYield).toBe(true);
+    expect(payload.review.provenance.reviewedFiles?.changed).toEqual(['src/report.tsx']);
     expect(payload.review.provenance.contextResolution?.contextResolution).toBe('branch_fallback');
     expect(payload.review.provenance.advisories?.[0]).toContain('Large diff detected');
   });

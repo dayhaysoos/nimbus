@@ -5,6 +5,7 @@ import { marked } from 'marked';
 import { copyToClipboard } from '../lib/clipboard';
 import { downloadTextFile } from '../lib/download';
 import { StatusPill } from './ui/StatusPill';
+import { Badge } from './ui/badge';
 import {
   buildFindingText,
   dateTimeLabel,
@@ -153,6 +154,12 @@ interface TimelinePhase {
   detail: string;
 }
 
+interface ReviewedFilesSection {
+  key: 'changed' | 'related' | 'conventions';
+  label: string;
+  files: string[];
+}
+
 function severityColor(severity: ReviewFinding['severity']): string {
   switch (severity) {
     case 'critical':
@@ -233,6 +240,112 @@ function riskLevelClass(riskLevel: 'critical' | 'high' | 'medium' | 'low' | unde
     return 'border-sky-200 bg-sky-50 text-sky-800';
   }
   return 'border-border bg-muted/50 text-muted-foreground';
+}
+
+function evidenceStatusClass(status: ReviewResponse['evidence'][number]['status']): string {
+  if (status === 'passed') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  }
+  if (status === 'failed') {
+    return 'border-rose-200 bg-rose-50 text-rose-800';
+  }
+  if (status === 'warning') {
+    return 'border-amber-200 bg-amber-50 text-amber-800';
+  }
+  return 'border-border bg-muted/50 text-muted-foreground';
+}
+
+function compactNumber(value: number): string {
+  return value.toLocaleString();
+}
+
+function reviewedFilesSections(review: ReviewResponse | null): ReviewedFilesSection[] {
+  const reviewedFiles = review?.provenance.reviewedFiles;
+  if (!reviewedFiles) {
+    return [];
+  }
+
+  return [
+    {
+      key: 'changed' as const,
+      label: 'Changed in this review',
+      files: reviewedFiles.changed,
+    },
+    {
+      key: 'related' as const,
+      label: 'Related files',
+      files: reviewedFiles.related,
+    },
+    {
+      key: 'conventions' as const,
+      label: 'Convention and config files',
+      files: reviewedFiles.conventions,
+    },
+  ].filter((section) => section.files.length > 0);
+}
+
+function ReviewedFilesDialog({
+  open,
+  totalFiles,
+  sections,
+  onClose,
+}: {
+  open: boolean;
+  totalFiles: number;
+  sections: ReviewedFilesSection[];
+  onClose: () => void;
+}): JSX.Element | null {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/55 p-0 sm:items-center sm:justify-center sm:p-6"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reviewed-files-title"
+        className="max-h-[88vh] w-full overflow-hidden rounded-t-xl border border-border/70 bg-background shadow-2xl sm:max-w-2xl sm:rounded-xl"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border/70 px-4 py-3">
+          <div>
+            <h2 id="reviewed-files-title" className="text-base font-semibold text-foreground">
+              Reviewed files
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{compactNumber(totalFiles)} files included in review context.</p>
+          </div>
+          <button type="button" className="report-copy-btn text-xs" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[calc(88vh-80px)] space-y-3 overflow-y-auto px-4 py-4">
+          {sections.map((section) => (
+            <section key={section.key} className="rounded-sm border border-border/60 bg-card/75 px-3 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground">{section.label}</h3>
+                <span className="text-xs text-muted-foreground">{compactNumber(section.files.length)}</span>
+              </div>
+              <ul className="mt-2 space-y-1">
+                {section.files.map((filePath) => (
+                  <li key={`${section.key}:${filePath}`} className="rounded-sm border border-border/50 bg-background/75 px-2.5 py-1.5 font-mono text-xs text-foreground">
+                    {filePath}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function StatusLayout({ children }: { children: ReactNode }): JSX.Element {
@@ -568,6 +681,7 @@ export function ReportPage(): JSX.Element {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [refreshCycle, setRefreshCycle] = useState(0);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [showReviewedFiles, setShowReviewedFiles] = useState(false);
   const seenEventIds = useRef(new Set<string>());
   const fallbackEventOrdinal = useRef(0);
 
@@ -577,6 +691,7 @@ export function ReportPage(): JSX.Element {
     seenEventIds.current.clear();
     fallbackEventOrdinal.current = 0;
     setActivityLog([]);
+    setShowReviewedFiles(false);
   }, [reviewId]);
 
   useEffect(() => {
@@ -730,6 +845,23 @@ export function ReportPage(): JSX.Element {
     };
   }, [toastMessage]);
 
+  useEffect(() => {
+    if (!showReviewedFiles) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowReviewedFiles(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showReviewedFiles]);
+
   const normalizedMarkdown = useMemo(() => normalizeMarkdownSummary(review?.markdownSummary ?? null), [review?.markdownSummary]);
   const markdownHtml = useMemo(() => renderedMarkdown(normalizedMarkdown), [normalizedMarkdown]);
 
@@ -856,9 +988,30 @@ export function ReportPage(): JSX.Element {
   const tokenBudget = contextStats?.tokenBudget ?? null;
   const estimatedTokens = contextStats?.estimatedTokens ?? 0;
   const tokenUsageRatio = tokenBudget && tokenBudget > 0 ? Math.min(1, estimatedTokens / tokenBudget) : null;
+  const reviewedFileSectionsList = reviewedFilesSections(review);
+  const reviewedFilesAvailable = reviewedFileSectionsList.length > 0;
+  const totalReviewedFiles =
+    contextStats?.totalFilesIncluded ??
+    reviewedFileSectionsList.reduce((total, section) => total + section.files.length, 0);
+  const hasIntentDetails = Boolean(
+    review.intent?.goal?.trim() ||
+      (review.intent?.constraints.length ?? 0) > 0 ||
+      (review.intent?.decisions.length ?? 0) > 0
+  );
+  const totalFindings = findingCount(review);
+  const cochangeRelatedFileCount = review.provenance.coChange?.relatedFileCount ?? 0;
+  const reviewCompletedWithoutFindings = review.status === 'succeeded' && totalFindings === 0;
 
   return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
+    <>
+      <ReviewedFilesDialog
+        open={showReviewedFiles}
+        totalFiles={totalReviewedFiles}
+        sections={reviewedFileSectionsList}
+        onClose={() => setShowReviewedFiles(false)}
+      />
+
+      <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
       {toastMessage && <div className="report-toast">{toastMessage}</div>}
 
       {/* Breadcrumbs */}
@@ -986,6 +1139,157 @@ export function ReportPage(): JSX.Element {
         </section>
       )}
 
+      {reviewCompletedWithoutFindings && (
+        <section className="policy-fade-up rounded-sm border border-emerald-200 bg-emerald-50/55 px-3 py-3" style={{ animationDelay: '65ms' }}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-emerald-900">Successful review</h2>
+              <p className="text-sm text-emerald-900/90">
+                Nimbus completed this review and did not identify actionable findings for this change.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[420px]">
+              <div className="rounded-sm border border-emerald-200 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-emerald-800/70">Files reviewed</p>
+                {reviewedFilesAvailable ? (
+                  <button
+                    type="button"
+                    className="mt-1 flex items-center gap-2 text-left text-sm font-semibold text-emerald-950 underline decoration-emerald-300 underline-offset-2"
+                    onClick={() => setShowReviewedFiles(true)}
+                  >
+                    {compactNumber(totalReviewedFiles)}
+                    <span className="text-xs font-medium text-emerald-800/80">View files</span>
+                  </button>
+                ) : (
+                  <p className="mt-1 text-sm font-semibold text-emerald-950">
+                    {contextStats ? compactNumber(contextStats.totalFilesIncluded) : 'n/a'}
+                  </p>
+                )}
+              </div>
+              <div className="rounded-sm border border-emerald-200 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-emerald-800/70">Sessions used</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-950">{compactNumber(review.provenance.sessionIds.length)}</p>
+              </div>
+              <div className="rounded-sm border border-emerald-200 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-emerald-800/70">Related files</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-950">{compactNumber(cochangeRelatedFileCount)}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {(modelSummary || hasIntentDetails || review.provenance.promptSummary || cochangeBanner || contextStats || reviewedFilesAvailable) && (
+        <section className="policy-fade-up grid gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]" style={{ animationDelay: '70ms' }}>
+          <div className="space-y-2">
+            {modelSummary && (
+              <div className="rounded-sm border border-border/60 bg-card/85 px-3 py-3">
+                <h2 className="text-sm font-semibold text-foreground">Review summary</h2>
+                <p className="mt-2 text-sm leading-6 text-foreground/85">{modelSummary}</p>
+              </div>
+            )}
+
+            {hasIntentDetails && review.intent && (
+              <div className="rounded-sm border border-border/60 bg-card/85 px-3 py-3">
+                <h2 className="text-sm font-semibold text-foreground">Intent</h2>
+                <div className="mt-2 space-y-2 text-sm">
+                  {review.intent.goal?.trim() && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Goal</p>
+                      <p className="mt-1 text-foreground">{review.intent.goal.trim()}</p>
+                    </div>
+                  )}
+                  {review.intent.constraints.length > 0 && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Constraints</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
+                        {review.intent.constraints.map((constraint) => (
+                          <li key={constraint}>{constraint}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {review.intent.decisions.length > 0 && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Decisions</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
+                        {review.intent.decisions.map((decision) => (
+                          <li key={decision}>{decision}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="rounded-sm border border-border/60 bg-card/85 px-3 py-3">
+              <h2 className="text-sm font-semibold text-foreground">Review scope</h2>
+              {contextStats && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Files reviewed</p>
+                    {reviewedFilesAvailable ? (
+                      <button
+                        type="button"
+                        className="mt-1 text-left text-sm font-semibold text-foreground underline decoration-border underline-offset-2"
+                        onClick={() => setShowReviewedFiles(true)}
+                      >
+                        {compactNumber(totalReviewedFiles)}
+                      </button>
+                    ) : (
+                      <p className="mt-1 text-sm font-semibold text-foreground">{compactNumber(contextStats.totalFilesIncluded)}</p>
+                    )}
+                  </div>
+                  <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Estimated tokens</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{compactNumber(estimatedTokens)}</p>
+                  </div>
+                </div>
+              )}
+              <dl className="mt-2 grid gap-2">
+                {review.provenance.promptSummary && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Context summary</dt>
+                    <dd className="mt-1 text-sm text-foreground">{review.provenance.promptSummary}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Session ids</dt>
+                  <dd className="mt-1 text-sm text-foreground">
+                    {review.provenance.sessionIds.length > 0 ? review.provenance.sessionIds.join(', ') : 'none'}
+                  </dd>
+                </div>
+                {contextStats && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Context size</dt>
+                    <dd className="mt-1 text-sm text-foreground">
+                      {compactNumber(contextStats.totalFilesIncluded)} files · {compactNumber(contextStats.totalBytesIncluded)} bytes · {compactNumber(estimatedTokens)} estimated tokens
+                    </dd>
+                  </div>
+                )}
+                {reviewedFilesAvailable && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Reviewed file groups</dt>
+                    <dd className="mt-1 text-sm text-foreground">
+                      {reviewedFileSectionsList.map((section) => `${section.label}: ${compactNumber(section.files.length)}`).join(' · ')}
+                    </dd>
+                  </div>
+                )}
+                {cochangeBanner && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Co-change context</dt>
+                    <dd className="mt-1 text-sm text-foreground">{cochangeBanner}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          </div>
+        </section>
+      )}
+
       <section className="policy-fade-up flex flex-col gap-2.5" style={{ animationDelay: '80ms' }}>
         <div className="flex items-center justify-between">
           <h2 className="policy-heading text-sm text-foreground">Findings</h2>
@@ -1005,7 +1309,7 @@ export function ReportPage(): JSX.Element {
 
         {review.findings.length === 0 ? (
           <div className="card">
-            <p>No findings were reported.</p>
+            <p>No actionable findings identified.</p>
           </div>
         ) : (
           groupedFindings.map((group) => (
@@ -1082,6 +1386,36 @@ export function ReportPage(): JSX.Element {
                 {cochangeBanner ? <li>{cochangeBanner}</li> : null}
               </ul>
             </div>
+
+            {review.evidence.length > 0 && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-foreground">Review receipts</h3>
+                  <p className="text-xs text-muted-foreground">{review.evidence.length} item{review.evidence.length === 1 ? '' : 's'}</p>
+                </div>
+                <div className="mt-2 grid gap-2">
+                  {review.evidence.map((item) => (
+                    <div key={item.id} className="rounded-sm border border-border/60 bg-background/70 px-3 py-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">{item.label}</p>
+                          <p className="text-xs text-muted-foreground">{item.type}</p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]',
+                            evidenceStatusClass(item.status)
+                          )}
+                        >
+                          {item.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {review.approvedPolicy && (
               <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
@@ -1182,6 +1516,7 @@ export function ReportPage(): JSX.Element {
           <pre>{JSON.stringify(review, null, 2)}</pre>
         </details>
       </section>
-    </main>
+      </main>
+    </>
   );
 }

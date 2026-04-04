@@ -1,5 +1,10 @@
 import { strict as assert } from 'assert';
-import { extractEntireTranscriptText, isValidEntireSessionId, selectEntireCheckpointsRef } from '../../../src/lib/entire/context.js';
+import {
+  extractEntireTranscriptText,
+  isValidEntireSessionId,
+  selectCochangeMetadataPaths,
+  selectEntireCheckpointsRef,
+} from '../../../src/lib/entire/context.js';
 
 export function runEntireIntentContextTests(): void {
   assert.equal(isValidEntireSessionId('ses_abc123XYZ-09'), true);
@@ -57,5 +62,26 @@ export function runEntireIntentContextTests(): void {
   {
     assert.equal(extractEntireTranscriptText('{"messages":[]}'), null);
     assert.equal(extractEntireTranscriptText('not json'), null);
+  }
+
+  {
+    assert.deepEqual(
+      selectCochangeMetadataPaths([
+        '70/fe2db7f306/metadata.json',
+        '70/fe2db7f306/7/metadata.json',
+        '70/fe2db7f306/6/metadata.json',
+      ]),
+      ['70/fe2db7f306/7/metadata.json', '70/fe2db7f306/6/metadata.json']
+    );
+  }
+
+  {
+    assert.deepEqual(
+      selectCochangeMetadataPaths([
+        '70/fe2db7f306/metadata.json',
+        '70/fe2db7f306/metadata.json',
+      ]),
+      ['70/fe2db7f306/metadata.json']
+    );
   }
 }

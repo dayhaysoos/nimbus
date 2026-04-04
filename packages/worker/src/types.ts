@@ -627,6 +627,12 @@ export interface ReviewContextRef {
   r2Key: string;
 }
 
+export interface ReviewedFilesSummary {
+  changed: string[];
+  related: string[];
+  conventions: string[];
+}
+
 export interface ReviewIntentSummary {
   goal: string | null;
   constraints: string[];
@@ -661,6 +667,7 @@ export interface ReviewProvenanceSummary {
     estimatedTokens: number;
     tokenBudget: number | null;
   };
+  reviewedFiles?: ReviewedFilesSummary;
   coChange?: {
     coChangeSkipped: boolean;
     coChangeSkipReason: string | null;

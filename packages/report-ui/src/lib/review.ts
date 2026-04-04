@@ -45,6 +45,10 @@ function readOptionalString(value: unknown): string | null {
   return trimmed ? trimmed : null;
 }
 
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
+}
+
 function readStatus(value: unknown): ReviewStatus {
   if (
     value === 'policy_pending' ||
@@ -217,6 +221,7 @@ export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
   const furtherPassesSignalRecord = asRecord(provenanceRecord.furtherPassesLowYield);
   const reviewContextRefRecord = asRecord(provenanceRecord.reviewContextRef);
   const reviewContextStatsRecord = asRecord(provenanceRecord.reviewContextStats);
+  const reviewedFilesRecord = asRecord(provenanceRecord.reviewedFiles);
   const intentRecord = asRecord(review.intent);
   const errorRecord = asRecord(review.error);
 
@@ -317,6 +322,14 @@ export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
                         Number.isFinite(reviewContextStatsRecord.tokenBudget)
                       ? reviewContextStatsRecord.tokenBudget
                       : null,
+              }
+            : undefined,
+        reviewedFiles:
+          Object.keys(reviewedFilesRecord).length > 0
+            ? {
+                changed: readStringList(reviewedFilesRecord.changed),
+                related: readStringList(reviewedFilesRecord.related),
+                conventions: readStringList(reviewedFilesRecord.conventions),
               }
             : undefined,
         coChange:

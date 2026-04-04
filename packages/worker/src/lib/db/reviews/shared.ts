@@ -271,6 +271,7 @@ export function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse 
       transcriptUrl: report?.provenance && typeof report.provenance.transcriptUrl === 'string' ? report.provenance.transcriptUrl : null,
       reviewContextRef: report?.provenance && report.provenance.reviewContextRef && typeof report.provenance.reviewContextRef === 'object' ? (report.provenance.reviewContextRef as ReviewContextRef) : null,
       reviewContextStats: report?.provenance && report.provenance.reviewContextStats && typeof report.provenance.reviewContextStats === 'object' ? report.provenance.reviewContextStats : undefined,
+      reviewedFiles: report?.provenance && report.provenance.reviewedFiles && typeof report.provenance.reviewedFiles === 'object' ? report.provenance.reviewedFiles : undefined,
       coChange: report?.provenance && report.provenance.coChange && typeof report.provenance.coChange === 'object' ? report.provenance.coChange : undefined,
       contextResolution: report?.provenance && report.provenance.contextResolution && typeof report.provenance.contextResolution === 'object' ? report.provenance.contextResolution : undefined,
       outputSchemaVersion: report?.provenance?.outputSchemaVersion,

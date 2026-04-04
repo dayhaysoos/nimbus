@@ -239,7 +239,8 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    fireEvent.click(await screen.findByRole('button', { name: 'New Review' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'New Review' })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: 'New Review' }));
     expect(await screen.findByRole('button', { name: 'Start Review' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Start Review' }));
 

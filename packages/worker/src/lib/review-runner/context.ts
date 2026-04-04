@@ -15,15 +15,16 @@ import {
   discoverConventionCandidates,
   estimateTokenCount,
   mergeProvenance,
-  parseChangedPathsFromDiff,
-  parseDiffHunks,
-  parseLocalCochangeFromProvenance,
-  parseStringArray,
-  readOptionalNumber,
-  readOptionalString,
-  stripSensitiveTokenFields,
-  uniqueStrings,
-} from './context-helpers.js';
+    parseChangedPathsFromDiff,
+    parseDiffHunks,
+    parseLocalCochangeFromProvenance,
+    parseStringArray,
+    rankAggregatedRelatedPaths,
+    readOptionalNumber,
+    readOptionalString,
+    stripSensitiveTokenFields,
+    uniqueStrings,
+  } from './context-helpers.js';
 import {
   classifyCochangeSkipReason,
   fetchCochangeFromCheckpointBranch,
@@ -258,7 +259,6 @@ export async function assembleReviewContextBootstrap(
       },
     });
 
-    const relatedFrequency = new Map<string, { frequency: number; sessionIds: string[] }>();
     const entriesByChangedPath = new Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>();
 
     if (localCochange) {
@@ -323,22 +323,7 @@ export async function assembleReviewContextBootstrap(
       }
     }
 
-    for (const changedPath of changedPaths) {
-      const entries = entriesByChangedPath.get(changedPath) ?? [];
-      for (const entry of entries) {
-        const existing = relatedFrequency.get(entry.path) ?? { frequency: 0, sessionIds: [] };
-        existing.frequency += entry.frequency;
-        existing.sessionIds = Array.from(new Set([...existing.sessionIds, ...entry.sessionIds]));
-        relatedFrequency.set(entry.path, existing);
-      }
-    }
-
-    const changedPathSet = new Set(changedPaths);
-    const rankedRelated = Array.from(relatedFrequency.entries())
-      .map(([path, value]) => ({ path, ...value }))
-      .filter((item) => !changedPathSet.has(item.path))
-      .sort((left, right) => right.frequency - left.frequency)
-      .slice(0, effectiveTopN);
+    const rankedRelated = rankAggregatedRelatedPaths(changedPaths, entriesByChangedPath, effectiveTopN);
 
     const relatedReads = rankedRelated.length
       ? await readWorkspaceFilesFromSourceBundle(env, {

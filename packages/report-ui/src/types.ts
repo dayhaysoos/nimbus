@@ -62,6 +62,12 @@ export interface ReviewContextRef {
   r2Key: string;
 }
 
+export interface ReviewedFilesSummary {
+  changed: string[];
+  related: string[];
+  conventions: string[];
+}
+
 export interface ReviewContextStats {
   totalFilesIncluded: number;
   totalBytesIncluded: number;
@@ -106,6 +112,7 @@ export interface ReviewProvenanceSummary {
   transcriptUrl?: string | null;
   reviewContextRef?: ReviewContextRef | null;
   reviewContextStats?: ReviewContextStats;
+  reviewedFiles?: ReviewedFilesSummary;
   coChange?: ReviewCoChangeSummary;
   contextResolution?: ReviewContextResolutionSummary;
   outputSchemaVersion?: 'v2';

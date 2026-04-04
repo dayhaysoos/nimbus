@@ -119,6 +119,11 @@ export function buildDeploymentReportOutput(input: {
             estimatedTokens: input.reviewContext.stats.estimatedTokens,
             tokenBudget: input.reviewContext.stats.tokenBudget,
           },
+          reviewedFiles: {
+            changed: input.reviewContext.retrieval.changedFiles.map((file) => file.path),
+            related: input.reviewContext.retrieval.relatedFiles.map((file) => file.path),
+            conventions: input.reviewContext.retrieval.conventionFiles.map((file) => file.path),
+          },
           coChange: {
             coChangeSkipped: input.reviewContext.retrieval.coChange.coChangeSkipped,
             coChangeSkipReason: input.reviewContext.retrieval.coChange.coChangeSkipReason,
