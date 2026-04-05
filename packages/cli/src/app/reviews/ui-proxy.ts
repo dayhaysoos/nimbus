@@ -10,6 +10,7 @@ const LOCAL_HOST = '127.0.0.1';
 const STUDIO_CONTEXT_PATH = '/api/studio/context';
 const STUDIO_NEW_REVIEW_PREFLIGHT_PATH = '/api/studio/new-review/preflight';
 const STUDIO_NEW_REVIEW_START_PATH = '/api/studio/new-review/start';
+const STUDIO_NEW_REVIEW_START_EVENTS_PATH = '/api/studio/new-review/start/events';
 
 function resolveRepoRootSafe(): string | undefined {
   try {
@@ -29,6 +30,10 @@ async function readBody(request: IncomingMessage): Promise<Buffer> {
     }
   }
   return Buffer.concat(chunks);
+}
+
+function writeSseFrame(response: ServerResponse, payload: unknown): void {
+  response.write(`data: ${JSON.stringify(payload)}\n\n`);
 }
 
 export async function proxyApiRequest(
@@ -147,6 +152,63 @@ export async function proxyApiRequest(
       response.end(JSON.stringify({ error: `Failed to start review: ${message}` }));
       return true;
     }
+  }
+
+  if (requestUrl.pathname === STUDIO_NEW_REVIEW_START_EVENTS_PATH) {
+    const method = (request.method ?? 'GET').toUpperCase();
+    if (method !== 'GET') {
+      response.statusCode = 405;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(JSON.stringify({ error: 'Method not allowed' }));
+      return true;
+    }
+
+    const policyMode = requestUrl.searchParams.get('policyMode');
+    if (policyMode !== 'auto' && policyMode !== 'review') {
+      response.statusCode = 400;
+      response.setHeader('Content-Type', 'application/json; charset=utf-8');
+      response.end(JSON.stringify({ error: 'Invalid policyMode. Use auto or review.' }));
+      return true;
+    }
+
+    const expectedRepo = requestUrl.searchParams.get('repo');
+    const expectedBranch = requestUrl.searchParams.get('branch');
+    let streamOpen = true;
+    response.on('close', () => {
+      streamOpen = false;
+    });
+    response.statusCode = 200;
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('Connection', 'keep-alive');
+    response.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+    response.flushHeaders?.();
+
+    try {
+      await startStudioNewReview({
+        policyMode,
+        repoRoot: resolveRepoRootSafe(),
+        expectedRepo,
+        expectedBranch,
+        onEvent: async (event) => {
+          if (streamOpen) {
+            writeSseFrame(response, event);
+          }
+        },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (streamOpen) {
+        writeSseFrame(response, {
+          type: 'error',
+          message: `Failed to start review: ${message}`,
+        });
+      }
+    } finally {
+      if (streamOpen) {
+        response.end();
+      }
+    }
+    return true;
   }
 
   if (!(requestUrl.pathname === '/api' || requestUrl.pathname.startsWith('/api/'))) {

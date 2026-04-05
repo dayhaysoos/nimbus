@@ -2,7 +2,7 @@ import { approveReviewPolicy, deriveReviewPolicy } from '../../clients/worker/re
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { validateReviewCommitCheckpoint, validateReviewEntireIntentContext } from '../../commands/review/preflight.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
-import { resolveReviewContext } from './context.js';
+import { resolveReviewContext, type ResolveReviewContextProgressEvent } from './context.js';
 import { buildStudioReviewRoutePath, resolveReviewGitProvenance } from './create-shared.js';
 import { readStudioPreferences, updateStudioPolicyMode } from './session.js';
 
@@ -33,6 +33,29 @@ export interface StudioNewReviewStartResult {
   policyMode: StudioReviewPolicyMode;
   status: 'policy_ready' | 'queued';
 }
+
+export interface StudioNewReviewStartStageEvent {
+  type: 'stage';
+  stage: ResolveReviewContextProgressEvent['stage'] | 'review_creation' | 'policy';
+  state: 'active' | 'completed';
+  label: string;
+  detail: string;
+}
+
+export interface StudioNewReviewStartCompletedEvent extends StudioNewReviewStartResult {
+  type: 'completed';
+  detail: string;
+}
+
+export interface StudioNewReviewStartErrorEvent {
+  type: 'error';
+  message: string;
+}
+
+export type StudioNewReviewStartStreamEvent =
+  | StudioNewReviewStartStageEvent
+  | StudioNewReviewStartCompletedEvent
+  | StudioNewReviewStartErrorEvent;
 
 function preflightErrorCode(message: string): NonNullable<StudioNewReviewPreflightResult['error']>['code'] {
   const lower = message.toLowerCase();
@@ -204,6 +227,7 @@ export async function startStudioNewReview(options: {
   repoRoot?: string;
   expectedRepo?: string | null;
   expectedBranch?: string | null;
+  onEvent?: (event: StudioNewReviewStartStreamEvent) => void | Promise<void>;
 }): Promise<StudioNewReviewStartResult> {
   const policyMode = normalizeStudioPolicyMode(options.policyMode);
   const repoRoot = resolveStudioRepoRoot(options.repoRoot);
@@ -228,6 +252,24 @@ export async function startStudioNewReview(options: {
   const resolved = await resolveReviewContext({
     commitish: 'HEAD',
     projectRoot: '.',
+    onProgress: (event) => options.onEvent?.({
+      type: 'stage',
+      stage: event.stage,
+      state: event.state,
+      label: event.label,
+      detail: event.detail,
+    }),
+  });
+
+  await options.onEvent?.({
+    type: 'stage',
+    stage: 'review_creation',
+    state: 'active',
+    label: policyMode === 'review' ? 'Creating policy review' : 'Creating review',
+    detail:
+      policyMode === 'review'
+        ? 'Creating the review and opening the policy screen.'
+        : 'Creating the review record before queueing analysis.',
   });
 
   if (policyMode === 'review') {
@@ -239,7 +281,15 @@ export async function startStudioNewReview(options: {
       provenance: resolved.resolvedProvenance,
     });
 
-    return {
+    await options.onEvent?.({
+      type: 'stage',
+      stage: 'review_creation',
+      state: 'completed',
+      label: 'Policy review ready',
+      detail: `Review ${derived.reviewId} is ready for policy confirmation.`,
+    });
+
+    const result: StudioNewReviewStartResult = {
       reviewId: derived.reviewId,
       routePath: buildStudioReviewRoutePath({
         reviewId: derived.reviewId,
@@ -250,6 +300,12 @@ export async function startStudioNewReview(options: {
       policyMode,
       status: 'policy_ready',
     };
+    await options.onEvent?.({
+      type: 'completed',
+      ...result,
+      detail: 'Policy review is ready. Opening the policy screen.',
+    });
+    return result;
   }
 
   const derived = await deriveReviewPolicy(workerUrl, {
@@ -259,11 +315,32 @@ export async function startStudioNewReview(options: {
     reviewBasis: 'checkpoint',
     provenance: resolved.resolvedProvenance,
   });
+  await options.onEvent?.({
+    type: 'stage',
+    stage: 'review_creation',
+    state: 'completed',
+    label: 'Review created',
+    detail: `Review ${derived.reviewId} was created and is ready to queue.`,
+  });
+  await options.onEvent?.({
+    type: 'stage',
+    stage: 'policy',
+    state: 'active',
+    label: 'Approving policy',
+    detail: 'Applying the derived policy so Nimbus can start analysis.',
+  });
   await approveReviewPolicy(workerUrl, derived.reviewId, {
     approvedPolicy: derived.derivedPolicy,
   });
+  await options.onEvent?.({
+    type: 'stage',
+    stage: 'policy',
+    state: 'completed',
+    label: 'Review queued',
+    detail: `Review ${derived.reviewId} is queued and ready to stream live activity.`,
+  });
 
-  return {
+  const result: StudioNewReviewStartResult = {
     reviewId: derived.reviewId,
     routePath: buildStudioReviewRoutePath({
       reviewId: derived.reviewId,
@@ -274,4 +351,10 @@ export async function startStudioNewReview(options: {
     policyMode,
     status: 'queued',
   };
+  await options.onEvent?.({
+    type: 'completed',
+    ...result,
+    detail: 'Review queued. Opening the live results route.',
+  });
+  return result;
 }

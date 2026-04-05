@@ -11,6 +11,7 @@ import type {
   ReviewSeverity,
   StudioNewReviewPreflightResponse,
   StudioNewReviewStartResponse,
+  StudioNewReviewStartStreamEvent,
   StudioContextResponse,
   ReviewStatus,
 } from '../types';
@@ -551,6 +552,60 @@ export function parseStudioNewReviewStartResponse(payload: unknown): StudioNewRe
     policyMode: root.policyMode,
     status: root.status,
   };
+}
+
+export function parseStudioNewReviewStartStreamEvent(payload: unknown): StudioNewReviewStartStreamEvent {
+  const root = asRecord(payload);
+
+  if (root.type === 'stage') {
+    const validStage =
+      root.stage === 'checkpoint' ||
+      root.stage === 'entire_context' ||
+      root.stage === 'cochange' ||
+      root.stage === 'workspace' ||
+      root.stage === 'deployment' ||
+      root.stage === 'review_creation' ||
+      root.stage === 'policy';
+    if (!validStage) {
+      throw new Error('Invalid Studio start stream payload: stage is invalid.');
+    }
+    if (root.state !== 'active' && root.state !== 'completed') {
+      throw new Error('Invalid Studio start stream payload: stage state is invalid.');
+    }
+    const stage = root.stage as
+      | 'checkpoint'
+      | 'entire_context'
+      | 'cochange'
+      | 'workspace'
+      | 'deployment'
+      | 'review_creation'
+      | 'policy';
+    return {
+      type: 'stage',
+      stage,
+      state: root.state,
+      label: readString(root.label, 'label'),
+      detail: readString(root.detail, 'detail'),
+    };
+  }
+
+  if (root.type === 'completed') {
+    const parsed = parseStudioNewReviewStartResponse(root);
+    return {
+      type: 'completed',
+      ...parsed,
+      detail: readString(root.detail, 'detail'),
+    };
+  }
+
+  if (root.type === 'error') {
+    return {
+      type: 'error',
+      message: readString(root.message, 'message'),
+    };
+  }
+
+  throw new Error('Invalid Studio start stream payload: type is invalid.');
 }
 
 function defaultText(value: string | null | undefined, fallback: string): string {

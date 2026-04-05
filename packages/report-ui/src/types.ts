@@ -221,6 +221,38 @@ export interface StudioNewReviewStartResponse {
   status: 'policy_ready' | 'queued';
 }
 
+export type StudioNewReviewStartStage =
+  | 'checkpoint'
+  | 'entire_context'
+  | 'cochange'
+  | 'workspace'
+  | 'deployment'
+  | 'review_creation'
+  | 'policy';
+
+export interface StudioNewReviewStartStageEvent {
+  type: 'stage';
+  stage: StudioNewReviewStartStage;
+  state: 'active' | 'completed';
+  label: string;
+  detail: string;
+}
+
+export interface StudioNewReviewStartCompletedEvent extends StudioNewReviewStartResponse {
+  type: 'completed';
+  detail: string;
+}
+
+export interface StudioNewReviewStartErrorEvent {
+  type: 'error';
+  message: string;
+}
+
+export type StudioNewReviewStartStreamEvent =
+  | StudioNewReviewStartStageEvent
+  | StudioNewReviewStartCompletedEvent
+  | StudioNewReviewStartErrorEvent;
+
 export interface ReviewFailureGuidance {
   headline: string;
   details: string;

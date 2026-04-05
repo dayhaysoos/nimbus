@@ -6,6 +6,7 @@ export {
 } from './reviews/policy.js';
 export {
   handleGetReview,
+  handleRecoverReview,
   handleGetReviewEvents,
   handleListReviews,
 } from './reviews/query.js';

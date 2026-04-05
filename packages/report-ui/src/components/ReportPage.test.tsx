@@ -88,8 +88,10 @@ describe('ReportPage', () => {
     );
 
     await screen.findByText('Review review_123');
-    expect(screen.getByText('Queued')).toBeInTheDocument();
-    expect(screen.getByText(/waiting for an available worker slot/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Queued').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/waiting for an available worker slot/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('Live review activity')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for events...')).toBeInTheDocument();
     expect(screen.getByText('Raw JSON')).toBeInTheDocument();
   });
 
@@ -111,7 +113,7 @@ describe('ReportPage', () => {
     );
 
     expect(await screen.findByText('Studio Home')).toBeInTheDocument();
-    expect(screen.getByText('Viewing results for main.')).toBeInTheDocument();
+    expect(screen.getByText('Branch main')).toBeInTheDocument();
   });
 
   it('renders running review state', async () => {
@@ -137,8 +139,56 @@ describe('ReportPage', () => {
       </MemoryRouter>
     );
 
-    await screen.findByText('Running');
-    expect(screen.getByText(/analysis is in progress/i)).toBeInTheDocument();
+    expect((await screen.findAllByText('Running')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/analysis is in progress/i).length).toBeGreaterThan(0);
+  });
+
+  it('allows recovering a live review from the report page', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ review: mockReview }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          action: 'requeued',
+          review: {
+            ...mockReview,
+            status: 'queued',
+          },
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'queued',
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Live review activity');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Recover review' }));
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/reviews/review_123/recover',
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(await screen.findByText('Recovery requested')).toBeInTheDocument();
   });
 
   it('renders succeeded review strict v2 output details', async () => {
@@ -171,7 +221,7 @@ describe('ReportPage', () => {
     expect(screen.getAllByText('One high-severity issue requires a null guard before property access.').length).toBeGreaterThan(0);
   });
 
-  it('surfaces zero-finding review output without requiring the details accordion', async () => {
+  it('keeps zero-finding review output compact until review details are expanded', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockResolvedValue({
@@ -248,20 +298,27 @@ describe('ReportPage', () => {
       </MemoryRouter>
     );
 
-    await screen.findByText('Review summary');
+    await screen.findByText('Successful review');
     expect(screen.getByText('Successful review')).toBeInTheDocument();
     expect(screen.getAllByText('Files reviewed').length).toBeGreaterThan(0);
     expect(screen.getByText('Sessions used')).toBeInTheDocument();
     expect(screen.getByText('Related files')).toBeInTheDocument();
+    expect(screen.getByText('No actionable findings identified')).toBeInTheDocument();
+    expect(screen.getByText('Review summary')).not.toBeVisible();
+    expect(screen.getByText('Intent')).not.toBeVisible();
+    expect(screen.getByText('Review scope')).not.toBeVisible();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Review details'));
+
+    expect(await screen.findByText('Review summary')).toBeInTheDocument();
     expect(screen.getAllByText(/Adds branch-scoped routing for review studio UI/i).length).toBeGreaterThan(0);
     expect(screen.getByText('Intent')).toBeInTheDocument();
     expect(screen.getByText('Complete a task by committing a single missing file.')).toBeInTheDocument();
     expect(screen.getByText('Review scope')).toBeInTheDocument();
     expect(screen.getAllByText(/Review with Entire checkpoint intent context/).length).toBeGreaterThan(0);
     expect(screen.getByText(/22 files/)).toBeInTheDocument();
-    expect(screen.getByText('No actionable findings identified.')).toBeInTheDocument();
 
-    const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: /view files/i }));
 
     expect(screen.getByRole('dialog', { name: 'Reviewed files' })).toBeInTheDocument();

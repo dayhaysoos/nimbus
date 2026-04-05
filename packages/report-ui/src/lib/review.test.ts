@@ -8,6 +8,7 @@ import {
   parseStudioContextResponse,
   parseStudioNewReviewPreflightResponse,
   parseStudioNewReviewStartResponse,
+  parseStudioNewReviewStartStreamEvent,
 } from './review';
 import type { ReviewFinding, ReviewResponse } from '../types';
 
@@ -227,5 +228,21 @@ describe('studio new review payloads', () => {
 
     expect(payload.reviewId).toBe('rev_123');
     expect(payload.routePath).toBe('/branches/acme%2Fweb/main/reports/rev_123');
+  });
+
+  it('parses start stream stage payload', () => {
+    const payload = parseStudioNewReviewStartStreamEvent({
+      type: 'stage',
+      stage: 'workspace',
+      state: 'active',
+      label: 'Preparing workspace',
+      detail: 'Creating an isolated workspace for the review target.',
+    });
+
+    expect(payload.type).toBe('stage');
+    if (payload.type === 'stage') {
+      expect(payload.stage).toBe('workspace');
+      expect(payload.state).toBe('active');
+    }
   });
 });

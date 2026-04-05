@@ -13,6 +13,7 @@ const REPORT_UI_HEALTH_PATH = '/__nimbus/report-ui-health';
 const STUDIO_CONTEXT_PATH = '/api/studio/context';
 const STUDIO_NEW_REVIEW_PREFLIGHT_PATH = '/api/studio/new-review/preflight';
 const STUDIO_NEW_REVIEW_START_PATH = '/api/studio/new-review/start';
+const STUDIO_NEW_REVIEW_START_EVENTS_PATH = '/api/studio/new-review/start/events';
 const REPO_SLUG_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 function parseRepoSlug(remoteUrl: string): string | null {
@@ -95,6 +96,15 @@ type BodyReadableRequest = {
   on: (event: 'data', listener: (chunk: Buffer | string) => void) => void;
   once: (event: 'end' | 'error', listener: (error?: Error) => void) => void;
 };
+
+function writeSseFrame(
+  res: {
+    write: (chunk: string) => void;
+  },
+  payload: unknown
+): void {
+  res.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
 
 function reportUiHealthPlugin() {
   return {
@@ -181,7 +191,8 @@ function studioContextPlugin() {
         if (
           requestUrl.pathname !== STUDIO_CONTEXT_PATH &&
           requestUrl.pathname !== STUDIO_NEW_REVIEW_PREFLIGHT_PATH &&
-          requestUrl.pathname !== STUDIO_NEW_REVIEW_START_PATH
+          requestUrl.pathname !== STUDIO_NEW_REVIEW_START_PATH &&
+          requestUrl.pathname !== STUDIO_NEW_REVIEW_START_EVENTS_PATH
         ) {
           next();
           return;
@@ -239,6 +250,60 @@ function studioContextPlugin() {
               res.statusCode = 500;
               res.setHeader('Content-Type', 'application/json; charset=utf-8');
               res.end(JSON.stringify({ error: `Failed to load Studio preflight: ${message}` }));
+            });
+          return;
+        }
+
+        if (requestUrl.pathname === STUDIO_NEW_REVIEW_START_EVENTS_PATH) {
+          if (method !== 'GET') {
+            res.statusCode = 405;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Method not allowed' }));
+            return;
+          }
+
+          const policyMode = requestUrl.searchParams.get('policyMode');
+          if (policyMode !== 'auto' && policyMode !== 'review') {
+            res.statusCode = 400;
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            res.end(JSON.stringify({ error: 'Invalid policyMode. Use auto or review.' }));
+            return;
+          }
+
+          const expectedRepo = requestUrl.searchParams.get('repo');
+          const expectedBranch = requestUrl.searchParams.get('branch');
+          let streamOpen = true;
+          (req as unknown as { once: (event: 'close', listener: () => void) => void }).once('close', () => {
+            streamOpen = false;
+          });
+          res.statusCode = 200;
+          res.setHeader('Cache-Control', 'no-store');
+          res.setHeader('Connection', 'keep-alive');
+          res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
+          void startStudioNewReview({
+            policyMode,
+            repoRoot,
+            expectedRepo,
+            expectedBranch,
+            onEvent: async (event) => {
+              if (streamOpen) {
+                writeSseFrame(res as unknown as { write: (chunk: string) => void }, event);
+              }
+            },
+          })
+            .catch((error: unknown) => {
+              const message = error instanceof Error ? error.message : String(error);
+              if (streamOpen) {
+                writeSseFrame(res as unknown as { write: (chunk: string) => void }, {
+                  type: 'error',
+                  message: `Failed to start review: ${message}`,
+                });
+              }
+            })
+            .finally(() => {
+              if (streamOpen) {
+                res.end();
+              }
             });
           return;
         }

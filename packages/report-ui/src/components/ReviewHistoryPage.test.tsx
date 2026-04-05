@@ -3,9 +3,41 @@ import { MemoryRouter } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from '../App';
 
+class MockEventSource {
+  static instances: MockEventSource[] = [];
+
+  readonly url: string;
+  private listeners = new Map<string, Set<(event: MessageEvent<string>) => void>>();
+
+  constructor(url: string | URL) {
+    this.url = String(url);
+    MockEventSource.instances.push(this);
+  }
+
+  addEventListener(type: string, listener: (event: MessageEvent<string>) => void): void {
+    const existing = this.listeners.get(type) ?? new Set();
+    existing.add(listener);
+    this.listeners.set(type, existing);
+  }
+
+  removeEventListener(type: string, listener: (event: MessageEvent<string>) => void): void {
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  close(): void {
+    this.listeners.clear();
+  }
+
+  emit(type: string, data: unknown): void {
+    const event = { data: JSON.stringify(data) } as MessageEvent<string>;
+    this.listeners.get(type)?.forEach((listener) => listener(event));
+  }
+}
+
 describe('ReviewHistoryPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
+    MockEventSource.instances = [];
   });
 
   afterEach(() => {
@@ -35,6 +67,42 @@ describe('ReviewHistoryPage', () => {
 
     expect(await screen.findByText(/No reviews on this branch yet/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'New Review' })).toBeInTheDocument();
+  });
+
+  it('shows animated preflight progress copy while the new review panel is preparing', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/studio/context')) {
+        return {
+          ok: true,
+          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
+        };
+      }
+      if (url.includes('/api/studio/new-review/preflight')) {
+        return {
+          ok: true,
+          json: async () => new Promise(() => undefined),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ reviews: [] }),
+      };
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    await waitFor(() => expect(screen.getByRole('button', { name: 'New Review' })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole('button', { name: 'New Review' }));
+
+    expect(await screen.findByText('Preparing review target…')).toBeInTheDocument();
+    expect(screen.getByText('Resolving checkpoint')).toBeInTheDocument();
+    expect(screen.getByText('Reading session context')).toBeInTheDocument();
+    expect(screen.getByText('Loading related context')).toBeInTheDocument();
   });
 
   it('keeps current-branch history separate from browse-only branch history', async () => {
@@ -145,8 +213,8 @@ describe('ReviewHistoryPage', () => {
     expect(screen.getByRole('link', { name: /feature-x/i })).toBeInTheDocument();
   });
 
-  it('starts a review from the Home branch and lands on the branch-scoped report route', async () => {
-    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+  it('streams start progress before navigating to the branch-scoped report route', async () => {
+    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);
       if (url.includes('/api/studio/context')) {
         return {
@@ -168,23 +236,6 @@ describe('ReviewHistoryPage', () => {
               { code: 'checkpoint', label: 'Checkpoint target', ok: true, detail: 'Resolved checkpoint cp_123.' },
               { code: 'entire_context', label: 'Entire context', ok: true, detail: 'Context is readable.' },
             ],
-          }),
-        };
-      }
-      if (url.includes('/api/studio/new-review/start')) {
-        expect(init?.method).toBe('POST');
-        expect(JSON.parse(String(init?.body))).toEqual({
-          policyMode: 'auto',
-          repo: 'acme/web',
-          branch: 'main',
-        });
-        return {
-          ok: true,
-          json: async () => ({
-            reviewId: 'rev_new',
-            routePath: '/branches/acme%2Fweb/main/reports/rev_new',
-            policyMode: 'auto',
-            status: 'queued',
           }),
         };
       }
@@ -232,6 +283,7 @@ describe('ReviewHistoryPage', () => {
       };
     });
     vi.stubGlobal('fetch', fetchMock);
+    vi.stubGlobal('EventSource', MockEventSource as unknown as typeof EventSource);
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -241,16 +293,33 @@ describe('ReviewHistoryPage', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'New Review' })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: 'New Review' }));
+    expect(await screen.findByText('Ready for review')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'View technical details' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Start Review' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Start Review' }));
 
-    await waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith(
-        expect.stringContaining('/api/studio/new-review/start'),
-        expect.objectContaining({ method: 'POST' })
-      );
+    expect(await screen.findByText('Starting review…')).toBeInTheDocument();
+    expect(MockEventSource.instances[0]?.url).toContain('/api/studio/new-review/start/events?');
+    expect(MockEventSource.instances[0]?.url).toContain('policyMode=auto');
+
+    MockEventSource.instances[0]?.emit('message', {
+      type: 'stage',
+      stage: 'workspace',
+      state: 'active',
+      label: 'Preparing workspace',
+      detail: 'Creating an isolated workspace for the review target.',
+    });
+    expect(await screen.findByText('Preparing workspace')).toBeInTheDocument();
+
+    MockEventSource.instances[0]?.emit('message', {
+      type: 'completed',
+      reviewId: 'rev_new',
+      routePath: '/branches/acme%2Fweb/main/reports/rev_new',
+      policyMode: 'auto',
+      status: 'queued',
+      detail: 'Review queued. Opening the live results route.',
     });
 
-    expect(await screen.findByText('Viewing results for main.')).toBeInTheDocument();
+    expect(await screen.findByText('Branch main')).toBeInTheDocument();
   });
 });

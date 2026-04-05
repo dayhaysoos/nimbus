@@ -22,6 +22,7 @@ import {
   handleDeriveReviewPolicy,
   handleGetReview,
   handleGetReviewEvents,
+  handleRecoverReview,
   handleListReviews,
 } from './api/reviews.js';
 import {
@@ -156,6 +157,12 @@ export default {
     const reviewPolicyApproveMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)\/policy\/approve$/);
     if (reviewPolicyApproveMatch && request.method === 'POST') {
       return handleApproveReviewPolicy(reviewPolicyApproveMatch[1], request, env, authContext);
+    }
+
+    // Route: POST /api/reviews/:id/recover - Manually recover queued/running review
+    const reviewRecoverMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)\/recover$/);
+    if (reviewRecoverMatch && request.method === 'POST') {
+      return handleRecoverReview(reviewRecoverMatch[1], request, env, authContext);
     }
 
     // Route: GET /api/reviews/:id - Get review run

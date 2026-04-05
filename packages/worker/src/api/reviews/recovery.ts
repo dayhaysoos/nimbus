@@ -1,7 +1,9 @@
 import type { Env, ReviewRunStatus } from '../../types.js';
 import {
   appendReviewEvent,
+  getReviewRun,
   getReviewRunRequestPayload,
+  replaceReviewFindings,
   updateReviewRunStatus,
 } from '../../lib/db.js';
 import { createReviewQueueMessage } from '../../lib/review-queue.js';
@@ -183,4 +185,86 @@ export async function validateRecoveredReviewRetryAuth(
     },
     409
   );
+}
+
+export async function manuallyRecoverReviewRun(
+  env: Env,
+  reviewId: string,
+  reviewGithubToken: string | null,
+  openrouterApiKey: string | null
+): Promise<{ action: 'requeued' | 'failed'; review: Awaited<ReturnType<typeof getReviewRun>> }> {
+  const review = await getReviewRun(env.DB, reviewId);
+  if (!review) {
+    return { action: 'failed', review: null };
+  }
+
+  if (review.status !== 'queued' && review.status !== 'running') {
+    throw new Error(`Review is ${review.status}; only queued or running reviews can be recovered.`);
+  }
+
+  const maxRetries = parseMaxRetryCount(env.MAX_ATTEMPTS, 3);
+  const requestPayload = await getReviewRunRequestPayload(env.DB, reviewId);
+  const canRetryWithoutGithubToken = hasLocalCochangeProvenance(requestPayload);
+  const rawScopedToken = typeof reviewGithubToken === 'string' && reviewGithubToken.trim() ? reviewGithubToken.trim() : null;
+  const scopedGithubToken = rawScopedToken && isValidScopedGithubToken(rawScopedToken) ? rawScopedToken : null;
+  const canRequeue = review.attemptCount <= maxRetries && Boolean(env.REVIEWS_QUEUE) && (scopedGithubToken || canRetryWithoutGithubToken);
+
+  await replaceReviewFindings(env.DB, reviewId, []);
+
+  if (canRequeue) {
+    const message =
+      review.status === 'running'
+        ? 'Manual recovery requested while review was active.'
+        : 'Manual recovery requested while review was queued.';
+    await updateReviewRunStatus(env.DB, reviewId, 'queued', {
+      report: null,
+      markdownSummary: null,
+      startedAt: null,
+      finishedAt: null,
+      errorCode: 'retry_scheduled',
+      errorMessage: message,
+    });
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_retry_scheduled',
+      payload: {
+        attemptCount: review.attemptCount,
+        maxRetries,
+        reason: 'manual_recovery',
+        priorStatus: review.status,
+        authMode: scopedGithubToken ? 'scoped_request_token' : 'local_cochange_only',
+      },
+    });
+    await env.REVIEWS_QUEUE?.send(createReviewQueueMessage(reviewId, scopedGithubToken, openrouterApiKey));
+    return {
+      action: 'requeued',
+      review: await getReviewRun(env.DB, reviewId),
+    };
+  }
+
+  const missingTokenSuffix =
+    !scopedGithubToken && !canRetryWithoutGithubToken
+      ? ' No retry was scheduled because a fresh scoped GitHub token was not provided.'
+      : '';
+  const retriesExhaustedSuffix = review.attemptCount > maxRetries ? ' No retry was scheduled because max retry attempts were exhausted.' : '';
+  const message = `Manual recovery stopped this review after it appeared stuck in ${review.status} state.${missingTokenSuffix}${retriesExhaustedSuffix}`;
+  await updateReviewRunStatus(env.DB, reviewId, 'failed', {
+    report: null,
+    markdownSummary: null,
+    errorCode: 'review_execution_timeout',
+    errorMessage: message,
+  });
+  await appendReviewEvent(env.DB, {
+    reviewId,
+    eventType: 'review_failed',
+    payload: {
+      code: 'review_execution_timeout',
+      message,
+      reason: 'manual_recovery',
+    },
+  });
+  return {
+    action: 'failed',
+    review: await getReviewRun(env.DB, reviewId),
+  };
 }
