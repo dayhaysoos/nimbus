@@ -1,0 +1,84 @@
+I'm happy with these changes so far. Commit and push this code. We will be focusing on visuals/how the UI flows next
+
+---
+
+I'm on the intiial home page. Right now we have things that pop up without any nice animations that feel smooth. When you click new review, the start review panel just pops up instantly. And then it might be running the preflight check so there's a pause before you can commit to the review. I think there should be a smooth animation that reveals the panel. I think there should be an animtion for the preflight check as well. Maybe we can cycle through these logs to show them something is happening? What ideas would you have ◇  Resolved checkpoint 4ce32cae06c1 from c50a2275cc2e
+│
+◇  Entire session metadata is readable
+│
+◇  Resolved local co-change context from entire/checkpoints/v1 (5 sessions scanned)
+│
+◇  Co-change token check skipped (using local co-change context)
+│
+◇  Workspace created: ws_41tcw11d
+│
+◇  Deployment succeeded: dep_1cd4y7zs
+
+---
+
+why don't you make a first pass on your animation ideas and I'll let you nkow if I like them. ALso I want you to install framer motion as a library and use that for handling the animations.
+
+---
+
+I love the animation, but I do feel like what we display on the screen feels a little dense. I think after the preflight check animation, we can probably reduce it to a small ui that simply says ready for review. WHat ideas do you have to further minimize the UI to not overwhelm users ith visual data?
+
+---
+
+Go ahead and make those changes.
+
+---
+
+Okay this is better. The next thing. When we're on auto policy and we hit start review. Nothing really happens, the experience feels stale. We could use some information during the review process. Maybe perhaps we should switch to the review page and display streamed SSE events while the data gets sent and thereview is being done? I know in the future we wanted to stream the llm throught process with websockets. Not sure what the best move forward is right now.
+
+---
+
+Implement it next
+
+---
+
+Go ahead and contibue with that visual treatment. I have some feedback but will share after you're done
+
+---
+
+Something actually went wrong with the last review. It hung on the "Sending to model" task. We should have some kinda hard fail or a way to recover the process again
+
+---
+
+Okay so as far as the feedback goes. one, I think the top header takes up way too much real estate. It has the review ID as a title, recommendation: approve (don't really know what that means, some findings, the risk level, time to complete and updated...then it has the amount of critical high med or low fingings.. Then it has buttons to copy markdown, json, download markdown or download json which is cooll. This info is a nice-to-have but it covers sooo much space. THe most important info is the findings themselves and maybe any visuals that let them know something is happening. Also, I actually prefered when SSE logs looked like they were in the terminal with the Block background and white text. Perhaps we should bring that back. What do you think? Do you have any suggestings on top of my feedback?
+
+---
+
+implement it now
+
+---
+
+why did this happen? This is from the terminal: tsx src/index.ts "review" "studio"
+
+[dotenv@17.2.3] injecting env (5) from ../../.env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+┌  @dayhaysoos/nimbus
+│
+◆  Opened http://127.0.0.1:2000/
+│
+│  Serving report UI assets from /Users/nickdejesus/Code/nimbus/packages/cli/assets/report-ui on 127.0.0.1:2000 with API proxy target https://nimbus-worker.ndejesus1227.workers.dev
+│
+◇  Resolved checkpoint 4ce32cae06c1 from c50a2275cc2e
+│
+◇  Entire session metadata is readable
+│
+◇  Resolved local co-change context from entire/checkpoints/v1 (5 sessions scanned)
+│
+◇  Co-change token check skipped (using local co-change context)
+│
+◇  Workspace created: ws_4h2dwqtb
+│
+◇  Deployment succeeded: dep_9dux6knv
+│
+■  Report UI server stopped unexpectedly.
+
+---
+
+Hmm I don't know I feel like It's still way too much information. Or maybe the full summaries should be collapsible? I guess I just want a really strong/heavy emphasis on the review itself. I really like what's at the very to now, it's concise. I suppose this will look better when there are actual findings to review right? But in the state that there's no feedback, there's just too much visual clutterfor me.
+
+---
+
+Do that next

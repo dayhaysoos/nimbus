@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "1c50fb778db0",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 12,
+  "files_touched": [
+    "packages/cli/src/app/reviews/context.ts",
+    "packages/cli/src/app/reviews/studio-create.ts",
+    "packages/cli/src/app/reviews/ui-proxy.ts",
+    "packages/report-ui/package.json",
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/types.ts",
+    "packages/report-ui/vite.config.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/api/reviews/query.ts",
+    "packages/worker/src/api/reviews/recovery.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "pnpm-lock.yaml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/1c/50fb778db0/0/metadata.json",
+      "transcript": "/1c/50fb778db0/0/full.jsonl",
+      "content_hash": "/1c/50fb778db0/0/content_hash.txt",
+      "prompt": "/1c/50fb778db0/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 27379089,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 25691520,
+    "output_tokens": 131516,
+    "api_call_count": 212
+  }
+}

@@ -1,0 +1,53 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "1c50fb778db0",
+  "session_id": "019d5552-9f6b-7d43-9216-7a9c13d1c4f2",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-05T17:10:27.326286Z",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 12,
+  "files_touched": [
+    "packages/cli/src/app/reviews/context.ts",
+    "packages/cli/src/app/reviews/studio-create.ts",
+    "packages/cli/src/app/reviews/ui-proxy.ts",
+    "packages/report-ui/package.json",
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/types.ts",
+    "packages/report-ui/vite.config.ts",
+    "packages/worker/src/api/reviews.ts",
+    "packages/worker/src/api/reviews/query.ts",
+    "packages/worker/src/api/reviews/recovery.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "pnpm-lock.yaml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "5db6eb40ed7e",
+  "checkpoint_transcript_start": 1504,
+  "transcript_lines_at_start": 1504,
+  "token_usage": {
+    "input_tokens": 27379089,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 25691520,
+    "output_tokens": 131516,
+    "api_call_count": 212
+  },
+  "session_metrics": {
+    "turn_count": 37
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-05T17:10:24.291552Z",
+    "agent_lines": 1854,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1854,
+    "agent_percentage": 100
+  }
+}
