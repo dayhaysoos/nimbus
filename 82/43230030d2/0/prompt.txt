@@ -1,0 +1,59 @@
+we made a lot of changes. This next commit might be a good candidate for getting back code review findings. I want you to commit the unstaged changes. I will then run a review. Hopefully it comes back with findings. I also want to run a review to compare findings/results.
+
+---
+
+Looks like it doesn't have any findings yet again. don't do anything, I'm going to run the review command with you and see what you find
+
+---
+
+It looks like you've pulled up results no problem, but nimbus didn't catch these reviews. Why do you think that is? One thing to note, I believe I'm using sonnet for reviews. Perhaps we should switch to a gpt model that is comparable to sonnet. Don't do anything, tell me what you think. Why do you believe nimbus came back with nothing, what do you think will fix it?
+
+---
+
+There are a lot of things you proposed that feel way too heavy handed.We should not be introducing a "mode" just to handle reviewing. We need something generic enough to catch general coding problems. The list you gave is related specifically to this code base. I'm not opposed to making lists to catch certain things but it has to be something thorough enough to work everywhere. I don't want to introduce two passes. We need to confirm that even one pass is high quality before considering anything like that. Lowering the threshold for backend findings? Dou you mean make it easier to consider backend issues even if the changes are mostly frontend? I agree with running A/B tests. Maybe before doing anything else, we test with a high tier GPT model and see if nimbus gets back the results you have. One thing worth mentioning, you haven't considered updating the system prompt for the review itself. Consider that in your next reply when it comes to feedback.
+
+---
+
+yeah why don't you update the generic prompt to be sharper AND update the model to a GPT model that's comparable to sonnet or opus
+
+---
+
+it looks likeit didn't find anything again: 
+/
+feat/review-studio-slice-3-ux-polish
+/
+review_iqawmqpu
+Review review_iqawmqpu
+
+succeeded
+Branch feat/review-studio-slice-3-ux-polish
+No actionable findings identified
+This diff adds progress callbacks for CLI review context resolution, introduces a streaming Studio review start API over SSE, enhances the report UI (including live activity and recovery handling), and adjusts related tests and dependencies. Runtime behavior appears consistent and guarded; no concrete correctness or security defects are evident in the changed code paths. Overall risk: low. Further review passes are likely low-yield unless new requirements emerge or upstream APIs change.
+
+---
+
+Can you explain to me how max steps work? Is this a single llm call that is limited by the amount of steps that are allowed? So if there are 20 files, and only 5 steps, is it likely that 15 steps will be ignored or something?
+
+---
+
+hmm what would happen if we removed a max step limit? What would open router default to? What if someone submits a PR with 50 files (they shouldn't but we should still be able to provide value)
+
+---
+
+So it sounds like we don't really have a true harness for OpenRouter. We're doing this one-shot API call and hoping reviews come back high quality. You're saying we should define tools for the llm to use? What about multi-step orchestration?
+
+---
+
+hmm.. so it looks like we might actually pivot here into a whole new feature, a big one at that. I'm thinking about tackling this work in a separate session, once it's "complete" I'll come back here so I can run a review on the same checkpoint. It's going to be messy but I plan on doing this all within this current branch in the unstaged space just to preserve the checkpoint we're at. what do you think?
+
+---
+
+Give me a prompt to send to the next agent. Give it a break down of what we've done, where we're at, why we need this and the plan to build a real review harness with OpenRouter at the center. Also ask it to interview me for technical implementation details.
+
+---
+
+can you list me the 2 bugs that codex review found earlier so I can share with the other agent
+
+---
+
+can you give me the checkpoint id associated with the commit where those two bugs were found?

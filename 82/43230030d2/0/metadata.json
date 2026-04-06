@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "8243230030d2",
+  "session_id": "019d5552-9f6b-7d43-9216-7a9c13d1c4f2",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-06T18:22:47.963439Z",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 9,
+  "files_touched": [
+    "packages/worker/src/api/reviews/recovery.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-analysis/prompt.ts",
+    "packages/worker/src/lib/review-analysis/provider.ts",
+    "packages/worker/src/lib/review-analysis/tools.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/lib/review-runner.test.ts"
+  ],
+  "agent": "Codex",
+  "turn_id": "c60eec8d8a4c",
+  "token_usage": {
+    "input_tokens": 56370308,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 51743232,
+    "output_tokens": 302934,
+    "api_call_count": 486
+  },
+  "session_metrics": {
+    "turn_count": 11
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-06T18:22:44.428068Z",
+    "agent_lines": 0,
+    "human_added": 1126,
+    "human_modified": 254,
+    "human_removed": 0,
+    "total_committed": 1126,
+    "agent_percentage": 0
+  }
+}
