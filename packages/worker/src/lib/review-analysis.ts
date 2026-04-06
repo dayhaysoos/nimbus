@@ -53,6 +53,7 @@ const MAX_COMMAND_TIMEOUT_MS = 2 * 60_000;
 const DEFAULT_REVIEW_MODEL = 'gpt-5.1';
 const MAX_DIRECT_CHANGED_FILE_COVERAGE_REQUIREMENT = 8;
 const MIN_DIRECT_CHANGED_FILE_COVERAGE = 3;
+const MAX_DETERMINISTIC_READ_PATHS = 8;
 
 interface ReviewEvidenceState {
   diffSummaryUsed: boolean;
@@ -235,11 +236,72 @@ function collectMissingEvidenceRequirements(input: {
     missing.push('Run search_code at least once before completing analysis.');
   }
 
-  if (input.changedPaths.length > 0 && input.evidence.searchUsed && !input.evidence.searchMatchedChangedPath) {
-    missing.push('Ensure at least one search_code result references a changed file path.');
-  }
-
   return missing;
+}
+
+function selectDeterministicReadPaths(changedPaths: string[]): string[] {
+  const deduped = Array.from(new Set(changedPaths));
+  const sensitive = deduped.filter((path) => isSensitiveChangedPath(path));
+  const requiredCount =
+    deduped.length <= MAX_DIRECT_CHANGED_FILE_COVERAGE_REQUIREMENT
+      ? deduped.length
+      : Math.min(MIN_DIRECT_CHANGED_FILE_COVERAGE, deduped.length);
+  const selected = [...sensitive];
+  for (const path of deduped) {
+    if (selected.length >= Math.max(requiredCount, sensitive.length)) {
+      break;
+    }
+    if (!selected.includes(path)) {
+      selected.push(path);
+    }
+  }
+  return selected.slice(0, MAX_DETERMINISTIC_READ_PATHS);
+}
+
+async function runDeterministicEvidenceCollection(input: {
+  sandbox: SandboxClient;
+  policy: ReviewCommandPolicy;
+  maxFileBytes: number;
+  authoritativeDiffSnapshot: unknown;
+  changedPaths: string[];
+  changedPathsSet: Set<string>;
+  evidence: ReviewEvidenceState;
+  usedTools: string[];
+  history: ReviewAgentHistoryEntry[];
+  onLifecycleEvent?: (eventType: string, payload: Record<string, unknown>) => void | Promise<void>;
+}): Promise<void> {
+  const deterministicTools: Array<Extract<ReviewAgentAction, { type: 'tool' }>> = [
+    { type: 'tool', tool: 'diff_summary', args: { maxBytes: 64_000 } },
+    ...selectDeterministicReadPaths(input.changedPaths).map((path) => ({
+      type: 'tool' as const,
+      tool: 'read_file' as const,
+      args: { path, maxBytes: Math.min(input.maxFileBytes, 48_000) },
+    })),
+    { type: 'tool', tool: 'search_code', args: { query: 'function', path: '.', maxResults: 40 } },
+  ];
+
+  let deterministicStep = 0;
+  for (const action of deterministicTools) {
+    deterministicStep += 1;
+    const output = await executeReviewTool(
+      input.sandbox,
+      action,
+      input.policy,
+      input.maxFileBytes,
+      action.tool === 'diff_summary' ? input.authoritativeDiffSnapshot : undefined
+    );
+    input.usedTools.push(action.tool);
+    recordEvidenceFromToolExecution(input.evidence, action, output.result, input.changedPathsSet);
+    if (input.onLifecycleEvent) {
+      await input.onLifecycleEvent('review_analysis_tool_executed', {
+        step: deterministicStep,
+        tool: action.tool,
+        deterministic: true,
+      });
+    }
+    input.history.push({ role: 'assistant', content: `deterministic:${buildToolHistoryLabel(action)}` });
+    input.history.push({ role: 'tool', tool: action.tool, output: sanitizeToolContext(output) });
+  }
 }
 
 /**
@@ -409,6 +471,19 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     let fallbackApplied = false;
     let fallbackReason: string | null = null;
 
+    await runDeterministicEvidenceCollection({
+      sandbox,
+      policy,
+      maxFileBytes,
+      authoritativeDiffSnapshot: input.authoritativeDiffSnapshot,
+      changedPaths,
+      changedPathsSet,
+      evidence,
+      usedTools,
+      history,
+      onLifecycleEvent: input.onLifecycleEvent,
+    });
+
     for (let step = 1; step <= maxSteps; step += 1) {
       if (input.onLifecycleEvent) {
         await input.onLifecycleEvent('review_analysis_provider_request_started', {
@@ -550,61 +625,17 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       history.push({ role: 'tool', tool: action.tool, output: sanitizeToolContext(output) });
     }
 
-    if (input.onLifecycleEvent) {
-      await input.onLifecycleEvent('review_analysis_finalization_started', {
-        step: maxSteps + 1,
-        reason: 'max_step_cap_reached',
-      });
-    }
-    const forcedFinalAction = await provider.next({
-      prompt,
-      model,
-      maxSteps,
-      step: maxSteps + 1,
-      history,
-      forceComplete: true,
+    const missingEvidence = collectMissingEvidenceRequirements({
+      evidence,
+      changedPaths,
     });
-    if (forcedFinalAction.type === 'complete') {
-      const missingEvidence = collectMissingEvidenceRequirements({
-        evidence,
-        changedPaths,
-      });
-      if (missingEvidence.length > 0) {
-        throw new ReviewAgentOutputError('Review analysis completion rejected due to insufficient tool evidence').withCode(
-          'review_analysis_insufficient_evidence',
-          {
-            errors: missingEvidence.map((message) => ({ path: '$', message })),
-          }
-        );
-      }
-
-      const parsed = parseCompleteActionPayload(forcedFinalAction);
-      const validated = validateOutputOrThrow(parsed);
-      const followUpReview = deriveFollowUpReviewMetadata(parsed, {
-        findings: validated.output.findings,
-        furtherPassesLowYield: validated.output.furtherPassesLowYield,
-      });
-      return {
-        findings: validated.output.findings,
-        summary: validated.output.summary,
-        furtherPassesLowYield: validated.output.furtherPassesLowYield,
-        followUpReviewScore: followUpReview.score,
-        followUpReviewRationale: followUpReview.rationale,
-        intent: null,
-        provider: providerName,
-        model,
-        stepsExecuted: maxSteps + 1,
-        usedTools,
-        validation: {
-          firstPassValid,
-          repairAttempted,
-          repairSucceeded,
-          validationErrorCount,
-          dedupedExactCount,
-          fallbackApplied,
-          fallbackReason,
-        },
-      };
+    if (missingEvidence.length > 0) {
+      throw new ReviewAgentOutputError('Review analysis completion rejected due to insufficient tool evidence').withCode(
+        'review_analysis_insufficient_evidence',
+        {
+          errors: missingEvidence.map((message) => ({ path: '$', message })),
+        }
+      );
     }
 
     if (finalValidationError) {

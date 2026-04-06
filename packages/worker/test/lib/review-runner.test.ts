@@ -2078,6 +2078,7 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const originalFetch = globalThis.fetch;
     let secondCallBody: Record<string, unknown> | null = null;
+    let injectedToolAction = false;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -2097,7 +2098,8 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-      if (!Array.isArray(body.history) || body.history.length === 0) {
+      if (!injectedToolAction) {
+        injectedToolAction = true;
         return new Response(
           JSON.stringify({
             action: {
@@ -2187,6 +2189,7 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const originalFetch = globalThis.fetch;
     let secondCallBody: Record<string, unknown> | null = null;
+    let injectedToolAction = false;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -2206,10 +2209,11 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-      if (secondCallBody === null && Array.isArray(body.history) && body.history.length > 0) {
+      if (injectedToolAction && secondCallBody === null && Array.isArray(body.history) && body.history.length > 0) {
         secondCallBody = body;
       }
-      if (secondCallBody === null) {
+      if (!injectedToolAction) {
+        injectedToolAction = true;
         return new Response(
           JSON.stringify({
             action: {
@@ -2245,6 +2249,7 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const originalFetch = globalThis.fetch;
     let secondCallBody: Record<string, unknown> | null = null;
+    let injectedToolAction = false;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -2264,10 +2269,11 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-      if (secondCallBody === null && Array.isArray(body.history) && body.history.length > 0) {
+      if (injectedToolAction && secondCallBody === null && Array.isArray(body.history) && body.history.length > 0) {
         secondCallBody = body;
       }
-      if (secondCallBody === null) {
+      if (!injectedToolAction) {
+        injectedToolAction = true;
         return new Response(
           JSON.stringify({
             action: {
