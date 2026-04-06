@@ -268,8 +268,9 @@ async function runDeterministicEvidenceCollection(input: {
   evidence: ReviewEvidenceState;
   usedTools: string[];
   history: ReviewAgentHistoryEntry[];
+  maxDeterministicSteps: number;
   onLifecycleEvent?: (eventType: string, payload: Record<string, unknown>) => void | Promise<void>;
-}): Promise<void> {
+}): Promise<number> {
   const deterministicTools: Array<Extract<ReviewAgentAction, { type: 'tool' }>> = [
     { type: 'tool', tool: 'diff_summary', args: { maxBytes: 64_000 } },
     ...selectDeterministicReadPaths(input.changedPaths).map((path) => ({
@@ -282,6 +283,9 @@ async function runDeterministicEvidenceCollection(input: {
 
   let deterministicStep = 0;
   for (const action of deterministicTools) {
+    if (deterministicStep >= input.maxDeterministicSteps) {
+      break;
+    }
     deterministicStep += 1;
     const output = await executeReviewTool(
       input.sandbox,
@@ -302,6 +306,8 @@ async function runDeterministicEvidenceCollection(input: {
     input.history.push({ role: 'assistant', content: `deterministic:${buildToolHistoryLabel(action)}` });
     input.history.push({ role: 'tool', tool: action.tool, output: sanitizeToolContext(output) });
   }
+
+  return deterministicStep;
 }
 
 /**
@@ -471,7 +477,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     let fallbackApplied = false;
     let fallbackReason: string | null = null;
 
-    await runDeterministicEvidenceCollection({
+    const deterministicExecutedSteps = await runDeterministicEvidenceCollection({
       sandbox,
       policy,
       maxFileBytes,
@@ -481,10 +487,13 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       evidence,
       usedTools,
       history,
+      maxDeterministicSteps: Math.max(0, maxSteps - 1),
       onLifecycleEvent: input.onLifecycleEvent,
     });
 
-    for (let step = 1; step <= maxSteps; step += 1) {
+    const providerLoopMaxSteps = Math.max(1, maxSteps - deterministicExecutedSteps);
+
+    for (let step = 1; step <= providerLoopMaxSteps; step += 1) {
       if (input.onLifecycleEvent) {
         await input.onLifecycleEvent('review_analysis_provider_request_started', {
           step,
@@ -496,7 +505,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         });
       }
 
-      const action = await provider.next({ prompt, model, maxSteps, step, history });
+      const action = await provider.next({ prompt, model, maxSteps: providerLoopMaxSteps, step, history });
 
       if (input.onLifecycleEvent) {
         await input.onLifecycleEvent('review_analysis_step_planned', {
@@ -511,7 +520,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
           evidence,
           changedPaths,
         });
-        if (missingEvidence.length > 0 && step <= maxSteps) {
+        if (missingEvidence.length > 0 && step <= providerLoopMaxSteps) {
           if (input.onLifecycleEvent) {
             await input.onLifecycleEvent('review_analysis_evidence_insufficient', {
               step,
