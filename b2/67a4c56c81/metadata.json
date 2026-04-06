@@ -1,0 +1,20 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "b267a4c56c81",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-analysis/tools.ts",
+    "packages/worker/test/lib/review-analysis-tools.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/b2/67a4c56c81/0/metadata.json",
+      "transcript": "/b2/67a4c56c81/0/full.jsonl",
+      "content_hash": "/b2/67a4c56c81/0/content_hash.txt",
+      "prompt": ""
+    }
+  ]
+}
