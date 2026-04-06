@@ -51,6 +51,7 @@ function createReviewApiEnv(options?: {
     createdRequestPayload: Record<string, unknown> | null;
     createdReviewAccountId: string | null;
     queuedMessages: Array<Record<string, unknown>>;
+    findingsClearedCount: number;
   };
 } {
   const state = {
@@ -65,6 +66,7 @@ function createReviewApiEnv(options?: {
     createdRequestPayload: null as Record<string, unknown> | null,
     createdReviewAccountId: null as string | null,
     queuedMessages: [] as Array<Record<string, unknown>>,
+    findingsClearedCount: 0,
   };
 
   const env = {
@@ -312,6 +314,7 @@ function createReviewApiEnv(options?: {
             bind() {
               return {
                 async run() {
+                  state.findingsClearedCount += 1;
                   return { success: true, meta: { changes: 1 } };
                 },
               };
@@ -1349,6 +1352,7 @@ export async function runReviewApiTests(): Promise<void> {
     assert.equal(state.queueSendCount, 1);
     assert.equal(state.eventTypes.has('review_retry_scheduled'), true);
     assert.equal(state.reviewErrorCode, 'retry_scheduled');
+    assert.equal(state.findingsClearedCount, 1);
   }
 
   {
@@ -1376,6 +1380,7 @@ export async function runReviewApiTests(): Promise<void> {
     assert.equal(state.queueSendCount, 0);
     assert.equal(state.eventTypes.has('review_retry_scheduled'), false);
     assert.equal(state.reviewStatus, 'running');
+    assert.equal(state.findingsClearedCount, 0);
   }
 
   {
@@ -1400,6 +1405,7 @@ export async function runReviewApiTests(): Promise<void> {
     assert.equal(state.queueSendCount, 0);
     assert.equal(state.eventTypes.has('review_failed'), true);
     assert.equal(state.reviewErrorCode, 'review_execution_timeout');
+    assert.equal(state.findingsClearedCount, 0);
   }
 
   {
@@ -1441,6 +1447,7 @@ export async function runReviewApiTests(): Promise<void> {
     assert.equal(state.queueSendCount, 0);
     assert.equal(state.eventTypes.has('review_failed'), false);
     assert.equal(state.reviewStatus, 'queued');
+    assert.equal(state.findingsClearedCount, 0);
   }
 
   {

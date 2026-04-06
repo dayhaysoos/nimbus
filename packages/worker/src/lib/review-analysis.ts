@@ -11,7 +11,6 @@ import {
   stripCodeFences,
 } from './review-analysis/helpers.js';
 import {
-  buildFallbackAnalysisOutput,
   extractValidationErrors,
   isGenericProviderCompletionSummary,
   normalizeIntent,
@@ -38,18 +37,29 @@ import {
   sanitizeToolContext,
   snapshotInitialContext,
   validateReviewAgentAction,
+  type ReviewAgentAction,
   type ReviewCommandPolicy,
 } from './review-analysis/tools.js';
 import {
   CloudflareAgentSdkReviewProvider,
+  OpenRouterReviewProvider,
   type ReviewAgentHistoryEntry,
 } from './review-analysis/provider.js';
 
-const DEFAULT_REVIEW_AGENT_MAX_STEPS = 6;
+const DEFAULT_REVIEW_AGENT_MAX_STEPS = 8;
 const DEFAULT_REVIEW_MAX_FILE_BYTES = 48_000;
 const DEFAULT_REVIEW_MAX_OUTPUT_BYTES = 96_000;
 const MAX_COMMAND_TIMEOUT_MS = 2 * 60_000;
-const DEFAULT_REVIEW_MODEL = 'sonnet-4.5';
+const DEFAULT_REVIEW_MODEL = 'gpt-5.1';
+const MAX_DIRECT_CHANGED_FILE_COVERAGE_REQUIREMENT = 8;
+const MIN_DIRECT_CHANGED_FILE_COVERAGE = 3;
+
+interface ReviewEvidenceState {
+  diffSummaryUsed: boolean;
+  readChangedPaths: Set<string>;
+  searchUsed: boolean;
+  searchMatchedChangedPath: boolean;
+}
 
 export interface ReviewAgentIntent {
   goal: string | null;
@@ -61,6 +71,8 @@ export interface ReviewAgentAnalysisResult {
   findings: ReviewFinding[];
   summary: string;
   furtherPassesLowYield: boolean;
+  followUpReviewScore: 1 | 2 | 3;
+  followUpReviewRationale: string;
   intent: ReviewAgentIntent | null;
   provider: string;
   model: string;
@@ -77,6 +89,39 @@ export interface ReviewAgentAnalysisResult {
   };
 }
 
+function inferFollowUpReviewScore(output: { findings: ReviewFinding[]; furtherPassesLowYield: boolean }): 1 | 2 | 3 {
+  const severities = new Set(output.findings.map((finding) => finding.severity));
+  if (severities.has('critical') || severities.has('high')) {
+    return 3;
+  }
+  if (severities.has('medium')) {
+    return 2;
+  }
+  if (output.findings.length === 0) {
+    return output.furtherPassesLowYield ? 1 : 2;
+  }
+  return 1;
+}
+
+function deriveFollowUpReviewMetadata(
+  payload: unknown,
+  output: { findings: ReviewFinding[]; furtherPassesLowYield: boolean }
+): { score: 1 | 2 | 3; rationale: string } {
+  const record = asRecord(payload);
+  const rawScore = typeof record.followUpReviewScore === 'number' ? Math.floor(record.followUpReviewScore) : null;
+  const score = rawScore === 1 || rawScore === 2 || rawScore === 3 ? rawScore : inferFollowUpReviewScore(output);
+  const rationaleCandidate = typeof record.followUpReviewRationale === 'string' ? record.followUpReviewRationale.trim() : '';
+  const rationale =
+    rationaleCandidate ||
+    (score === 3
+      ? 'High-severity findings remain in changed paths; another review pass is required after fixes.'
+      : score === 2
+        ? 'At least one non-trivial issue remains; a follow-up review pass is recommended after fixes.'
+        : 'Findings are low severity or low signal; additional review passes are likely diminishing returns.');
+
+  return { score, rationale };
+}
+
 export interface ReviewSourceFileReadResult {
   path: string;
   content: string | null;
@@ -87,6 +132,113 @@ export interface ReviewSourceFileReadResult {
 
 export { extractJsonObject, stripCodeFences } from './review-analysis/helpers.js';
 export { setReviewAnalysisSandboxResolverForTests } from './review-analysis/sandbox.js';
+
+function parseCompleteActionPayload(action: Extract<ReviewAgentAction, { type: 'complete' }>): unknown {
+  if (action.finalOutput !== undefined && action.finalOutput !== null) {
+    return action.finalOutput;
+  }
+  if (typeof action.summary === 'string' && action.summary.trim()) {
+    return parseJsonOutput(action.summary);
+  }
+  throw new ReviewAgentOutputError('Review agent complete action was missing finalOutput payload').withCode(
+    'review_analysis_invalid_output',
+    {
+      errors: [{ path: '$.finalOutput', message: 'finalOutput is required for complete action' }],
+    }
+  );
+}
+
+function isSensitiveChangedPath(path: string): boolean {
+  return /(?:recovery|retry|queue|status|state|workflow|db|auth)/i.test(path);
+}
+
+function initializeEvidenceState(): ReviewEvidenceState {
+  return {
+    diffSummaryUsed: false,
+    readChangedPaths: new Set<string>(),
+    searchUsed: false,
+    searchMatchedChangedPath: false,
+  };
+}
+
+function normalizePath(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+  const trimmed = value.trim().replace(/\\/g, '/');
+  return trimmed ? trimmed : null;
+}
+
+function recordEvidenceFromToolExecution(
+  state: ReviewEvidenceState,
+  action: Extract<ReviewAgentAction, { type: 'tool' }>,
+  toolOutput: unknown,
+  changedPaths: Set<string>
+): void {
+  if (action.tool === 'diff_summary') {
+    state.diffSummaryUsed = true;
+    return;
+  }
+
+  if (action.tool === 'read_file') {
+    const readPath = normalizePath(action.args.path);
+    if (readPath && changedPaths.has(readPath)) {
+      state.readChangedPaths.add(readPath);
+    }
+    return;
+  }
+
+  if (action.tool === 'search_code') {
+    state.searchUsed = true;
+    const matches = Array.isArray(asRecord(toolOutput).matches) ? (asRecord(toolOutput).matches as unknown[]) : [];
+    state.searchMatchedChangedPath = matches.some((match) => {
+      const matchPath = normalizePath(asRecord(match).path);
+      return Boolean(matchPath && changedPaths.has(matchPath));
+    });
+  }
+}
+
+function collectMissingEvidenceRequirements(input: {
+  evidence: ReviewEvidenceState;
+  changedPaths: string[];
+}): string[] {
+  const missing: string[] = [];
+  const changedPathsSet = new Set(input.changedPaths);
+  const sensitiveChangedPaths = input.changedPaths.filter((path) => isSensitiveChangedPath(path));
+
+  if (input.changedPaths.length > 0 && !input.evidence.diffSummaryUsed) {
+    missing.push('Run diff_summary at least once before completing analysis.');
+  }
+
+  const requiredReadCoverage =
+    input.changedPaths.length <= MAX_DIRECT_CHANGED_FILE_COVERAGE_REQUIREMENT
+      ? input.changedPaths.length
+      : Math.min(MIN_DIRECT_CHANGED_FILE_COVERAGE, input.changedPaths.length);
+  if (input.evidence.readChangedPaths.size < requiredReadCoverage) {
+    missing.push(
+      `Read at least ${requiredReadCoverage} changed file(s) directly with read_file (currently ${input.evidence.readChangedPaths.size}).`
+    );
+  }
+
+  const missingSensitivePaths = sensitiveChangedPaths.filter((path) => !input.evidence.readChangedPaths.has(path));
+  if (missingSensitivePaths.length > 0) {
+    missing.push(`Read sensitive changed file(s) directly: ${missingSensitivePaths.join(', ')}.`);
+  }
+
+  if (input.changedPaths.length > 0 && !input.evidence.searchUsed) {
+    missing.push('Run search_code at least once before completing analysis.');
+  }
+
+  if (input.changedPaths.length > 0 && input.evidence.searchUsed && !input.evidence.searchMatchedChangedPath) {
+    missing.push('Ensure at least one search_code result references a changed file path.');
+  }
+
+  if (changedPathsSet.size === 0) {
+    return [];
+  }
+
+  return missing;
+}
 
 /**
  * Hydrates a temporary sandbox from a stored source bundle and reads a bounded set of files
@@ -172,7 +324,8 @@ export async function runWorkspaceDeploymentAgentAnalysis(
   }
 ): Promise<ReviewAgentAnalysisResult | null> {
   const endpoint = (env.AGENT_SDK_URL ?? '').trim();
-  if (!endpoint) {
+  const openrouterApiKey = readOptionalString(input.openrouterApiKey) ?? readOptionalString(env.OPENROUTER_API_KEY);
+  if (!endpoint && !openrouterApiKey) {
     return null;
   }
 
@@ -222,13 +375,16 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       });
     }
 
-    const provider = new CloudflareAgentSdkReviewProvider(
-      endpoint,
-      authToken,
-      env.AGENT_ENDPOINT ?? null,
-      readOptionalString(input.openrouterApiKey),
-      validateReviewAgentAction
-    );
+    const provider = openrouterApiKey
+      ? new OpenRouterReviewProvider(openrouterApiKey, validateReviewAgentAction, 'https://nimbus.dayhaysoos.com', 'Nimbus Review Harness')
+      : new CloudflareAgentSdkReviewProvider(
+          endpoint,
+          authToken,
+          env.AGENT_ENDPOINT ?? null,
+          readOptionalString(input.openrouterApiKey),
+          validateReviewAgentAction
+        );
+    const providerName = openrouterApiKey ? 'openrouter' : 'cloudflare_agents_sdk';
     const policy: ReviewCommandPolicy = {
       commandAllow: [],
       commandDeny: ['git ', 'rm ', 'npm ', 'pnpm ', 'yarn ', 'bun ', 'mkdir ', 'mv ', 'cp ', 'touch '],
@@ -239,6 +395,9 @@ export async function runWorkspaceDeploymentAgentAnalysis(
 
     const history: ReviewAgentHistoryEntry[] = [];
     const usedTools: string[] = [];
+    const changedPaths = input.reviewContext.retrieval.changedFiles.map((file) => file.path);
+    const changedPathsSet = new Set(changedPaths);
+    const evidence = initializeEvidenceState();
     let finalValidationError: ReviewAgentOutputError | null = null;
     let repairAttempted = false;
     let repairSucceeded = false;
@@ -255,46 +414,85 @@ export async function runWorkspaceDeploymentAgentAnalysis(
           endpointHost,
           endpointPath,
           hasAuthToken: Boolean(authToken),
-          hasOpenrouterApiKey: Boolean(readOptionalString(input.openrouterApiKey)),
+          hasOpenrouterApiKey: Boolean(openrouterApiKey),
+          provider: providerName,
         });
       }
 
-      const action = await provider.next({ prompt, model, maxSteps, step, history });
+        const action = await provider.next({ prompt, model, maxSteps, step, history });
 
-      if (action.type === 'final') {
         if (input.onLifecycleEvent) {
-          await input.onLifecycleEvent('review_analysis_model_output_received', { step, repairAttempted });
+          await input.onLifecycleEvent('review_analysis_step_planned', {
+            step,
+            type: action.type,
+            tool: action.type === 'tool' ? action.tool : null,
+          });
         }
-        try {
-          const parsed = parseJsonOutput(action.summary);
-          const validated = validateOutputOrThrow(parsed);
-          firstPassValid = !repairAttempted;
-          repairSucceeded = repairAttempted;
-          validationErrorCount = finalValidationError?.details && Array.isArray(finalValidationError.details.errors)
-            ? finalValidationError.details.errors.length
-            : 0;
-          dedupedExactCount = validated.dedupedExactCount;
-          if (repairAttempted && input.onLifecycleEvent) {
-            await input.onLifecycleEvent('review_analysis_repair_output_received', { validationErrorCount, valid: true });
+
+        if (action.type === 'complete') {
+          const missingEvidence = collectMissingEvidenceRequirements({
+            evidence,
+            changedPaths,
+          });
+          if (missingEvidence.length > 0 && step <= maxSteps) {
+            if (input.onLifecycleEvent) {
+              await input.onLifecycleEvent('review_analysis_evidence_insufficient', {
+                step,
+                missingEvidence,
+              });
+            }
+            history.push({
+              role: 'assistant',
+              content: 'analysis_guard: completion rejected due to insufficient evidence; gather required tool evidence before completing.',
+            });
+            history.push({
+              role: 'tool',
+              tool: 'analysis_guard',
+              output: {
+                ok: false,
+                missingEvidence,
+                changedFiles: changedPaths,
+              },
+            });
+            continue;
           }
+
+          if (input.onLifecycleEvent) {
+            await input.onLifecycleEvent('review_analysis_model_output_received', { step, repairAttempted });
+          }
+          try {
+            const parsed = parseCompleteActionPayload(action);
+            const validated = validateOutputOrThrow(parsed);
+            const followUpReview = deriveFollowUpReviewMetadata(parsed, {
+              findings: validated.output.findings,
+              furtherPassesLowYield: validated.output.furtherPassesLowYield,
+            });
+            firstPassValid = true;
+            repairAttempted = false;
+            repairSucceeded = false;
+            validationErrorCount = 0;
+           dedupedExactCount = validated.dedupedExactCount;
           if (input.onLifecycleEvent) {
             await input.onLifecycleEvent('review_analysis_output_validated', {
               firstPassValid,
-              repairAttempted,
-              repairSucceeded,
-              validationErrorCount,
-              findingCount: validated.output.findings.length,
-            });
-          }
-          return {
-            findings: validated.output.findings,
-            summary: validated.output.summary,
-            furtherPassesLowYield: validated.output.furtherPassesLowYield,
-            intent: null,
-            provider: 'cloudflare_agents_sdk',
-            model,
-            stepsExecuted: step,
-            usedTools,
+                repairAttempted,
+                repairSucceeded,
+                validationErrorCount,
+                findingCount: validated.output.findings.length,
+                followUpReviewScore: followUpReview.score,
+              });
+            }
+            return {
+              findings: validated.output.findings,
+              summary: validated.output.summary,
+              furtherPassesLowYield: validated.output.furtherPassesLowYield,
+              followUpReviewScore: followUpReview.score,
+              followUpReviewRationale: followUpReview.rationale,
+              intent: null,
+              provider: providerName,
+              model,
+              stepsExecuted: step,
+              usedTools,
             validation: {
               firstPassValid,
               repairAttempted,
@@ -306,17 +504,16 @@ export async function runWorkspaceDeploymentAgentAnalysis(
             },
           };
         } catch (error) {
-          if (error instanceof ReviewAgentOutputError && isGenericProviderCompletionSummary(action.summary)) {
+          if (error instanceof ReviewAgentOutputError && action.summary && isGenericProviderCompletionSummary(action.summary)) {
             error = new ReviewAgentOutputError(
-              'Review agent returned provider completion text instead of structured JSON; applying schema repair/fallback path'
+              'Review agent returned provider completion text instead of structured JSON output'
             ).withCode('review_analysis_invalid_output', {
               errors: [{ path: '$', message: 'Provider completion summary returned instead of required JSON payload.' }],
             });
           }
 
-          if (error instanceof ReviewAgentOutputError && !repairAttempted && step < maxSteps) {
+          if (error instanceof ReviewAgentOutputError) {
             finalValidationError = error;
-            repairAttempted = true;
             const validationErrors = extractValidationErrors(error);
             validationErrorCount = validationErrors.length;
             if (input.onLifecycleEvent) {
@@ -325,67 +522,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
                 validationErrorCount,
                 validationErrors,
               });
-              await input.onLifecycleEvent('review_analysis_repair_requested', { validationErrorCount });
             }
-            history.push({
-              role: 'assistant',
-              content: `final_output_validator: output failed schema; return corrected JSON only. Fix exactly these validation errors: ${JSON.stringify(validationErrors)}. Ensure summary is a plain string and furtherPassesLowYield is a JSON boolean true|false.`,
-            });
-            history.push({
-              role: 'tool',
-              tool: 'final_output_validator',
-              output: {
-                ok: false,
-                error: 'Output must match ReviewAnalysisOutputV2 exactly.',
-                requiredShape: {
-                  findings: [{ severity: 'info|low|medium|high|critical', category: 'security|logic|style|breaking-change', passType: 'single', locations: [{ filePath: 'string', startLine: 'number|null', endLine: 'number|null' }], description: 'string', suggestedFix: 'string', failingScenario: 'string', evidence: 'string', guardGap: 'string' }],
-                  summary: 'string',
-                  furtherPassesLowYield: 'boolean',
-                },
-                validationErrors,
-              },
-            });
-            continue;
-          }
-
-          if (error instanceof ReviewAgentOutputError && repairAttempted) {
-            finalValidationError = error;
-            const validationErrors = extractValidationErrors(error);
-            validationErrorCount = validationErrors.length;
-            if (input.onLifecycleEvent) {
-              await input.onLifecycleEvent('review_analysis_repair_output_received', {
-                validationErrorCount,
-                valid: false,
-                validationErrors,
-              });
-              await input.onLifecycleEvent('review_analysis_output_fallback_applied', {
-                reason: 'invalid_after_repair',
-                validationErrorCount,
-                validationErrors,
-              });
-            }
-            fallbackApplied = true;
-            fallbackReason = 'invalid_after_repair';
-            const fallback = buildFallbackAnalysisOutput(fallbackReason);
-            return {
-              findings: fallback.findings,
-              summary: fallback.summary,
-              furtherPassesLowYield: fallback.furtherPassesLowYield,
-              intent: null,
-              provider: 'cloudflare_agents_sdk',
-              model,
-              stepsExecuted: step,
-              usedTools,
-              validation: {
-                firstPassValid: false,
-                repairAttempted: true,
-                repairSucceeded: false,
-                validationErrorCount,
-                dedupedExactCount,
-                fallbackApplied,
-                fallbackReason,
-              },
-            };
           }
 
           throw error;
@@ -400,8 +537,72 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         action.tool === 'diff_summary' ? input.authoritativeDiffSnapshot : undefined
       );
       usedTools.push(action.tool);
+      recordEvidenceFromToolExecution(evidence, action, output.result, changedPathsSet);
+      if (input.onLifecycleEvent) {
+        await input.onLifecycleEvent('review_analysis_tool_executed', {
+          step,
+          tool: action.tool,
+        });
+      }
       history.push({ role: 'assistant', content: buildToolHistoryLabel(action) });
       history.push({ role: 'tool', tool: action.tool, output: sanitizeToolContext(output) });
+    }
+
+    if (input.onLifecycleEvent) {
+      await input.onLifecycleEvent('review_analysis_finalization_started', {
+        step: maxSteps + 1,
+        reason: 'max_step_cap_reached',
+      });
+    }
+    const forcedFinalAction = await provider.next({
+      prompt,
+      model,
+      maxSteps,
+      step: maxSteps + 1,
+      history,
+      forceComplete: true,
+    });
+    if (forcedFinalAction.type === 'complete') {
+      const missingEvidence = collectMissingEvidenceRequirements({
+        evidence,
+        changedPaths,
+      });
+      if (missingEvidence.length > 0) {
+        throw new ReviewAgentOutputError('Review analysis completion rejected due to insufficient tool evidence').withCode(
+          'review_analysis_insufficient_evidence',
+          {
+            errors: missingEvidence.map((message) => ({ path: '$', message })),
+          }
+        );
+      }
+
+      const parsed = parseCompleteActionPayload(forcedFinalAction);
+      const validated = validateOutputOrThrow(parsed);
+      const followUpReview = deriveFollowUpReviewMetadata(parsed, {
+        findings: validated.output.findings,
+        furtherPassesLowYield: validated.output.furtherPassesLowYield,
+      });
+      return {
+        findings: validated.output.findings,
+        summary: validated.output.summary,
+        furtherPassesLowYield: validated.output.furtherPassesLowYield,
+        followUpReviewScore: followUpReview.score,
+        followUpReviewRationale: followUpReview.rationale,
+        intent: null,
+        provider: providerName,
+        model,
+        stepsExecuted: maxSteps + 1,
+        usedTools,
+        validation: {
+          firstPassValid,
+          repairAttempted,
+          repairSucceeded,
+          validationErrorCount,
+          dedupedExactCount,
+          fallbackApplied,
+          fallbackReason,
+        },
+      };
     }
 
     if (finalValidationError) {

@@ -10,10 +10,16 @@ const MAX_COMMAND_TIMEOUT_MS = 2 * 60_000;
 export type ReviewAgentAction =
   | { type: 'tool'; tool: 'list_files'; args: { path?: string } }
   | { type: 'tool'; tool: 'read_file'; args: { path: string; maxBytes?: number } }
+  | {
+      type: 'tool';
+      tool: 'search_code';
+      args: { query: string; path?: string; maxResults?: number; maxBytesPerFile?: number; caseSensitive?: boolean };
+    }
   | { type: 'tool'; tool: 'write_file'; args: { path: string; content?: string } }
   | { type: 'tool'; tool: 'run_command'; args: { command: string; timeoutMs?: number } }
   | { type: 'tool'; tool: 'diff_summary'; args: { maxBytes?: number } }
-  | { type: 'final'; summary: string };
+  | { type: 'complete'; finalOutput: unknown; summary?: string }
+  | { type: 'complete'; summary: string; finalOutput?: unknown };
 
 export interface ReviewCommandPolicy {
   commandAllow: string[];
@@ -121,6 +127,81 @@ print(json.dumps({'content': text, 'truncated': truncated, 'bytes': len(data)}))
 PY`;
 }
 
+function buildSearchCodeCommand(input: {
+  absolutePath: string;
+  query: string;
+  maxResults: number;
+  maxBytesPerFile: number;
+  rootPath: string;
+  caseSensitive: boolean;
+}): string {
+  return `python3 - ${shellQuote(input.absolutePath)} ${shellQuote(input.query)} ${input.maxResults} ${input.maxBytesPerFile} ${shellQuote(
+    input.rootPath
+  )} ${input.caseSensitive ? '1' : '0'} <<'PY'
+import json
+import os
+import sys
+
+target_path = sys.argv[1]
+query = sys.argv[2]
+max_results = int(sys.argv[3])
+max_bytes_per_file = int(sys.argv[4])
+root = sys.argv[5]
+case_sensitive = sys.argv[6] == '1'
+
+root_real = os.path.realpath(root)
+target_real = os.path.realpath(target_path)
+if os.path.commonpath([root_real, target_real]) != root_real:
+    print(json.dumps({'error': 'path_escape'}))
+    raise SystemExit(0)
+if not os.path.exists(target_real):
+    print(json.dumps({'error': 'not_found'}))
+    raise SystemExit(0)
+
+skip_dirs = {'.git', 'node_modules', '.next', 'dist', 'build', '.cache'}
+matches = []
+scanned_files = 0
+
+def process_file(path):
+    global scanned_files
+    scanned_files += 1
+    try:
+        with open(path, 'rb') as f:
+            data = f.read(max_bytes_per_file)
+        text = data.decode('utf-8', errors='replace')
+    except Exception:
+        return
+
+    haystack = text if case_sensitive else text.lower()
+    needle = query if case_sensitive else query.lower()
+    if not needle:
+        return
+
+    for line_number, line in enumerate(text.splitlines(), start=1):
+        line_haystack = line if case_sensitive else line.lower()
+        if needle in line_haystack:
+            matches.append({'path': os.path.relpath(path, root_real).replace('\\\\', '/'), 'lineNumber': line_number, 'line': line.strip()[:240]})
+            if len(matches) >= max_results:
+                return
+
+if os.path.isfile(target_real):
+    process_file(target_real)
+else:
+    for current_root, dirs, files in os.walk(target_real):
+        dirs[:] = [d for d in dirs if d not in skip_dirs and not d.startswith('.')]
+        for file_name in files:
+            if len(matches) >= max_results:
+                break
+            if file_name.startswith('.'):
+                continue
+            process_file(os.path.join(current_root, file_name))
+        if len(matches) >= max_results:
+            break
+
+print(json.dumps({'query': query, 'matches': matches, 'scannedFiles': scanned_files, 'truncated': len(matches) >= max_results}))
+PY`;
+}
+
 function assertWorkspacePath(pathInput: string, policy: ReviewCommandPolicy): string {
   const trimmed = (pathInput || '.').trim();
   const normalized = trimmed.replace(/\\/g, '/');
@@ -166,10 +247,39 @@ export async function executeReviewTool(
     return { request: { path: action.args.path, maxBytes }, result: JSON.parse(output.stdout || '{}') };
   }
 
+  if (action.tool === 'search_code') {
+    const absolutePath = assertWorkspacePath(action.args.path ?? '.', policy);
+    const query = action.args.query.trim();
+    const maxResults =
+      typeof action.args.maxResults === 'number' && Number.isFinite(action.args.maxResults)
+        ? Math.max(1, Math.min(200, Math.floor(action.args.maxResults)))
+        : 40;
+    const maxBytesPerFile =
+      typeof action.args.maxBytesPerFile === 'number' && Number.isFinite(action.args.maxBytesPerFile)
+        ? Math.max(1_024, Math.min(maxFileBytes, Math.floor(action.args.maxBytesPerFile)))
+        : Math.min(maxFileBytes, 24_000);
+    const caseSensitive = action.args.caseSensitive === true;
+    const output = await runSandboxCommand(
+      sandbox,
+      buildSearchCodeCommand({
+        absolutePath,
+        query,
+        maxResults,
+        maxBytesPerFile,
+        rootPath: policy.rootPath,
+        caseSensitive,
+      })
+    );
+    return {
+      request: { query, path: action.args.path ?? '.', maxResults, maxBytesPerFile, caseSensitive },
+      result: JSON.parse(output.stdout || '{}'),
+    };
+  }
+
   if (action.tool === 'run_command') {
     return {
       request: { command: action.args.command, timeoutMs: action.args.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS },
-      result: { error: 'run_command is disabled in review mode; use list_files, read_file, or diff_summary only', disabled: true },
+      result: { error: 'run_command is disabled in review mode; use list_files, read_file, search_code, or diff_summary only', disabled: true },
     };
   }
 
@@ -198,26 +308,51 @@ export async function executeReviewTool(
  */
 export function validateReviewAgentAction(action: unknown): ReviewAgentAction {
   const record = asRecord(action);
-  if (record.type === 'final') {
+  if (record.type === 'complete' || record.type === 'final') {
+    if (record.finalOutput !== undefined && record.finalOutput !== null) {
+      const summary = typeof record.summary === 'string' ? record.summary.trim() : undefined;
+      return { type: 'complete', finalOutput: record.finalOutput, summary };
+    }
     const summary = typeof record.summary === 'string' ? record.summary.trim() : '';
     if (!summary) {
-      throw new ReviewPolicyError('Final action requires a non-empty summary');
+      throw new ReviewPolicyError('Complete action requires finalOutput or a non-empty summary');
     }
-    return { type: 'final', summary };
+    return { type: 'complete', summary };
   }
   if (record.type !== 'tool') {
-    throw new ReviewPolicyError('Action type must be tool or final');
+    throw new ReviewPolicyError('Action type must be tool or complete');
   }
   const tool = typeof record.tool === 'string' ? record.tool : '';
   const args = asRecord(record.args);
+  const optionalString = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
+  const optionalNumber = (value: unknown): number | undefined => (typeof value === 'number' && Number.isFinite(value) ? value : undefined);
+  const optionalBoolean = (value: unknown): boolean | undefined => (typeof value === 'boolean' ? value : undefined);
   switch (tool) {
     case 'list_files':
-      if (args.path !== undefined && typeof args.path !== 'string') throw new ReviewPolicyError('list_files.path must be a string when provided');
-      return { type: 'tool', tool, args };
+      if (args.path !== undefined && args.path !== null && typeof args.path !== 'string') throw new ReviewPolicyError('list_files.path must be a string when provided');
+      return { type: 'tool', tool, args: { path: optionalString(args.path) } };
     case 'read_file':
       if (typeof args.path !== 'string' || !args.path.trim()) throw new ReviewPolicyError('read_file.path is required');
-      if (args.maxBytes !== undefined && (typeof args.maxBytes !== 'number' || !Number.isFinite(args.maxBytes))) throw new ReviewPolicyError('read_file.maxBytes must be a number when provided');
-      return { type: 'tool', tool, args: { path: args.path, maxBytes: args.maxBytes as number | undefined } };
+      if (args.maxBytes !== undefined && args.maxBytes !== null && (typeof args.maxBytes !== 'number' || !Number.isFinite(args.maxBytes))) throw new ReviewPolicyError('read_file.maxBytes must be a number when provided');
+      return { type: 'tool', tool, args: { path: args.path, maxBytes: optionalNumber(args.maxBytes) } };
+    case 'search_code': {
+      if (typeof args.query !== 'string' || !args.query.trim()) throw new ReviewPolicyError('search_code.query is required');
+      if (args.path !== undefined && args.path !== null && (typeof args.path !== 'string' || !args.path.trim())) throw new ReviewPolicyError('search_code.path must be a non-empty string when provided');
+      if (args.maxResults !== undefined && args.maxResults !== null && (typeof args.maxResults !== 'number' || !Number.isFinite(args.maxResults))) throw new ReviewPolicyError('search_code.maxResults must be a number when provided');
+      if (args.maxBytesPerFile !== undefined && args.maxBytesPerFile !== null && (typeof args.maxBytesPerFile !== 'number' || !Number.isFinite(args.maxBytesPerFile))) throw new ReviewPolicyError('search_code.maxBytesPerFile must be a number when provided');
+      if (args.caseSensitive !== undefined && args.caseSensitive !== null && typeof args.caseSensitive !== 'boolean') throw new ReviewPolicyError('search_code.caseSensitive must be a boolean when provided');
+      return {
+        type: 'tool',
+        tool,
+        args: {
+          query: args.query,
+          path: optionalString(args.path),
+          maxResults: optionalNumber(args.maxResults),
+          maxBytesPerFile: optionalNumber(args.maxBytesPerFile),
+          caseSensitive: optionalBoolean(args.caseSensitive),
+        },
+      };
+    }
     case 'write_file':
       if (typeof args.path !== 'string' || !args.path.trim()) throw new ReviewPolicyError('write_file.path is required');
       return { type: 'tool', tool, args: { path: args.path, content: typeof args.content === 'string' ? args.content : undefined } };

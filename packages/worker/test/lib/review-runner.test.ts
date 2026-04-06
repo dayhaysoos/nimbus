@@ -853,8 +853,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      const fallbackEvent = state.events.find((event) => event.eventType === 'review_analysis_output_fallback_applied');
-      const serialized = JSON.stringify(fallbackEvent?.payload ?? {});
+      const invalidOutputEvent = state.events.find((event) => event.eventType === 'review_analysis_output_validation_failed');
+      const serialized = JSON.stringify(invalidOutputEvent?.payload ?? {});
       assert.equal(serialized.includes('supersecret'), false);
       assert.equal(serialized.includes('ghp_abcdefghijklmnopqrstuvwxyz12'), false);
       assert.equal(serialized.includes('api_key=xyz'), false);
@@ -909,7 +909,7 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
-    let capturedOpenrouterHeader: string | null = null;
+    let capturedAuthHeader: string | null = null;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -929,13 +929,19 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const headers = new Headers(init?.headers);
-      capturedOpenrouterHeader = headers.get('X-Openrouter-Api-Key');
+      capturedAuthHeader = headers.get('Authorization');
       return new Response(
         JSON.stringify({
-          action: {
-            type: 'final',
-            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
-          },
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  type: 'final',
+                  summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+                }),
+              },
+            },
+          ],
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
@@ -944,7 +950,7 @@ export async function runReviewRunnerTests(): Promise<void> {
     try {
       const { env } = createReviewRunnerEnv({ envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' } });
       await processReviewRun(env as never, 'rev_abcd1234', { openrouterApiKey: 'or_request_key_123' });
-      assert.equal(capturedOpenrouterHeader, 'or_request_key_123');
+      assert.equal(capturedAuthHeader, 'Bearer or_request_key_123');
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1756,8 +1762,8 @@ export async function runReviewRunnerTests(): Promise<void> {
         envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status === 'succeeded' || state.status === 'failed', true);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
+      assert.equal(state.status, 'failed');
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1813,11 +1819,12 @@ export async function runReviewRunnerTests(): Promise<void> {
         envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status, 'succeeded');
-      assert.equal(fetchCalls, 2);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_requested'), true);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_output_received'), true);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), true);
+      assert.equal(state.status, 'failed');
+      assert.equal(fetchCalls, 1);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_requested'), false);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_output_received'), false);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1865,8 +1872,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      assert.equal(genericCompletionFetchCalls, 2);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
+      assert.equal(genericCompletionFetchCalls, 1);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -2391,7 +2398,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       assert.equal(firstPrompt.includes('Authoritative deployed diff snapshot'), true);
       assert.equal(firstPrompt.includes('const deployed = true'), true);
       assert.equal(firstPrompt.length < 50000, true);
-      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 7000, true);
+      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 10000, true);
       assert.equal(JSON.stringify(secondCallBody ?? {}).includes('const deployed = true'), true);
     } finally {
       globalThis.fetch = originalFetch;
@@ -2515,7 +2522,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;

@@ -220,9 +220,8 @@ export async function manuallyRecoverReviewRun(
 
   const canRequeue = review.attemptCount <= maxRetries && Boolean(env.REVIEWS_QUEUE) && (scopedGithubToken || canRetryWithoutGithubToken);
 
-  await replaceReviewFindings(env.DB, reviewId, []);
-
   if (canRequeue) {
+    await replaceReviewFindings(env.DB, reviewId, []);
     const message = 'Manual recovery requested while review was queued.';
     await updateReviewRunStatus(env.DB, reviewId, 'queued', {
       report: null,
