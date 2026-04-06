@@ -66,7 +66,43 @@ const reviewAgentActionJsonSchema = {
         anyOf: [
           {
             type: 'object',
-            additionalProperties: true,
+            additionalProperties: false,
+            properties: {
+              findings: {
+                type: 'array',
+                items: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    severity: { type: 'string', enum: ['info', 'low', 'medium', 'high', 'critical'] },
+                    category: { type: 'string', enum: ['security', 'logic', 'style', 'breaking-change'] },
+                    passType: { type: 'string', enum: ['single'] },
+                    locations: {
+                      type: 'array',
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        properties: {
+                          filePath: { type: 'string' },
+                          startLine: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+                          endLine: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+                        },
+                        required: ['filePath', 'startLine', 'endLine'],
+                      },
+                    },
+                    description: { type: 'string' },
+                    suggestedFix: { type: 'string' },
+                    failingScenario: { type: 'string' },
+                    evidence: { type: 'string' },
+                    guardGap: { type: 'string' },
+                  },
+                  required: ['severity', 'category', 'passType', 'locations', 'description', 'suggestedFix', 'failingScenario', 'evidence', 'guardGap'],
+                },
+              },
+              summary: { type: 'string' },
+              furtherPassesLowYield: { type: 'boolean' },
+            },
+            required: ['findings', 'summary', 'furtherPassesLowYield'],
           },
           { type: 'null' },
         ],
@@ -126,9 +162,6 @@ function buildOpenRouterStepPrompt(input: {
       : '- If critical evidence is still missing, request one targeted tool call; otherwise finish.',
     '- For type="complete", set finalOutput to a JSON object payload for ReviewAnalysisOutputV2.',
     '- For type="complete", set summary to null or a short plain-text note (never structured payload).',
-    '- You may include optional model-self-assessment keys inside complete JSON:',
-    '  - followUpReviewScore: 1|2|3',
-    '  - followUpReviewRationale: short string',
     '- Return ONLY a valid action object matching the response schema.',
     '',
     `Prior loop history JSON: ${buildHistoryForPrompt(input.history)}`,
