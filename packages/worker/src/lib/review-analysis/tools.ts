@@ -250,6 +250,12 @@ export async function executeReviewTool(
   if (action.tool === 'search_code') {
     const absolutePath = assertWorkspacePath(action.args.path ?? '.', policy);
     const query = action.args.query.trim();
+    if (!query) {
+      return {
+        request: { query, path: action.args.path ?? '.', maxResults: action.args.maxResults, maxBytesPerFile: action.args.maxBytesPerFile },
+        result: { error: 'search_code.query is required', matches: [], scannedFiles: 0, truncated: false },
+      };
+    }
     const maxResults =
       typeof action.args.maxResults === 'number' && Number.isFinite(action.args.maxResults)
         ? Math.max(1, Math.min(200, Math.floor(action.args.maxResults)))

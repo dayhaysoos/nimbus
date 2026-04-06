@@ -140,10 +140,17 @@ function parseCompleteActionPayload(action: Extract<ReviewAgentAction, { type: '
   if (typeof action.summary === 'string' && action.summary.trim()) {
     return parseJsonOutput(action.summary);
   }
-  throw new ReviewAgentOutputError('Review agent complete action was missing finalOutput payload').withCode(
+  throw new ReviewAgentOutputError(
+    'Review agent complete action requires finalOutput or a summary containing valid JSON payload'
+  ).withCode(
     'review_analysis_invalid_output',
     {
-      errors: [{ path: '$.finalOutput', message: 'finalOutput is required for complete action' }],
+      errors: [
+        {
+          path: '$',
+          message: 'Complete action must include finalOutput or summary containing valid JSON payload.',
+        },
+      ],
     }
   );
 }
@@ -203,7 +210,6 @@ function collectMissingEvidenceRequirements(input: {
   changedPaths: string[];
 }): string[] {
   const missing: string[] = [];
-  const changedPathsSet = new Set(input.changedPaths);
   const sensitiveChangedPaths = input.changedPaths.filter((path) => isSensitiveChangedPath(path));
 
   if (input.changedPaths.length > 0 && !input.evidence.diffSummaryUsed) {
@@ -231,10 +237,6 @@ function collectMissingEvidenceRequirements(input: {
 
   if (input.changedPaths.length > 0 && input.evidence.searchUsed && !input.evidence.searchMatchedChangedPath) {
     missing.push('Ensure at least one search_code result references a changed file path.');
-  }
-
-  if (changedPathsSet.size === 0) {
-    return [];
   }
 
   return missing;
@@ -419,80 +421,80 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         });
       }
 
-        const action = await provider.next({ prompt, model, maxSteps, step, history });
+      const action = await provider.next({ prompt, model, maxSteps, step, history });
 
-        if (input.onLifecycleEvent) {
-          await input.onLifecycleEvent('review_analysis_step_planned', {
-            step,
-            type: action.type,
-            tool: action.type === 'tool' ? action.tool : null,
+      if (input.onLifecycleEvent) {
+        await input.onLifecycleEvent('review_analysis_step_planned', {
+          step,
+          type: action.type,
+          tool: action.type === 'tool' ? action.tool : null,
+        });
+      }
+
+      if (action.type === 'complete') {
+        const missingEvidence = collectMissingEvidenceRequirements({
+          evidence,
+          changedPaths,
+        });
+        if (missingEvidence.length > 0 && step <= maxSteps) {
+          if (input.onLifecycleEvent) {
+            await input.onLifecycleEvent('review_analysis_evidence_insufficient', {
+              step,
+              missingEvidence,
+            });
+          }
+          history.push({
+            role: 'assistant',
+            content: 'analysis_guard: completion rejected due to insufficient evidence; gather required tool evidence before completing.',
           });
+          history.push({
+            role: 'tool',
+            tool: 'analysis_guard',
+            output: {
+              ok: false,
+              missingEvidence,
+              changedFiles: changedPaths,
+            },
+          });
+          continue;
         }
 
-        if (action.type === 'complete') {
-          const missingEvidence = collectMissingEvidenceRequirements({
-            evidence,
-            changedPaths,
+        if (input.onLifecycleEvent) {
+          await input.onLifecycleEvent('review_analysis_model_output_received', { step, repairAttempted });
+        }
+        try {
+          const parsed = parseCompleteActionPayload(action);
+          const validated = validateOutputOrThrow(parsed);
+          const followUpReview = deriveFollowUpReviewMetadata(parsed, {
+            findings: validated.output.findings,
+            furtherPassesLowYield: validated.output.furtherPassesLowYield,
           });
-          if (missingEvidence.length > 0 && step <= maxSteps) {
-            if (input.onLifecycleEvent) {
-              await input.onLifecycleEvent('review_analysis_evidence_insufficient', {
-                step,
-                missingEvidence,
-              });
-            }
-            history.push({
-              role: 'assistant',
-              content: 'analysis_guard: completion rejected due to insufficient evidence; gather required tool evidence before completing.',
-            });
-            history.push({
-              role: 'tool',
-              tool: 'analysis_guard',
-              output: {
-                ok: false,
-                missingEvidence,
-                changedFiles: changedPaths,
-              },
-            });
-            continue;
-          }
-
-          if (input.onLifecycleEvent) {
-            await input.onLifecycleEvent('review_analysis_model_output_received', { step, repairAttempted });
-          }
-          try {
-            const parsed = parseCompleteActionPayload(action);
-            const validated = validateOutputOrThrow(parsed);
-            const followUpReview = deriveFollowUpReviewMetadata(parsed, {
-              findings: validated.output.findings,
-              furtherPassesLowYield: validated.output.furtherPassesLowYield,
-            });
-            firstPassValid = true;
-            repairAttempted = false;
-            repairSucceeded = false;
-            validationErrorCount = 0;
-           dedupedExactCount = validated.dedupedExactCount;
+          firstPassValid = true;
+          repairAttempted = false;
+          repairSucceeded = false;
+          validationErrorCount = 0;
+          dedupedExactCount = validated.dedupedExactCount;
           if (input.onLifecycleEvent) {
             await input.onLifecycleEvent('review_analysis_output_validated', {
               firstPassValid,
-                repairAttempted,
-                repairSucceeded,
-                validationErrorCount,
-                findingCount: validated.output.findings.length,
-                followUpReviewScore: followUpReview.score,
-              });
-            }
-            return {
-              findings: validated.output.findings,
-              summary: validated.output.summary,
-              furtherPassesLowYield: validated.output.furtherPassesLowYield,
+              repairAttempted,
+              repairSucceeded,
+              validationErrorCount,
+              findingCount: validated.output.findings.length,
               followUpReviewScore: followUpReview.score,
-              followUpReviewRationale: followUpReview.rationale,
-              intent: null,
-              provider: providerName,
-              model,
-              stepsExecuted: step,
-              usedTools,
+            });
+          }
+          return {
+            findings: validated.output.findings,
+            summary: validated.output.summary,
+            furtherPassesLowYield: validated.output.furtherPassesLowYield,
+            followUpReviewScore: followUpReview.score,
+            followUpReviewRationale: followUpReview.rationale,
+            intent: null,
+            provider: providerName,
+            model,
+            stepsExecuted: step,
+            usedTools,
             validation: {
               firstPassValid,
               repairAttempted,
