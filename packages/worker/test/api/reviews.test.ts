@@ -1323,7 +1323,7 @@ export async function runReviewApiTests(): Promise<void> {
   {
     const { env, state } = createReviewApiEnv({
       reviewExists: true,
-      initialReviewStatus: 'running',
+      initialReviewStatus: 'queued',
       reviewAttemptCount: 1,
       storedReviewRequestPayload: {
         provenance: {
@@ -1355,6 +1355,33 @@ export async function runReviewApiTests(): Promise<void> {
     const { env, state } = createReviewApiEnv({
       reviewExists: true,
       initialReviewStatus: 'running',
+      reviewAttemptCount: 1,
+      storedReviewRequestPayload: {
+        provenance: {
+          localCochange: {
+            source: 'local_git',
+            relatedByChangedPath: {
+              'src/app.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+            },
+          },
+        },
+      },
+    });
+    const response = await handleRecoverReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/recover', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+    assert.equal(state.queueSendCount, 0);
+    assert.equal(state.eventTypes.has('review_retry_scheduled'), false);
+    assert.equal(state.reviewStatus, 'running');
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'queued',
       reviewAttemptCount: 5,
       storedReviewRequestPayload: {
         provenance: {},
@@ -1386,6 +1413,34 @@ export async function runReviewApiTests(): Promise<void> {
       env as never
     );
     assert.equal(response.status, 409);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'queued',
+      reviewAttemptCount: 1,
+      storedReviewRequestPayload: {
+        provenance: {},
+      },
+    });
+    const response = await handleRecoverReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/recover', {
+        method: 'POST',
+        headers: {
+          'X-Review-Github-Token': 'not-a-scoped-token',
+        },
+      }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(typeof body.error, 'string');
+    assert.equal(String(body.error).includes('invalid'), true);
+    assert.equal(state.queueSendCount, 0);
+    assert.equal(state.eventTypes.has('review_failed'), false);
+    assert.equal(state.reviewStatus, 'queued');
   }
 
   {

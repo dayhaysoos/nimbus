@@ -71,7 +71,7 @@ function hasConcreteSampleAndOutcomeEvidence(failingScenario: string, evidence: 
 }
 
 function isTimeoutBoundaryLikeFinding(text: string): boolean {
-  return /\b(timeout|retry|deadline|interval|boundary|poll)\b/i.test(text);
+  return /\b(timeout|deadline|interval|boundary|poll)\b/i.test(text);
 }
 
 function hasBoundaryAndStatusEvidence(failingScenario: string, evidence: string): boolean {

@@ -202,20 +202,28 @@ export async function manuallyRecoverReviewRun(
     throw new Error(`Review is ${review.status}; only queued or running reviews can be recovered.`);
   }
 
+  if (review.status === 'running') {
+    throw new Error(
+      'Review is running; manual recovery only supports queued reviews to avoid concurrent execution attempts.'
+    );
+  }
+
   const maxRetries = parseMaxRetryCount(env.MAX_ATTEMPTS, 3);
   const requestPayload = await getReviewRunRequestPayload(env.DB, reviewId);
   const canRetryWithoutGithubToken = hasLocalCochangeProvenance(requestPayload);
   const rawScopedToken = typeof reviewGithubToken === 'string' && reviewGithubToken.trim() ? reviewGithubToken.trim() : null;
   const scopedGithubToken = rawScopedToken && isValidScopedGithubToken(rawScopedToken) ? rawScopedToken : null;
+
+  if (rawScopedToken && !scopedGithubToken) {
+    throw new Error('Scoped GitHub token format is invalid for retry. Expected ghp_* or github_pat_* token.');
+  }
+
   const canRequeue = review.attemptCount <= maxRetries && Boolean(env.REVIEWS_QUEUE) && (scopedGithubToken || canRetryWithoutGithubToken);
 
   await replaceReviewFindings(env.DB, reviewId, []);
 
   if (canRequeue) {
-    const message =
-      review.status === 'running'
-        ? 'Manual recovery requested while review was active.'
-        : 'Manual recovery requested while review was queued.';
+    const message = 'Manual recovery requested while review was queued.';
     await updateReviewRunStatus(env.DB, reviewId, 'queued', {
       report: null,
       markdownSummary: null,
