@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "b267a4c56c81",
+  "session_id": "ses_2babc6340ffequUH6KgXnU4wSR",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-06T18:33:03.521909Z",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/worker/src/lib/review-analysis/tools.ts",
+    "packages/worker/test/lib/review-analysis-tools.test.ts",
+    "packages/worker/src/lib/review-analysis.ts"
+  ],
+  "agent": "OpenCode",
+  "model": "gpt-5.3-codex",
+  "turn_id": "bf4688587a78",
+  "initial_attribution": {
+    "calculated_at": "2026-04-06T18:33:03.520936Z",
+    "agent_lines": 0,
+    "human_added": 58,
+    "human_modified": 72,
+    "human_removed": 0,
+    "total_committed": 58,
+    "agent_percentage": 0
+  }
+}
