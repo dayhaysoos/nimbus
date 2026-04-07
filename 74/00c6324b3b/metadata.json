@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "7400c6324b3b",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/cli/help.ts",
+    "packages/worker/src/lib/review-runner/context-helpers.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/output.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/test/lib/review-prompt.test.ts",
+    "packages/worker/wrangler.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/74/00c6324b3b/0/metadata.json",
+      "transcript": "/74/00c6324b3b/0/full.jsonl",
+      "content_hash": "/74/00c6324b3b/0/content_hash.txt",
+      "prompt": "/74/00c6324b3b/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 56929343,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 52194688,
+    "output_tokens": 305674,
+    "api_call_count": 492
+  }
+}
