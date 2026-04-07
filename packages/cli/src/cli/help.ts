@@ -134,11 +134,11 @@ Examples:
   nimbus review create --commit HEAD --project-root apps/web
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
-  nimbus review create --commit HEAD --model sonnet-4.5
+  nimbus review create --commit HEAD --model gpt-5.1
   nimbus review preflight
   nimbus review preflight HEAD~2
   nimbus review policy --commit HEAD
-  nimbus review policy --commit HEAD --base origin/main --model anthropic/claude-sonnet-4.5 --json
+  nimbus review policy --commit HEAD --base origin/main --model gpt-5.1 --json
   nimbus review show rev_abcd1234
    nimbus review events rev_abcd1234
    nimbus review studio

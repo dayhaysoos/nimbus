@@ -178,7 +178,7 @@ export function resolveReviewAnalysisModel(payload: Record<string, unknown>, env
   if (agentModel) {
     return agentModel;
   }
-  return 'sonnet-4.5';
+  return 'gpt-5.1';
 }
 
 export function mergeProvenance(

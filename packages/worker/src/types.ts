@@ -691,11 +691,18 @@ export interface ReviewProvenanceSummary {
     dedupedExactCount: number;
     fallbackApplied?: boolean;
     fallbackReason?: string | null;
+    followUpReviewScore?: 1 | 2 | 3;
+    followUpReviewRationale?: string;
   };
   furtherPassesLowYield?: {
     value: boolean;
     source: 'model-self-assessment';
     reliability: 'weak-signal-phase2';
+  };
+  followUpReview?: {
+    score: 1 | 2 | 3;
+    rationale: string;
+    source: 'model-self-assessment';
   };
   advisories?: string[];
 }

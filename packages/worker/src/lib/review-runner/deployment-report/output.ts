@@ -60,6 +60,7 @@ export function buildDeploymentReportOutput(input: {
           model: input.agentAnalysis.model,
           stepsExecuted: input.agentAnalysis.stepsExecuted,
           usedTools: input.agentAnalysis.usedTools,
+          followUpReviewScore: input.agentAnalysis.followUpReviewScore,
         },
       }
     : null;
@@ -145,7 +146,13 @@ export function buildDeploymentReportOutput(input: {
               : undefined,
           outputSchemaVersion: 'v2',
           passArchitecture: 'single',
-          validation: input.agentAnalysis?.validation,
+          validation: input.agentAnalysis
+            ? {
+                ...input.agentAnalysis.validation,
+                followUpReviewScore: input.agentAnalysis.followUpReviewScore,
+                followUpReviewRationale: input.agentAnalysis.followUpReviewRationale,
+              }
+            : undefined,
           furtherPassesLowYield:
             typeof input.agentAnalysis?.furtherPassesLowYield === 'boolean'
               ? {
@@ -154,6 +161,13 @@ export function buildDeploymentReportOutput(input: {
                   reliability: 'weak-signal-phase2' as const,
                 }
               : undefined,
+          followUpReview: input.agentAnalysis
+            ? {
+                score: input.agentAnalysis.followUpReviewScore,
+                rationale: input.agentAnalysis.followUpReviewRationale,
+                source: 'model-self-assessment' as const,
+              }
+            : undefined,
           advisories: input.advisories.length > 0 ? input.advisories : undefined,
         }
       : {

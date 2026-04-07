@@ -45,7 +45,9 @@ export async function runDeploymentReviewAnalysisStage(
   const authoritativeDiff = await loadAuthoritativeDeploymentDiff(env, review.workspaceId, provenanceOperationId, reviewDiffArtifactId);
   const reviewAnalysisModel = resolveReviewAnalysisModel(payload, env);
   let agentAnalysis: Awaited<ReturnType<typeof runWorkspaceDeploymentAgentAnalysis>> = null;
-  const reviewAgentEnabled = Boolean((env.AGENT_SDK_URL ?? '').trim());
+  const requestOpenrouterApiKey = readOptionalString(options?.openrouterApiKey);
+  const reviewAgentEnabled = Boolean((env.AGENT_SDK_URL ?? '').trim()) || Boolean((requestOpenrouterApiKey ?? env.OPENROUTER_API_KEY ?? '').trim());
+  const reviewAnalysisProvider = (requestOpenrouterApiKey ?? env.OPENROUTER_API_KEY ?? '').trim() ? 'openrouter' : 'cloudflare_agents_sdk';
   const deploymentSourceBundleKey =
     typeof inputs.resultArtifact.sourceBundleKey === 'string' && inputs.resultArtifact.sourceBundleKey.trim()
       ? inputs.resultArtifact.sourceBundleKey.trim()
@@ -55,7 +57,7 @@ export async function runDeploymentReviewAnalysisStage(
     await appendReviewEvent(env.DB, {
       reviewId: review.id,
       eventType: 'review_analysis_agent_started',
-      payload: { provider: 'cloudflare_agents_sdk', model: reviewAnalysisModel },
+      payload: { provider: reviewAnalysisProvider, model: reviewAnalysisModel },
     });
 
     const analysisTimeoutMs = parseTimeoutMs(env.REVIEW_ANALYSIS_TIMEOUT_MS, DEFAULT_REVIEW_ANALYSIS_TIMEOUT_MS);
@@ -85,15 +87,15 @@ export async function runDeploymentReviewAnalysisStage(
           reviewContext,
           rootListing: {},
           diffSnapshot: {},
-          onLifecycleEvent: async (eventType, eventPayload) => {
-            await appendReviewEvent(env.DB, {
-              reviewId: review.id,
-              eventType,
-              payload: eventPayload,
-            });
-          },
-          openrouterApiKey: readOptionalString(options?.openrouterApiKey),
-        }),
+            onLifecycleEvent: async (eventType, eventPayload) => {
+              await appendReviewEvent(env.DB, {
+                reviewId: review.id,
+                eventType,
+                payload: eventPayload,
+              });
+            },
+            openrouterApiKey: requestOpenrouterApiKey,
+          }),
         analysisTimeoutMs,
         () => new Error(`Review analysis timed out after ${analysisTimeoutMs}ms while waiting for model/provider response`)
       );
