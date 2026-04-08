@@ -12,6 +12,19 @@ const STUDIO_NEW_REVIEW_PREFLIGHT_PATH = '/api/studio/new-review/preflight';
 const STUDIO_NEW_REVIEW_START_PATH = '/api/studio/new-review/start';
 const STUDIO_NEW_REVIEW_START_EVENTS_PATH = '/api/studio/new-review/start/events';
 
+function parseLastCheckpoints(value: unknown): 1 | 2 | 3 {
+  if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3) {
+    return value as 1 | 2 | 3;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Number.parseInt(value.trim(), 10);
+    if (Number.isInteger(parsed) && parsed >= 1 && parsed <= 3) {
+      return parsed as 1 | 2 | 3;
+    }
+  }
+  return 2;
+}
+
 function resolveRepoRootSafe(): string | undefined {
   try {
     return new GitRepo(process.cwd()).getRepoRoot();
@@ -91,7 +104,10 @@ export async function proxyApiRequest(
       return true;
     }
     try {
-      const payload = await getStudioNewReviewPreflightCached({ repoRoot: resolveRepoRootSafe() });
+      const payload = await getStudioNewReviewPreflightCached({
+        repoRoot: resolveRepoRootSafe(),
+        lastCheckpoints: parseLastCheckpoints(requestUrl.searchParams.get('lastCheckpoints')),
+      });
       response.statusCode = 200;
       response.setHeader('Cache-Control', 'no-store');
       response.setHeader('Content-Type', 'application/json; charset=utf-8');
@@ -124,6 +140,7 @@ export async function proxyApiRequest(
         policyMode?: unknown;
         repo?: unknown;
         branch?: unknown;
+        lastCheckpoints?: unknown;
       };
       const policyMode = payload?.policyMode;
       if (policyMode !== 'auto' && policyMode !== 'review') {
@@ -137,6 +154,7 @@ export async function proxyApiRequest(
       const expectedBranch = typeof payload.branch === 'string' ? payload.branch : null;
       const started = await startStudioNewReview({
         policyMode,
+        lastCheckpoints: parseLastCheckpoints(payload.lastCheckpoints),
         repoRoot: resolveRepoRootSafe(),
         expectedRepo,
         expectedBranch,
@@ -173,6 +191,7 @@ export async function proxyApiRequest(
 
     const expectedRepo = requestUrl.searchParams.get('repo');
     const expectedBranch = requestUrl.searchParams.get('branch');
+    const lastCheckpoints = parseLastCheckpoints(requestUrl.searchParams.get('lastCheckpoints'));
     let streamOpen = true;
     response.on('close', () => {
       streamOpen = false;
@@ -186,6 +205,7 @@ export async function proxyApiRequest(
     try {
       await startStudioNewReview({
         policyMode,
+        lastCheckpoints,
         repoRoot: resolveRepoRootSafe(),
         expectedRepo,
         expectedBranch,

@@ -30,6 +30,8 @@ const LONG_VALUE_FLAGS = new Set([
   'repo',
   'port',
   'policy-mode',
+  'last-checkpoints',
+  'checkpoint-range',
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',

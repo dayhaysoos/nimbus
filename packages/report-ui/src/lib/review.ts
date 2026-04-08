@@ -483,6 +483,13 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
   if (root.policyMode !== 'auto' && root.policyMode !== 'review') {
     throw new Error('Invalid Studio preflight payload: policyMode must be auto or review.');
   }
+  const lastCheckpoints = Number(root.lastCheckpoints);
+  if (lastCheckpoints !== 1 && lastCheckpoints !== 2 && lastCheckpoints !== 3) {
+    throw new Error('Invalid Studio preflight payload: lastCheckpoints must be 1, 2, or 3.');
+  }
+  if (root.checkpointSelectionMode !== 'latest' && root.checkpointSelectionMode !== 'last_n') {
+    throw new Error('Invalid Studio preflight payload: checkpointSelectionMode must be latest or last_n.');
+  }
   if (root.checkpointId !== null && root.checkpointId !== undefined && typeof root.checkpointId !== 'string') {
     throw new Error('Invalid Studio preflight payload: checkpointId must be a string or null.');
   }
@@ -508,6 +515,29 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
     };
   });
 
+  const includedCheckpoints = Array.isArray(root.includedCheckpoints)
+    ? root.includedCheckpoints
+        .flatMap((item, index) => {
+          const entry = asRecord(item);
+          if (!entry || Object.keys(entry).length === 0) {
+            return [];
+          }
+          const checkpointId = readOptionalString(entry.checkpointId);
+          const commitSha = readOptionalString(entry.commitSha);
+          if (!checkpointId || !commitSha) {
+            throw new Error(`Invalid Studio preflight payload: includedCheckpoints[${index}] is invalid.`);
+          }
+          return [
+            {
+              checkpointId,
+              commitSha,
+              commitSubject: readOptionalString(entry.commitSubject) ?? '',
+            },
+          ];
+        })
+        .slice(0, 3)
+    : [];
+
   const errorRecord = asRecord(root.error);
   const error =
     Object.keys(errorRecord).length > 0
@@ -527,8 +557,11 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
     repo: typeof repo === 'string' ? repo : null,
     branch: typeof branch === 'string' ? branch : null,
     policyMode: root.policyMode,
+    lastCheckpoints: lastCheckpoints as 1 | 2 | 3,
+    checkpointSelectionMode: root.checkpointSelectionMode,
     checkpointId: typeof root.checkpointId === 'string' ? root.checkpointId : null,
     commitSha: typeof root.commitSha === 'string' ? root.commitSha : null,
+    includedCheckpoints,
     ready: root.ready,
     checks,
     error,

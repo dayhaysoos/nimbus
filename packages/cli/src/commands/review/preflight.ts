@@ -8,10 +8,20 @@ interface CommitResolution {
   commitSha: string;
   checkpointId: string | null;
   commitDiffPatch: string;
+  includedCheckpoints?: IncludedCheckpointSummary[];
+  checkpointSelectionMode?: 'latest' | 'last_n' | 'range';
 }
 
 interface ResolveCommitContextOptions {
   baseRef?: string;
+  lastCheckpoints?: number;
+  checkpointRange?: string;
+}
+
+export interface IncludedCheckpointSummary {
+  checkpointId: string;
+  commitSha: string;
+  commitSubject: string;
 }
 
 export interface ReviewCommitValidationResult {
@@ -19,6 +29,8 @@ export interface ReviewCommitValidationResult {
   checkpointId: string;
   commitDiffPatch: string;
   checkpointResolution?: 'direct';
+  includedCheckpoints?: IncludedCheckpointSummary[];
+  checkpointSelectionMode?: 'latest' | 'last_n' | 'range';
 }
 
 interface LastCheckpointOnBranch {
@@ -65,6 +77,160 @@ function parseChangedPathsFromDiff(patch: string): string[] {
     paths.add(normalized);
   }
   return Array.from(paths);
+}
+
+function commitHistorySubject(message: string): string {
+  const firstLine = message.split(/\r?\n/).find((line) => line.trim());
+  return firstLine?.trim() ?? '(no commit subject)';
+}
+
+function parseCheckpointRange(value: string): { start: string; end: string } {
+  const trimmed = value.trim();
+  const separator = trimmed.indexOf('..');
+  if (separator <= 0 || separator >= trimmed.length - 2) {
+    throw new Error('Invalid --checkpoint-range format. Use <start>..<end>.');
+  }
+  const start = trimmed.slice(0, separator).trim();
+  const end = trimmed.slice(separator + 2).trim();
+  if (!start || !end) {
+    throw new Error('Invalid --checkpoint-range format. Use <start>..<end>.');
+  }
+  return { start, end };
+}
+
+function buildRangeDiffPatch(git: GitRepo, oldestCommitSha: string, newestCommitSha: string): string {
+  if (oldestCommitSha === newestCommitSha) {
+    return git.getCommitPatch(newestCommitSha);
+  }
+
+  const parentCommitSha = git.run(['rev-parse', '--verify', `${oldestCommitSha}^`]).trim();
+  return git.run(['diff', '--no-ext-diff', '--unified=3', parentCommitSha, newestCommitSha], {
+    maxBuffer: 64 * 1024 * 1024,
+  });
+}
+
+function selectCheckpointRangeCommits(input: {
+  commits: ReturnType<GitRepo['listCommits']>;
+  startToken: string;
+  endToken: string;
+  git: GitRepo;
+}): IncludedCheckpointSummary[] {
+  const resolveCheckpointPrefix = (token: string): string | null => {
+    if (!token.toLowerCase().startsWith('checkpoint:')) {
+      return null;
+    }
+    const raw = token.slice('checkpoint:'.length).trim().toLowerCase();
+    if (!raw) {
+      throw new Error('Checkpoint ID must be provided after checkpoint: in --checkpoint-range.');
+    }
+
+    const matches = input.commits.reduce<string[]>((acc, commit) => {
+      const trailers = parseCommitTrailers(commit.message);
+      if (trailers.checkpointId && trailers.checkpointId.startsWith(raw)) {
+        acc.push(commit.sha);
+      }
+      return acc;
+    }, []);
+
+    if (matches.length === 1) {
+      return matches[0];
+    }
+    if (matches.length > 1) {
+      throw new Error(`Checkpoint token '${token}' is ambiguous on this branch. Use a longer ID.`);
+    }
+    throw new Error(`No commit found with trailer Entire-Checkpoint matching prefix: ${raw}`);
+  };
+
+  const resolveToken = (token: string): string => {
+    let parsed: ReturnType<typeof parseDeployInput>;
+    try {
+      parsed = parseDeployInput(token);
+    } catch (error) {
+      const fallback = resolveCheckpointPrefix(token);
+      if (fallback) {
+        return fallback;
+      }
+      throw error;
+    }
+    if (parsed.kind === 'checkpoint') {
+      const resolved = resolveCheckpointFromHistory(parsed.checkpointId, input.commits);
+      return resolved.selected.sha;
+    }
+    return input.git.resolveCommitSha(parsed.commitish);
+  };
+
+  const startCommitSha = resolveToken(input.startToken);
+  const endCommitSha = resolveToken(input.endToken);
+
+  const startIndex = input.commits.findIndex((commit) => commit.sha === startCommitSha);
+  const endIndex = input.commits.findIndex((commit) => commit.sha === endCommitSha);
+  if (startIndex < 0 || endIndex < 0) {
+    throw new Error('Checkpoint range commits must exist on the current branch history.');
+  }
+
+  const isAncestor = (ancestor: string, descendant: string): boolean => {
+    try {
+      input.git.run(['merge-base', '--is-ancestor', ancestor, descendant]);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (!isAncestor(startCommitSha, endCommitSha) && !isAncestor(endCommitSha, startCommitSha)) {
+    throw new Error('Checkpoint range must be linear ancestry on the current branch.');
+  }
+
+  const lower = Math.min(startIndex, endIndex);
+  const upper = Math.max(startIndex, endIndex);
+  const summaries = input.commits.slice(lower, upper + 1).reduce<IncludedCheckpointSummary[]>((acc, commit) => {
+    const trailers = parseCommitTrailers(commit.message);
+    if (!trailers.checkpointId) {
+      return acc;
+    }
+    acc.push({
+      checkpointId: trailers.checkpointId,
+      commitSha: commit.sha,
+      commitSubject: commitHistorySubject(commit.message),
+    });
+    return acc;
+  }, []);
+
+  if (summaries.length === 0) {
+    throw new Error('Checkpoint range did not include any commits with Entire-Checkpoint trailers.');
+  }
+
+  return summaries.reverse();
+}
+
+function selectLastNCheckpointCommits(input: {
+  commits: ReturnType<GitRepo['listCommits']>;
+  headCommitSha: string;
+  count: number;
+}): IncludedCheckpointSummary[] {
+  const headIndex = input.commits.findIndex((commit) => commit.sha === input.headCommitSha);
+  if (headIndex < 0) {
+    throw new Error('Target commit is not on the current branch history.');
+  }
+  const summaries: IncludedCheckpointSummary[] = [];
+  for (let index = headIndex; index < input.commits.length; index += 1) {
+    const commit = input.commits[index];
+    const trailers = parseCommitTrailers(commit.message);
+    if (!trailers.checkpointId) {
+      continue;
+    }
+    summaries.push({
+      checkpointId: trailers.checkpointId,
+      commitSha: commit.sha,
+      commitSubject: commitHistorySubject(commit.message),
+    });
+    if (summaries.length >= input.count) {
+      break;
+    }
+  }
+  if (summaries.length === 0) {
+    throw new Error('No checkpoint commits were found for this branch selection.');
+  }
+  return summaries.reverse();
 }
 
 let resolveCommitForTests: ((commitish: string, options?: ResolveCommitContextOptions) => CommitResolution) | null = null;
@@ -266,13 +432,69 @@ function resolveCommitContext(commitish: string, cwd = process.cwd(), options?: 
   const git = new GitRepo(cwd);
   const parsedInput = parseDeployInput(commitish);
   const baseRef = typeof options?.baseRef === 'string' && options.baseRef.trim() ? options.baseRef.trim() : null;
+  const checkpointRange = typeof options?.checkpointRange === 'string' && options.checkpointRange.trim()
+    ? options.checkpointRange.trim()
+    : null;
+  const lastCheckpoints =
+    typeof options?.lastCheckpoints === 'number' && Number.isFinite(options.lastCheckpoints)
+      ? Math.max(1, Math.min(3, Math.floor(options.lastCheckpoints)))
+      : null;
+
+  if (baseRef && (checkpointRange || lastCheckpoints)) {
+    throw new Error('Cannot combine --base with multi-checkpoint selection (--last-checkpoints or --checkpoint-range).');
+  }
+
+  if (checkpointRange && lastCheckpoints) {
+    throw new Error('Cannot combine --last-checkpoints with --checkpoint-range. Choose one range mode.');
+  }
+
+  const ref = git.getCurrentBranchRef() ?? 'HEAD';
+  const commits = git.listCommits(ref);
+
+  if (checkpointRange) {
+    const { start, end } = parseCheckpointRange(checkpointRange);
+    const includedCheckpoints = selectCheckpointRangeCommits({
+      commits,
+      startToken: start,
+      endToken: end,
+      git,
+    });
+    const oldest = includedCheckpoints[0];
+    const newest = includedCheckpoints[includedCheckpoints.length - 1];
+    return {
+      commitSha: newest.commitSha,
+      checkpointId: newest.checkpointId,
+      commitDiffPatch: buildRangeDiffPatch(git, oldest.commitSha, newest.commitSha),
+      includedCheckpoints,
+      checkpointSelectionMode: 'range',
+    };
+  }
+
+  if (lastCheckpoints && lastCheckpoints > 1) {
+    const parsedInput = parseDeployInput(commitish);
+    const headCommitSha = parsedInput.kind === 'checkpoint'
+      ? resolveCheckpointFromHistory(parsedInput.checkpointId, commits).selected.sha
+      : git.resolveCommitSha(parsedInput.commitish);
+    const includedCheckpoints = selectLastNCheckpointCommits({
+      commits,
+      headCommitSha,
+      count: lastCheckpoints,
+    });
+    const oldest = includedCheckpoints[0];
+    const newest = includedCheckpoints[includedCheckpoints.length - 1];
+    return {
+      commitSha: newest.commitSha,
+      checkpointId: newest.checkpointId,
+      commitDiffPatch: buildRangeDiffPatch(git, oldest.commitSha, newest.commitSha),
+      includedCheckpoints,
+      checkpointSelectionMode: 'last_n',
+    };
+  }
 
   let commitSha: string;
   let trailers: ReturnType<typeof parseCommitTrailers>;
   if (parsedInput.kind === 'checkpoint') {
     try {
-      const ref = git.getCurrentBranchRef() ?? 'HEAD';
-      const commits = git.listCommits(ref);
       const resolved = resolveCheckpointFromHistory(parsedInput.checkpointId, commits);
       commitSha = resolved.selected.sha;
       trailers = resolved.selected.trailers;
@@ -293,6 +515,16 @@ function resolveCommitContext(commitish: string, cwd = process.cwd(), options?: 
     commitSha,
     checkpointId: trailers.checkpointId,
     commitDiffPatch: baseRef ? git.getRangePatch(baseRef, commitSha) : git.getCommitPatch(commitSha),
+    includedCheckpoints: trailers.checkpointId
+      ? [
+          {
+            checkpointId: trailers.checkpointId,
+            commitSha,
+            commitSubject: commitHistorySubject(git.getCommitMessage(commitSha)),
+          },
+        ]
+      : undefined,
+    checkpointSelectionMode: 'latest',
   };
 }
 
@@ -317,6 +549,8 @@ export function validateReviewCommitCheckpoint(
     checkpointId,
     commitDiffPatch: resolved.commitDiffPatch,
     checkpointResolution: 'direct',
+    includedCheckpoints: resolved.includedCheckpoints,
+    checkpointSelectionMode: resolved.checkpointSelectionMode,
   };
 }
 
@@ -407,6 +641,8 @@ export async function reviewPreflightCommand(
   commitish = 'HEAD',
   options?: {
     baseRef?: string;
+    lastCheckpoints?: number;
+    checkpointRange?: string;
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
     strictEntireContext?: boolean;
@@ -420,6 +656,8 @@ export async function reviewPreflightCommand(
   try {
     resolved = validateReviewCommitCheckpoint(commitish, process.cwd(), {
       baseRef: options?.baseRef,
+      lastCheckpoints: options?.lastCheckpoints,
+      checkpointRange: options?.checkpointRange,
     });
     spinner.stop(`Resolved checkpoint ${resolved.checkpointId} from ${resolved.commitSha.slice(0, 12)}`);
   } catch (error) {
@@ -479,6 +717,13 @@ export async function reviewPreflightCommand(
     p.log.success('Review preflight passed');
     p.log.message(`Commit: ${resolved.commitSha}`);
     p.log.message(`Checkpoint: ${contextResolution.resolvedCheckpointId}`);
+    if (resolved.includedCheckpoints && resolved.includedCheckpoints.length > 1) {
+      p.log.message(
+        `Included checkpoints (${resolved.checkpointSelectionMode ?? 'range'}): ${resolved.includedCheckpoints
+          .map((entry) => `${entry.checkpointId}@${entry.commitSha.slice(0, 7)}`)
+          .join(', ')}`
+      );
+    }
     if (contextResolution.contextResolution === 'branch_fallback') {
       p.log.warning(
         `Using fallback Entire context from commit ${contextResolution.resolvedCommitSha.slice(0, 7)} ('${contextResolution.resolvedCommitSubject}') ${contextResolution.commitsAgo} commits ago.`

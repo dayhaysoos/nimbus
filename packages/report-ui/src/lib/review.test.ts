@@ -200,8 +200,22 @@ describe('studio new review payloads', () => {
       repo: 'acme/web',
       branch: 'main',
       policyMode: 'auto',
+      lastCheckpoints: 2,
+      checkpointSelectionMode: 'last_n',
       checkpointId: 'cp_123',
       commitSha: 'abcdef1234567890',
+      includedCheckpoints: [
+        {
+          checkpointId: 'cp_122',
+          commitSha: 'aaaaaa123456',
+          commitSubject: 'feat: earlier checkpoint',
+        },
+        {
+          checkpointId: 'cp_123',
+          commitSha: 'abcdef1234567890',
+          commitSubject: 'feat: latest checkpoint',
+        },
+      ],
       ready: true,
       checks: [
         {

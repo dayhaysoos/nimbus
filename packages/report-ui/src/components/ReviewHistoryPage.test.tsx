@@ -229,8 +229,14 @@ describe('ReviewHistoryPage', () => {
             repo: 'acme/web',
             branch: 'main',
             policyMode: 'auto',
+            lastCheckpoints: 2,
+            checkpointSelectionMode: 'last_n',
             checkpointId: 'cp_123',
             commitSha: 'abcdef123456',
+            includedCheckpoints: [
+              { checkpointId: 'cp_122', commitSha: 'aaaaaa123456', commitSubject: 'feat: previous' },
+              { checkpointId: 'cp_123', commitSha: 'abcdef123456', commitSubject: 'feat: latest' },
+            ],
             ready: true,
             checks: [
               { code: 'checkpoint', label: 'Checkpoint target', ok: true, detail: 'Resolved checkpoint cp_123.' },
@@ -294,6 +300,7 @@ describe('ReviewHistoryPage', () => {
     await waitFor(() => expect(screen.getByRole('button', { name: 'New Review' })).not.toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: 'New Review' }));
     expect(await screen.findByText('Ready for review')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Last 2/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'View technical details' })).toBeInTheDocument();
     expect(await screen.findByRole('button', { name: 'Start Review' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Start Review' }));
@@ -301,6 +308,7 @@ describe('ReviewHistoryPage', () => {
     expect(await screen.findByText('Starting review…')).toBeInTheDocument();
     expect(MockEventSource.instances[0]?.url).toContain('/api/studio/new-review/start/events?');
     expect(MockEventSource.instances[0]?.url).toContain('policyMode=auto');
+    expect(MockEventSource.instances[0]?.url).toContain('lastCheckpoints=2');
 
     MockEventSource.instances[0]?.emit('message', {
       type: 'stage',

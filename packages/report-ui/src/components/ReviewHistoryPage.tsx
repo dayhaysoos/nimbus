@@ -198,6 +198,7 @@ export function ReviewHistoryPage(): JSX.Element {
   const [lastDetectedBranch, setLastDetectedBranch] = useState<StudioBranchRef | null>(null);
   const [showNewReviewPanel, setShowNewReviewPanel] = useState(false);
   const [newReviewPolicyMode, setNewReviewPolicyMode] = useState<StudioPolicyMode>('auto');
+  const [newReviewCheckpointCount, setNewReviewCheckpointCount] = useState<1 | 2 | 3>(2);
   const [newReviewPreflight, setNewReviewPreflight] = useState<StudioNewReviewPreflightResponse | null>(null);
   const [newReviewPreflightLoading, setNewReviewPreflightLoading] = useState(false);
   const [newReviewPreflightError, setNewReviewPreflightError] = useState<string | null>(null);
@@ -253,7 +254,10 @@ export function ReviewHistoryPage(): JSX.Element {
     setNewReviewPreflightLoading(true);
     setNewReviewPreflightError(null);
     try {
-      const response = await fetch(`${API_BASE}/api/studio/new-review/preflight`);
+      const params = new URLSearchParams({
+        lastCheckpoints: String(newReviewCheckpointCount),
+      });
+      const response = await fetch(`${API_BASE}/api/studio/new-review/preflight?${params.toString()}`);
       if (!response.ok) {
         const body = (await response.json().catch(() => null)) as { error?: string } | null;
         throw new Error(body?.error ?? `Failed to load review preflight (${response.status})`);
@@ -261,6 +265,7 @@ export function ReviewHistoryPage(): JSX.Element {
       const payload = parseStudioNewReviewPreflightResponse(await response.json());
       setNewReviewPreflight(payload);
       setNewReviewPolicyMode(payload.policyMode);
+      setNewReviewCheckpointCount(payload.lastCheckpoints);
       setShowPreflightDetails(false);
       setEditingPolicyMode(false);
     } catch (error) {
@@ -269,7 +274,7 @@ export function ReviewHistoryPage(): JSX.Element {
     } finally {
       setNewReviewPreflightLoading(false);
     }
-  }, []);
+  }, [newReviewCheckpointCount]);
 
   useEffect(() => {
     return () => {
@@ -362,7 +367,7 @@ export function ReviewHistoryPage(): JSX.Element {
       return;
     }
     void fetchNewReviewPreflight();
-  }, [showNewReviewPanel, fetchNewReviewPreflight]);
+  }, [showNewReviewPanel, fetchNewReviewPreflight, newReviewCheckpointCount]);
 
   useEffect(() => {
     if (!showNewReviewPanel || !newReviewPreflightLoading) {
@@ -439,6 +444,7 @@ export function ReviewHistoryPage(): JSX.Element {
     if (typeof EventSource !== 'undefined') {
       const params = new URLSearchParams({
         policyMode: newReviewPolicyMode,
+        lastCheckpoints: String(newReviewCheckpointCount),
         repo: homeBranch.repo,
         branch: homeBranch.branch,
       });
@@ -490,6 +496,7 @@ export function ReviewHistoryPage(): JSX.Element {
         },
         body: JSON.stringify({
           policyMode: newReviewPolicyMode,
+          lastCheckpoints: newReviewCheckpointCount,
           repo: homeBranch.repo,
           branch: homeBranch.branch,
         }),
@@ -506,7 +513,14 @@ export function ReviewHistoryPage(): JSX.Element {
     } finally {
       setNewReviewStarting(false);
     }
-  }, [closeNewReviewPanel, closeStartStream, homeBranch, navigate, newReviewPolicyMode]);
+  }, [
+    closeNewReviewPanel,
+    closeStartStream,
+    homeBranch,
+    navigate,
+    newReviewCheckpointCount,
+    newReviewPolicyMode,
+  ]);
 
   return (
     <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-3 py-3">
@@ -642,12 +656,42 @@ export function ReviewHistoryPage(): JSX.Element {
                   <div>
                     <h2 className="text-sm font-semibold text-foreground">Start review</h2>
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Nimbus will review the latest checkpoint on <span className="font-mono text-foreground">{homeBranch?.branch ?? detectedBranch?.branch ?? 'this branch'}</span>.
+                      Nimbus will review up to {newReviewCheckpointCount} checkpoint{newReviewCheckpointCount === 1 ? '' : 's'} on{' '}
+                      <span className="font-mono text-foreground">{homeBranch?.branch ?? detectedBranch?.branch ?? 'this branch'}</span>.
                     </p>
                   </div>
                   <Button size="sm" variant="ghost" onClick={closeNewReviewPanel} disabled={newReviewStarting}>
                     Close
                   </Button>
+                </motion.div>
+
+                <motion.div
+                  variants={{
+                    hidden: { opacity: 0, y: 10 },
+                    visible: { opacity: 1, y: 0 },
+                  }}
+                  transition={PANEL_TRANSITION}
+                  className="space-y-2"
+                >
+                  <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Checkpoint window</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {[1, 2, 3].map((count) => {
+                      const active = newReviewCheckpointCount === count;
+                      return (
+                        <button
+                          key={count}
+                          type="button"
+                          onClick={() => setNewReviewCheckpointCount(count as 1 | 2 | 3)}
+                          className={`rounded-sm border px-3 py-2 text-left text-sm transition-colors ${
+                            active ? 'border-primary bg-accent/30' : 'border-border bg-background'
+                          }`}
+                        >
+                          <p className="font-medium text-foreground">Last {count}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">checkpoint{count === 1 ? '' : 's'}</p>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </motion.div>
 
                 <motion.div
@@ -847,6 +891,9 @@ export function ReviewHistoryPage(): JSX.Element {
                                 </Badge>
                                 <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] font-mono">
                                   {newReviewPreflight.checkpointId ?? 'checkpoint unavailable'}
+                                </Badge>
+                                <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px]">
+                                  Last {newReviewCheckpointCount} checkpoint{newReviewCheckpointCount === 1 ? '' : 's'}
                                 </Badge>
                                 <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px]">
                                   {newReviewPolicyMode === 'auto' ? 'Auto policy' : 'Review policy first'}

@@ -266,6 +266,32 @@ export function buildReviewRequestPayload(input: {
       ? input.provenance.contextResolutionResolvedCommitMessage.trim()
       : undefined;
   const localCochange = normalizeLocalCochange(input.provenance.localCochange);
+  const checkpointSelectionMode =
+    input.provenance.checkpointSelectionMode === 'latest' ||
+    input.provenance.checkpointSelectionMode === 'last_n' ||
+    input.provenance.checkpointSelectionMode === 'range'
+      ? input.provenance.checkpointSelectionMode
+      : undefined;
+  const includedCheckpoints = Array.isArray(input.provenance.includedCheckpoints)
+    ? input.provenance.includedCheckpoints
+        .filter((item): item is Record<string, unknown> => isRecord(item))
+        .map((item) => ({
+          checkpointId:
+            typeof item.checkpointId === 'string' && item.checkpointId.trim()
+              ? item.checkpointId.trim().slice(0, 64)
+              : '',
+          commitSha:
+            typeof item.commitSha === 'string' && item.commitSha.trim()
+              ? item.commitSha.trim().slice(0, 64)
+              : '',
+          commitSubject:
+            typeof item.commitSubject === 'string' && item.commitSubject.trim()
+              ? item.commitSubject.trim().slice(0, 256)
+              : '',
+        }))
+        .filter((item) => item.checkpointId && item.commitSha)
+        .slice(0, 8)
+    : [];
   const model = typeof input.model === 'string' && input.model.trim() ? input.model.trim() : undefined;
   const policyMode = normalizePolicyMode(input.policyMode);
   const reviewBasis = normalizeReviewBasis(input.reviewBasis);
@@ -312,6 +338,8 @@ export function buildReviewRequestPayload(input: {
       ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),
       ...(contextResolutionResolvedCommitSha ? { contextResolutionResolvedCommitSha } : {}),
       ...(contextResolutionResolvedCommitMessage ? { contextResolutionResolvedCommitMessage } : {}),
+      ...(checkpointSelectionMode ? { checkpointSelectionMode } : {}),
+      ...(includedCheckpoints.length > 0 ? { includedCheckpoints } : {}),
       repo: input.repo,
       branch: input.branch,
       ...(localCochange ? { localCochange } : {}),

@@ -144,6 +144,25 @@ export function buildDeploymentReportOutput(input: {
                   resolvedCommitMessage: input.contextResolutionResolvedCommitMessage,
                 }
               : undefined,
+          checkpointSelectionMode:
+            input.requestProvenance.checkpointSelectionMode === 'latest' ||
+            input.requestProvenance.checkpointSelectionMode === 'last_n' ||
+            input.requestProvenance.checkpointSelectionMode === 'range'
+              ? input.requestProvenance.checkpointSelectionMode
+              : undefined,
+          includedCheckpoints: Array.isArray(input.requestProvenance.includedCheckpoints)
+            ? input.requestProvenance.includedCheckpoints
+                .filter(
+                  (entry): entry is Record<string, unknown> =>
+                    Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry)
+                )
+                .map((entry) => ({
+                  checkpointId: typeof entry.checkpointId === 'string' ? entry.checkpointId : '',
+                  commitSha: typeof entry.commitSha === 'string' ? entry.commitSha : '',
+                  commitSubject: typeof entry.commitSubject === 'string' ? entry.commitSubject : '',
+                }))
+                .filter((entry) => entry.checkpointId && entry.commitSha)
+            : undefined,
           outputSchemaVersion: 'v2',
           passArchitecture: 'single',
           validation: input.agentAnalysis

@@ -3,6 +3,7 @@ import { workspaceDeployCommand } from '../../commands/workspace/deploy.js';
 import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../../commands/workspace/create.js';
 import { resolveCochangeFromLocalGit } from '../../lib/entire/context.js';
 import {
+  type IncludedCheckpointSummary,
   setReviewPreflightCommitResolverForTests,
   type ReviewEntireContextResolution,
   validateReviewCochangeTokenReadiness,
@@ -37,11 +38,48 @@ type SpinnerLike = {
 export interface ResolveReviewContextOptions {
   commitish?: string;
   baseRef?: string;
+  lastCheckpoints?: number;
+  checkpointRange?: string;
   projectRoot?: string;
   idempotencyKey?: string;
   pollIntervalMs?: number;
   intentSummaryModel?: string;
   onProgress?: (event: ResolveReviewContextProgressEvent) => void | Promise<void>;
+}
+
+function mergeCheckpointContexts(input: {
+  contexts: ReviewEntireContextResolution[];
+  includedCheckpoints: IncludedCheckpointSummary[];
+}): ReviewEntireContextResolution {
+  const earliest = input.contexts[0];
+  const latest = input.contexts[input.contexts.length - 1];
+  const sessionIds = Array.from(new Set(input.contexts.flatMap((entry) => entry.context.sessionIds)));
+  const intentSessionContext = Array.from(
+    new Set(input.contexts.flatMap((entry) => entry.context.intentSessionContext.map((line) => line.trim()).filter(Boolean)))
+  );
+  const rawSessionPrompts = input.contexts
+    .map((entry) => entry.context.rawSessionPrompts)
+    .filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    .join('\n\n---\n\n');
+
+  return {
+    context: {
+      note: `Review context merged from ${input.includedCheckpoints.length} checkpoints (${input.includedCheckpoints
+        .map((entry) => entry.checkpointId)
+        .join(' -> ')}).`,
+      sessionIds,
+      transcriptUrl: latest.context.transcriptUrl ?? earliest.context.transcriptUrl,
+      intentSessionContext,
+      rawSessionPrompts: rawSessionPrompts || null,
+    },
+    contextResolution: latest.contextResolution,
+    originalCheckpointId: earliest.originalCheckpointId,
+    resolvedCheckpointId: latest.resolvedCheckpointId,
+    resolvedCommitSha: latest.resolvedCommitSha,
+    resolvedCommitSubject: latest.resolvedCommitSubject,
+    commitsAgo: latest.commitsAgo,
+    fallbackReason: latest.fallbackReason,
+  };
 }
 
 export interface ResolveReviewContextResult {
@@ -93,7 +131,16 @@ let deployWorkspaceForCommitFlow: (
 let resolveLocalCochangeForCommitFlow: typeof resolveCochangeFromLocalGit = resolveCochangeFromLocalGit;
 
 export function setReviewCommitResolverForTests(
-  resolver: ((commitish: string, options?: { baseRef?: string }) => CommitResolution) | null
+  resolver:
+    | ((
+        commitish: string,
+        options?: {
+          baseRef?: string;
+          lastCheckpoints?: number;
+          checkpointRange?: string;
+        }
+      ) => CommitResolution)
+    | null
 ): void {
   setReviewPreflightCommitResolverForTests(resolver);
 }
@@ -126,6 +173,8 @@ export async function resolveReviewContext(
   let commitSha = '';
   let checkpointId = '';
   let commitDiffPatch = '';
+  let includedCheckpoints: IncludedCheckpointSummary[] = [];
+  let checkpointSelectionMode: 'latest' | 'last_n' | 'range' = 'latest';
   let workspaceId = '';
   let deploymentId = '';
   let commitDiffPatchSha256 = '';
@@ -156,9 +205,13 @@ export async function resolveReviewContext(
     gitProvenance = resolveReviewGitProvenance();
     const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
       baseRef: options?.baseRef,
+      lastCheckpoints: options?.lastCheckpoints,
+      checkpointRange: options?.checkpointRange,
     });
     commitSha = resolvedCommit.commitSha;
     checkpointId = resolvedCommit.checkpointId;
+    includedCheckpoints = resolvedCommit.includedCheckpoints ?? [];
+    checkpointSelectionMode = resolvedCommit.checkpointSelectionMode ?? 'latest';
     changedPaths = parseChangedPathsFromDiff(resolvedCommit.commitDiffPatch);
     const normalizedPatch = normalizeCommitDiffPatch(resolvedCommit.commitDiffPatch);
     commitDiffPatch = normalizedPatch.patch;
@@ -185,17 +238,39 @@ export async function resolveReviewContext(
       label: 'Reading session context',
       detail: 'Checking that Entire session metadata is readable for this review target.',
     });
-    entireContextResolution = await validateReviewEntireIntentContext(
-      {
-        commitSha,
-        checkpointId,
-      },
-      {
-        summarizeSession: 'auto',
-        allowBranchFallback: true,
-      },
-      process.cwd()
-    );
+    if (includedCheckpoints.length > 1) {
+      const contexts: ReviewEntireContextResolution[] = [];
+      for (const checkpoint of includedCheckpoints) {
+        const context = await validateReviewEntireIntentContext(
+          {
+            commitSha: checkpoint.commitSha,
+            checkpointId: checkpoint.checkpointId,
+          },
+          {
+            summarizeSession: 'auto',
+            allowBranchFallback: true,
+          },
+          process.cwd()
+        );
+        contexts.push(context);
+      }
+      entireContextResolution = mergeCheckpointContexts({
+        contexts,
+        includedCheckpoints,
+      });
+    } else {
+      entireContextResolution = await validateReviewEntireIntentContext(
+        {
+          commitSha,
+          checkpointId,
+        },
+        {
+          summarizeSession: 'auto',
+          allowBranchFallback: true,
+        },
+        process.cwd()
+      );
+    }
 
     spinner.stop(
       entireContextResolution.contextResolution === 'branch_fallback'
@@ -357,6 +432,8 @@ export async function resolveReviewContext(
     contextResolutionResolvedCheckpointId: entireContextResolution?.resolvedCheckpointId ?? checkpointId,
     contextResolutionResolvedCommitSha: entireContextResolution?.resolvedCommitSha ?? commitSha,
     contextResolutionResolvedCommitMessage: entireContextResolution?.resolvedCommitSubject,
+    checkpointSelectionMode,
+    includedCheckpoints,
     repo: gitProvenance.repo,
     branch: gitProvenance.branch,
     ...(options?.intentSummaryModel?.trim() ? { intentSummaryModel: options.intentSummaryModel.trim() } : {}),

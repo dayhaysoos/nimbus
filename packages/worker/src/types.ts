@@ -681,6 +681,12 @@ export interface ReviewProvenanceSummary {
     resolvedCommitSha: string;
     resolvedCommitMessage: string | null;
   };
+  checkpointSelectionMode?: 'latest' | 'last_n' | 'range';
+  includedCheckpoints?: Array<{
+    checkpointId: string;
+    commitSha: string;
+    commitSubject: string;
+  }>;
   outputSchemaVersion?: 'v2';
   passArchitecture?: 'single';
   validation?: {

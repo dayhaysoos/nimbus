@@ -204,8 +204,15 @@ export interface StudioNewReviewPreflightResponse {
   repo: string | null;
   branch: string | null;
   policyMode: StudioPolicyMode;
+  lastCheckpoints: 1 | 2 | 3;
+  checkpointSelectionMode: 'latest' | 'last_n';
   checkpointId: string | null;
   commitSha: string | null;
+  includedCheckpoints: Array<{
+    checkpointId: string;
+    commitSha: string;
+    commitSubject: string;
+  }>;
   ready: boolean;
   checks: StudioNewReviewPreflightCheck[];
   error?: {

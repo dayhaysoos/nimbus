@@ -48,6 +48,12 @@ export async function createReview(
       contextResolutionResolvedCheckpointId?: string;
       contextResolutionResolvedCommitSha?: string;
       contextResolutionResolvedCommitMessage?: string;
+      checkpointSelectionMode?: 'latest' | 'last_n' | 'range';
+      includedCheckpoints?: Array<{
+        checkpointId: string;
+        commitSha: string;
+        commitSubject: string;
+      }>;
       localCochange?: {
         source: 'local_git';
         checkpointsRef?: string;

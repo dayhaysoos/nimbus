@@ -12,8 +12,15 @@ export interface StudioNewReviewPreflightResult {
   repo: string | null;
   branch: string | null;
   policyMode: StudioReviewPolicyMode;
+  lastCheckpoints: 1 | 2 | 3;
+  checkpointSelectionMode: 'latest' | 'last_n';
   checkpointId: string | null;
   commitSha: string | null;
+  includedCheckpoints: Array<{
+    checkpointId: string;
+    commitSha: string;
+    commitSubject: string;
+  }>;
   ready: boolean;
   checks: Array<{
     code: 'checkpoint' | 'entire_context';
@@ -25,6 +32,13 @@ export interface StudioNewReviewPreflightResult {
     code: 'checkpoint_unavailable' | 'entire_context_unavailable' | 'unknown';
     message: string;
   };
+}
+
+function normalizeLastCheckpoints(value: number | null | undefined): 1 | 2 | 3 {
+  if (value === 1 || value === 2 || value === 3) {
+    return value;
+  }
+  return 2;
 }
 
 export interface StudioNewReviewStartResult {
@@ -102,8 +116,10 @@ export function studioBranchContextMatchesExpected(
 
 export async function resolveStudioNewReviewPreflight(options?: {
   repoRoot?: string;
+  lastCheckpoints?: number;
 }): Promise<StudioNewReviewPreflightResult> {
   const repoRoot = resolveStudioRepoRoot(options?.repoRoot);
+  const lastCheckpoints = normalizeLastCheckpoints(options?.lastCheckpoints ?? null);
   const preferences = await readStudioPreferences({ repoRoot });
   const policyMode = normalizeStudioPolicyMode(preferences.policyMode);
   let repo: string | null = null;
@@ -119,18 +135,32 @@ export async function resolveStudioNewReviewPreflight(options?: {
 
   let commitSha: string | null = null;
   let checkpointId: string | null = null;
+  let includedCheckpoints: Array<{ checkpointId: string; commitSha: string; commitSubject: string }> = [];
+  let checkpointSelectionMode: 'latest' | 'last_n' = lastCheckpoints > 1 ? 'last_n' : 'latest';
+  let checkpointDetail = '';
   try {
-    const checkpoint = validateReviewCommitCheckpoint('HEAD', repoRoot);
+    const checkpoint = validateReviewCommitCheckpoint('HEAD', repoRoot, {
+      lastCheckpoints,
+    });
     commitSha = checkpoint.commitSha;
     checkpointId = checkpoint.checkpointId;
+    includedCheckpoints = checkpoint.includedCheckpoints ?? [];
+    checkpointSelectionMode = checkpoint.checkpointSelectionMode === 'last_n' ? 'last_n' : 'latest';
+    checkpointDetail =
+      checkpointSelectionMode === 'last_n'
+        ? `Resolved ${includedCheckpoints.length} checkpoints ending at ${checkpointId}.`
+        : `Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}.`;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return {
       repo,
       branch,
       policyMode,
+      lastCheckpoints,
+      checkpointSelectionMode,
       checkpointId: null,
       commitSha: null,
+      includedCheckpoints: [],
       ready: false,
       checks: [
         {
@@ -173,15 +203,18 @@ export async function resolveStudioNewReviewPreflight(options?: {
       repo,
       branch,
       policyMode,
+      lastCheckpoints,
+      checkpointSelectionMode,
       checkpointId,
       commitSha,
+      includedCheckpoints,
       ready: true,
       checks: [
         {
           code: 'checkpoint',
           label: 'Checkpoint target',
           ok: true,
-          detail: `Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}.`,
+          detail: checkpointDetail,
         },
         {
           code: 'entire_context',
@@ -197,15 +230,18 @@ export async function resolveStudioNewReviewPreflight(options?: {
       repo,
       branch,
       policyMode,
+      lastCheckpoints,
+      checkpointSelectionMode,
       checkpointId,
       commitSha,
+      includedCheckpoints,
       ready: false,
       checks: [
         {
           code: 'checkpoint',
           label: 'Checkpoint target',
           ok: true,
-          detail: `Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}.`,
+          detail: checkpointDetail,
         },
         {
           code: 'entire_context',
@@ -224,12 +260,14 @@ export async function resolveStudioNewReviewPreflight(options?: {
 
 export async function startStudioNewReview(options: {
   policyMode: StudioReviewPolicyMode;
+  lastCheckpoints?: number;
   repoRoot?: string;
   expectedRepo?: string | null;
   expectedBranch?: string | null;
   onEvent?: (event: StudioNewReviewStartStreamEvent) => void | Promise<void>;
 }): Promise<StudioNewReviewStartResult> {
   const policyMode = normalizeStudioPolicyMode(options.policyMode);
+  const lastCheckpoints = normalizeLastCheckpoints(options.lastCheckpoints ?? null);
   const repoRoot = resolveStudioRepoRoot(options.repoRoot);
   const workerUrl = getWorkerUrl();
   if (!workerUrl) {
@@ -252,6 +290,7 @@ export async function startStudioNewReview(options: {
   const resolved = await resolveReviewContext({
     commitish: 'HEAD',
     projectRoot: '.',
+    lastCheckpoints,
     onProgress: (event) => options.onEvent?.({
       type: 'stage',
       stage: event.stage,
