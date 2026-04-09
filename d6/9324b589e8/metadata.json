@@ -6,8 +6,12 @@
   "checkpoints_count": 26,
   "files_touched": [
     "docs/review-quality/regressions.md",
+    "packages/cli/src/app/reviews/context.ts",
+    "packages/cli/src/app/reviews/studio-create.ts",
     "packages/cli/src/app/reviews/studio-preflight-cache.ts",
+    "packages/cli/src/app/reviews/ui-proxy.ts",
     "packages/cli/src/commands/review/preflight.ts",
+    "packages/cli/test/app/reviews/studio-create.test.ts",
     "packages/cli/test/app/reviews/studio-preflight-cache.test.ts",
     "packages/cli/test/commands/review/preflight-selection.test.ts",
     "packages/report-ui/src/components/ReportPage.test.tsx",
@@ -36,6 +40,12 @@
       "transcript": "/d6/9324b589e8/0/full.jsonl",
       "content_hash": "/d6/9324b589e8/0/content_hash.txt",
       "prompt": "/d6/9324b589e8/0/prompt.txt"
+    },
+    {
+      "metadata": "/d6/9324b589e8/1/metadata.json",
+      "transcript": "/d6/9324b589e8/1/full.jsonl",
+      "content_hash": "/d6/9324b589e8/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
