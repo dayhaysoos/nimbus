@@ -44,6 +44,7 @@ export interface ResolveReviewContextOptions {
   idempotencyKey?: string;
   pollIntervalMs?: number;
   intentSummaryModel?: string;
+  signal?: AbortSignal;
   onProgress?: (event: ResolveReviewContextProgressEvent) => void | Promise<void>;
 }
 
@@ -114,7 +115,27 @@ async function emitResolveReviewProgress(
   options: ResolveReviewContextOptions | undefined,
   event: ResolveReviewContextProgressEvent
 ): Promise<void> {
-  await options?.onProgress?.(event);
+  try {
+    await options?.onProgress?.(event);
+  } catch {
+    // Progress listeners are best-effort only and must not abort review setup.
+  }
+}
+
+function throwIfResolveReviewAborted(options: ResolveReviewContextOptions | undefined): void {
+  if (!options?.signal?.aborted) {
+    return;
+  }
+  const error = new Error('Review flow aborted before completion.');
+  error.name = 'AbortError';
+  throw error;
+}
+
+export async function emitResolveReviewProgressForTests(
+  options: ResolveReviewContextOptions | undefined,
+  event: ResolveReviewContextProgressEvent
+): Promise<void> {
+  await emitResolveReviewProgress(options, event);
 }
 
 let createWorkspaceForCommitFlow: (source: {
@@ -159,6 +180,7 @@ export function setReviewContextFlowForTests(overrides: ReviewContextFlowOverrid
 export async function resolveReviewContext(
   options?: ResolveReviewContextOptions
 ): Promise<ResolveReviewContextResult> {
+  throwIfResolveReviewAborted(options);
   const commitish = options?.commitish?.trim() || 'HEAD';
   const projectRoot = options?.projectRoot?.trim() || '.';
   const spinner: SpinnerLike =
@@ -196,6 +218,7 @@ export async function resolveReviewContext(
 
   spinner.start('Resolving checkpoint...');
   try {
+    throwIfResolveReviewAborted(options);
     await emitResolveReviewProgress(options, {
       stage: 'checkpoint',
       state: 'active',
@@ -232,6 +255,7 @@ export async function resolveReviewContext(
 
   spinner.start('Validating Entire session metadata...');
   try {
+    throwIfResolveReviewAborted(options);
     await emitResolveReviewProgress(options, {
       stage: 'entire_context',
       state: 'active',
@@ -298,6 +322,7 @@ export async function resolveReviewContext(
 
   spinner.start('Resolving local co-change context...');
   try {
+    throwIfResolveReviewAborted(options);
     await emitResolveReviewProgress(options, {
       stage: 'cochange',
       state: 'active',
@@ -326,6 +351,7 @@ export async function resolveReviewContext(
 
   spinner.start('Checking co-change token readiness...');
   try {
+    throwIfResolveReviewAborted(options);
     if (localCochange) {
       spinner.stop('Co-change token check skipped (using local co-change context)');
       await emitResolveReviewProgress(options, {
@@ -351,6 +377,7 @@ export async function resolveReviewContext(
 
   spinner.start('Creating workspace...');
   try {
+    throwIfResolveReviewAborted(options);
     await emitResolveReviewProgress(options, {
       stage: 'workspace',
       state: 'active',
@@ -378,6 +405,7 @@ export async function resolveReviewContext(
 
   spinner.start('Deploying workspace...');
   try {
+    throwIfResolveReviewAborted(options);
     await emitResolveReviewProgress(options, {
       stage: 'deployment',
       state: 'active',

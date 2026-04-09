@@ -657,8 +657,13 @@ function ActivityLog({ entries, isLive }: { entries: ActivityLogEntry[]; isLive:
 
   useEffect(() => {
     const node = logEndRef.current;
-    if (node && typeof node.scrollIntoView === 'function') {
+    if (!node || typeof node.scrollIntoView !== 'function') {
+      return;
+    }
+    try {
       node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch {
+      // Non-fatal browser/test environment scroll failures should not break the page.
     }
   }, [entries.length]);
 
@@ -990,6 +995,31 @@ export function ReportPage(): JSX.Element {
     }
   }, [reviewId]);
 
+  const handleFailReview = useCallback(async () => {
+    if (!reviewId) {
+      return;
+    }
+    setRecoveringReview(true);
+    setRecoveryError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/reviews/${encodeURIComponent(reviewId)}/fail`, {
+        method: 'POST',
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error((body as { error?: string } | null)?.error ?? `Failed to fail review (${response.status})`);
+      }
+      const parsed = parseGetReviewResponse(body);
+      setReview(parsed.review);
+      setToastMessage('Review failed cleanly');
+      setRefreshCycle((value) => value + 1);
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveringReview(false);
+    }
+  }, [reviewId]);
+
   if (state === 'loading') {
     return (
       <StatusLayout>
@@ -1156,14 +1186,25 @@ export function ReportPage(): JSX.Element {
                 <Badge variant="outline" className="rounded-full border-slate-700 bg-[#0f172a] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-slate-300">
                   {activityLog.length} event{activityLog.length === 1 ? '' : 's'}
                 </Badge>
-                <button
-                  type="button"
-                  className="report-copy-btn border-slate-700 bg-[#0f172a] font-mono text-slate-100 hover:border-slate-500"
-                  onClick={() => void handleRecoverReview()}
-                  disabled={recoveringReview}
-                >
-                  {recoveringReview ? 'Recovering…' : 'Recover review'}
-                </button>
+                {review.status === 'running' ? (
+                  <button
+                    type="button"
+                    className="report-copy-btn border-slate-700 bg-[#0f172a] font-mono text-slate-100 hover:border-slate-500"
+                    onClick={() => void handleFailReview()}
+                    disabled={recoveringReview}
+                  >
+                    {recoveringReview ? 'Failing…' : 'Fail review'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="report-copy-btn border-slate-700 bg-[#0f172a] font-mono text-slate-100 hover:border-slate-500"
+                    onClick={() => void handleRecoverReview()}
+                    disabled={recoveringReview}
+                  >
+                    {recoveringReview ? 'Recovering…' : 'Recover review'}
+                  </button>
+                )}
               </div>
             </div>
             <div className="border-b border-slate-800 px-3 py-2">
@@ -1177,7 +1218,9 @@ export function ReportPage(): JSX.Element {
                 <p className="font-mono text-xs text-amber-200">
                   {recoveryError
                     ? recoveryError
-                    : 'If this stays on "Sending to model" longer than expected, recover the review to requeue it or fail it cleanly.'}
+                    : review.status === 'running'
+                      ? 'If this stays on "Sending to model" longer than expected, fail the review to stop the stuck run cleanly.'
+                      : 'If this queued review is not making progress, recover it to request a clean retry.'}
                 </p>
               </div>
             )}

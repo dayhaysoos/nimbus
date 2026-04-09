@@ -233,6 +233,17 @@ function selectLastNCheckpointCommits(input: {
   return summaries.reverse();
 }
 
+function resolveCommitTrailersForSelection(input: {
+  commits: ReturnType<GitRepo['listCommits']>;
+  commitSha: string;
+}): ReturnType<typeof parseCommitTrailers> {
+  const match = input.commits.find((commit) => commit.sha === input.commitSha);
+  if (!match) {
+    throw new Error('Target commit is not on the current branch history.');
+  }
+  return parseCommitTrailers(match.message);
+}
+
 let resolveCommitForTests: ((commitish: string, options?: ResolveCommitContextOptions) => CommitResolution) | null = null;
 let resolveEntireContextForTests: typeof resolveEntireIntentContextForCommit | null = null;
 let resolveLastCheckpointOnBranchForTests: ((commitSha: string, cwd: string) => LastCheckpointOnBranch | null) | null = null;
@@ -471,21 +482,26 @@ function resolveCommitContext(commitish: string, cwd = process.cwd(), options?: 
   }
 
   if (lastCheckpoints && lastCheckpoints > 1) {
-    const parsedInput = parseDeployInput(commitish);
     const headCommitSha = parsedInput.kind === 'checkpoint'
       ? resolveCheckpointFromHistory(parsedInput.checkpointId, commits).selected.sha
       : git.resolveCommitSha(parsedInput.commitish);
+    const headTrailers = resolveCommitTrailersForSelection({
+      commits,
+      commitSha: headCommitSha,
+    });
+    if (!headTrailers.checkpointId) {
+      throw new Error(buildMissingCheckpointTrailerMessage(headCommitSha, cwd));
+    }
     const includedCheckpoints = selectLastNCheckpointCommits({
       commits,
       headCommitSha,
       count: lastCheckpoints,
     });
     const oldest = includedCheckpoints[0];
-    const newest = includedCheckpoints[includedCheckpoints.length - 1];
     return {
-      commitSha: newest.commitSha,
-      checkpointId: newest.checkpointId,
-      commitDiffPatch: buildRangeDiffPatch(git, oldest.commitSha, newest.commitSha),
+      commitSha: headCommitSha,
+      checkpointId: headTrailers.checkpointId,
+      commitDiffPatch: buildRangeDiffPatch(git, oldest.commitSha, headCommitSha),
       includedCheckpoints,
       checkpointSelectionMode: 'last_n',
     };

@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { handleCreateReview, handleGetReview, handleGetReviewEvents, handleListReviews, handleRecoverReview } from '../../src/api/reviews.js';
+import { handleCreateReview, handleFailReview, handleGetReview, handleGetReviewEvents, handleListReviews, handleRecoverReview } from '../../src/api/reviews.js';
 
 function withRequiredProvenance(payload: Record<string, unknown>): Record<string, unknown> {
   const provenance =
@@ -332,13 +332,13 @@ function createReviewApiEnv(options?: {
                   }
                   for (let index = 0; index < values.length; index += 1) {
                     const value = values[index];
-                    if (value === 'retry_scheduled' || value === 'review_execution_timeout') {
+                    if (value === 'retry_scheduled' || value === 'review_execution_timeout' || value === 'review_execution_aborted') {
                       state.reviewErrorCode = value;
                     }
                     if (
                       typeof value === 'string' &&
                       index > 0 &&
-                      (values[index - 1] === 'retry_scheduled' || values[index - 1] === 'review_execution_timeout')
+                      (values[index - 1] === 'retry_scheduled' || values[index - 1] === 'review_execution_timeout' || values[index - 1] === 'review_execution_aborted')
                     ) {
                       state.reviewErrorMessage = value;
                     }
@@ -1416,6 +1416,39 @@ export async function runReviewApiTests(): Promise<void> {
     const response = await handleRecoverReview(
       'rev_abcd1234',
       new Request('https://example.com/api/reviews/rev_abcd1234/recover', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'running',
+    });
+    const response = await handleFailReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/fail', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.action, 'failed');
+    const review = (body.review ?? {}) as Record<string, unknown>;
+    assert.equal(review.status, 'failed');
+    assert.equal(state.eventTypes.has('review_failed'), true);
+    assert.equal(state.reviewErrorCode, 'review_execution_aborted');
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
+    const { env } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'succeeded',
+    });
+    const response = await handleFailReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/fail', { method: 'POST' }),
       env as never
     );
     assert.equal(response.status, 409);

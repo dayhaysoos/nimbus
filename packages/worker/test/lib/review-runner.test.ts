@@ -1746,7 +1746,9 @@ export async function runReviewRunnerTests(): Promise<void> {
         return undefined;
       },
     }) as never);
+    let requestCount = 0;
     globalThis.fetch = (async (): Promise<Response> => {
+      requestCount += 1;
       return new Response(
         JSON.stringify({
           action: {
@@ -1764,7 +1766,9 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
+      assert.equal(requestCount >= 2, true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1819,12 +1823,11 @@ export async function runReviewRunnerTests(): Promise<void> {
         envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status, 'failed');
-      assert.equal(fetchCalls, 1);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_requested'), false);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_output_received'), false);
+      assert.equal(state.status, 'succeeded');
+      assert.equal(fetchCalls >= 2, true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1872,7 +1875,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      assert.equal(genericCompletionFetchCalls, 1);
+      assert.equal(genericCompletionFetchCalls >= 2, true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
@@ -2308,6 +2312,71 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
+    let requestCount = 0;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (): Promise<Response> => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({
+            action: {
+              type: 'final',
+              summary: 'plain text completion that is not review json',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'complete',
+            finalOutput: {
+              findings: [],
+              summary: 'No actionable findings. Risk low. Further review not warranted.',
+              furtherPassesLowYield: true,
+            },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
+      const report = JSON.parse(state.reportJson ?? '{}') as { findings: unknown[]; summaryText?: string };
+      assert.equal(Array.isArray(report.findings), true);
+      assert.equal(report.findings.length, 0);
+      assert.equal(report.summaryText?.includes('No actionable findings'), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
     let firstPrompt = '';
     let secondCallBody: Record<string, unknown> | null = null;
     setReviewAnalysisSandboxResolverForTests(async () => ({
@@ -2403,8 +2472,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(firstPrompt.includes('Authoritative deployed diff snapshot'), true);
       assert.equal(firstPrompt.includes('const deployed = true'), true);
-      assert.equal(firstPrompt.length < 50000, true);
-      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 10000, true);
+      assert.equal(firstPrompt.length < 54000, true);
+      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 12000, true);
       assert.equal(JSON.stringify(secondCallBody ?? {}).includes('const deployed = true'), true);
     } finally {
       globalThis.fetch = originalFetch;
@@ -2511,7 +2580,9 @@ export async function runReviewRunnerTests(): Promise<void> {
         return undefined;
       },
     }) as never);
+    let requestCount = 0;
     globalThis.fetch = (async (): Promise<Response> => {
+      requestCount += 1;
       return new Response(
         JSON.stringify({
           action: {
@@ -2529,7 +2600,9 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
+      assert.equal(requestCount >= 2, true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);

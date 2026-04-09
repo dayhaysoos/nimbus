@@ -275,3 +275,44 @@ export async function manuallyRecoverReviewRun(
     review: await getReviewRun(env.DB, reviewId),
   };
 }
+
+export async function manuallyFailReviewRun(
+  env: Env,
+  reviewId: string
+): Promise<{ action: 'failed'; review: Awaited<ReturnType<typeof getReviewRun>> }> {
+  const review = await getReviewRun(env.DB, reviewId);
+  if (!review) {
+    return { action: 'failed', review: null };
+  }
+
+  if (review.status !== 'queued' && review.status !== 'running') {
+    throw new Error(`Review is ${review.status}; only queued or running reviews can be failed manually.`);
+  }
+
+  const message =
+    review.status === 'running'
+      ? 'Manual fail requested while review was stuck in running state.'
+      : 'Manual fail requested while review was queued.';
+
+  await updateReviewRunStatus(env.DB, reviewId, 'failed', {
+    report: null,
+    markdownSummary: null,
+    errorCode: 'review_execution_aborted',
+    errorMessage: message,
+  });
+  await appendReviewEvent(env.DB, {
+    reviewId,
+    eventType: 'review_failed',
+    payload: {
+      code: 'review_execution_aborted',
+      message,
+      reason: 'manual_fail',
+      priorStatus: review.status,
+    },
+  });
+
+  return {
+    action: 'failed',
+    review: await getReviewRun(env.DB, reviewId),
+  };
+}

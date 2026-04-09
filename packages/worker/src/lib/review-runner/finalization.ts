@@ -1,6 +1,7 @@
 import type { Env, ReviewReport, ReviewRunResponse } from '../../types.js';
 import {
   appendReviewEvent,
+  getReviewRun,
   getHighestFindingNumberForBranch,
   replaceReviewFindings,
   updateReviewRunStatus,
@@ -23,6 +24,11 @@ export async function finalizeSuccessfulReview(
   payload: Record<string, unknown>,
   report: ReviewReport
 ): Promise<void> {
+  const latest = await getReviewRun(env.DB, reviewId);
+  if (!latest || latest.status !== 'running') {
+    return;
+  }
+
   const payloadRecord = asRecord(payload);
   const requestProvenance = asRecord(payloadRecord.provenance);
   const reviewRepo = readOptionalString(requestProvenance.repo);

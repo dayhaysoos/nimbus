@@ -193,8 +193,10 @@ export async function proxyApiRequest(
     const expectedBranch = requestUrl.searchParams.get('branch');
     const lastCheckpoints = parseLastCheckpoints(requestUrl.searchParams.get('lastCheckpoints'));
     let streamOpen = true;
+    const abortController = new AbortController();
     response.on('close', () => {
       streamOpen = false;
+      abortController.abort();
     });
     response.statusCode = 200;
     response.setHeader('Cache-Control', 'no-store');
@@ -209,9 +211,16 @@ export async function proxyApiRequest(
         repoRoot: resolveRepoRootSafe(),
         expectedRepo,
         expectedBranch,
+        signal: abortController.signal,
         onEvent: async (event) => {
-          if (streamOpen) {
+          if (!streamOpen || abortController.signal.aborted) {
+            return;
+          }
+          try {
             writeSseFrame(response, event);
+          } catch {
+            streamOpen = false;
+            abortController.abort();
           }
         },
       });

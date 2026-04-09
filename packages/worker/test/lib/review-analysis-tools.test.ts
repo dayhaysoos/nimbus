@@ -47,4 +47,25 @@ export async function runReviewAnalysisToolsTests(): Promise<void> {
     const result = output.result as Record<string, unknown>;
     assert.equal(result.error, 'search_code.query is required');
   }
+
+  {
+    const action = validateReviewAgentAction({
+      type: 'tool',
+      tool: 'read_batch',
+      args: {
+        paths: ['a.ts', 'b.ts'],
+        maxBytes: 1024,
+        path: null,
+        query: null,
+        symbol: null,
+        maxResults: null,
+        maxBytesPerFile: null,
+        caseSensitive: null,
+      },
+      summary: null,
+      finalOutput: null,
+    });
+    assert.equal(action.type, 'tool');
+    assert.equal(action.tool, 'read_batch');
+  }
 }

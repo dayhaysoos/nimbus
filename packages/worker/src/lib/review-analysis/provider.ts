@@ -22,6 +22,7 @@ export interface ReviewAgentProvider {
   next(input: {
     prompt: string;
     model: string;
+    reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
     maxSteps: number;
     step: number;
     history: ReviewAgentHistoryEntry[];
@@ -39,7 +40,7 @@ const reviewAgentActionJsonSchema = {
       type: { type: 'string', enum: ['tool', 'complete', 'final'] },
       tool: {
         anyOf: [
-          { type: 'string', enum: ['list_files', 'read_file', 'diff_summary', 'search_code'] },
+          { type: 'string', enum: ['list_files', 'read_file', 'read_batch', 'diff_summary', 'search_code'] },
           { type: 'null' },
         ],
       },
@@ -50,13 +51,19 @@ const reviewAgentActionJsonSchema = {
             additionalProperties: false,
             properties: {
               path: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              paths: {
+                anyOf: [
+                  { type: 'array', items: { type: 'string' } },
+                  { type: 'null' },
+                ],
+              },
               maxBytes: { anyOf: [{ type: 'number' }, { type: 'null' }] },
               query: { anyOf: [{ type: 'string' }, { type: 'null' }] },
               maxResults: { anyOf: [{ type: 'number' }, { type: 'null' }] },
               maxBytesPerFile: { anyOf: [{ type: 'number' }, { type: 'null' }] },
               caseSensitive: { anyOf: [{ type: 'boolean' }, { type: 'null' }] },
             },
-            required: ['path', 'maxBytes', 'query', 'maxResults', 'maxBytesPerFile', 'caseSensitive'],
+            required: ['path', 'paths', 'maxBytes', 'query', 'maxResults', 'maxBytesPerFile', 'caseSensitive'],
           },
           { type: 'null' },
         ],
@@ -155,7 +162,7 @@ function buildOpenRouterStepPrompt(input: {
     `- Current step: ${input.step} of ${input.maxSteps}.`,
     '- You are inside Nimbus\'s internal review harness loop.',
     '- Decide whether to request ONE read-only tool call or finish with complete structured review JSON.',
-    '- Tools available: list_files, read_file, diff_summary, search_code.',
+    '- Tools available: list_files, read_file, read_batch, diff_summary, search_code.',
     '- Never request write_file or run_command.',
     input.forceComplete
       ? '- HARD REQUIREMENT: return type="complete" now. Do not request any tool.'
@@ -179,6 +186,7 @@ export class OpenRouterReviewProvider implements ReviewAgentProvider {
   async next(input: {
     prompt: string;
     model: string;
+    reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
     maxSteps: number;
     step: number;
     history: ReviewAgentHistoryEntry[];
@@ -201,6 +209,7 @@ export class OpenRouterReviewProvider implements ReviewAgentProvider {
           },
           body: JSON.stringify({
             model: input.model,
+            ...(input.reasoningEffort ? { reasoning: { effort: input.reasoningEffort } } : {}),
             response_format: { type: 'json_schema', json_schema: reviewAgentActionJsonSchema },
             plugins: [{ id: 'response-healing' }],
             messages: [
@@ -307,6 +316,7 @@ export class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
   async next(input: {
     prompt: string;
     model: string;
+    reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high';
     maxSteps: number;
     step: number;
     history: ReviewAgentHistoryEntry[];

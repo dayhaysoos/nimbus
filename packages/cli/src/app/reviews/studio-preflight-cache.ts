@@ -10,7 +10,6 @@ interface PreflightCacheState {
   lastCheckpoints: 1 | 2 | 3 | null;
   refreshedAtMs: number | null;
   value: StudioNewReviewPreflightResult | null;
-  inFlight: Promise<StudioNewReviewPreflightResult> | null;
 }
 
 const PREFLIGHT_CACHE_MAX_AGE_MS = 8_000;
@@ -21,12 +20,13 @@ let cache: PreflightCacheState = {
   lastCheckpoints: null,
   refreshedAtMs: null,
   value: null,
-  inFlight: null,
 };
+const inFlightByKey = new Map<string, Promise<StudioNewReviewPreflightResult>>();
 let headWatcher: FSWatcher | null = null;
 let refWatcher: FSWatcher | null = null;
 let studioPreferencesWatcher: FSWatcher | null = null;
 let refreshDebounceTimer: NodeJS.Timeout | null = null;
+let resolveStudioNewReviewPreflightForCache: typeof resolveStudioNewReviewPreflight = resolveStudioNewReviewPreflight;
 
 function resolveHeadSha(repoRoot: string): string | null {
   try {
@@ -51,33 +51,28 @@ function resolveStudioPolicyMode(repoRoot: string): 'auto' | 'review' | null {
 }
 
 async function refreshPreflight(repoRoot: string, lastCheckpoints: 1 | 2 | 3): Promise<StudioNewReviewPreflightResult> {
-  if (cache.inFlight) {
-    return cache.inFlight;
+  const inFlightKey = `${repoRoot}:${lastCheckpoints}`;
+  const existing = inFlightByKey.get(inFlightKey);
+  if (existing) {
+    return existing;
   }
   const pending = (async () => {
-    const result = await resolveStudioNewReviewPreflight({ repoRoot, lastCheckpoints });
+    const result = await resolveStudioNewReviewPreflightForCache({ repoRoot, lastCheckpoints });
     cache = {
       headSha: resolveHeadSha(repoRoot),
       policyMode: resolveStudioPolicyMode(repoRoot),
       lastCheckpoints,
       refreshedAtMs: Date.now(),
       value: result,
-      inFlight: null,
     };
     return result;
   })();
-  cache = {
-    ...cache,
-    inFlight: pending,
-  };
+  inFlightByKey.set(inFlightKey, pending);
   try {
     return await pending;
   } finally {
-    if (cache.inFlight === pending) {
-      cache = {
-        ...cache,
-        inFlight: null,
-      };
+    if (inFlightByKey.get(inFlightKey) === pending) {
+      inFlightByKey.delete(inFlightKey);
     }
   }
 }
@@ -225,4 +220,23 @@ export function stopStudioPreflightBackgroundPolling(): void {
     clearTimeout(refreshDebounceTimer);
     refreshDebounceTimer = null;
   }
+}
+
+export function setStudioPreflightResolverForTests(
+  resolver: typeof resolveStudioNewReviewPreflight | null
+): void {
+  resolveStudioNewReviewPreflightForCache = resolver ?? resolveStudioNewReviewPreflight;
+}
+
+export function resetStudioPreflightCacheForTests(): void {
+  stopStudioPreflightBackgroundPolling();
+  cache = {
+    headSha: null,
+    policyMode: null,
+    lastCheckpoints: null,
+    refreshedAtMs: null,
+    value: null,
+  };
+  inFlightByKey.clear();
+  resolveStudioNewReviewPreflightForCache = resolveStudioNewReviewPreflight;
 }

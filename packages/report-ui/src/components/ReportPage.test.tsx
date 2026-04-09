@@ -143,12 +143,12 @@ describe('ReportPage', () => {
     expect(screen.getAllByText(/analysis is in progress/i).length).toBeGreaterThan(0);
   });
 
-  it('allows recovering a live review from the report page', async () => {
+  it('allows failing a running review from the report page', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
         ok: true,
-        json: async () => ({ review: mockReview }),
+        json: async () => ({ review: { ...mockReview, status: 'running' } }),
       })
       .mockResolvedValueOnce({
         ok: true,
@@ -156,7 +156,7 @@ describe('ReportPage', () => {
           action: 'requeued',
           review: {
             ...mockReview,
-            status: 'queued',
+            status: 'failed',
           },
         }),
       })
@@ -181,14 +181,14 @@ describe('ReportPage', () => {
 
     await screen.findByText('Live review activity');
     const user = userEvent.setup();
-    await user.click(screen.getByRole('button', { name: 'Recover review' }));
+    await user.click(screen.getByRole('button', { name: 'Fail review' }));
 
     expect(fetchMock).toHaveBeenNthCalledWith(
       2,
-      '/api/reviews/review_123/recover',
+      '/api/reviews/review_123/fail',
       expect.objectContaining({ method: 'POST' })
     );
-    expect(await screen.findByText('Recovery requested')).toBeInTheDocument();
+    expect(await screen.findByText('Review failed cleanly')).toBeInTheDocument();
   });
 
   it('renders succeeded review strict v2 output details', async () => {

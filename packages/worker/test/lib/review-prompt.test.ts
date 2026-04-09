@@ -68,6 +68,12 @@ export function runReviewPromptTests(): void {
     assert.equal(prompt.includes('Look for partial-failure paths where the system can end in the wrong terminal state.'), true);
     assert.equal(prompt.includes('For invalid-input findings, explain whether the bad input is rejected, ignored, or causes destructive state changes.'), true);
     assert.equal(prompt.includes('Prefer omission over speculation, but do not omit a finding just because it requires cross-file reasoning.'), true);
+    assert.equal(prompt.includes('Only flag issues that the original author would likely fix immediately if they were made aware of them.'), true);
+    assert.equal(prompt.includes('Return every distinct actionable issue that meets that bar; do not stop at the first qualifying finding.'), true);
+    assert.equal(prompt.includes('Use one finding per distinct issue. If two scenarios have different triggers, outcomes, or fixes, they must be separate findings.'), true);
+    assert.equal(prompt.includes('The issue must be introduced by this diff, not pre-existing neighboring code.'), true);
+    assert.equal(prompt.includes('When a changed UI or CLI path exposes an action, verify the backend handler accepts that action for the same runtime states and inputs.'), true);
+    assert.equal(prompt.includes('When changed code forwards progress, logging, streaming, or status callbacks, check whether awaiting or propagating callback failures can abort the primary operation.'), true);
   }
 
   {

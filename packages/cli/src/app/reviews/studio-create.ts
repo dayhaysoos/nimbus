@@ -264,8 +264,27 @@ export async function startStudioNewReview(options: {
   repoRoot?: string;
   expectedRepo?: string | null;
   expectedBranch?: string | null;
+  signal?: AbortSignal;
   onEvent?: (event: StudioNewReviewStartStreamEvent) => void | Promise<void>;
 }): Promise<StudioNewReviewStartResult> {
+  const throwIfAborted = (): void => {
+    if (!options.signal?.aborted) {
+      return;
+    }
+    const error = new Error('Studio review start aborted before completion.');
+    error.name = 'AbortError';
+    throw error;
+  };
+  const emitEvent = async (event: StudioNewReviewStartStreamEvent): Promise<void> => {
+    throwIfAborted();
+    try {
+      await options.onEvent?.(event);
+    } catch {
+      // Start-flow events are best-effort only and must not abort review setup.
+    }
+  };
+
+  throwIfAborted();
   const policyMode = normalizeStudioPolicyMode(options.policyMode);
   const lastCheckpoints = normalizeLastCheckpoints(options.lastCheckpoints ?? null);
   const repoRoot = resolveStudioRepoRoot(options.repoRoot);
@@ -291,7 +310,8 @@ export async function startStudioNewReview(options: {
     commitish: 'HEAD',
     projectRoot: '.',
     lastCheckpoints,
-    onProgress: (event) => options.onEvent?.({
+    signal: options.signal,
+    onProgress: (event) => emitEvent({
       type: 'stage',
       stage: event.stage,
       state: event.state,
@@ -300,7 +320,7 @@ export async function startStudioNewReview(options: {
     }),
   });
 
-  await options.onEvent?.({
+  await emitEvent({
     type: 'stage',
     stage: 'review_creation',
     state: 'active',
@@ -312,6 +332,7 @@ export async function startStudioNewReview(options: {
   });
 
   if (policyMode === 'review') {
+    throwIfAborted();
     const derived = await deriveReviewPolicy(workerUrl, {
       workspaceId: resolved.workspaceId,
       deploymentId: resolved.deploymentId,
@@ -320,7 +341,7 @@ export async function startStudioNewReview(options: {
       provenance: resolved.resolvedProvenance,
     });
 
-    await options.onEvent?.({
+    await emitEvent({
       type: 'stage',
       stage: 'review_creation',
       state: 'completed',
@@ -339,7 +360,7 @@ export async function startStudioNewReview(options: {
       policyMode,
       status: 'policy_ready',
     };
-    await options.onEvent?.({
+    await emitEvent({
       type: 'completed',
       ...result,
       detail: 'Policy review is ready. Opening the policy screen.',
@@ -347,6 +368,7 @@ export async function startStudioNewReview(options: {
     return result;
   }
 
+  throwIfAborted();
   const derived = await deriveReviewPolicy(workerUrl, {
     workspaceId: resolved.workspaceId,
     deploymentId: resolved.deploymentId,
@@ -354,24 +376,25 @@ export async function startStudioNewReview(options: {
     reviewBasis: 'checkpoint',
     provenance: resolved.resolvedProvenance,
   });
-  await options.onEvent?.({
+  await emitEvent({
     type: 'stage',
     stage: 'review_creation',
     state: 'completed',
     label: 'Review created',
     detail: `Review ${derived.reviewId} was created and is ready to queue.`,
   });
-  await options.onEvent?.({
+  await emitEvent({
     type: 'stage',
     stage: 'policy',
     state: 'active',
     label: 'Approving policy',
     detail: 'Applying the derived policy so Nimbus can start analysis.',
   });
+  throwIfAborted();
   await approveReviewPolicy(workerUrl, derived.reviewId, {
     approvedPolicy: derived.derivedPolicy,
   });
-  await options.onEvent?.({
+  await emitEvent({
     type: 'stage',
     stage: 'policy',
     state: 'completed',
@@ -390,10 +413,27 @@ export async function startStudioNewReview(options: {
     policyMode,
     status: 'queued',
   };
-  await options.onEvent?.({
+  await emitEvent({
     type: 'completed',
     ...result,
     detail: 'Review queued. Opening the live results route.',
   });
   return result;
+}
+
+export async function emitStudioStartEventForTests(input: {
+  signal?: AbortSignal;
+  onEvent?: (event: StudioNewReviewStartStreamEvent) => void | Promise<void>;
+  event: StudioNewReviewStartStreamEvent;
+}): Promise<void> {
+  if (input.signal?.aborted) {
+    const error = new Error('Studio review start aborted before completion.');
+    error.name = 'AbortError';
+    throw error;
+  }
+  try {
+    await input.onEvent?.(input.event);
+  } catch {
+    // Best-effort only in tests as well.
+  }
 }

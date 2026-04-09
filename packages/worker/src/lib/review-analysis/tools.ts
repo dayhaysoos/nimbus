@@ -10,6 +10,7 @@ const MAX_COMMAND_TIMEOUT_MS = 2 * 60_000;
 export type ReviewAgentAction =
   | { type: 'tool'; tool: 'list_files'; args: { path?: string } }
   | { type: 'tool'; tool: 'read_file'; args: { path: string; maxBytes?: number } }
+  | { type: 'tool'; tool: 'read_batch'; args: { paths: string[]; maxBytes?: number } }
   | {
       type: 'tool';
       tool: 'search_code';
@@ -247,6 +248,23 @@ export async function executeReviewTool(
     return { request: { path: action.args.path, maxBytes }, result: JSON.parse(output.stdout || '{}') };
   }
 
+  if (action.tool === 'read_batch') {
+    const maxBytes = typeof action.args.maxBytes === 'number' && Number.isFinite(action.args.maxBytes)
+      ? Math.max(1, Math.min(maxFileBytes, Math.floor(action.args.maxBytes)))
+      : maxFileBytes;
+    const files: Array<Record<string, unknown>> = [];
+    for (const requestedPath of action.args.paths) {
+      const absolutePath = assertWorkspacePath(requestedPath, policy);
+      const output = await runSandboxCommand(sandbox, buildReadFileCommand(absolutePath, maxBytes, policy.rootPath));
+      const parsed = JSON.parse(output.stdout || '{}') as Record<string, unknown>;
+      files.push({
+        path: requestedPath,
+        ...parsed,
+      });
+    }
+    return { request: { paths: action.args.paths, maxBytes }, result: { files } };
+  }
+
   if (action.tool === 'search_code') {
     const absolutePath = assertWorkspacePath(action.args.path ?? '.', policy);
     const query = action.args.query.trim();
@@ -285,7 +303,7 @@ export async function executeReviewTool(
   if (action.tool === 'run_command') {
     return {
       request: { command: action.args.command, timeoutMs: action.args.timeoutMs ?? DEFAULT_COMMAND_TIMEOUT_MS },
-      result: { error: 'run_command is disabled in review mode; use list_files, read_file, search_code, or diff_summary only', disabled: true },
+      result: { error: 'run_command is disabled in review mode; use list_files, read_file, read_batch, search_code, or diff_summary only', disabled: true },
     };
   }
 
@@ -341,6 +359,13 @@ export function validateReviewAgentAction(action: unknown): ReviewAgentAction {
       if (typeof args.path !== 'string' || !args.path.trim()) throw new ReviewPolicyError('read_file.path is required');
       if (args.maxBytes !== undefined && args.maxBytes !== null && (typeof args.maxBytes !== 'number' || !Number.isFinite(args.maxBytes))) throw new ReviewPolicyError('read_file.maxBytes must be a number when provided');
       return { type: 'tool', tool, args: { path: args.path, maxBytes: optionalNumber(args.maxBytes) } };
+    case 'read_batch': {
+      if (!Array.isArray(args.paths) || args.paths.length === 0 || args.paths.some((value) => typeof value !== 'string' || !value.trim())) {
+        throw new ReviewPolicyError('read_batch.paths must be a non-empty string array');
+      }
+      if (args.maxBytes !== undefined && args.maxBytes !== null && (typeof args.maxBytes !== 'number' || !Number.isFinite(args.maxBytes))) throw new ReviewPolicyError('read_batch.maxBytes must be a number when provided');
+      return { type: 'tool', tool, args: { paths: args.paths as string[], maxBytes: optionalNumber(args.maxBytes) } };
+    }
     case 'search_code': {
       if (typeof args.query !== 'string' || !args.query.trim()) throw new ReviewPolicyError('search_code.query is required');
       if (args.path !== undefined && args.path !== null && (typeof args.path !== 'string' || !args.path.trim())) throw new ReviewPolicyError('search_code.path must be a non-empty string when provided');
