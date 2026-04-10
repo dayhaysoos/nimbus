@@ -1,0 +1,52 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "2484645a1cdf",
+  "session_id": "019d5552-9f6b-7d43-9216-7a9c13d1c4f2",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-10T20:03:18.892408Z",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 17,
+  "files_touched": [
+    "packages/cli/src/app/reviews/context.ts",
+    "packages/cli/src/app/reviews/studio-create.ts",
+    "packages/cli/src/app/reviews/ui-proxy.ts",
+    "packages/cli/test/app/reviews/studio-create.test.ts",
+    "packages/cli/test/app/reviews/ui-proxy.test.ts",
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/worker/src/api/reviews/recovery.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-analysis/provider.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/analysis.ts",
+    "packages/worker/src/lib/review-runner/finalization.ts",
+    "packages/worker/src/lib/review-runner/retry.ts",
+    "packages/worker/src/lib/review-runner/shared.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/lib/review-analysis-provider.test.ts",
+    "packages/worker/test/lib/review-analysis.test.ts",
+    "packages/worker/test/lib/review-finalization.test.ts",
+    "packages/worker/test/lib/review-runner.test.ts"
+  ],
+  "agent": "Codex",
+  "turn_id": "062f139aa6d3",
+  "token_usage": {
+    "input_tokens": 212777452,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 199628032,
+    "output_tokens": 652063,
+    "api_call_count": 1585
+  },
+  "session_metrics": {
+    "turn_count": 45
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-10T20:03:10.91809Z",
+    "agent_lines": 1890,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1890,
+    "agent_percentage": 100
+  }
+}
