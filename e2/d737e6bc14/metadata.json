@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "e2d737e6bc14",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/nimbus-pr-review.yml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/e2/d737e6bc14/0/metadata.json",
+      "transcript": "/e2/d737e6bc14/0/full.jsonl",
+      "content_hash": "/e2/d737e6bc14/0/content_hash.txt",
+      "prompt": "/e2/d737e6bc14/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 1105202,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1058688,
+    "output_tokens": 3120,
+    "api_call_count": 16
+  }
+}

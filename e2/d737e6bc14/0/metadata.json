@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "e2d737e6bc14",
+  "session_id": "019d7907-f96d-7242-a6bc-ae2ff0294b31",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-10T21:01:59.322162Z",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".github/workflows/nimbus-pr-review.yml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "a6f6bdd26a95",
+  "checkpoint_transcript_start": 370,
+  "transcript_lines_at_start": 370,
+  "token_usage": {
+    "input_tokens": 1105202,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1058688,
+    "output_tokens": 3120,
+    "api_call_count": 16
+  },
+  "session_metrics": {
+    "turn_count": 3
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-10T21:01:59.102907Z",
+    "agent_lines": 1,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 1,
+    "agent_percentage": 100
+  }
+}
