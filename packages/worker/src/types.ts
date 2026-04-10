@@ -58,6 +58,7 @@ export interface Env {
   AGENT_PROVIDER?: string;
   AGENT_MODEL?: string;
   REVIEW_MODEL?: string;
+  REVIEW_REASONING_EFFORT?: string;
   REVIEW_INTENT_SUMMARY_MODEL?: string;
   AGENT_SDK_URL?: string;
   AGENT_SDK_AUTH_TOKEN?: string;
@@ -627,6 +628,12 @@ export interface ReviewContextRef {
   r2Key: string;
 }
 
+export interface ReviewedFilesSummary {
+  changed: string[];
+  related: string[];
+  conventions: string[];
+}
+
 export interface ReviewIntentSummary {
   goal: string | null;
   constraints: string[];
@@ -661,6 +668,7 @@ export interface ReviewProvenanceSummary {
     estimatedTokens: number;
     tokenBudget: number | null;
   };
+  reviewedFiles?: ReviewedFilesSummary;
   coChange?: {
     coChangeSkipped: boolean;
     coChangeSkipReason: string | null;
@@ -674,6 +682,12 @@ export interface ReviewProvenanceSummary {
     resolvedCommitSha: string;
     resolvedCommitMessage: string | null;
   };
+  checkpointSelectionMode?: 'latest' | 'last_n' | 'range';
+  includedCheckpoints?: Array<{
+    checkpointId: string;
+    commitSha: string;
+    commitSubject: string;
+  }>;
   outputSchemaVersion?: 'v2';
   passArchitecture?: 'single';
   validation?: {
@@ -684,11 +698,18 @@ export interface ReviewProvenanceSummary {
     dedupedExactCount: number;
     fallbackApplied?: boolean;
     fallbackReason?: string | null;
+    followUpReviewScore?: 1 | 2 | 3;
+    followUpReviewRationale?: string;
   };
   furtherPassesLowYield?: {
     value: boolean;
     source: 'model-self-assessment';
     reliability: 'weak-signal-phase2';
+  };
+  followUpReview?: {
+    score: 1 | 2 | 3;
+    rationale: string;
+    source: 'model-self-assessment';
   };
   advisories?: string[];
 }

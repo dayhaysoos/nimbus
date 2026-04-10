@@ -60,6 +60,7 @@ export function buildDeploymentReportOutput(input: {
           model: input.agentAnalysis.model,
           stepsExecuted: input.agentAnalysis.stepsExecuted,
           usedTools: input.agentAnalysis.usedTools,
+          followUpReviewScore: input.agentAnalysis.followUpReviewScore,
         },
       }
     : null;
@@ -119,6 +120,11 @@ export function buildDeploymentReportOutput(input: {
             estimatedTokens: input.reviewContext.stats.estimatedTokens,
             tokenBudget: input.reviewContext.stats.tokenBudget,
           },
+          reviewedFiles: {
+            changed: input.reviewContext.retrieval.changedFiles.map((file) => file.path),
+            related: input.reviewContext.retrieval.relatedFiles.map((file) => file.path),
+            conventions: input.reviewContext.retrieval.conventionFiles.map((file) => file.path),
+          },
           coChange: {
             coChangeSkipped: input.reviewContext.retrieval.coChange.coChangeSkipped,
             coChangeSkipReason: input.reviewContext.retrieval.coChange.coChangeSkipReason,
@@ -138,9 +144,34 @@ export function buildDeploymentReportOutput(input: {
                   resolvedCommitMessage: input.contextResolutionResolvedCommitMessage,
                 }
               : undefined,
+          checkpointSelectionMode:
+            input.requestProvenance.checkpointSelectionMode === 'latest' ||
+            input.requestProvenance.checkpointSelectionMode === 'last_n' ||
+            input.requestProvenance.checkpointSelectionMode === 'range'
+              ? input.requestProvenance.checkpointSelectionMode
+              : undefined,
+          includedCheckpoints: Array.isArray(input.requestProvenance.includedCheckpoints)
+            ? input.requestProvenance.includedCheckpoints
+                .filter(
+                  (entry): entry is Record<string, unknown> =>
+                    Boolean(entry) && typeof entry === 'object' && !Array.isArray(entry)
+                )
+                .map((entry) => ({
+                  checkpointId: typeof entry.checkpointId === 'string' ? entry.checkpointId : '',
+                  commitSha: typeof entry.commitSha === 'string' ? entry.commitSha : '',
+                  commitSubject: typeof entry.commitSubject === 'string' ? entry.commitSubject : '',
+                }))
+                .filter((entry) => entry.checkpointId && entry.commitSha)
+            : undefined,
           outputSchemaVersion: 'v2',
           passArchitecture: 'single',
-          validation: input.agentAnalysis?.validation,
+          validation: input.agentAnalysis
+            ? {
+                ...input.agentAnalysis.validation,
+                followUpReviewScore: input.agentAnalysis.followUpReviewScore,
+                followUpReviewRationale: input.agentAnalysis.followUpReviewRationale,
+              }
+            : undefined,
           furtherPassesLowYield:
             typeof input.agentAnalysis?.furtherPassesLowYield === 'boolean'
               ? {
@@ -149,6 +180,13 @@ export function buildDeploymentReportOutput(input: {
                   reliability: 'weak-signal-phase2' as const,
                 }
               : undefined,
+          followUpReview: input.agentAnalysis
+            ? {
+                score: input.agentAnalysis.followUpReviewScore,
+                rationale: input.agentAnalysis.followUpReviewRationale,
+                source: 'model-self-assessment' as const,
+              }
+            : undefined,
           advisories: input.advisories.length > 0 ? input.advisories : undefined,
         }
       : {

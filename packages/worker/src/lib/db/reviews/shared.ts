@@ -271,8 +271,45 @@ export function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse 
       transcriptUrl: report?.provenance && typeof report.provenance.transcriptUrl === 'string' ? report.provenance.transcriptUrl : null,
       reviewContextRef: report?.provenance && report.provenance.reviewContextRef && typeof report.provenance.reviewContextRef === 'object' ? (report.provenance.reviewContextRef as ReviewContextRef) : null,
       reviewContextStats: report?.provenance && report.provenance.reviewContextStats && typeof report.provenance.reviewContextStats === 'object' ? report.provenance.reviewContextStats : undefined,
+      reviewedFiles: report?.provenance && report.provenance.reviewedFiles && typeof report.provenance.reviewedFiles === 'object' ? report.provenance.reviewedFiles : undefined,
       coChange: report?.provenance && report.provenance.coChange && typeof report.provenance.coChange === 'object' ? report.provenance.coChange : undefined,
       contextResolution: report?.provenance && report.provenance.contextResolution && typeof report.provenance.contextResolution === 'object' ? report.provenance.contextResolution : undefined,
+      checkpointSelectionMode:
+        report?.provenance?.checkpointSelectionMode === 'latest' ||
+        report?.provenance?.checkpointSelectionMode === 'last_n' ||
+        report?.provenance?.checkpointSelectionMode === 'range'
+          ? report.provenance.checkpointSelectionMode
+          : requestProvenance.checkpointSelectionMode === 'latest' ||
+              requestProvenance.checkpointSelectionMode === 'last_n' ||
+              requestProvenance.checkpointSelectionMode === 'range'
+            ? requestProvenance.checkpointSelectionMode
+            : undefined,
+      includedCheckpoints:
+        report?.provenance && Array.isArray(report.provenance.includedCheckpoints)
+          ? report.provenance.includedCheckpoints
+              .flatMap((entry) => {
+                if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+                  return [];
+                }
+                const record = entry as Record<string, unknown>;
+                const checkpointId = typeof record.checkpointId === 'string' ? record.checkpointId.trim() : '';
+                const commitSha = typeof record.commitSha === 'string' ? record.commitSha.trim() : '';
+                const commitSubject = typeof record.commitSubject === 'string' ? record.commitSubject.trim() : '';
+                return checkpointId && commitSha ? [{ checkpointId, commitSha, commitSubject }] : [];
+              })
+          : Array.isArray(requestProvenance.includedCheckpoints)
+            ? requestProvenance.includedCheckpoints
+                .flatMap((entry) => {
+                  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
+                    return [];
+                  }
+                  const record = entry as Record<string, unknown>;
+                  const checkpointId = typeof record.checkpointId === 'string' ? record.checkpointId.trim() : '';
+                  const commitSha = typeof record.commitSha === 'string' ? record.commitSha.trim() : '';
+                  const commitSubject = typeof record.commitSubject === 'string' ? record.commitSubject.trim() : '';
+                  return checkpointId && commitSha ? [{ checkpointId, commitSha, commitSubject }] : [];
+                })
+            : undefined,
       outputSchemaVersion: report?.provenance?.outputSchemaVersion,
       passArchitecture: report?.provenance?.passArchitecture,
       validation: report?.provenance && report.provenance.validation && typeof report.provenance.validation === 'object' ? report.provenance.validation : undefined,

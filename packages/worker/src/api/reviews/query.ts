@@ -2,7 +2,7 @@ import type { AuthContext, Env, ReviewRunStatus } from '../../types.js';
 import { getReviewRun, listReviewEvents, listReviewRuns } from '../../lib/db.js';
 import { createReviewEventsStream } from './events-stream.js';
 import { normalizeBranchRef, normalizeRepoSlug } from './request-shared.js';
-import { REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS, recoverStaleRunningReviewIfNeeded } from './recovery.js';
+import { REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS, manuallyFailReviewRun, manuallyRecoverReviewRun, recoverStaleRunningReviewIfNeeded } from './recovery.js';
 import {
   corsHeaders,
   jsonResponse,
@@ -141,5 +141,68 @@ export async function handleGetReviewEvents(
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return jsonResponse({ error: message }, 500);
+  }
+}
+
+export async function handleRecoverReview(
+  reviewId: string,
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
+  const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
+  if (reviewAccessResponse) {
+    return reviewAccessResponse;
+  }
+
+  try {
+    const result = await manuallyRecoverReviewRun(
+      env,
+      reviewId,
+      readReviewGithubTokenHeader(request),
+      readOpenrouterApiKeyHeader(request)
+    );
+    if (!result.review) {
+      return jsonResponse({ error: 'Review not found' }, 404);
+    }
+    return jsonResponse({
+      action: result.action,
+      review: result.review,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ error: message }, 409);
+  }
+}
+
+export async function handleFailReview(
+  reviewId: string,
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
+  const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
+  if (reviewAccessResponse) {
+    return reviewAccessResponse;
+  }
+
+  try {
+    const result = await manuallyFailReviewRun(env, reviewId);
+    if (!result.review) {
+      return jsonResponse({ error: 'Review not found' }, 404);
+    }
+    return jsonResponse({
+      action: result.action,
+      review: result.review,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ error: message }, 409);
   }
 }

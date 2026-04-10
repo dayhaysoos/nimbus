@@ -261,4 +261,15 @@ export function runReviewOutputV2Tests(): void {
     const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
     assert.equal(result.ok, true);
   }
+
+  {
+    const payload = basePayload();
+    payload.findings[0].description = 'Manual recovery can requeue without fencing an existing execution attempt.';
+    payload.findings[0].failingScenario =
+      'A review is still running while manual recovery requeues the same review ID, allowing overlapping attempts.';
+    payload.findings[0].evidence =
+      'Recovery path updates status back to queued and enqueues retry without cancelling or fencing the in-flight attempt.';
+    const result = validateAndNormalizeReviewAnalysisOutputV2(payload);
+    assert.equal(result.ok, true);
+  }
 }

@@ -74,6 +74,23 @@ function normalizeBranchPath(path: string): string {
   return path.replace(/^\/+/, '').trim();
 }
 
+function metadataPathDepth(path: string): number {
+  return path.split('/').filter(Boolean).length;
+}
+
+export function selectCochangeMetadataPaths(paths: string[], maxCount = 3): string[] {
+  const normalized = Array.from(
+    new Set(
+      paths
+        .map((path) => path.trim())
+        .filter((path) => path.endsWith('/metadata.json'))
+    )
+  );
+  const nestedSessionMetadata = normalized.filter((path) => metadataPathDepth(path) > 3);
+  const preferred = nestedSessionMetadata.length > 0 ? nestedSessionMetadata : normalized;
+  return preferred.slice(0, Math.max(1, maxCount));
+}
+
 function readJsonObject(text: string): Record<string, unknown> {
   const parsed = JSON.parse(text) as unknown;
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
@@ -362,11 +379,12 @@ export function resolveCochangeFromLocalGit(
     } catch {
       continue;
     }
-    const metadataPaths = changedFilesOutput
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((path) => path.endsWith('/metadata.json'))
-      .slice(0, 3);
+    const metadataPaths = selectCochangeMetadataPaths(
+      changedFilesOutput
+        .split(/\r?\n/)
+        .map((line) => line.trim()),
+      3
+    );
 
     for (const metadataPath of metadataPaths) {
       if (sessionRecords.length >= lookbackSessions) {

@@ -80,6 +80,13 @@ export async function dispatchReviewCommand(
     const projectRoot = typeof projectRootFlag === 'string' && projectRootFlag.trim() ? projectRootFlag.trim() : undefined;
     const baseFlag = flags.base;
     const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
+    const checkpointRangeFlag = flags['checkpoint-range'];
+    const checkpointRange =
+      typeof checkpointRangeFlag === 'string' && checkpointRangeFlag.trim() ? checkpointRangeFlag.trim() : undefined;
+    const lastCheckpoints = parsePositiveIntegerFlag(flags['last-checkpoints']);
+    if (typeof lastCheckpoints === 'number' && lastCheckpoints > 3) {
+      exitWithUsage('Usage error: --last-checkpoints supports up to 3 in v1.');
+    }
     const outputReviewIdFlag = flags['output-review-id'];
     const outputReviewIdPath =
       typeof outputReviewIdFlag === 'string' && outputReviewIdFlag.trim() ? outputReviewIdFlag.trim() : undefined;
@@ -101,6 +108,18 @@ export async function dispatchReviewCommand(
       exitWithUsage('Usage error: --commit cannot be combined with --workspace/--deployment. Choose one review create mode.');
     }
 
+    if (hasWorkspaceInputs && (checkpointRange || lastCheckpoints)) {
+      exitWithUsage('Usage error: --last-checkpoints/--checkpoint-range can only be used with commit-based review create.');
+    }
+
+    if (baseRef && (checkpointRange || lastCheckpoints)) {
+      exitWithUsage('Usage error: --base cannot be combined with --last-checkpoints or --checkpoint-range.');
+    }
+
+    if (checkpointRange && lastCheckpoints) {
+      exitWithUsage('Usage error: --last-checkpoints and --checkpoint-range cannot be used together.');
+    }
+
     if (commitModeRequested || (!workspaceId && !deploymentId)) {
       if (!commitModeRequested && !workspaceId && !deploymentId) {
         p.log.message('No review target flags provided; defaulting to `nimbus review create --commit HEAD`.');
@@ -108,6 +127,8 @@ export async function dispatchReviewCommand(
       await createReviewFromCommitCommand({
         commitish: typeof commitFlag === 'string' ? commitFlag : 'HEAD',
         baseRef,
+        lastCheckpoints,
+        checkpointRange,
         outputReviewIdPath: outputReviewIdPathForCommand,
         projectRoot,
         idempotencyKey,
@@ -158,8 +179,23 @@ export async function dispatchReviewCommand(
     const commitishArg = positional[1];
     const baseFlag = flags.base;
     const baseRef = typeof baseFlag === 'string' && baseFlag.trim() ? baseFlag.trim() : undefined;
+    const checkpointRangeFlag = flags['checkpoint-range'];
+    const checkpointRange =
+      typeof checkpointRangeFlag === 'string' && checkpointRangeFlag.trim() ? checkpointRangeFlag.trim() : undefined;
+    const lastCheckpoints = parsePositiveIntegerFlag(flags['last-checkpoints']);
+    if (typeof lastCheckpoints === 'number' && lastCheckpoints > 3) {
+      exitWithUsage('Usage error: --last-checkpoints supports up to 3 in v1.');
+    }
+    if (baseRef && (checkpointRange || lastCheckpoints)) {
+      exitWithUsage('Usage error: --base cannot be combined with --last-checkpoints or --checkpoint-range.');
+    }
+    if (checkpointRange && lastCheckpoints) {
+      exitWithUsage('Usage error: --last-checkpoints and --checkpoint-range cannot be used together.');
+    }
     await reviewPreflightCommand(typeof commitishArg === 'string' ? commitishArg : 'HEAD', {
       baseRef,
+      lastCheckpoints,
+      checkpointRange,
       strictEntireContext: Boolean(flags['strict-entire-context']),
       summarizeSession: parseSummarizeSessionFlag(flags),
       intentTokenBudget: parsePositiveIntegerFlag(flags['intent-token-budget']),

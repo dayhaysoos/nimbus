@@ -7,9 +7,9 @@ import { resolveStudioNewReviewPreflight, type StudioNewReviewPreflightResult } 
 interface PreflightCacheState {
   headSha: string | null;
   policyMode: 'auto' | 'review' | null;
+  lastCheckpoints: 1 | 2 | 3 | null;
   refreshedAtMs: number | null;
   value: StudioNewReviewPreflightResult | null;
-  inFlight: Promise<StudioNewReviewPreflightResult> | null;
 }
 
 const PREFLIGHT_CACHE_MAX_AGE_MS = 8_000;
@@ -17,14 +17,16 @@ const PREFLIGHT_CACHE_MAX_AGE_MS = 8_000;
 let cache: PreflightCacheState = {
   headSha: null,
   policyMode: null,
+  lastCheckpoints: null,
   refreshedAtMs: null,
   value: null,
-  inFlight: null,
 };
+const inFlightByKey = new Map<string, Promise<StudioNewReviewPreflightResult>>();
 let headWatcher: FSWatcher | null = null;
 let refWatcher: FSWatcher | null = null;
 let studioPreferencesWatcher: FSWatcher | null = null;
 let refreshDebounceTimer: NodeJS.Timeout | null = null;
+let resolveStudioNewReviewPreflightForCache: typeof resolveStudioNewReviewPreflight = resolveStudioNewReviewPreflight;
 
 function resolveHeadSha(repoRoot: string): string | null {
   try {
@@ -48,33 +50,29 @@ function resolveStudioPolicyMode(repoRoot: string): 'auto' | 'review' | null {
   }
 }
 
-async function refreshPreflight(repoRoot: string): Promise<StudioNewReviewPreflightResult> {
-  if (cache.inFlight) {
-    return cache.inFlight;
+async function refreshPreflight(repoRoot: string, lastCheckpoints: 1 | 2 | 3): Promise<StudioNewReviewPreflightResult> {
+  const inFlightKey = `${repoRoot}:${lastCheckpoints}`;
+  const existing = inFlightByKey.get(inFlightKey);
+  if (existing) {
+    return existing;
   }
   const pending = (async () => {
-    const result = await resolveStudioNewReviewPreflight({ repoRoot });
+    const result = await resolveStudioNewReviewPreflightForCache({ repoRoot, lastCheckpoints });
     cache = {
       headSha: resolveHeadSha(repoRoot),
       policyMode: resolveStudioPolicyMode(repoRoot),
+      lastCheckpoints,
       refreshedAtMs: Date.now(),
       value: result,
-      inFlight: null,
     };
     return result;
   })();
-  cache = {
-    ...cache,
-    inFlight: pending,
-  };
+  inFlightByKey.set(inFlightKey, pending);
   try {
     return await pending;
   } finally {
-    if (cache.inFlight === pending) {
-      cache = {
-        ...cache,
-        inFlight: null,
-      };
+    if (inFlightByKey.get(inFlightKey) === pending) {
+      inFlightByKey.delete(inFlightKey);
     }
   }
 }
@@ -116,7 +114,7 @@ function queueRefresh(repoRoot: string): void {
   }
   refreshDebounceTimer = setTimeout(() => {
     refreshDebounceTimer = null;
-    void refreshPreflight(repoRoot).catch(() => undefined);
+    void refreshPreflight(repoRoot, 2).catch(() => undefined);
   }, 250);
   if (typeof refreshDebounceTimer.unref === 'function') {
     refreshDebounceTimer.unref();
@@ -159,8 +157,10 @@ function watchHeadRefPath(repoRoot: string, gitDir: string): void {
 
 export async function getStudioNewReviewPreflightCached(options?: {
   repoRoot?: string;
+  lastCheckpoints?: 1 | 2 | 3;
 }): Promise<StudioNewReviewPreflightResult> {
   const repoRoot = options?.repoRoot ?? process.cwd();
+  const lastCheckpoints = options?.lastCheckpoints ?? 2;
   const headSha = resolveHeadSha(repoRoot);
   const policyMode = resolveStudioPolicyMode(repoRoot);
   const cacheIsFresh =
@@ -171,11 +171,12 @@ export async function getStudioNewReviewPreflightCached(options?: {
     cache.headSha &&
     headSha &&
     cache.headSha === headSha &&
-    cache.policyMode === policyMode
+    cache.policyMode === policyMode &&
+    cache.lastCheckpoints === lastCheckpoints
   ) {
     return cache.value;
   }
-  return refreshPreflight(repoRoot);
+  return refreshPreflight(repoRoot, lastCheckpoints);
 }
 
 export function startStudioPreflightBackgroundPolling(options?: {
@@ -187,7 +188,7 @@ export function startStudioPreflightBackgroundPolling(options?: {
   const repoRoot = options?.repoRoot ?? process.cwd();
   const gitDir = resolveGitDir(repoRoot);
 
-  void refreshPreflight(repoRoot).catch(() => undefined);
+  void refreshPreflight(repoRoot, 2).catch(() => undefined);
   if (!gitDir) {
     return;
   }
@@ -219,4 +220,23 @@ export function stopStudioPreflightBackgroundPolling(): void {
     clearTimeout(refreshDebounceTimer);
     refreshDebounceTimer = null;
   }
+}
+
+export function setStudioPreflightResolverForTests(
+  resolver: typeof resolveStudioNewReviewPreflight | null
+): void {
+  resolveStudioNewReviewPreflightForCache = resolver ?? resolveStudioNewReviewPreflight;
+}
+
+export function resetStudioPreflightCacheForTests(): void {
+  stopStudioPreflightBackgroundPolling();
+  cache = {
+    headSha: null,
+    policyMode: null,
+    lastCheckpoints: null,
+    refreshedAtMs: null,
+    value: null,
+  };
+  inFlightByKey.clear();
+  resolveStudioNewReviewPreflightForCache = resolveStudioNewReviewPreflight;
 }

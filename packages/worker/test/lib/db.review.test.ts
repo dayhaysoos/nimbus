@@ -396,6 +396,11 @@ export async function runReviewDbTests(): Promise<void> {
                           estimatedTokens: 3200,
                           tokenBudget: 10000,
                         },
+                        reviewedFiles: {
+                          changed: ['src/report.tsx'],
+                          related: ['src/context.ts'],
+                          conventions: ['package.json'],
+                        },
                       },
                       markdownSummary: null,
                     }),
@@ -431,6 +436,11 @@ export async function runReviewDbTests(): Promise<void> {
     assert.equal(review?.provenance.promptSummary, null);
     assert.equal(review?.provenance.reviewContextRef?.id, 'ctx_abc123');
     assert.equal(review?.provenance.reviewContextStats?.estimatedTokens, 3200);
+    assert.deepEqual(review?.provenance.reviewedFiles, {
+      changed: ['src/report.tsx'],
+      related: ['src/context.ts'],
+      conventions: ['package.json'],
+    });
   }
 
   {

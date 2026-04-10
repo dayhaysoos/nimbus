@@ -162,20 +162,30 @@ export function BranchReviewsPage(): JSX.Element {
       <header className="policy-fade-up flex flex-col gap-2" style={{ animationDelay: '0ms' }}>
         <div className="flex items-center gap-2">
           <Link to="/" className="text-xs text-muted-foreground hover:text-foreground transition-colors">
-            Branches
+            Studio Home
           </Link>
           <span className="text-xs text-muted-foreground/50">/</span>
         </div>
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3 min-w-0">
-            <h1 className="policy-heading text-base text-foreground tracking-tight truncate">{branchLabel}</h1>
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 space-y-1">
+            <div className="flex items-center gap-3 min-w-0">
+              <h1 className="policy-heading text-base text-foreground tracking-tight truncate">{branchLabel}</h1>
+              <Badge variant="outline" className="rounded-full border-border bg-muted/40 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-muted-foreground shrink-0">
+                Branch history
+              </Badge>
+            </div>
+            <p className="text-sm text-muted-foreground">
+              Browse previous reviews for this branch. Start new reviews from Studio Home on the current working branch.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
             {stats.active > 0 && (
               <Badge variant="outline" className="rounded-full border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-blue-800 shrink-0">
                 {stats.active} active
               </Badge>
             )}
+            <span className="text-sm text-muted-foreground">{stats.total} review{stats.total === 1 ? '' : 's'}</span>
           </div>
-          <span className="text-sm text-muted-foreground shrink-0">{stats.total} review{stats.total === 1 ? '' : 's'}</span>
         </div>
       </header>
 

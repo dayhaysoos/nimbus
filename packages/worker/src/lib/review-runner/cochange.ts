@@ -5,6 +5,23 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
+function metadataPathDepth(path: string): number {
+  return path.split('/').filter(Boolean).length;
+}
+
+export function selectCochangeMetadataPaths(paths: string[], maxCount = 3): string[] {
+  const normalized = Array.from(
+    new Set(
+      paths
+        .map((path) => path.trim())
+        .filter((path) => path.endsWith('/metadata.json'))
+    )
+  );
+  const nestedSessionMetadata = normalized.filter((path) => metadataPathDepth(path) > 3);
+  const preferred = nestedSessionMetadata.length > 0 ? nestedSessionMetadata : normalized;
+  return preferred.slice(0, Math.max(1, maxCount));
+}
+
 export class ReviewContextAssemblyError extends Error {
   code: string;
   details: string | null;
@@ -127,10 +144,12 @@ export async function fetchCochangeFromCheckpointBranch(
 
     const detail = await fetchGitHubJson(`https://api.github.com/repos/${repo}/commits/${sha}`, githubToken);
     const files = Array.isArray(detail.files) ? detail.files : [];
-    const metadataPaths = files
-      .map((entry) => readOptionalString(asRecord(entry).filename))
-      .filter((path): path is string => Boolean(path && path.endsWith('/metadata.json')))
-      .slice(0, 3);
+    const metadataPaths = selectCochangeMetadataPaths(
+      files
+        .map((entry) => readOptionalString(asRecord(entry).filename))
+        .filter((path): path is string => Boolean(path)),
+      3
+    );
 
     const touchedFiles = new Set<string>();
     for (const metadataPath of metadataPaths) {

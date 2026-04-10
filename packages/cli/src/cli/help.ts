@@ -91,6 +91,10 @@ Options:
   --dev-ui          Force Vite dev server for Review Studio (enables HMR)
   --detach          Run Review Studio in detached background mode
   --base <ref>        Diff base ref for review create (uses <base>...<commit>)
+  --last-checkpoints <n>
+                      Review the last N checkpoints (v1 max: 3)
+  --checkpoint-range <start>..<end>
+                      Review a checkpoint/commit range as one review window
   --repo <owner/repo> Repository slug override for repo register
   --dry-run           Validate repo register inputs without API call
   --json              Emit machine-readable JSON output for supported commands
@@ -134,11 +138,14 @@ Examples:
   nimbus review create --commit HEAD --project-root apps/web
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
-  nimbus review create --commit HEAD --model sonnet-4.5
+  nimbus review create --commit HEAD --model gpt-5.1
+  nimbus review create --commit HEAD --last-checkpoints 2
+  nimbus review create --checkpoint-range checkpoint:8a513f56ed70..checkpoint:9b624a67fe81
   nimbus review preflight
   nimbus review preflight HEAD~2
+  nimbus review preflight --last-checkpoints 3
   nimbus review policy --commit HEAD
-  nimbus review policy --commit HEAD --base origin/main --model anthropic/claude-sonnet-4.5 --json
+  nimbus review policy --commit HEAD --base origin/main --model gpt-5.1 --json
   nimbus review show rev_abcd1234
    nimbus review events rev_abcd1234
    nimbus review studio

@@ -96,6 +96,20 @@ export function runArgsParsingTests(): void {
   }
 
   {
+    const parsed = parseArgs([
+      'review',
+      'preflight',
+      '--last-checkpoints',
+      '2',
+      '--checkpoint-range',
+      'checkpoint:8a513f56ed70..checkpoint:9b624a67fe81',
+    ]);
+    assert.equal(parsed.flags['last-checkpoints'], '2');
+    assert.equal(parsed.flags['checkpoint-range'], 'checkpoint:8a513f56ed70..checkpoint:9b624a67fe81');
+    assert.deepEqual(parsed.positional, ['preflight']);
+  }
+
+  {
     const parsed = parseArgs(['review', 'create', '--output-review-id']);
     assert.equal(parsed.flags['output-review-id'], true);
   }

@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { handleCreateReview, handleGetReview, handleGetReviewEvents, handleListReviews } from '../../src/api/reviews.js';
+import { handleCreateReview, handleFailReview, handleGetReview, handleGetReviewEvents, handleListReviews, handleRecoverReview } from '../../src/api/reviews.js';
 
 function withRequiredProvenance(payload: Record<string, unknown>): Record<string, unknown> {
   const provenance =
@@ -21,6 +21,7 @@ function createReviewApiEnv(options?: {
   reused?: boolean;
   reviewExists?: boolean;
   workspaceStatus?: 'ready' | 'deleted';
+  initialReviewStatus?: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
   reviewStatusSequence?: Array<'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled'>;
   reviewEventBatches?: Array<
     Array<{
@@ -45,21 +46,27 @@ function createReviewApiEnv(options?: {
     queueSendCount: number;
     eventTypes: Set<string>;
     reviewStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    reviewErrorCode: string | null;
+    reviewErrorMessage: string | null;
     createdRequestPayload: Record<string, unknown> | null;
     createdReviewAccountId: string | null;
     queuedMessages: Array<Record<string, unknown>>;
+    findingsClearedCount: number;
   };
 } {
   const state = {
     reviewExists: options?.reviewExists ?? false,
     queueSendCount: 0,
     eventTypes: new Set<string>(options?.existingEventTypes ?? []),
-    reviewStatus: 'queued' as const,
+    reviewStatus: (options?.initialReviewStatus ?? 'queued') as 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled',
+    reviewErrorCode: options?.reviewErrorCode ?? null,
+    reviewErrorMessage: options?.reviewErrorCode ? 'simulated review error' : null,
     reviewStatusReads: 0,
     reviewEventReads: 0,
     createdRequestPayload: null as Record<string, unknown> | null,
     createdReviewAccountId: null as string | null,
     queuedMessages: [] as Array<Record<string, unknown>>,
+    findingsClearedCount: 0,
   };
 
   const env = {
@@ -302,6 +309,47 @@ function createReviewApiEnv(options?: {
           };
         }
 
+        if (/DELETE FROM review_findings WHERE review_id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  state.findingsClearedCount += 1;
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE review_runs SET /i.test(sql) && !/last_event_seq = last_event_seq \+ 1/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async run() {
+                  if (typeof values[0] === 'string') {
+                    state.reviewStatus = values[0] as typeof state.reviewStatus;
+                  }
+                  for (let index = 0; index < values.length; index += 1) {
+                    const value = values[index];
+                    if (value === 'retry_scheduled' || value === 'review_execution_timeout' || value === 'review_execution_aborted') {
+                      state.reviewErrorCode = value;
+                    }
+                    if (
+                      typeof value === 'string' &&
+                      index > 0 &&
+                      (values[index - 1] === 'retry_scheduled' || values[index - 1] === 'review_execution_timeout' || values[index - 1] === 'review_execution_aborted')
+                    ) {
+                      state.reviewErrorMessage = value;
+                    }
+                  }
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
         if (/SELECT \* FROM review_runs WHERE id = \?/i.test(sql)) {
           return {
             bind(reviewId: string) {
@@ -333,8 +381,8 @@ function createReviewApiEnv(options?: {
                     finished_at: null,
                     report_json: null,
                     markdown_summary: null,
-                    error_code: options?.reviewErrorCode ?? null,
-                    error_message: options?.reviewErrorCode ? 'simulated review error' : null,
+                    error_code: state.reviewErrorCode,
+                    error_message: state.reviewErrorMessage,
                     created_at: '2026-03-11T00:00:00.000Z',
                     updated_at: '2026-03-11T00:00:00.000Z',
                   } as T;
@@ -1273,6 +1321,217 @@ export async function runReviewApiTests(): Promise<void> {
     assert.match(text, /"type":"snapshot"/);
     assert.match(text, /"type":"review_succeeded"/);
     assert.match(text, /"type":"terminal"/);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'queued',
+      reviewAttemptCount: 1,
+      storedReviewRequestPayload: {
+        provenance: {
+          localCochange: {
+            source: 'local_git',
+            relatedByChangedPath: {
+              'src/app.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+            },
+          },
+        },
+      },
+    });
+    const response = await handleRecoverReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/recover', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.action, 'requeued');
+    const review = (body.review ?? {}) as Record<string, unknown>;
+    assert.equal(review.status, 'queued');
+    assert.equal(state.queueSendCount, 1);
+    assert.equal(state.eventTypes.has('review_retry_scheduled'), true);
+    assert.equal(state.reviewErrorCode, 'retry_scheduled');
+    assert.equal(state.findingsClearedCount, 1);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'running',
+      reviewAttemptCount: 1,
+      storedReviewRequestPayload: {
+        provenance: {
+          localCochange: {
+            source: 'local_git',
+            relatedByChangedPath: {
+              'src/app.ts': [{ path: 'src/config.ts', frequency: 2, sessionIds: ['ses_1', 'ses_2'] }],
+            },
+          },
+        },
+      },
+    });
+    const response = await handleRecoverReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/recover', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+    assert.equal(state.queueSendCount, 0);
+    assert.equal(state.eventTypes.has('review_retry_scheduled'), false);
+    assert.equal(state.reviewStatus, 'running');
+    assert.equal(state.findingsClearedCount, 0);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'queued',
+      reviewAttemptCount: 5,
+      storedReviewRequestPayload: {
+        provenance: {},
+      },
+    });
+    const response = await handleRecoverReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/recover', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.action, 'failed');
+    const review = (body.review ?? {}) as Record<string, unknown>;
+    assert.equal(review.status, 'failed');
+    assert.equal(state.queueSendCount, 0);
+    assert.equal(state.eventTypes.has('review_failed'), true);
+    assert.equal(state.reviewErrorCode, 'review_execution_timeout');
+    assert.equal(state.findingsClearedCount, 0);
+  }
+
+  {
+    const { env } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'succeeded',
+    });
+    const response = await handleRecoverReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/recover', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'running',
+    });
+    const response = await handleFailReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/fail', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.action, 'failed');
+    const review = (body.review ?? {}) as Record<string, unknown>;
+    assert.equal(review.status, 'failed');
+    assert.equal(state.eventTypes.has('review_failed'), true);
+    assert.equal(state.reviewErrorCode, 'review_execution_aborted');
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'running',
+      reviewAttemptCount: 2,
+    });
+    const db = env.DB as {
+      prepare: (sql: string) => {
+        bind: (...args: unknown[]) => {
+          first?: <T>() => Promise<T>;
+          run?: () => Promise<{ success: boolean; meta?: { changes?: number } }>;
+        };
+      };
+    };
+    const originalPrepare = db.prepare.bind(db);
+    db.prepare = ((sql: string) => {
+      const statement = originalPrepare(sql);
+      if (!/UPDATE review_runs SET /i.test(sql) || /last_event_seq = last_event_seq \+ 1/i.test(sql)) {
+        return statement;
+      }
+      return {
+        bind(...values: unknown[]) {
+          if (values[0] !== 'failed') {
+            return statement.bind(...values);
+          }
+          return {
+            async run() {
+              state.reviewStatus = 'succeeded';
+              state.reviewErrorCode = null;
+              state.reviewErrorMessage = null;
+              return { success: true, meta: { changes: 0 } };
+            },
+          };
+        },
+      };
+    }) as typeof db.prepare;
+
+    const response = await handleFailReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/fail', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.action, 'unchanged');
+    const review = (body.review ?? {}) as Record<string, unknown>;
+    assert.equal(review.status, 'succeeded');
+    assert.equal(state.eventTypes.has('review_failed'), false);
+    assert.equal(state.reviewErrorCode, null);
+  }
+
+  {
+    const { env } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'succeeded',
+    });
+    const response = await handleFailReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/fail', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'queued',
+      reviewAttemptCount: 1,
+      storedReviewRequestPayload: {
+        provenance: {},
+      },
+    });
+    const response = await handleRecoverReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/recover', {
+        method: 'POST',
+        headers: {
+          'X-Review-Github-Token': 'not-a-scoped-token',
+        },
+      }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(typeof body.error, 'string');
+    assert.equal(String(body.error).includes('invalid'), true);
+    assert.equal(state.queueSendCount, 0);
+    assert.equal(state.eventTypes.has('review_failed'), false);
+    assert.equal(state.reviewStatus, 'queued');
+    assert.equal(state.findingsClearedCount, 0);
   }
 
   {

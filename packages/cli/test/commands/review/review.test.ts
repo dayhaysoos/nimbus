@@ -115,6 +115,34 @@ export async function runReviewCommandTests(): Promise<void> {
     }
 
     {
+      let capturedLastCheckpoints: number | undefined;
+      let capturedCheckpointRange: string | undefined;
+      setReviewPreflightCommitResolverForTests((_commitish, options) => {
+        capturedLastCheckpoints = options?.lastCheckpoints;
+        capturedCheckpointRange = options?.checkpointRange;
+        return {
+          commitSha: 'd'.repeat(40),
+          checkpointId: 'fba364e3d99d',
+          commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+        };
+      });
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (fba364e3d99d).',
+        sessionIds: ['sess_123'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      await reviewPreflightCommand('HEAD', {
+        lastCheckpoints: 3,
+        checkpointRange: 'checkpoint:aaa..checkpoint:bbb',
+      });
+      assert.equal(capturedLastCheckpoints, 3);
+      assert.equal(capturedCheckpointRange, 'checkpoint:aaa..checkpoint:bbb');
+      setReviewPreflightCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+    }
+
+    {
       setReviewPreflightCommitResolverForTests(() => ({
         commitSha: 'e'.repeat(40),
         checkpointId: 'fba364e3d99d',
@@ -299,8 +327,12 @@ export async function runReviewCommandTests(): Promise<void> {
 
     {
       let capturedBaseRef: string | undefined;
+      let capturedLastCheckpoints: number | undefined;
+      let capturedCheckpointRange: string | undefined;
       setReviewCommitResolverForTests((_commitish, options) => {
         capturedBaseRef = options?.baseRef;
+        capturedLastCheckpoints = options?.lastCheckpoints;
+        capturedCheckpointRange = options?.checkpointRange;
         return {
           commitSha: '1'.repeat(40),
           checkpointId: '8a513f56ed70',
@@ -377,8 +409,15 @@ export async function runReviewCommandTests(): Promise<void> {
         getReview: async () => createReviewResponseBody() as unknown as { review: any },
       });
 
-      await createReviewFromCommitCommand({ commitish: 'HEAD', baseRef: 'origin/main' });
+      await createReviewFromCommitCommand({
+        commitish: 'HEAD',
+        baseRef: 'origin/main',
+        lastCheckpoints: 2,
+        checkpointRange: 'checkpoint:aaa..checkpoint:bbb',
+      });
       assert.equal(capturedBaseRef, 'origin/main');
+      assert.equal(capturedLastCheckpoints, 2);
+      assert.equal(capturedCheckpointRange, 'checkpoint:aaa..checkpoint:bbb');
       setReviewCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewCreateFlowForTests(null);

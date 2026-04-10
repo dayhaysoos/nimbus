@@ -116,6 +116,23 @@ export function resolveReviewGitProvenance(cwd = process.cwd()): { repo: string;
   return { repo: repo.trim(), branch };
 }
 
+export function buildStudioReviewRoutePath(options: {
+  reviewId: string;
+  route: 'policy' | 'reports';
+  repo?: string | null;
+  branch?: string | null;
+}): string {
+  const reviewId = encodeURIComponent(options.reviewId);
+  const repo = options.repo?.trim();
+  const branch = options.branch?.trim();
+
+  if (repo && branch) {
+    return `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/${options.route}/${reviewId}`;
+  }
+
+  return `/${options.route}/${reviewId}`;
+}
+
 export function formatReviewExecutionFailure(
   status: string,
   finalReview: { error?: { code: string; message: string } },

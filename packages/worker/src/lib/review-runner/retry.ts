@@ -77,6 +77,55 @@ export async function scheduleReviewRetry(
 }
 
 /**
+ * Schedules a retry only if the same running attempt is still current.
+ * Returns false when another transition (for example manual fail) won the race.
+ */
+export async function scheduleReviewRetryIfCurrent(
+  env: Env,
+  reviewId: string,
+  input: {
+    attemptCount: number;
+    message: string;
+    reason: string;
+    extraPayload?: Record<string, unknown>;
+    throwMessage?: string;
+  }
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const transitioned = await env.DB
+    .prepare(
+      `UPDATE review_runs SET status = ?,
+           updated_at = ?,
+           started_at = NULL,
+           finished_at = NULL,
+           report_json = NULL,
+           markdown_summary = NULL,
+           error_code = ?,
+           error_message = ?
+       WHERE id = ? AND status = 'running' AND attempt_count = ?`
+    )
+    .bind('queued', now, 'retry_scheduled', input.message, reviewId, input.attemptCount)
+    .run();
+
+  if ((transitioned.meta?.changes ?? 0) === 0) {
+    return false;
+  }
+
+  await replaceReviewFindings(env.DB, reviewId, []);
+  await appendReviewEvent(env.DB, {
+    reviewId,
+    eventType: 'review_retry_scheduled',
+    payload: {
+      attemptCount: input.attemptCount,
+      maxRetries: REVIEW_MAX_RETRIES,
+      reason: input.reason,
+      ...(input.extraPayload ?? {}),
+    },
+  });
+  return true;
+}
+
+/**
  * Handles the case where a review could not be claimed because another worker may already be running it.
  * Detects stale-running reviews and either schedules a retry or marks them failed.
  */

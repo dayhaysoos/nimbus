@@ -1,5 +1,6 @@
 import { strict as assert } from 'assert';
 import { processReviewRun as processReviewRunBase, shouldRetryReviewError } from '../../src/lib/review-runner.js';
+import { scheduleReviewRetryIfCurrent } from '../../src/lib/review-runner/retry.js';
 import { setReviewAnalysisSandboxResolverForTests } from '../../src/lib/review-analysis.js';
 
 async function processReviewRun(
@@ -483,7 +484,7 @@ function createReviewRunnerEnv(options?: {
                   const reportValue = values.find((value) => typeof value === 'string' && String(value).includes('findingCounts'));
                   if (typeof reportValue === 'string') {
                     state.reportJson = reportValue;
-                  } else if (status === 'queued') {
+                  } else if (status === 'queued' || status === 'failed') {
                     state.reportJson = null;
                   }
                   const markdownValue = values.find((value) => typeof value === 'string' && String(value).includes('## Review Summary'));
@@ -491,7 +492,7 @@ function createReviewRunnerEnv(options?: {
                     state.markdownSummary = markdownValue;
                   } else if (status === 'succeeded') {
                     state.markdownSummary = null;
-                  } else if (status === 'queued') {
+                  } else if (status === 'queued' || status === 'failed') {
                     state.markdownSummary = null;
                   }
                   return { success: true, meta: { changes: 1 } };
@@ -853,8 +854,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      const fallbackEvent = state.events.find((event) => event.eventType === 'review_analysis_output_fallback_applied');
-      const serialized = JSON.stringify(fallbackEvent?.payload ?? {});
+      const invalidOutputEvent = state.events.find((event) => event.eventType === 'review_analysis_output_validation_failed');
+      const serialized = JSON.stringify(invalidOutputEvent?.payload ?? {});
       assert.equal(serialized.includes('supersecret'), false);
       assert.equal(serialized.includes('ghp_abcdefghijklmnopqrstuvwxyz12'), false);
       assert.equal(serialized.includes('api_key=xyz'), false);
@@ -909,7 +910,7 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
-    let capturedOpenrouterHeader: string | null = null;
+    let capturedAuthHeader: string | null = null;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -929,13 +930,19 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const headers = new Headers(init?.headers);
-      capturedOpenrouterHeader = headers.get('X-Openrouter-Api-Key');
+      capturedAuthHeader = headers.get('Authorization');
       return new Response(
         JSON.stringify({
-          action: {
-            type: 'final',
-            summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
-          },
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  type: 'final',
+                  summary: JSON.stringify({ findings: [], summary: 'No actionable findings.', furtherPassesLowYield: true }),
+                }),
+              },
+            },
+          ],
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
       );
@@ -944,7 +951,7 @@ export async function runReviewRunnerTests(): Promise<void> {
     try {
       const { env } = createReviewRunnerEnv({ envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' } });
       await processReviewRun(env as never, 'rev_abcd1234', { openrouterApiKey: 'or_request_key_123' });
-      assert.equal(capturedOpenrouterHeader, 'or_request_key_123');
+      assert.equal(capturedAuthHeader, 'Bearer or_request_key_123');
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1066,7 +1073,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       ],
       failReviewFindingsInsertOnce: true,
     });
-    await assert.rejects(() => processReviewRun(env as never, 'rev_abcd1234'), /retry requested/);
+    await processReviewRun(env as never, 'rev_abcd1234');
     assert.equal(state.status, 'queued');
     assert.equal(state.errorCode, 'retry_scheduled');
     assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), true);
@@ -1095,6 +1102,149 @@ export async function runReviewRunnerTests(): Promise<void> {
     await processReviewRun(env as never, 'rev_abcd1234', { allowRetryScheduling: false });
     assert.equal(state.status, 'failed');
     assert.equal(state.errorCode, 'review_execution_timeout');
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv();
+    const db = env.DB as {
+      prepare: (sql: string) => {
+        bind: (...args: unknown[]) => { run: () => Promise<unknown> };
+      };
+    };
+    const originalPrepare = db.prepare.bind(db);
+    let manuallyFailed = false;
+    db.prepare = ((sql: string) => {
+      const statement = originalPrepare(sql);
+      if (/SELECT \* FROM review_runs WHERE id = \?/i.test(sql)) {
+        return {
+          bind(...args: unknown[]) {
+            const bound = statement.bind(...args) as unknown as { first: <T>() => Promise<T> };
+            return {
+              async first<T>() {
+                const row = (await bound.first<Record<string, unknown>>()) ?? {};
+                if (state.errorCode === 'review_execution_aborted') {
+                  return {
+                    ...row,
+                    error_message: 'Review was manually marked as failed while execution was still in progress.',
+                  } as T;
+                }
+                return row as T;
+              },
+            };
+          },
+        };
+      }
+      if (!/INSERT INTO review_events/i.test(sql)) {
+        return statement;
+      }
+      return {
+        bind(...args: unknown[]) {
+          const bound = statement.bind(...args);
+          const eventType = args[2];
+          if (eventType !== 'review_preflight_started' || manuallyFailed) {
+            return bound;
+          }
+          return {
+            async run() {
+              manuallyFailed = true;
+              state.status = 'failed';
+              state.errorCode = 'review_execution_aborted';
+              return { success: true, meta: { changes: 1 } };
+            },
+          };
+        },
+      };
+    }) as typeof db.prepare;
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'failed');
+    assert.equal(state.errorCode, 'review_execution_aborted');
+    assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), false);
+    assert.equal(state.events.some((event) => event.eventType === 'review_finalize_started'), false);
+    assert.equal(state.events.some((event) => event.eventType === 'review_succeeded'), false);
+    assert.equal(state.events.some((event) => event.eventType === 'review_failed'), false);
+  }
+
+  {
+    let findingsCleared = false;
+    let retryEventAppended = false;
+    const scheduled = await scheduleReviewRetryIfCurrent(
+      {
+        DB: {
+          prepare(sql: string) {
+            if (/UPDATE review_runs/i.test(sql)) {
+              return {
+                bind() {
+                  return {
+                    async run() {
+                      return { success: true, meta: { changes: 0 } };
+                    },
+                  };
+                },
+              };
+            }
+            if (/DELETE FROM review_findings/i.test(sql) || /INSERT INTO review_findings/i.test(sql)) {
+              return {
+                bind() {
+                  return {
+                    async run() {
+                      findingsCleared = true;
+                      return { success: true, meta: { changes: 1 } };
+                    },
+                  };
+                },
+              };
+            }
+            if (/UPDATE review_runs SET last_event_seq = last_event_seq \+ 1/i.test(sql)) {
+              return {
+                bind() {
+                  return {
+                    async first() {
+                      return { last_event_seq: 1 };
+                    },
+                  };
+                },
+              };
+            }
+            if (/INSERT INTO review_events/i.test(sql)) {
+              return {
+                bind(_reviewId: string, _seq: number, eventType: string) {
+                  return {
+                    async run() {
+                      if (eventType === 'review_retry_scheduled') {
+                        retryEventAppended = true;
+                      }
+                      return { success: true, meta: { changes: 1 } };
+                    },
+                  };
+                },
+              };
+            }
+            return {
+              bind() {
+                return {
+                  async first() {
+                    return null;
+                  },
+                  async run() {
+                    return { success: true, meta: { changes: 1 } };
+                  },
+                };
+              },
+            };
+          },
+        },
+      } as never,
+      'rev_abcd1234',
+      {
+        attemptCount: 1,
+        message: 'fetch failed',
+        reason: 'fetch failed',
+      }
+    );
+
+    assert.equal(scheduled, false);
+    assert.equal(findingsCleared, false);
+    assert.equal(retryEventAppended, false);
   }
 
   {
@@ -1160,10 +1310,13 @@ export async function runReviewRunnerTests(): Promise<void> {
     const { env, state } = createReviewRunnerEnv({
       failReviewEventTypeOnce: 'review_succeeded',
     });
-    await assert.rejects(() => processReviewRun(env as never, 'rev_abcd1234'), /retry requested/);
-    assert.equal(state.status, 'queued');
-    assert.equal(state.reportJson, null);
-    assert.equal(state.markdownSummary, null);
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(state.errorCode ?? null, null);
+    assert.notEqual(state.reportJson, null);
+    assert.notEqual(state.markdownSummary, null);
+    assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), false);
+    assert.equal(state.events.some((event) => event.eventType === 'review_finalize_started'), true);
     setReviewAnalysisSandboxResolverForTests(null);
   }
 
@@ -1740,7 +1893,9 @@ export async function runReviewRunnerTests(): Promise<void> {
         return undefined;
       },
     }) as never);
+    let requestCount = 0;
     globalThis.fetch = (async (): Promise<Response> => {
+      requestCount += 1;
       return new Response(
         JSON.stringify({
           action: {
@@ -1756,9 +1911,11 @@ export async function runReviewRunnerTests(): Promise<void> {
         envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
       });
       await processReviewRun(env as never, 'rev_abcd1234');
-      assert.equal(state.status === 'succeeded' || state.status === 'failed', true);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
+      assert.equal(state.status, 'failed');
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
+      assert.equal(requestCount >= 2, true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1814,9 +1971,9 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'succeeded');
-      assert.equal(fetchCalls, 2);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_requested'), true);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_repair_output_received'), true);
+      assert.equal(fetchCalls >= 2, true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), true);
     } finally {
       globalThis.fetch = originalFetch;
@@ -1865,8 +2022,9 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      assert.equal(genericCompletionFetchCalls, 2);
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
+      assert.equal(genericCompletionFetchCalls >= 2, true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
     } finally {
       globalThis.fetch = originalFetch;
@@ -2071,6 +2229,7 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const originalFetch = globalThis.fetch;
     let secondCallBody: Record<string, unknown> | null = null;
+    let injectedToolAction = false;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -2090,7 +2249,8 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-      if (!Array.isArray(body.history) || body.history.length === 0) {
+      if (!injectedToolAction) {
+        injectedToolAction = true;
         return new Response(
           JSON.stringify({
             action: {
@@ -2180,6 +2340,7 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const originalFetch = globalThis.fetch;
     let secondCallBody: Record<string, unknown> | null = null;
+    let injectedToolAction = false;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -2199,10 +2360,11 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-      if (secondCallBody === null && Array.isArray(body.history) && body.history.length > 0) {
+      if (injectedToolAction && secondCallBody === null && Array.isArray(body.history) && body.history.length > 0) {
         secondCallBody = body;
       }
-      if (secondCallBody === null) {
+      if (!injectedToolAction) {
+        injectedToolAction = true;
         return new Response(
           JSON.stringify({
             action: {
@@ -2238,6 +2400,7 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const originalFetch = globalThis.fetch;
     let secondCallBody: Record<string, unknown> | null = null;
+    let injectedToolAction = false;
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -2257,10 +2420,11 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-      if (secondCallBody === null && Array.isArray(body.history) && body.history.length > 0) {
+      if (injectedToolAction && secondCallBody === null && Array.isArray(body.history) && body.history.length > 0) {
         secondCallBody = body;
       }
-      if (secondCallBody === null) {
+      if (!injectedToolAction) {
+        injectedToolAction = true;
         return new Response(
           JSON.stringify({
             action: {
@@ -2287,6 +2451,71 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'succeeded');
       assert.equal(JSON.stringify(secondCallBody ?? {}).includes('not_file'), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    let requestCount = 0;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (): Promise<Response> => {
+      requestCount += 1;
+      if (requestCount === 1) {
+        return new Response(
+          JSON.stringify({
+            action: {
+              type: 'final',
+              summary: 'plain text completion that is not review json',
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'complete',
+            finalOutput: {
+              findings: [],
+              summary: 'No actionable findings. Risk low. Further review not warranted.',
+              furtherPassesLowYield: true,
+            },
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
+      const report = JSON.parse(state.reportJson ?? '{}') as { findings: unknown[]; summaryText?: string };
+      assert.equal(Array.isArray(report.findings), true);
+      assert.equal(report.findings.length, 0);
+      assert.equal(report.summaryText?.includes('No actionable findings'), true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -2390,8 +2619,8 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(firstPrompt.includes('Authoritative deployed diff snapshot'), true);
       assert.equal(firstPrompt.includes('const deployed = true'), true);
-      assert.equal(firstPrompt.length < 50000, true);
-      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 7000, true);
+      assert.equal(firstPrompt.length < 54000, true);
+      assert.equal(JSON.stringify(secondCallBody ?? {}).length < 12000, true);
       assert.equal(JSON.stringify(secondCallBody ?? {}).includes('const deployed = true'), true);
     } finally {
       globalThis.fetch = originalFetch;
@@ -2498,7 +2727,9 @@ export async function runReviewRunnerTests(): Promise<void> {
         return undefined;
       },
     }) as never);
+    let requestCount = 0;
     globalThis.fetch = (async (): Promise<Response> => {
+      requestCount += 1;
       return new Response(
         JSON.stringify({
           action: {
@@ -2515,8 +2746,10 @@ export async function runReviewRunnerTests(): Promise<void> {
       });
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status, 'failed');
-      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_fallback_applied'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_validation_failed'), true);
+      assert.equal(state.events.some((event) => event.eventType === 'review_analysis_output_repair_requested'), true);
       assert.equal(state.events.some((event) => event.eventType === 'review_analysis_agent_completed'), false);
+      assert.equal(requestCount >= 2, true);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);

@@ -5,7 +5,9 @@ export {
   handleDeriveReviewPolicy,
 } from './reviews/policy.js';
 export {
+  handleFailReview,
   handleGetReview,
+  handleRecoverReview,
   handleGetReviewEvents,
   handleListReviews,
 } from './reviews/query.js';

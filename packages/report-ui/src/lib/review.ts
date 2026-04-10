@@ -11,6 +11,7 @@ import type {
   ReviewSeverity,
   StudioNewReviewPreflightResponse,
   StudioNewReviewStartResponse,
+  StudioNewReviewStartStreamEvent,
   StudioContextResponse,
   ReviewStatus,
 } from '../types';
@@ -43,6 +44,10 @@ function readOptionalString(value: unknown): string | null {
   }
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
+}
+
+function readStringList(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string') : [];
 }
 
 function readStatus(value: unknown): ReviewStatus {
@@ -217,6 +222,7 @@ export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
   const furtherPassesSignalRecord = asRecord(provenanceRecord.furtherPassesLowYield);
   const reviewContextRefRecord = asRecord(provenanceRecord.reviewContextRef);
   const reviewContextStatsRecord = asRecord(provenanceRecord.reviewContextStats);
+  const reviewedFilesRecord = asRecord(provenanceRecord.reviewedFiles);
   const intentRecord = asRecord(review.intent);
   const errorRecord = asRecord(review.error);
 
@@ -317,6 +323,14 @@ export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
                         Number.isFinite(reviewContextStatsRecord.tokenBudget)
                       ? reviewContextStatsRecord.tokenBudget
                       : null,
+              }
+            : undefined,
+        reviewedFiles:
+          Object.keys(reviewedFilesRecord).length > 0
+            ? {
+                changed: readStringList(reviewedFilesRecord.changed),
+                related: readStringList(reviewedFilesRecord.related),
+                conventions: readStringList(reviewedFilesRecord.conventions),
               }
             : undefined,
         coChange:
@@ -469,6 +483,13 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
   if (root.policyMode !== 'auto' && root.policyMode !== 'review') {
     throw new Error('Invalid Studio preflight payload: policyMode must be auto or review.');
   }
+  const lastCheckpoints = Number(root.lastCheckpoints);
+  if (lastCheckpoints !== 1 && lastCheckpoints !== 2 && lastCheckpoints !== 3) {
+    throw new Error('Invalid Studio preflight payload: lastCheckpoints must be 1, 2, or 3.');
+  }
+  if (root.checkpointSelectionMode !== 'latest' && root.checkpointSelectionMode !== 'last_n') {
+    throw new Error('Invalid Studio preflight payload: checkpointSelectionMode must be latest or last_n.');
+  }
   if (root.checkpointId !== null && root.checkpointId !== undefined && typeof root.checkpointId !== 'string') {
     throw new Error('Invalid Studio preflight payload: checkpointId must be a string or null.');
   }
@@ -494,6 +515,29 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
     };
   });
 
+  const includedCheckpoints = Array.isArray(root.includedCheckpoints)
+    ? root.includedCheckpoints
+        .flatMap((item, index) => {
+          const entry = asRecord(item);
+          if (!entry || Object.keys(entry).length === 0) {
+            return [];
+          }
+          const checkpointId = readOptionalString(entry.checkpointId);
+          const commitSha = readOptionalString(entry.commitSha);
+          if (!checkpointId || !commitSha) {
+            throw new Error(`Invalid Studio preflight payload: includedCheckpoints[${index}] is invalid.`);
+          }
+          return [
+            {
+              checkpointId,
+              commitSha,
+              commitSubject: readOptionalString(entry.commitSubject) ?? '',
+            },
+          ];
+        })
+        .slice(0, 3)
+    : [];
+
   const errorRecord = asRecord(root.error);
   const error =
     Object.keys(errorRecord).length > 0
@@ -513,8 +557,11 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
     repo: typeof repo === 'string' ? repo : null,
     branch: typeof branch === 'string' ? branch : null,
     policyMode: root.policyMode,
+    lastCheckpoints: lastCheckpoints as 1 | 2 | 3,
+    checkpointSelectionMode: root.checkpointSelectionMode,
     checkpointId: typeof root.checkpointId === 'string' ? root.checkpointId : null,
     commitSha: typeof root.commitSha === 'string' ? root.commitSha : null,
+    includedCheckpoints,
     ready: root.ready,
     checks,
     error,
@@ -538,6 +585,60 @@ export function parseStudioNewReviewStartResponse(payload: unknown): StudioNewRe
     policyMode: root.policyMode,
     status: root.status,
   };
+}
+
+export function parseStudioNewReviewStartStreamEvent(payload: unknown): StudioNewReviewStartStreamEvent {
+  const root = asRecord(payload);
+
+  if (root.type === 'stage') {
+    const validStage =
+      root.stage === 'checkpoint' ||
+      root.stage === 'entire_context' ||
+      root.stage === 'cochange' ||
+      root.stage === 'workspace' ||
+      root.stage === 'deployment' ||
+      root.stage === 'review_creation' ||
+      root.stage === 'policy';
+    if (!validStage) {
+      throw new Error('Invalid Studio start stream payload: stage is invalid.');
+    }
+    if (root.state !== 'active' && root.state !== 'completed') {
+      throw new Error('Invalid Studio start stream payload: stage state is invalid.');
+    }
+    const stage = root.stage as
+      | 'checkpoint'
+      | 'entire_context'
+      | 'cochange'
+      | 'workspace'
+      | 'deployment'
+      | 'review_creation'
+      | 'policy';
+    return {
+      type: 'stage',
+      stage,
+      state: root.state,
+      label: readString(root.label, 'label'),
+      detail: readString(root.detail, 'detail'),
+    };
+  }
+
+  if (root.type === 'completed') {
+    const parsed = parseStudioNewReviewStartResponse(root);
+    return {
+      type: 'completed',
+      ...parsed,
+      detail: readString(root.detail, 'detail'),
+    };
+  }
+
+  if (root.type === 'error') {
+    return {
+      type: 'error',
+      message: readString(root.message, 'message'),
+    };
+  }
+
+  throw new Error('Invalid Studio start stream payload: type is invalid.');
 }
 
 function defaultText(value: string | null | undefined, fallback: string): string {

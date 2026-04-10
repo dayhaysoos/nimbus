@@ -88,9 +88,32 @@ describe('ReportPage', () => {
     );
 
     await screen.findByText('Review review_123');
-    expect(screen.getByText('Queued')).toBeInTheDocument();
-    expect(screen.getByText(/waiting for an available worker slot/i)).toBeInTheDocument();
+    expect(screen.getAllByText('Queued').length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/waiting for an available worker slot/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('Live review activity')).toBeInTheDocument();
+    expect(screen.getByText('Waiting for events...')).toBeInTheDocument();
     expect(screen.getByText('Raw JSON')).toBeInTheDocument();
+  });
+
+  it('renders branch-scoped breadcrumbs when opened from Studio Home', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ review: mockReview }),
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/branches/acme%2Fweb/main/reports/review_123']}>
+        <Routes>
+          <Route path="/branches/:repo/:branch/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Studio Home')).toBeInTheDocument();
+    expect(screen.getByText('Branch main')).toBeInTheDocument();
   });
 
   it('renders running review state', async () => {
@@ -116,8 +139,99 @@ describe('ReportPage', () => {
       </MemoryRouter>
     );
 
-    await screen.findByText('Running');
-    expect(screen.getByText(/analysis is in progress/i)).toBeInTheDocument();
+    expect((await screen.findAllByText('Running')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/analysis is in progress/i).length).toBeGreaterThan(0);
+  });
+
+  it('allows failing a running review from the report page', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ review: { ...mockReview, status: 'running' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          action: 'requeued',
+          review: {
+            ...mockReview,
+            status: 'failed',
+          },
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'queued',
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Live review activity');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fail review' }));
+
+    expect(fetchMock).toHaveBeenNthCalledWith(
+      2,
+      '/api/reviews/review_123/fail',
+      expect.objectContaining({ method: 'POST' })
+    );
+    expect(await screen.findByText('Review marked failed')).toBeInTheDocument();
+  });
+
+  it('shows the returned status when a fail request loses a race', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ review: { ...mockReview, status: 'running' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          action: 'failed',
+          review: {
+            ...mockReview,
+            status: 'succeeded',
+          },
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'succeeded',
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Live review activity');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fail review' }));
+
+    expect(await screen.findByText('Review is already succeeded')).toBeInTheDocument();
   });
 
   it('renders succeeded review strict v2 output details', async () => {
@@ -147,7 +261,116 @@ describe('ReportPage', () => {
     expect(screen.getByText('v2')).toBeInTheDocument();
     expect(screen.getByText('single')).toBeInTheDocument();
     expect(screen.getByText(/^no$/)).toBeInTheDocument();
-    expect(screen.getByText('One high-severity issue requires a null guard before property access.')).toBeInTheDocument();
+    expect(screen.getAllByText('One high-severity issue requires a null guard before property access.').length).toBeGreaterThan(0);
+  });
+
+  it('keeps zero-finding review output compact until review details are expanded', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'succeeded',
+            summary: {
+              recommendation: 'approve',
+              riskLevel: 'low',
+              findingCounts: {
+                info: 0,
+                critical: 0,
+                high: 0,
+                medium: 0,
+                low: 0,
+              },
+            },
+            findings: [],
+            summaryText:
+              'Adds branch-scoped routing for review studio UI. Changes build route paths to include branch context when repo and branch are available.',
+            intent: {
+              goal: 'Complete a task by committing a single missing file.',
+              constraints: ['Non-mutating review only.'],
+              decisions: ['Review mode: report_only.'],
+            },
+            evidence: [
+              {
+                id: 'ev_8',
+                type: 'deployment_provider_created',
+                label: 'deployment provider created',
+                status: 'passed',
+              },
+              {
+                id: 'ev_review_agent',
+                type: 'analysis_agent',
+                label: 'AI review analysis via cloudflare_agents_sdk',
+                status: 'info',
+              },
+            ],
+            provenance: {
+              ...mockReview.provenance,
+              sessionIds: ['019d5552-9f6b-7d43-9216-7a9c13d1c4f2'],
+              promptSummary: 'Review with Entire checkpoint intent context (b14beb14f08b).',
+              reviewContextStats: {
+                totalFilesIncluded: 22,
+                totalBytesIncluded: 234776,
+                estimatedTokens: 71727,
+                tokenBudget: null,
+              },
+              reviewedFiles: {
+                changed: ['packages/report-ui/src/components/ReportPage.tsx'],
+                related: ['packages/report-ui/src/lib/review.ts'],
+                conventions: ['package.json'],
+              },
+              coChange: {
+                coChangeSkipped: false,
+                coChangeSkipReason: null,
+                coChangeAvailable: true,
+                relatedFileCount: 8,
+              },
+            },
+          },
+        }),
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Successful review');
+    expect(screen.getByText('Successful review')).toBeInTheDocument();
+    expect(screen.getAllByText('Files reviewed').length).toBeGreaterThan(0);
+    expect(screen.getByText('Sessions used')).toBeInTheDocument();
+    expect(screen.getByText('Related files')).toBeInTheDocument();
+    expect(screen.getByText('No actionable findings identified')).toBeInTheDocument();
+    expect(screen.getByText('Review summary')).not.toBeVisible();
+    expect(screen.getByText('Intent')).not.toBeVisible();
+    expect(screen.getByText('Review scope')).not.toBeVisible();
+
+    const user = userEvent.setup();
+    await user.click(screen.getByText('Review details'));
+
+    expect(await screen.findByText('Review summary')).toBeInTheDocument();
+    expect(screen.getAllByText(/Adds branch-scoped routing for review studio UI/i).length).toBeGreaterThan(0);
+    expect(screen.getByText('Intent')).toBeInTheDocument();
+    expect(screen.getByText('Complete a task by committing a single missing file.')).toBeInTheDocument();
+    expect(screen.getByText('Review scope')).toBeInTheDocument();
+    expect(screen.getAllByText(/Review with Entire checkpoint intent context/).length).toBeGreaterThan(0);
+    expect(screen.getByText(/22 files/)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /view files/i }));
+
+    expect(screen.getByRole('dialog', { name: 'Reviewed files' })).toBeInTheDocument();
+    expect(screen.getByText('Changed in this review')).toBeInTheDocument();
+    expect(screen.getAllByText('Related files').length).toBeGreaterThan(0);
+    expect(screen.getByText('Convention and config files')).toBeInTheDocument();
+    expect(screen.getByText('packages/report-ui/src/components/ReportPage.tsx')).toBeInTheDocument();
+    expect(screen.getByText('packages/report-ui/src/lib/review.ts')).toBeInTheDocument();
+    expect(screen.getByText('package.json')).toBeInTheDocument();
   });
 
   it('renders failed review with actionable guidance for provider/validation errors', async () => {
@@ -261,9 +484,8 @@ describe('ReportPage', () => {
       </MemoryRouter>
     );
 
-    await screen.findByText(/baseline context only/i);
-    expect(screen.getByText(/baseline context only/i)).toBeInTheDocument();
-    expect(screen.getByText(/REVIEW_CONTEXT_GITHUB_TOKEN/)).toBeInTheDocument();
+    expect((await screen.findAllByText(/baseline context only/i)).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/REVIEW_CONTEXT_GITHUB_TOKEN/).length).toBeGreaterThan(0);
   });
 
   it('shows context fallback provenance details when branch fallback is used', async () => {

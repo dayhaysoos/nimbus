@@ -62,6 +62,12 @@ export interface ReviewContextRef {
   r2Key: string;
 }
 
+export interface ReviewedFilesSummary {
+  changed: string[];
+  related: string[];
+  conventions: string[];
+}
+
 export interface ReviewContextStats {
   totalFilesIncluded: number;
   totalBytesIncluded: number;
@@ -106,6 +112,7 @@ export interface ReviewProvenanceSummary {
   transcriptUrl?: string | null;
   reviewContextRef?: ReviewContextRef | null;
   reviewContextStats?: ReviewContextStats;
+  reviewedFiles?: ReviewedFilesSummary;
   coChange?: ReviewCoChangeSummary;
   contextResolution?: ReviewContextResolutionSummary;
   outputSchemaVersion?: 'v2';
@@ -197,8 +204,15 @@ export interface StudioNewReviewPreflightResponse {
   repo: string | null;
   branch: string | null;
   policyMode: StudioPolicyMode;
+  lastCheckpoints: 1 | 2 | 3;
+  checkpointSelectionMode: 'latest' | 'last_n';
   checkpointId: string | null;
   commitSha: string | null;
+  includedCheckpoints: Array<{
+    checkpointId: string;
+    commitSha: string;
+    commitSubject: string;
+  }>;
   ready: boolean;
   checks: StudioNewReviewPreflightCheck[];
   error?: {
@@ -213,6 +227,38 @@ export interface StudioNewReviewStartResponse {
   policyMode: StudioPolicyMode;
   status: 'policy_ready' | 'queued';
 }
+
+export type StudioNewReviewStartStage =
+  | 'checkpoint'
+  | 'entire_context'
+  | 'cochange'
+  | 'workspace'
+  | 'deployment'
+  | 'review_creation'
+  | 'policy';
+
+export interface StudioNewReviewStartStageEvent {
+  type: 'stage';
+  stage: StudioNewReviewStartStage;
+  state: 'active' | 'completed';
+  label: string;
+  detail: string;
+}
+
+export interface StudioNewReviewStartCompletedEvent extends StudioNewReviewStartResponse {
+  type: 'completed';
+  detail: string;
+}
+
+export interface StudioNewReviewStartErrorEvent {
+  type: 'error';
+  message: string;
+}
+
+export type StudioNewReviewStartStreamEvent =
+  | StudioNewReviewStartStageEvent
+  | StudioNewReviewStartCompletedEvent
+  | StudioNewReviewStartErrorEvent;
 
 export interface ReviewFailureGuidance {
   headline: string;

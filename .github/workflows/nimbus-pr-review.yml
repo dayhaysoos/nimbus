@@ -274,7 +274,7 @@ jobs:
           fi
 
           case "${REVIEW_ID}" in
-            rev_[a-z0-9]*) ;;
+            rev_[a-z0-9]*|review_[a-z0-9]*) ;;
             *)
               echo "::error::Invalid review ID format: ${REVIEW_ID}"
               exit 1

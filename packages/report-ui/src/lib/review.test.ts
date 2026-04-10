@@ -8,6 +8,7 @@ import {
   parseStudioContextResponse,
   parseStudioNewReviewPreflightResponse,
   parseStudioNewReviewStartResponse,
+  parseStudioNewReviewStartStreamEvent,
 } from './review';
 import type { ReviewFinding, ReviewResponse } from '../types';
 
@@ -106,6 +107,11 @@ describe('parseGetReviewResponse', () => {
           promptSummary: 'Review generated in report_only mode for deployment dep_1.',
           outputSchemaVersion: 'v2',
           passArchitecture: 'single',
+          reviewedFiles: {
+            changed: ['src/report.tsx'],
+            related: ['src/context.ts'],
+            conventions: ['package.json'],
+          },
           advisories: ['Large diff detected (31 files). Consider smaller, focused commits for higher quality reviews.'],
           contextResolution: {
             contextResolution: 'branch_fallback',
@@ -121,6 +127,7 @@ describe('parseGetReviewResponse', () => {
 
     expect(payload.review.provenance.outputSchemaVersion).toBe('v2');
     expect(payload.review.furtherPassesLowYield).toBe(true);
+    expect(payload.review.provenance.reviewedFiles?.changed).toEqual(['src/report.tsx']);
     expect(payload.review.provenance.contextResolution?.contextResolution).toBe('branch_fallback');
     expect(payload.review.provenance.advisories?.[0]).toContain('Large diff detected');
   });
@@ -193,8 +200,22 @@ describe('studio new review payloads', () => {
       repo: 'acme/web',
       branch: 'main',
       policyMode: 'auto',
+      lastCheckpoints: 2,
+      checkpointSelectionMode: 'last_n',
       checkpointId: 'cp_123',
       commitSha: 'abcdef1234567890',
+      includedCheckpoints: [
+        {
+          checkpointId: 'cp_122',
+          commitSha: 'aaaaaa123456',
+          commitSubject: 'feat: earlier checkpoint',
+        },
+        {
+          checkpointId: 'cp_123',
+          commitSha: 'abcdef1234567890',
+          commitSubject: 'feat: latest checkpoint',
+        },
+      ],
       ready: true,
       checks: [
         {
@@ -214,12 +235,28 @@ describe('studio new review payloads', () => {
   it('parses start payload', () => {
     const payload = parseStudioNewReviewStartResponse({
       reviewId: 'rev_123',
-      routePath: '/reports/rev_123',
+      routePath: '/branches/acme%2Fweb/main/reports/rev_123',
       policyMode: 'auto',
       status: 'queued',
     });
 
     expect(payload.reviewId).toBe('rev_123');
-    expect(payload.routePath).toBe('/reports/rev_123');
+    expect(payload.routePath).toBe('/branches/acme%2Fweb/main/reports/rev_123');
+  });
+
+  it('parses start stream stage payload', () => {
+    const payload = parseStudioNewReviewStartStreamEvent({
+      type: 'stage',
+      stage: 'workspace',
+      state: 'active',
+      label: 'Preparing workspace',
+      detail: 'Creating an isolated workspace for the review target.',
+    });
+
+    expect(payload.type).toBe('stage');
+    if (payload.type === 'stage') {
+      expect(payload.stage).toBe('workspace');
+      expect(payload.state).toBe('active');
+    }
   });
 });

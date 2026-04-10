@@ -329,6 +329,12 @@ export interface ReviewRunResponse {
     };
     promptSummary: string | null;
     transcriptUrl?: string | null;
+    checkpointSelectionMode?: 'latest' | 'last_n' | 'range';
+    includedCheckpoints?: Array<{
+      checkpointId: string;
+      commitSha: string;
+      commitSubject: string;
+    }>;
   };
   markdownSummary: string | null;
   error?: {

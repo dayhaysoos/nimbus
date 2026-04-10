@@ -5,13 +5,13 @@ import { marked } from 'marked';
 import { copyToClipboard } from '../lib/clipboard';
 import { downloadTextFile } from '../lib/download';
 import { StatusPill } from './ui/StatusPill';
+import { Badge } from './ui/badge';
 import {
   buildFindingText,
   dateTimeLabel,
   findingCount,
   findingLocationsText,
   parseGetReviewResponse,
-  recommendationLabel,
   reviewFailureGuidance,
   statusNarrative,
 } from '../lib/review';
@@ -153,6 +153,12 @@ interface TimelinePhase {
   detail: string;
 }
 
+interface ReviewedFilesSection {
+  key: 'changed' | 'related' | 'conventions';
+  label: string;
+  files: string[];
+}
+
 function severityColor(severity: ReviewFinding['severity']): string {
   switch (severity) {
     case 'critical':
@@ -233,6 +239,138 @@ function riskLevelClass(riskLevel: 'critical' | 'high' | 'medium' | 'low' | unde
     return 'border-sky-200 bg-sky-50 text-sky-800';
   }
   return 'border-border bg-muted/50 text-muted-foreground';
+}
+
+function evidenceStatusClass(status: ReviewResponse['evidence'][number]['status']): string {
+  if (status === 'passed') {
+    return 'border-emerald-200 bg-emerald-50 text-emerald-800';
+  }
+  if (status === 'failed') {
+    return 'border-rose-200 bg-rose-50 text-rose-800';
+  }
+  if (status === 'warning') {
+    return 'border-amber-200 bg-amber-50 text-amber-800';
+  }
+  return 'border-border bg-muted/50 text-muted-foreground';
+}
+
+function compactNumber(value: number): string {
+  return value.toLocaleString();
+}
+
+function primaryVerdictHeadline(review: ReviewResponse, totalFindings: number): string {
+  if (review.status === 'succeeded') {
+    if (totalFindings === 0) {
+      return 'No actionable findings identified';
+    }
+    return `${totalFindings} finding${totalFindings === 1 ? '' : 's'} require attention`;
+  }
+  if (review.status === 'failed') {
+    return 'Review failed before completion';
+  }
+  if (review.status === 'cancelled') {
+    return 'Review was cancelled';
+  }
+  return statusNarrative(review).title;
+}
+
+function findingsEmptyState(review: ReviewResponse): string {
+  if (LIVE_STREAM_STATUSES.has(review.status)) {
+    return 'Findings will appear here as Nimbus finishes the review.';
+  }
+  if (review.status === 'failed' || review.status === 'cancelled') {
+    return 'No findings were persisted before the review stopped.';
+  }
+  return 'No actionable findings identified.';
+}
+
+function reviewedFilesSections(review: ReviewResponse | null): ReviewedFilesSection[] {
+  const reviewedFiles = review?.provenance.reviewedFiles;
+  if (!reviewedFiles) {
+    return [];
+  }
+
+  return [
+    {
+      key: 'changed' as const,
+      label: 'Changed in this review',
+      files: reviewedFiles.changed,
+    },
+    {
+      key: 'related' as const,
+      label: 'Related files',
+      files: reviewedFiles.related,
+    },
+    {
+      key: 'conventions' as const,
+      label: 'Convention and config files',
+      files: reviewedFiles.conventions,
+    },
+  ].filter((section) => section.files.length > 0);
+}
+
+function ReviewedFilesDialog({
+  open,
+  totalFiles,
+  sections,
+  onClose,
+}: {
+  open: boolean;
+  totalFiles: number;
+  sections: ReviewedFilesSection[];
+  onClose: () => void;
+}): JSX.Element | null {
+  if (!open) {
+    return null;
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-end bg-black/55 p-0 sm:items-center sm:justify-center sm:p-6"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="reviewed-files-title"
+        className="max-h-[88vh] w-full overflow-hidden rounded-t-xl border border-border/70 bg-background shadow-2xl sm:max-w-2xl sm:rounded-xl"
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-border/70 px-4 py-3">
+          <div>
+            <h2 id="reviewed-files-title" className="text-base font-semibold text-foreground">
+              Reviewed files
+            </h2>
+            <p className="mt-1 text-sm text-muted-foreground">{compactNumber(totalFiles)} files included in review context.</p>
+          </div>
+          <button type="button" className="report-copy-btn text-xs" onClick={onClose}>
+            Close
+          </button>
+        </div>
+
+        <div className="max-h-[calc(88vh-80px)] space-y-3 overflow-y-auto px-4 py-4">
+          {sections.map((section) => (
+            <section key={section.key} className="rounded-sm border border-border/60 bg-card/75 px-3 py-3">
+              <div className="flex items-center justify-between gap-3">
+                <h3 className="text-sm font-semibold text-foreground">{section.label}</h3>
+                <span className="text-xs text-muted-foreground">{compactNumber(section.files.length)}</span>
+              </div>
+              <ul className="mt-2 space-y-1">
+                {section.files.map((filePath) => (
+                  <li key={`${section.key}:${filePath}`} className="rounded-sm border border-border/50 bg-background/75 px-2.5 py-1.5 font-mono text-xs text-foreground">
+                    {filePath}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function StatusLayout({ children }: { children: ReactNode }): JSX.Element {
@@ -519,8 +657,13 @@ function ActivityLog({ entries, isLive }: { entries: ActivityLogEntry[]; isLive:
 
   useEffect(() => {
     const node = logEndRef.current;
-    if (node && typeof node.scrollIntoView === 'function') {
+    if (!node || typeof node.scrollIntoView !== 'function') {
+      return;
+    }
+    try {
       node.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    } catch {
+      // Non-fatal browser/test environment scroll failures should not break the page.
     }
   }, [entries.length]);
 
@@ -529,25 +672,40 @@ function ActivityLog({ entries, isLive }: { entries: ActivityLogEntry[]; isLive:
   }
 
   return (
-    <div className="border border-border/50 bg-[hsl(240_10%_8%)] rounded-sm overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-white/5">
-        {isLive && <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />}
-        <span className="text-xs font-medium text-white/50 uppercase tracking-widest">
-          {isLive ? 'Live' : 'Event history'}
-        </span>
+    <div className="overflow-hidden rounded-sm border border-slate-700 bg-[#0b1120] text-slate-100 shadow-sm">
+      <div className="flex items-center justify-between gap-3 border-b border-slate-800 bg-[#050a16] px-3 py-2">
+        <div className="flex items-center gap-2">
+          {isLive && <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />}
+          <span className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">
+            {isLive ? 'Live event stream' : 'Event history'}
+          </span>
+        </div>
+        <span className="font-mono text-[11px] text-slate-500">{entries.length} event{entries.length === 1 ? '' : 's'}</span>
       </div>
-      <div className="max-h-48 overflow-y-auto font-mono text-xs leading-relaxed">
+      <div className="max-h-56 overflow-y-auto px-3 py-2.5">
         {entries.length === 0 ? (
-          <div className="px-3 py-3 text-white/30">Waiting for events...</div>
+          <div className="rounded-sm border border-dashed border-slate-700 bg-[#0f172a] px-3 py-4 font-mono text-sm text-slate-300">
+            Waiting for events...
+          </div>
         ) : (
-          <div className="divide-y divide-white/5">
+          <div className="space-y-2">
             {entries.map((entry) => (
-              <div key={entry.id} className="report-log-entry px-3 py-1.5 flex gap-3">
-                <span className="text-white/25 shrink-0 tabular-nums">
+              <div
+                key={entry.id}
+                className={cn(
+                  'report-log-entry grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-sm border px-3 py-2 font-mono',
+                  isLive && entry.id === entries[entries.length - 1]?.id
+                    ? 'border-emerald-500/35 bg-[#132238]'
+                    : 'border-slate-800 bg-[#0f172a]'
+                )}
+              >
+                <span className="text-[11px] text-slate-500 tabular-nums">
                   {new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
                 </span>
-                <span className="text-white/70">{entry.label}</span>
-                {entry.detail && <span className="text-white/35 truncate">{entry.detail}</span>}
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-slate-100">{entry.label}</p>
+                  {entry.detail && <p className="mt-0.5 text-xs text-slate-400">{entry.detail}</p>}
+                </div>
               </div>
             ))}
           </div>
@@ -566,8 +724,11 @@ export function ReportPage(): JSX.Element {
   const [review, setReview] = useState<ReviewResponse | null>(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [recoveringReview, setRecoveringReview] = useState(false);
+  const [recoveryError, setRecoveryError] = useState<string | null>(null);
   const [refreshCycle, setRefreshCycle] = useState(0);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
+  const [showReviewedFiles, setShowReviewedFiles] = useState(false);
   const seenEventIds = useRef(new Set<string>());
   const fallbackEventOrdinal = useRef(0);
 
@@ -577,6 +738,9 @@ export function ReportPage(): JSX.Element {
     seenEventIds.current.clear();
     fallbackEventOrdinal.current = 0;
     setActivityLog([]);
+    setShowReviewedFiles(false);
+    setRecoveryError(null);
+    setRecoveringReview(false);
   }, [reviewId]);
 
   useEffect(() => {
@@ -730,6 +894,23 @@ export function ReportPage(): JSX.Element {
     };
   }, [toastMessage]);
 
+  useEffect(() => {
+    if (!showReviewedFiles) {
+      return;
+    }
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setShowReviewedFiles(false);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showReviewedFiles]);
+
   const normalizedMarkdown = useMemo(() => normalizeMarkdownSummary(review?.markdownSummary ?? null), [review?.markdownSummary]);
   const markdownHtml = useMemo(() => renderedMarkdown(normalizedMarkdown), [normalizedMarkdown]);
 
@@ -787,6 +968,61 @@ export function ReportPage(): JSX.Element {
     }
     downloadTextFile(`${reviewId}.json`, JSON.stringify(review, null, 2), 'application/json');
   }, [reviewId, review]);
+
+  const handleRecoverReview = useCallback(async () => {
+    if (!reviewId) {
+      return;
+    }
+    setRecoveringReview(true);
+    setRecoveryError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/reviews/${encodeURIComponent(reviewId)}/recover`, {
+        method: 'POST',
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error((body as { error?: string } | null)?.error ?? `Failed to recover review (${response.status})`);
+      }
+      const action = body && typeof body === 'object' && 'action' in body && typeof body.action === 'string' ? body.action : null;
+      const parsed = parseGetReviewResponse(body);
+      setReview(parsed.review);
+      setToastMessage(action === 'failed' ? 'Review marked failed' : 'Recovery requested');
+      setRefreshCycle((value) => value + 1);
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveringReview(false);
+    }
+  }, [reviewId]);
+
+  const handleFailReview = useCallback(async () => {
+    if (!reviewId) {
+      return;
+    }
+    setRecoveringReview(true);
+    setRecoveryError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/reviews/${encodeURIComponent(reviewId)}/fail`, {
+        method: 'POST',
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error((body as { error?: string } | null)?.error ?? `Failed to fail review (${response.status})`);
+      }
+      const parsed = parseGetReviewResponse(body);
+      setReview(parsed.review);
+      setToastMessage(
+        parsed.review.status === 'failed'
+          ? 'Review marked failed'
+          : `Review is already ${parsed.review.status}`
+      );
+      setRefreshCycle((value) => value + 1);
+    } catch (error) {
+      setRecoveryError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setRecoveringReview(false);
+    }
+  }, [reviewId]);
 
   if (state === 'loading') {
     return (
@@ -856,14 +1092,44 @@ export function ReportPage(): JSX.Element {
   const tokenBudget = contextStats?.tokenBudget ?? null;
   const estimatedTokens = contextStats?.estimatedTokens ?? 0;
   const tokenUsageRatio = tokenBudget && tokenBudget > 0 ? Math.min(1, estimatedTokens / tokenBudget) : null;
+  const reviewedFileSectionsList = reviewedFilesSections(review);
+  const reviewedFilesAvailable = reviewedFileSectionsList.length > 0;
+  const totalReviewedFiles =
+    contextStats?.totalFilesIncluded ??
+    reviewedFileSectionsList.reduce((total, section) => total + section.files.length, 0);
+  const hasIntentDetails = Boolean(
+    review.intent?.goal?.trim() ||
+      (review.intent?.constraints.length ?? 0) > 0 ||
+      (review.intent?.decisions.length ?? 0) > 0
+  );
+  const totalFindings = findingCount(review);
+  const cochangeRelatedFileCount = review.provenance.coChange?.relatedFileCount ?? 0;
+  const reviewCompletedWithoutFindings = review.status === 'succeeded' && totalFindings === 0;
+  const showLiveActivityPanel = isLive;
+  const latestActivityEntry = activityLog[activityLog.length - 1] ?? null;
+  const verdictHeadline = primaryVerdictHeadline(review, totalFindings);
+  const verdictDetail =
+    review.status === 'succeeded' && modelSummary
+      ? modelSummary
+      : review.status === 'failed' && review.error?.message
+        ? review.error.message
+        : status.detail;
 
   return (
-    <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
+    <>
+      <ReviewedFilesDialog
+        open={showReviewedFiles}
+        totalFiles={totalReviewedFiles}
+        sections={reviewedFileSectionsList}
+        onClose={() => setShowReviewedFiles(false)}
+      />
+
+      <main className="mx-auto flex w-full max-w-[1400px] flex-col gap-2 px-3 py-2 md:py-3">
       {toastMessage && <div className="report-toast">{toastMessage}</div>}
 
       {/* Breadcrumbs */}
       <nav className="policy-fade-up flex items-center gap-2 text-xs text-muted-foreground" style={{ animationDelay: '0ms' }}>
-        <Link to="/" className="hover:text-foreground transition-colors">Branches</Link>
+        <Link to="/" className="hover:text-foreground transition-colors">Studio Home</Link>
         {hasBranchContext && (
           <>
             <span className="text-muted-foreground/50">/</span>
@@ -879,96 +1145,93 @@ export function ReportPage(): JSX.Element {
         <span className="text-foreground font-medium font-mono truncate">{review.id}</span>
       </nav>
 
-      <section className={cn('policy-fade-up card space-y-3 border', verdictTone.containerClass)} style={{ animationDelay: '40ms' }}>
-        <div className="summary-header">
-          <h1 className="policy-heading text-base text-foreground">Review {review.id}</h1>
-          <StatusPill status={review.status} />
-        </div>
-
-        <div className="space-y-1">
-          <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Recommendation</p>
-          <p className={cn('policy-heading text-lg leading-tight capitalize', verdictTone.labelClass)}>
-            {recommendationLabel(recommendation)}
-          </p>
-        </div>
-
-        <dl className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <div className="rounded-sm border border-border/70 bg-card/65 px-2.5 py-2">
-            <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Risk</dt>
-            <dd className="mt-1">
-              <span
-                className={cn(
-                  'inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.08em]',
-                  riskLevelClass(review.summary?.riskLevel)
-                )}
-              >
-                {review.summary?.riskLevel ?? 'unknown'}
-              </span>
-            </dd>
-          </div>
-          <div className="rounded-sm border border-border/70 bg-card/65 px-2.5 py-2">
-            <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Findings</dt>
-            <dd className="mt-1 text-base font-semibold text-foreground">{findingCount(review)}</dd>
-          </div>
-          <div className="rounded-sm border border-border/70 bg-card/65 px-2.5 py-2">
-            <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Time to complete</dt>
-            <dd className="mt-1 text-sm font-semibold text-foreground">{reviewDurationLabel(review)}</dd>
-          </div>
-          <div className="rounded-sm border border-border/70 bg-card/65 px-2.5 py-2">
-            <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Updated</dt>
-            <dd className="mt-1 text-sm font-semibold text-foreground">{dateTimeLabel(review.updatedAt)}</dd>
-          </div>
-        </dl>
-
-        <div className="space-y-1.5">
-          <div className="h-2 overflow-hidden rounded-full border border-border/50 bg-muted/40">
-            <div className="flex h-full w-full">
-              {severityTotal > 0 ? (
-                <>
-                  {severityCounts.critical > 0 ? (
-                    <div className={severityBarColor('critical')} style={{ width: `${(severityCounts.critical / severityTotal) * 100}%` }} />
-                  ) : null}
-                  {severityCounts.high > 0 ? (
-                    <div className={severityBarColor('high')} style={{ width: `${(severityCounts.high / severityTotal) * 100}%` }} />
-                  ) : null}
-                  {severityCounts.medium > 0 ? (
-                    <div className={severityBarColor('medium')} style={{ width: `${(severityCounts.medium / severityTotal) * 100}%` }} />
-                  ) : null}
-                  {severityCounts.low > 0 ? (
-                    <div className={severityBarColor('low')} style={{ width: `${(severityCounts.low / severityTotal) * 100}%` }} />
-                  ) : null}
-                </>
-              ) : (
-                <div className="h-full w-full bg-muted" />
-              )}
+      <section className={cn('policy-fade-up rounded-sm border px-3 py-3', verdictTone.containerClass)} style={{ animationDelay: '40ms' }}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+          <div className="min-w-0 space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Review {review.id}</p>
+              <StatusPill status={review.status} />
+              {hasBranchContext && <span className="text-xs text-muted-foreground">Branch {branch}</span>}
             </div>
+            <h1 className={cn('policy-heading text-lg leading-tight', verdictTone.labelClass)}>{verdictHeadline}</h1>
+            <p className="max-w-3xl text-sm text-muted-foreground">{verdictDetail}</p>
           </div>
-          <p className="text-xs text-muted-foreground">
-            <span className="font-semibold text-red-700">{severityCounts.critical} critical</span>
-            {' · '}
-            <span className="font-semibold text-orange-700">{severityCounts.high} high</span>
-            {' · '}
-            <span className="font-semibold text-amber-700">{severityCounts.medium} medium</span>
-            {' · '}
-            <span className="font-semibold text-sky-700">{severityCounts.low} low</span>
-          </p>
-        </div>
 
-        <div className="button-row border-t border-border/70 pt-2">
-          <button type="button" className="report-copy-btn" onClick={() => void handleCopy(normalizedMarkdown)} disabled={markdownUnavailable}>
-            Copy full markdown
-          </button>
-          <button type="button" className="report-copy-btn" onClick={() => void handleCopy(JSON.stringify(review, null, 2))}>
-            Copy full JSON
-          </button>
-          <button type="button" className="report-copy-btn" onClick={handleDownloadMarkdown} disabled={markdownUnavailable}>
-            Download markdown
-          </button>
-          <button type="button" className="report-copy-btn" onClick={handleDownloadJson}>
-            Download JSON
-          </button>
+          <div className="flex flex-wrap items-center gap-2 md:max-w-[420px] md:justify-end">
+            <button type="button" className="report-copy-btn" onClick={() => void handleCopy(normalizedMarkdown)} disabled={markdownUnavailable}>
+              Copy full markdown
+            </button>
+            <button type="button" className="report-copy-btn" onClick={() => void handleCopy(JSON.stringify(review, null, 2))}>
+              Copy full JSON
+            </button>
+            <button type="button" className="report-copy-btn" onClick={handleDownloadMarkdown} disabled={markdownUnavailable}>
+              Download markdown
+            </button>
+            <button type="button" className="report-copy-btn" onClick={handleDownloadJson}>
+              Download JSON
+            </button>
+          </div>
         </div>
       </section>
+
+      {showLiveActivityPanel && (
+        <section className="policy-fade-up space-y-2" style={{ animationDelay: '55ms' }}>
+          <div className="overflow-hidden rounded-sm border border-slate-700 bg-[#020817] text-slate-100 shadow-sm">
+            <div className="flex flex-col gap-3 border-b border-slate-800 px-3 py-3 md:flex-row md:items-start md:justify-between">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-400 animate-pulse" />
+                  <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400">Live review activity</p>
+                </div>
+                <h2 className="text-base font-semibold text-white">{status.title}</h2>
+                <p className="text-sm text-slate-300">{status.detail}</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant="outline" className="rounded-full border-slate-700 bg-[#0f172a] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-slate-300">
+                  {activityLog.length} event{activityLog.length === 1 ? '' : 's'}
+                </Badge>
+                {review.status === 'running' ? (
+                  <button
+                    type="button"
+                    className="report-copy-btn border-slate-700 bg-[#0f172a] font-mono text-slate-100 hover:border-slate-500"
+                    onClick={() => void handleFailReview()}
+                    disabled={recoveringReview}
+                  >
+                    {recoveringReview ? 'Failing…' : 'Fail review'}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    className="report-copy-btn border-slate-700 bg-[#0f172a] font-mono text-slate-100 hover:border-slate-500"
+                    onClick={() => void handleRecoverReview()}
+                    disabled={recoveringReview}
+                  >
+                    {recoveringReview ? 'Recovering…' : 'Recover review'}
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="border-b border-slate-800 px-3 py-2">
+              <p className="font-mono text-xs text-slate-300">
+                {latestActivityEntry?.label ?? 'Waiting for the first live event'}
+                {latestActivityEntry?.detail ? <span className="text-slate-500"> · {latestActivityEntry.detail}</span> : null}
+              </p>
+            </div>
+            {(recoveryError || latestActivityEntry?.label === 'Sending to model') && (
+              <div className="border-b border-slate-800 px-3 py-2">
+                <p className="font-mono text-xs text-amber-200">
+                  {recoveryError
+                    ? recoveryError
+                    : review.status === 'running'
+                      ? 'If this stays on "Sending to model" longer than expected, mark the review failed so it no longer appears active. In-flight work may continue until the current attempt ends.'
+                      : 'If this queued review is not making progress, recover it to request a clean retry.'}
+                </p>
+              </div>
+            )}
+            <ActivityLog entries={activityLog} isLive={isLive} />
+          </div>
+        </section>
+      )}
 
       {failureGuidance && (
         <section className="policy-fade-up space-y-1 rounded-sm border border-red-200 bg-red-50/55 px-3 py-2" style={{ animationDelay: '60ms' }}>
@@ -983,10 +1246,10 @@ export function ReportPage(): JSX.Element {
         </section>
       )}
 
-      <section className="policy-fade-up flex flex-col gap-2.5" style={{ animationDelay: '80ms' }}>
-        <div className="flex items-center justify-between">
-          <h2 className="policy-heading text-sm text-foreground">Findings</h2>
-          {review.findings.length > 0 && (
+      {review.findings.length > 0 && (
+        <section className="policy-fade-up flex flex-col gap-2.5" style={{ animationDelay: '68ms' }}>
+          <div className="flex items-center justify-between">
+            <h2 className="policy-heading text-sm text-foreground">Findings</h2>
             <button
               type="button"
               className="report-copy-btn text-xs"
@@ -997,15 +1260,9 @@ export function ReportPage(): JSX.Element {
             >
               Copy all findings
             </button>
-          )}
-        </div>
-
-        {review.findings.length === 0 ? (
-          <div className="card">
-            <p>No findings were reported.</p>
           </div>
-        ) : (
-          groupedFindings.map((group) => (
+
+          {groupedFindings.map((group) => (
             <div key={group.severity} className="space-y-1.5">
               <h3 className="text-sm font-semibold uppercase tracking-[0.08em] text-foreground">
                 {group.severity} ({group.findings.length})
@@ -1025,9 +1282,169 @@ export function ReportPage(): JSX.Element {
                 ))}
               </div>
             </div>
-          ))
-        )}
-      </section>
+          ))}
+        </section>
+      )}
+
+      {reviewCompletedWithoutFindings && (
+        <section className="policy-fade-up rounded-sm border border-emerald-200 bg-emerald-50/55 px-3 py-3" style={{ animationDelay: '72ms' }}>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+            <div className="space-y-1">
+              <h2 className="text-sm font-semibold text-emerald-900">Successful review</h2>
+              <p className="text-sm text-emerald-900/90">
+                Nimbus completed this review and did not identify actionable findings for this change.
+              </p>
+            </div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 lg:min-w-[420px]">
+              <div className="rounded-sm border border-emerald-200 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-emerald-800/70">Files reviewed</p>
+                {reviewedFilesAvailable ? (
+                  <button
+                    type="button"
+                    className="mt-1 flex items-center gap-2 text-left text-sm font-semibold text-emerald-950 underline decoration-emerald-300 underline-offset-2"
+                    onClick={() => setShowReviewedFiles(true)}
+                  >
+                    {compactNumber(totalReviewedFiles)}
+                    <span className="text-xs font-medium text-emerald-800/80">View files</span>
+                  </button>
+                ) : (
+                  <p className="mt-1 text-sm font-semibold text-emerald-950">
+                    {contextStats ? compactNumber(contextStats.totalFilesIncluded) : 'n/a'}
+                  </p>
+                )}
+              </div>
+              <div className="rounded-sm border border-emerald-200 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-emerald-800/70">Sessions used</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-950">{compactNumber(review.provenance.sessionIds.length)}</p>
+              </div>
+              <div className="rounded-sm border border-emerald-200 bg-white/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-emerald-800/70">Related files</p>
+                <p className="mt-1 text-sm font-semibold text-emerald-950">{compactNumber(cochangeRelatedFileCount)}</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
+
+      {!reviewCompletedWithoutFindings && review.findings.length === 0 && (
+        <section className="policy-fade-up" style={{ animationDelay: '72ms' }}>
+          <div className="card">
+            <p>{findingsEmptyState(review)}</p>
+          </div>
+        </section>
+      )}
+
+      {!reviewCompletedWithoutFindings &&
+        (modelSummary || hasIntentDetails || review.provenance.promptSummary || cochangeBanner || contextStats || reviewedFilesAvailable) && (
+        <section className="policy-fade-up grid gap-2 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]" style={{ animationDelay: '80ms' }}>
+          <div className="space-y-2">
+            {modelSummary && (
+              <div className="rounded-sm border border-border/60 bg-card/85 px-3 py-3">
+                <h2 className="text-sm font-semibold text-foreground">Review summary</h2>
+                <p className="mt-2 text-sm leading-6 text-foreground/85">{modelSummary}</p>
+              </div>
+            )}
+
+            {hasIntentDetails && review.intent && (
+              <div className="rounded-sm border border-border/60 bg-card/85 px-3 py-3">
+                <h2 className="text-sm font-semibold text-foreground">Intent</h2>
+                <div className="mt-2 space-y-2 text-sm">
+                  {review.intent.goal?.trim() && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Goal</p>
+                      <p className="mt-1 text-foreground">{review.intent.goal.trim()}</p>
+                    </div>
+                  )}
+                  {review.intent.constraints.length > 0 && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Constraints</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
+                        {review.intent.constraints.map((constraint) => (
+                          <li key={constraint}>{constraint}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {review.intent.decisions.length > 0 && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Decisions</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
+                        {review.intent.decisions.map((decision) => (
+                          <li key={decision}>{decision}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="space-y-2">
+            <div className="rounded-sm border border-border/60 bg-card/85 px-3 py-3">
+              <h2 className="text-sm font-semibold text-foreground">Review scope</h2>
+              {contextStats && (
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Files reviewed</p>
+                    {reviewedFilesAvailable ? (
+                      <button
+                        type="button"
+                        className="mt-1 text-left text-sm font-semibold text-foreground underline decoration-border underline-offset-2"
+                        onClick={() => setShowReviewedFiles(true)}
+                      >
+                        {compactNumber(totalReviewedFiles)}
+                      </button>
+                    ) : (
+                      <p className="mt-1 text-sm font-semibold text-foreground">{compactNumber(contextStats.totalFilesIncluded)}</p>
+                    )}
+                  </div>
+                  <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                    <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Estimated tokens</p>
+                    <p className="mt-1 text-sm font-semibold text-foreground">{compactNumber(estimatedTokens)}</p>
+                  </div>
+                </div>
+              )}
+              <dl className="mt-2 grid gap-2">
+                {review.provenance.promptSummary && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Context summary</dt>
+                    <dd className="mt-1 text-sm text-foreground">{review.provenance.promptSummary}</dd>
+                  </div>
+                )}
+                <div>
+                  <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Session ids</dt>
+                  <dd className="mt-1 text-sm text-foreground">
+                    {review.provenance.sessionIds.length > 0 ? review.provenance.sessionIds.join(', ') : 'none'}
+                  </dd>
+                </div>
+                {contextStats && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Context size</dt>
+                    <dd className="mt-1 text-sm text-foreground">
+                      {compactNumber(contextStats.totalFilesIncluded)} files · {compactNumber(contextStats.totalBytesIncluded)} bytes · {compactNumber(estimatedTokens)} estimated tokens
+                    </dd>
+                  </div>
+                )}
+                {reviewedFilesAvailable && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Reviewed file groups</dt>
+                    <dd className="mt-1 text-sm text-foreground">
+                      {reviewedFileSectionsList.map((section) => `${section.label}: ${compactNumber(section.files.length)}`).join(' · ')}
+                    </dd>
+                  </div>
+                )}
+                {cochangeBanner && (
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Co-change context</dt>
+                    <dd className="mt-1 text-sm text-foreground">{cochangeBanner}</dd>
+                  </div>
+                )}
+              </dl>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="policy-fade-up" style={{ animationDelay: '100ms' }}>
         <details className="card">
@@ -1037,6 +1454,172 @@ export function ReportPage(): JSX.Element {
               <h3 className="text-sm font-semibold text-foreground">{status.title}</h3>
               <p className="text-sm text-muted-foreground">{status.detail}</p>
             </div>
+
+            {reviewCompletedWithoutFindings && modelSummary && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <h3 className="text-sm font-semibold text-foreground">Review summary</h3>
+                <p className="text-sm text-foreground/85">{modelSummary}</p>
+              </div>
+            )}
+
+            {reviewCompletedWithoutFindings && hasIntentDetails && review.intent && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <h3 className="text-sm font-semibold text-foreground">Intent</h3>
+                <div className="mt-2 space-y-2 text-sm">
+                  {review.intent.goal?.trim() && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Goal</p>
+                      <p className="mt-1 text-foreground">{review.intent.goal.trim()}</p>
+                    </div>
+                  )}
+                  {review.intent.constraints.length > 0 && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Constraints</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
+                        {review.intent.constraints.map((constraint) => (
+                          <li key={constraint}>{constraint}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {review.intent.decisions.length > 0 && (
+                    <div>
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Decisions</p>
+                      <ul className="mt-1 list-disc space-y-0.5 pl-5 text-foreground">
+                        {review.intent.decisions.map((decision) => (
+                          <li key={decision}>{decision}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {reviewCompletedWithoutFindings && (review.provenance.promptSummary || cochangeBanner || contextStats || reviewedFilesAvailable) && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <h3 className="text-sm font-semibold text-foreground">Review scope</h3>
+                {contextStats && (
+                  <div className="mt-2 grid grid-cols-2 gap-2">
+                    <div className="rounded-sm border border-border/60 bg-background/70 px-3 py-2">
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Files reviewed</p>
+                      {reviewedFilesAvailable ? (
+                        <button
+                          type="button"
+                          className="mt-1 text-left text-sm font-semibold text-foreground underline decoration-border underline-offset-2"
+                          onClick={() => setShowReviewedFiles(true)}
+                        >
+                          {compactNumber(totalReviewedFiles)}
+                        </button>
+                      ) : (
+                        <p className="mt-1 text-sm font-semibold text-foreground">{compactNumber(contextStats.totalFilesIncluded)}</p>
+                      )}
+                    </div>
+                    <div className="rounded-sm border border-border/60 bg-background/70 px-3 py-2">
+                      <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Estimated tokens</p>
+                      <p className="mt-1 text-sm font-semibold text-foreground">{compactNumber(estimatedTokens)}</p>
+                    </div>
+                  </div>
+                )}
+                <dl className="mt-2 grid gap-2">
+                  {review.provenance.promptSummary && (
+                    <div>
+                      <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Context summary</dt>
+                      <dd className="mt-1 text-sm text-foreground">{review.provenance.promptSummary}</dd>
+                    </div>
+                  )}
+                  <div>
+                    <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Session ids</dt>
+                    <dd className="mt-1 text-sm text-foreground">
+                      {review.provenance.sessionIds.length > 0 ? review.provenance.sessionIds.join(', ') : 'none'}
+                    </dd>
+                  </div>
+                  {contextStats && (
+                    <div>
+                      <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Context size</dt>
+                      <dd className="mt-1 text-sm text-foreground">
+                        {compactNumber(contextStats.totalFilesIncluded)} files · {compactNumber(contextStats.totalBytesIncluded)} bytes · {compactNumber(estimatedTokens)} estimated tokens
+                      </dd>
+                    </div>
+                  )}
+                  {reviewedFilesAvailable && (
+                    <div>
+                      <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Reviewed file groups</dt>
+                      <dd className="mt-1 text-sm text-foreground">
+                        {reviewedFileSectionsList.map((section) => `${section.label}: ${compactNumber(section.files.length)}`).join(' · ')}
+                      </dd>
+                    </div>
+                  )}
+                  {cochangeBanner && (
+                    <div>
+                      <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Co-change context</dt>
+                      <dd className="mt-1 text-sm text-foreground">{cochangeBanner}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )}
+
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Risk</p>
+                <p className="mt-1">
+                  <span
+                    className={cn(
+                      'inline-flex rounded-full border px-2 py-0.5 text-xs font-semibold uppercase tracking-[0.08em]',
+                      riskLevelClass(review.summary?.riskLevel)
+                    )}
+                  >
+                    {review.summary?.riskLevel ?? 'unknown'}
+                  </span>
+                </p>
+              </div>
+              <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Findings</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{findingCount(review)}</p>
+              </div>
+              <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Time to complete</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{reviewDurationLabel(review)}</p>
+              </div>
+              <div className="rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Updated</p>
+                <p className="mt-1 text-sm font-semibold text-foreground">{dateTimeLabel(review.updatedAt)}</p>
+              </div>
+            </div>
+
+            {severityTotal > 0 && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <h3 className="text-sm font-semibold text-foreground">Finding distribution</h3>
+                <div className="space-y-1.5">
+                  <div className="h-2 overflow-hidden rounded-full border border-border/50 bg-muted/40">
+                    <div className="flex h-full w-full">
+                      {severityCounts.critical > 0 ? (
+                        <div className={severityBarColor('critical')} style={{ width: `${(severityCounts.critical / severityTotal) * 100}%` }} />
+                      ) : null}
+                      {severityCounts.high > 0 ? (
+                        <div className={severityBarColor('high')} style={{ width: `${(severityCounts.high / severityTotal) * 100}%` }} />
+                      ) : null}
+                      {severityCounts.medium > 0 ? (
+                        <div className={severityBarColor('medium')} style={{ width: `${(severityCounts.medium / severityTotal) * 100}%` }} />
+                      ) : null}
+                      {severityCounts.low > 0 ? (
+                        <div className={severityBarColor('low')} style={{ width: `${(severityCounts.low / severityTotal) * 100}%` }} />
+                      ) : null}
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    <span className="font-semibold text-red-700">{severityCounts.critical} critical</span>
+                    {' · '}
+                    <span className="font-semibold text-orange-700">{severityCounts.high} high</span>
+                    {' · '}
+                    <span className="font-semibold text-amber-700">{severityCounts.medium} medium</span>
+                    {' · '}
+                    <span className="font-semibold text-sky-700">{severityCounts.low} low</span>
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
               <h3 className="text-sm font-semibold text-foreground">Review timeline</h3>
@@ -1079,6 +1662,36 @@ export function ReportPage(): JSX.Element {
                 {cochangeBanner ? <li>{cochangeBanner}</li> : null}
               </ul>
             </div>
+
+            {review.evidence.length > 0 && (
+              <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-foreground">Review receipts</h3>
+                  <p className="text-xs text-muted-foreground">{review.evidence.length} item{review.evidence.length === 1 ? '' : 's'}</p>
+                </div>
+                <div className="mt-2 grid gap-2">
+                  {review.evidence.map((item) => (
+                    <div key={item.id} className="rounded-sm border border-border/60 bg-background/70 px-3 py-2">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground">{item.label}</p>
+                          <p className="text-xs text-muted-foreground">{item.type}</p>
+                        </div>
+                        <Badge
+                          variant="outline"
+                          className={cn(
+                            'rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]',
+                            evidenceStatusClass(item.status)
+                          )}
+                        >
+                          {item.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {review.approvedPolicy && (
               <div className="space-y-1 rounded-sm border border-border/60 bg-card/70 px-3 py-2">
@@ -1144,7 +1757,7 @@ export function ReportPage(): JSX.Element {
               </div>
             )}
 
-            {(isLive || activityLog.length > 0) && (
+            {!isLive && activityLog.length > 0 && (
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-foreground">Activity log</h3>
                 <ActivityLog entries={activityLog} isLive={isLive} />
@@ -1179,6 +1792,7 @@ export function ReportPage(): JSX.Element {
           <pre>{JSON.stringify(review, null, 2)}</pre>
         </details>
       </section>
-    </main>
+      </main>
+    </>
   );
 }

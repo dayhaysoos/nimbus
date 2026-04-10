@@ -178,7 +178,7 @@ export function resolveReviewAnalysisModel(payload: Record<string, unknown>, env
   if (agentModel) {
     return agentModel;
   }
-  return 'sonnet-4.5';
+  return 'gpt-5.1';
 }
 
 export function mergeProvenance(
@@ -305,4 +305,62 @@ export function parseLocalCochangeFromProvenance(value: unknown): {
     sessionsScanned: Math.max(0, Math.floor(sessionsScanned ?? 0)),
     relatedByChangedPath,
   };
+}
+
+export function rankAggregatedRelatedPaths(
+  changedPaths: string[],
+  entriesByChangedPath: Map<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>,
+  topN: number
+): Array<{ path: string; frequency: number; sessionIds: string[] }> {
+  const changedPathSet = new Set(changedPaths);
+  const aggregate = new Map<
+    string,
+    {
+      sessionIds: Set<string>;
+      matchedChangedPaths: Set<string>;
+      fallbackFrequency: number;
+    }
+  >();
+
+  for (const changedPath of changedPaths) {
+    const entries = entriesByChangedPath.get(changedPath) ?? [];
+    for (const entry of entries) {
+      if (changedPathSet.has(entry.path)) {
+        continue;
+      }
+      const current = aggregate.get(entry.path) ?? {
+        sessionIds: new Set<string>(),
+        matchedChangedPaths: new Set<string>(),
+        fallbackFrequency: 0,
+      };
+      for (const sessionId of entry.sessionIds) {
+        current.sessionIds.add(sessionId);
+      }
+      current.matchedChangedPaths.add(changedPath);
+      if (entry.sessionIds.length === 0) {
+        current.fallbackFrequency += Math.max(1, Math.floor(entry.frequency));
+      }
+      aggregate.set(entry.path, current);
+    }
+  }
+
+  return Array.from(aggregate.entries())
+    .map(([path, value]) => ({
+      path,
+      frequency: value.sessionIds.size > 0 ? value.sessionIds.size : value.fallbackFrequency,
+      sessionIds: Array.from(value.sessionIds).sort(),
+      matchedChangedPathCount: value.matchedChangedPaths.size,
+    }))
+    .filter((item) => item.frequency > 0)
+    .sort((left, right) => {
+      if (right.frequency !== left.frequency) {
+        return right.frequency - left.frequency;
+      }
+      if (right.matchedChangedPathCount !== left.matchedChangedPathCount) {
+        return right.matchedChangedPathCount - left.matchedChangedPathCount;
+      }
+      return left.path.localeCompare(right.path);
+    })
+    .slice(0, Math.max(1, topN))
+    .map(({ matchedChangedPathCount: _matchedChangedPathCount, ...item }) => item);
 }

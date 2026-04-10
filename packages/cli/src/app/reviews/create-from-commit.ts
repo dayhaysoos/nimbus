@@ -12,6 +12,7 @@ import {
   type ReviewContextFlowOverrides,
 } from './context.js';
 import {
+  buildStudioReviewRoutePath,
   buildIdempotencyKey,
   deriveIdempotencyKey,
   formatReviewExecutionFailure,
@@ -92,6 +93,8 @@ export async function createReviewFromCommitCommand(
   options?: {
     commitish?: string;
     baseRef?: string;
+    lastCheckpoints?: number;
+    checkpointRange?: string;
     outputReviewIdPath?: string;
     projectRoot?: string;
     idempotencyKey?: string;
@@ -125,6 +128,8 @@ export async function createReviewFromCommitCommand(
   const resolved = await resolveReviewContext({
     commitish: options?.commitish,
     baseRef: options?.baseRef,
+    lastCheckpoints: options?.lastCheckpoints,
+    checkpointRange: options?.checkpointRange,
     projectRoot: options?.projectRoot,
     idempotencyKey: options?.idempotencyKey,
     pollIntervalMs: options?.pollIntervalMs,
@@ -226,10 +231,12 @@ export async function createReviewFromCommitCommand(
   if (options?.openStudio) {
     await startReviewStudioCommand({
       port: options.openStudioPort,
-      routePath:
-        policyMode === 'review'
-          ? `/policy/${encodeURIComponent(reviewId)}`
-          : `/reports/${encodeURIComponent(reviewId)}`,
+      routePath: buildStudioReviewRoutePath({
+        reviewId,
+        route: policyMode === 'review' ? 'policy' : 'reports',
+        repo: resolvedProvenance?.repo,
+        branch: resolvedProvenance?.branch,
+      }),
       detach: true,
     });
   }
