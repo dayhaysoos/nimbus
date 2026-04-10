@@ -1,13 +1,1 @@
-Go through the codebase and familiarize yourself with what this product is. Report back to me your findings
-
----
-
-What I want to zero in on, hypothetically speaking, if I wanted to replace the OpenRouter inference with another platform. How easy would that be? It gets done within the Cloudflare worker, right? Would it be simple API calls where the open router logic is? or would I have to scaffold out something else completely?"
-
----
-
-just to give you more context. A friend of mine has built their own inference platform. It can be used to handle code reviews for free. The inference is paid for by other means. I'd want to add a "free mode" to this review tool using their platform, so instead of getting rid of OpenRouter or anything like that, Ijust want a free path for those who can't afford to pay for reviews
-
----
-
 okay, can you make a branch detailing those types of things that need to be done? I want to set up a branch for them to investigate. Make a single document in the docs directory. Make it a markdown file called the-matrix. Give a break down of how inference is used in this current implementation of the tool and what relevant paths would be needed to create a new ReviewProvider (don't call it FriendProvider). You basically need to give them enough detail/instruction to contribute this on their own. Switch to a new branch, name it k-labs. Create that markdown file and push it
