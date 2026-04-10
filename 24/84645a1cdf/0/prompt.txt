@@ -437,3 +437,7 @@ Fix these findings
 ---
 
 okay i've done like 100 review commands on this branch alone. THe findings that are coming back, are they signigicant/worth fixing or are the reviews coming back with diminishing returns?
+
+---
+
+commit the current code and push the branch. Open a PR using the gh CLI
