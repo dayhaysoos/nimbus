@@ -1,17 +1,1 @@
-I just opened a PR and got these bugs: Run node scripts/audit-with-exceptions.mjs
-Suppressed advisories from .audit-exceptions.json:
-- GHSA-f269-vfmq-vjvj (undici): Undici: Malicious WebSocket 64-bit length overflows parser and crashes the client
-Unapproved high/critical advisories found:
-- GHSA-vrm6-8vpv-qv8q (undici): Undici has Unbounded Memory Consumption in WebSocket permessage-deflate Decompression
-- GHSA-v9p9-hfj2-hcw8 (undici): Undici has Unhandled Exception in WebSocket Client Due to Invalid server_max_window_bits Validation
-- GHSA-5478-66c3-rhxr (@chenglou/pretext, high): Pretext: Algorithmic Complexity (DoS) in the text analysis phase
-  path: packages/report-ui > @chenglou/preRun node scripts/audit-with-exceptions.mjs
-Suppressed advisories from .audit-exceptions.json:
-- GHSA-f269-vfmq-vjvj (undici): Undici: Malicious WebSocket 64-bit length overflows parser and crashes the client
-- GHSA-vrm6-8vpv-qv8q (undici): Undici has Unbounded Memory Consumption in WebSocket permessage-deflate Decompression
-- GHSA-v9p9-hfj2-hcw8 (undici): Undici has Unhandled Exception in WebSocket Client Due to Invalid server_max_window_bits Validation
-Unapproved high/critical advisories found:
-- GHSA-5478-66c3-rhxr (@chenglou/pretext, high): Pretext: Algorithmic Complexity (DoS) in the text analysis phase
-  path: packages/report-ui > @chenglou/pretext
-Error: Process completed with exit code 1.text
-Error: Process completed with exit code 1.
+commit and push
