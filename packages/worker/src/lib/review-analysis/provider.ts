@@ -27,7 +27,14 @@ export interface ReviewAgentProvider {
     step: number;
     history: ReviewAgentHistoryEntry[];
     forceComplete?: boolean;
+    abortSignal?: AbortSignal;
   }): Promise<ReviewAgentAction>;
+}
+
+function buildProviderAbortError(): Error {
+  const error = new Error('Review analysis aborted by external signal');
+  error.name = 'AbortError';
+  return error;
 }
 
 const reviewAgentActionJsonSchema = {
@@ -191,14 +198,22 @@ export class OpenRouterReviewProvider implements ReviewAgentProvider {
     step: number;
     history: ReviewAgentHistoryEntry[];
     forceComplete?: boolean;
+    abortSignal?: AbortSignal;
   }): Promise<ReviewAgentAction> {
     const forceComplete = input.forceComplete === true;
 
     for (let attempt = 1; attempt <= REVIEW_PROVIDER_MAX_ATTEMPTS; attempt += 1) {
       const controller = new AbortController();
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const handleExternalAbort = (): void => {
+        controller.abort();
+      };
 
       try {
+        if (input.abortSignal?.aborted) {
+          throw buildProviderAbortError();
+        }
+        input.abortSignal?.addEventListener('abort', handleExternalAbort, { once: true });
         const requestPromise = fetch(OPENROUTER_CHAT_COMPLETIONS_URL, {
           method: 'POST',
           headers: {
@@ -281,6 +296,9 @@ export class OpenRouterReviewProvider implements ReviewAgentProvider {
         }
         return action;
       } catch (error) {
+        if (input.abortSignal?.aborted) {
+          throw buildProviderAbortError();
+        }
         const timeoutLike = isTimeoutLikeError(error);
         const transientNetworkError = error instanceof Error && /fetch failed|network|connection reset|econnreset|socket hang up/i.test(error.message);
         if ((timeoutLike || transientNetworkError) && attempt < REVIEW_PROVIDER_MAX_ATTEMPTS) {
@@ -294,6 +312,7 @@ export class OpenRouterReviewProvider implements ReviewAgentProvider {
         }
         throw error;
       } finally {
+        input.abortSignal?.removeEventListener('abort', handleExternalAbort);
         if (timeoutId !== null) {
           clearTimeout(timeoutId);
         }
@@ -321,14 +340,22 @@ export class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
     step: number;
     history: ReviewAgentHistoryEntry[];
     forceComplete?: boolean;
+    abortSignal?: AbortSignal;
   }): Promise<ReviewAgentAction> {
     const requestFetch = this.serviceBinding ? this.serviceBinding.fetch.bind(this.serviceBinding) : fetch;
 
     for (let attempt = 1; attempt <= REVIEW_PROVIDER_MAX_ATTEMPTS; attempt += 1) {
       const controller = new AbortController();
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const handleExternalAbort = (): void => {
+        controller.abort();
+      };
 
       try {
+        if (input.abortSignal?.aborted) {
+          throw buildProviderAbortError();
+        }
+        input.abortSignal?.addEventListener('abort', handleExternalAbort, { once: true });
         const requestPromise = requestFetch(this.endpoint, {
           method: 'POST',
           headers: {
@@ -340,9 +367,11 @@ export class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
             mode: 'workspace_task',
             prompt: input.prompt,
             model: input.model,
+            ...(input.reasoningEffort ? { reasoningEffort: input.reasoningEffort } : {}),
             maxSteps: input.maxSteps,
             step: input.step,
             history: input.history,
+            ...(input.forceComplete === true ? { forceComplete: true } : {}),
           }),
           signal: controller.signal,
         });
@@ -391,6 +420,9 @@ export class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
         }
         return validatedAction;
       } catch (error) {
+        if (input.abortSignal?.aborted) {
+          throw buildProviderAbortError();
+        }
         const timeoutLike = isTimeoutLikeError(error);
         const transientNetworkError = error instanceof Error && /fetch failed|network|connection reset|econnreset|socket hang up/i.test(error.message);
         if ((timeoutLike || transientNetworkError) && attempt < REVIEW_PROVIDER_MAX_ATTEMPTS) {
@@ -404,6 +436,7 @@ export class CloudflareAgentSdkReviewProvider implements ReviewAgentProvider {
         }
         throw error;
       } finally {
+        input.abortSignal?.removeEventListener('abort', handleExternalAbort);
         if (timeoutId !== null) {
           clearTimeout(timeoutId);
         }

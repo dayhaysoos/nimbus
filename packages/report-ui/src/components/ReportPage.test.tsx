@@ -188,7 +188,50 @@ describe('ReportPage', () => {
       '/api/reviews/review_123/fail',
       expect.objectContaining({ method: 'POST' })
     );
-    expect(await screen.findByText('Review failed cleanly')).toBeInTheDocument();
+    expect(await screen.findByText('Review marked failed')).toBeInTheDocument();
+  });
+
+  it('shows the returned status when a fail request loses a race', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ review: { ...mockReview, status: 'running' } }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          action: 'failed',
+          review: {
+            ...mockReview,
+            status: 'succeeded',
+          },
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'succeeded',
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Live review activity');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Fail review' }));
+
+    expect(await screen.findByText('Review is already succeeded')).toBeInTheDocument();
   });
 
   it('renders succeeded review strict v2 output details', async () => {

@@ -1,5 +1,7 @@
 import { strict as assert } from 'assert';
 import {
+  accumulateSearchEvidenceForTests,
+  collectMissingEvidenceRequirementsForTests,
   computeReviewStepBudgetsForTests,
   extractDeterministicSearchQueriesForTests,
   extractIntegrationSearchQueriesForTests,
@@ -81,5 +83,84 @@ export async function emitResolveReviewProgress(options, event) {
   assert.deepEqual(
     integrationQueries,
     ['/recover', 'startStudioNewReview', 'onEvent']
+  );
+
+  const selfContainedMissingEvidence = collectMissingEvidenceRequirementsForTests({
+    changedPaths: ['packages/cli/src/app/reviews/context.ts'],
+    requiresCrossFileIntegrationEvidence: false,
+    diffSummaryUsed: true,
+    readChangedPaths: ['packages/cli/src/app/reviews/context.ts'],
+    searchUsed: true,
+    searchMatchedChangedPath: true,
+    searchMatchedCrossFilePath: false,
+  });
+  assert.equal(
+    selfContainedMissingEvidence.includes(
+      'Read at least one non-changed file that defines or handles an integration boundary touched by the diff.'
+    ),
+    false
+  );
+
+  const crossFileMissingEvidence = collectMissingEvidenceRequirementsForTests({
+    changedPaths: ['packages/cli/src/app/reviews/ui-proxy.ts'],
+    requiresCrossFileIntegrationEvidence: true,
+    diffSummaryUsed: true,
+    readChangedPaths: ['packages/cli/src/app/reviews/ui-proxy.ts'],
+    searchUsed: true,
+    searchMatchedChangedPath: true,
+    searchMatchedCrossFilePath: false,
+  });
+  assert.equal(
+    crossFileMissingEvidence.includes(
+      'Read at least one non-changed file that defines or handles an integration boundary touched by the diff.'
+    ),
+    true
+  );
+
+  const unmatchedCrossFileEvidence = collectMissingEvidenceRequirementsForTests({
+    changedPaths: ['packages/cli/src/app/reviews/ui-proxy.ts'],
+    requiresCrossFileIntegrationEvidence: true,
+    diffSummaryUsed: true,
+    readChangedPaths: ['packages/cli/src/app/reviews/ui-proxy.ts'],
+    searchUsed: true,
+    searchMatchedChangedPath: true,
+    searchMatchedCrossFilePath: true,
+  });
+  assert.equal(
+    unmatchedCrossFileEvidence.includes(
+      'Read at least one non-changed file that defines or handles an integration boundary touched by the diff.'
+    ),
+    true
+  );
+
+  assert.deepEqual(
+    accumulateSearchEvidenceForTests({
+      changedPaths: ['packages/cli/src/app/reviews/ui-proxy.ts'],
+      searches: [
+        [{ path: 'packages/cli/src/app/reviews/studio-create.ts' }],
+        [{ path: 'packages/cli/src/app/reviews/ui-proxy.ts' }],
+      ],
+    }),
+    {
+      searchMatchedChangedPath: true,
+      searchMatchedCrossFilePath: true,
+    }
+  );
+
+  const satisfiedCrossFileEvidence = collectMissingEvidenceRequirementsForTests({
+    changedPaths: ['packages/cli/src/app/reviews/ui-proxy.ts'],
+    requiresCrossFileIntegrationEvidence: true,
+    diffSummaryUsed: true,
+    readChangedPaths: ['packages/cli/src/app/reviews/ui-proxy.ts'],
+    readCrossFilePaths: ['packages/cli/src/app/reviews/studio-create.ts'],
+    searchUsed: true,
+    searchMatchedChangedPath: true,
+    searchMatchedCrossFilePath: false,
+  });
+  assert.equal(
+    satisfiedCrossFileEvidence.includes(
+      'Read at least one non-changed file that defines or handles an integration boundary touched by the diff.'
+    ),
+    false
   );
 }

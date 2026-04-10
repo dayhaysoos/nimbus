@@ -12,6 +12,8 @@ const STUDIO_NEW_REVIEW_PREFLIGHT_PATH = '/api/studio/new-review/preflight';
 const STUDIO_NEW_REVIEW_START_PATH = '/api/studio/new-review/start';
 const STUDIO_NEW_REVIEW_START_EVENTS_PATH = '/api/studio/new-review/start/events';
 
+let startStudioNewReviewForUiProxy: typeof startStudioNewReview = startStudioNewReview;
+
 function parseLastCheckpoints(value: unknown): 1 | 2 | 3 {
   if (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 3) {
     return value as 1 | 2 | 3;
@@ -47,6 +49,14 @@ async function readBody(request: IncomingMessage): Promise<Buffer> {
 
 function writeSseFrame(response: ServerResponse, payload: unknown): void {
   response.write(`data: ${JSON.stringify(payload)}\n\n`);
+}
+
+export function setUiProxyHooksForTests(
+  overrides: {
+    startStudioNewReview?: typeof startStudioNewReview;
+  } | null
+): void {
+  startStudioNewReviewForUiProxy = overrides?.startStudioNewReview ?? startStudioNewReview;
 }
 
 export async function proxyApiRequest(
@@ -152,7 +162,7 @@ export async function proxyApiRequest(
 
       const expectedRepo = typeof payload.repo === 'string' ? payload.repo : null;
       const expectedBranch = typeof payload.branch === 'string' ? payload.branch : null;
-      const started = await startStudioNewReview({
+      const started = await startStudioNewReviewForUiProxy({
         policyMode,
         lastCheckpoints: parseLastCheckpoints(payload.lastCheckpoints),
         repoRoot: resolveRepoRootSafe(),
@@ -205,7 +215,7 @@ export async function proxyApiRequest(
     response.flushHeaders?.();
 
     try {
-      await startStudioNewReview({
+      await startStudioNewReviewForUiProxy({
         policyMode,
         lastCheckpoints,
         repoRoot: resolveRepoRootSafe(),

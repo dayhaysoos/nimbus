@@ -111,6 +111,12 @@ function buildReviewFlowStageError(stage: string, error: unknown): Error {
   return new Error(`Review flow failed at ${stage}: ${toErrorMessage(error)}`);
 }
 
+function throwIfResolveReviewAbortError(error: unknown): void {
+  if (error instanceof Error && error.name === 'AbortError') {
+    throw error;
+  }
+}
+
 async function emitResolveReviewProgress(
   options: ResolveReviewContextOptions | undefined,
   event: ResolveReviewContextProgressEvent
@@ -136,6 +142,14 @@ export async function emitResolveReviewProgressForTests(
   event: ResolveReviewContextProgressEvent
 ): Promise<void> {
   await emitResolveReviewProgress(options, event);
+}
+
+export function preserveResolveReviewAbortForTests(error: unknown): void {
+  throwIfResolveReviewAbortError(error);
+}
+
+export function throwIfResolveReviewAbortedForTests(options: ResolveReviewContextOptions | undefined): void {
+  throwIfResolveReviewAborted(options);
 }
 
 let createWorkspaceForCommitFlow: (source: {
@@ -372,6 +386,7 @@ export async function resolveReviewContext(
     }
   } catch (error) {
     spinner.stop('Co-change token readiness check failed');
+    throwIfResolveReviewAbortError(error);
     throw buildReviewFlowStageError('checkpoint resolution', error);
   }
 
@@ -384,6 +399,7 @@ export async function resolveReviewContext(
       label: 'Preparing workspace',
       detail: 'Creating an isolated workspace for the review target.',
     });
+    throwIfResolveReviewAborted(options);
     const sourceResolved = resolveWorkspaceSourceForCommitFlow(commitSha, { projectRoot });
     const source = {
       ...sourceResolved,
@@ -400,6 +416,7 @@ export async function resolveReviewContext(
     });
   } catch (error) {
     spinner.stop('Workspace creation failed');
+    throwIfResolveReviewAbortError(error);
     throw buildReviewFlowStageError('workspace creation', error);
   }
 
@@ -412,6 +429,7 @@ export async function resolveReviewContext(
       label: 'Preparing deployment',
       detail: 'Deploying the workspace so Nimbus can run the review against the latest target.',
     });
+    throwIfResolveReviewAborted(options);
     const deploymentIdempotencyKey = options?.idempotencyKey?.trim()
       ? deriveIdempotencyKey(options.idempotencyKey, 'deploy')
       : buildWorkspaceIdempotencyKey(commitSha);
@@ -429,6 +447,8 @@ export async function resolveReviewContext(
       },
       entireIntentContextOverride: entireContextResolution ?? undefined,
     });
+    // Once deployment exists, finish attaching it to the review instead of aborting
+    // and leaving unattached startup artifacts behind.
     if (!deployment) {
       throw new Error('Workspace deploy returned no deployment result.');
     }
@@ -442,6 +462,7 @@ export async function resolveReviewContext(
     });
   } catch (error) {
     spinner.stop('Workspace deploy failed');
+    throwIfResolveReviewAbortError(error);
     throw buildReviewFlowStageError('workspace deploy', error);
   }
 

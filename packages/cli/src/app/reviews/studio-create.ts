@@ -71,6 +71,10 @@ export type StudioNewReviewStartStreamEvent =
   | StudioNewReviewStartCompletedEvent
   | StudioNewReviewStartErrorEvent;
 
+function shouldAbortStudioStart(signal: AbortSignal | undefined, abortBeforeReviewCreation: boolean): boolean {
+  return abortBeforeReviewCreation && Boolean(signal?.aborted);
+}
+
 function preflightErrorCode(message: string): NonNullable<StudioNewReviewPreflightResult['error']>['code'] {
   const lower = message.toLowerCase();
   if (lower.includes('entire-checkpoint trailer') || lower.includes('no entire session history')) {
@@ -267,8 +271,9 @@ export async function startStudioNewReview(options: {
   signal?: AbortSignal;
   onEvent?: (event: StudioNewReviewStartStreamEvent) => void | Promise<void>;
 }): Promise<StudioNewReviewStartResult> {
+  let abortBeforeReviewCreation = true;
   const throwIfAborted = (): void => {
-    if (!options.signal?.aborted) {
+    if (!shouldAbortStudioStart(options.signal, abortBeforeReviewCreation)) {
       return;
     }
     const error = new Error('Studio review start aborted before completion.');
@@ -319,6 +324,9 @@ export async function startStudioNewReview(options: {
       detail: event.detail,
     }),
   });
+  // Once context setup produced a workspace/deployment, finish attaching it to a
+  // review instead of aborting and leaving startup artifacts unattached.
+  abortBeforeReviewCreation = false;
 
   await emitEvent({
     type: 'stage',
@@ -340,6 +348,8 @@ export async function startStudioNewReview(options: {
       reviewBasis: 'checkpoint',
       provenance: resolved.resolvedProvenance,
     });
+    // Once the review exists, finish the handoff even if the client disconnects.
+    abortBeforeReviewCreation = false;
 
     await emitEvent({
       type: 'stage',
@@ -376,6 +386,8 @@ export async function startStudioNewReview(options: {
     reviewBasis: 'checkpoint',
     provenance: resolved.resolvedProvenance,
   });
+  // Once the review exists, finish the handoff even if the client disconnects.
+  abortBeforeReviewCreation = false;
   await emitEvent({
     type: 'stage',
     stage: 'review_creation',
@@ -390,7 +402,6 @@ export async function startStudioNewReview(options: {
     label: 'Approving policy',
     detail: 'Applying the derived policy so Nimbus can start analysis.',
   });
-  throwIfAborted();
   await approveReviewPolicy(workerUrl, derived.reviewId, {
     approvedPolicy: derived.derivedPolicy,
   });
@@ -419,6 +430,13 @@ export async function startStudioNewReview(options: {
     detail: 'Review queued. Opening the live results route.',
   });
   return result;
+}
+
+export function shouldAbortStudioStartForTests(
+  signal: AbortSignal | undefined,
+  abortBeforeReviewCreation: boolean
+): boolean {
+  return shouldAbortStudioStart(signal, abortBeforeReviewCreation);
 }
 
 export async function emitStudioStartEventForTests(input: {

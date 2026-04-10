@@ -986,7 +986,7 @@ export function ReportPage(): JSX.Element {
       const action = body && typeof body === 'object' && 'action' in body && typeof body.action === 'string' ? body.action : null;
       const parsed = parseGetReviewResponse(body);
       setReview(parsed.review);
-      setToastMessage(action === 'failed' ? 'Review failed cleanly' : 'Recovery requested');
+      setToastMessage(action === 'failed' ? 'Review marked failed' : 'Recovery requested');
       setRefreshCycle((value) => value + 1);
     } catch (error) {
       setRecoveryError(error instanceof Error ? error.message : String(error));
@@ -1011,7 +1011,11 @@ export function ReportPage(): JSX.Element {
       }
       const parsed = parseGetReviewResponse(body);
       setReview(parsed.review);
-      setToastMessage('Review failed cleanly');
+      setToastMessage(
+        parsed.review.status === 'failed'
+          ? 'Review marked failed'
+          : `Review is already ${parsed.review.status}`
+      );
       setRefreshCycle((value) => value + 1);
     } catch (error) {
       setRecoveryError(error instanceof Error ? error.message : String(error));
@@ -1219,7 +1223,7 @@ export function ReportPage(): JSX.Element {
                   {recoveryError
                     ? recoveryError
                     : review.status === 'running'
-                      ? 'If this stays on "Sending to model" longer than expected, fail the review to stop the stuck run cleanly.'
+                      ? 'If this stays on "Sending to model" longer than expected, mark the review failed so it no longer appears active. In-flight work may continue until the current attempt ends.'
                       : 'If this queued review is not making progress, recover it to request a clean retry.'}
                 </p>
               </div>

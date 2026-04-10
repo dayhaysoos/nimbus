@@ -1,5 +1,6 @@
 import { strict as assert } from 'assert';
 import { processReviewRun as processReviewRunBase, shouldRetryReviewError } from '../../src/lib/review-runner.js';
+import { scheduleReviewRetryIfCurrent } from '../../src/lib/review-runner/retry.js';
 import { setReviewAnalysisSandboxResolverForTests } from '../../src/lib/review-analysis.js';
 
 async function processReviewRun(
@@ -483,7 +484,7 @@ function createReviewRunnerEnv(options?: {
                   const reportValue = values.find((value) => typeof value === 'string' && String(value).includes('findingCounts'));
                   if (typeof reportValue === 'string') {
                     state.reportJson = reportValue;
-                  } else if (status === 'queued') {
+                  } else if (status === 'queued' || status === 'failed') {
                     state.reportJson = null;
                   }
                   const markdownValue = values.find((value) => typeof value === 'string' && String(value).includes('## Review Summary'));
@@ -491,7 +492,7 @@ function createReviewRunnerEnv(options?: {
                     state.markdownSummary = markdownValue;
                   } else if (status === 'succeeded') {
                     state.markdownSummary = null;
-                  } else if (status === 'queued') {
+                  } else if (status === 'queued' || status === 'failed') {
                     state.markdownSummary = null;
                   }
                   return { success: true, meta: { changes: 1 } };
@@ -1072,7 +1073,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       ],
       failReviewFindingsInsertOnce: true,
     });
-    await assert.rejects(() => processReviewRun(env as never, 'rev_abcd1234'), /retry requested/);
+    await processReviewRun(env as never, 'rev_abcd1234');
     assert.equal(state.status, 'queued');
     assert.equal(state.errorCode, 'retry_scheduled');
     assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), true);
@@ -1101,6 +1102,149 @@ export async function runReviewRunnerTests(): Promise<void> {
     await processReviewRun(env as never, 'rev_abcd1234', { allowRetryScheduling: false });
     assert.equal(state.status, 'failed');
     assert.equal(state.errorCode, 'review_execution_timeout');
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv();
+    const db = env.DB as {
+      prepare: (sql: string) => {
+        bind: (...args: unknown[]) => { run: () => Promise<unknown> };
+      };
+    };
+    const originalPrepare = db.prepare.bind(db);
+    let manuallyFailed = false;
+    db.prepare = ((sql: string) => {
+      const statement = originalPrepare(sql);
+      if (/SELECT \* FROM review_runs WHERE id = \?/i.test(sql)) {
+        return {
+          bind(...args: unknown[]) {
+            const bound = statement.bind(...args) as unknown as { first: <T>() => Promise<T> };
+            return {
+              async first<T>() {
+                const row = (await bound.first<Record<string, unknown>>()) ?? {};
+                if (state.errorCode === 'review_execution_aborted') {
+                  return {
+                    ...row,
+                    error_message: 'Review was manually marked as failed while execution was still in progress.',
+                  } as T;
+                }
+                return row as T;
+              },
+            };
+          },
+        };
+      }
+      if (!/INSERT INTO review_events/i.test(sql)) {
+        return statement;
+      }
+      return {
+        bind(...args: unknown[]) {
+          const bound = statement.bind(...args);
+          const eventType = args[2];
+          if (eventType !== 'review_preflight_started' || manuallyFailed) {
+            return bound;
+          }
+          return {
+            async run() {
+              manuallyFailed = true;
+              state.status = 'failed';
+              state.errorCode = 'review_execution_aborted';
+              return { success: true, meta: { changes: 1 } };
+            },
+          };
+        },
+      };
+    }) as typeof db.prepare;
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'failed');
+    assert.equal(state.errorCode, 'review_execution_aborted');
+    assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), false);
+    assert.equal(state.events.some((event) => event.eventType === 'review_finalize_started'), false);
+    assert.equal(state.events.some((event) => event.eventType === 'review_succeeded'), false);
+    assert.equal(state.events.some((event) => event.eventType === 'review_failed'), false);
+  }
+
+  {
+    let findingsCleared = false;
+    let retryEventAppended = false;
+    const scheduled = await scheduleReviewRetryIfCurrent(
+      {
+        DB: {
+          prepare(sql: string) {
+            if (/UPDATE review_runs/i.test(sql)) {
+              return {
+                bind() {
+                  return {
+                    async run() {
+                      return { success: true, meta: { changes: 0 } };
+                    },
+                  };
+                },
+              };
+            }
+            if (/DELETE FROM review_findings/i.test(sql) || /INSERT INTO review_findings/i.test(sql)) {
+              return {
+                bind() {
+                  return {
+                    async run() {
+                      findingsCleared = true;
+                      return { success: true, meta: { changes: 1 } };
+                    },
+                  };
+                },
+              };
+            }
+            if (/UPDATE review_runs SET last_event_seq = last_event_seq \+ 1/i.test(sql)) {
+              return {
+                bind() {
+                  return {
+                    async first() {
+                      return { last_event_seq: 1 };
+                    },
+                  };
+                },
+              };
+            }
+            if (/INSERT INTO review_events/i.test(sql)) {
+              return {
+                bind(_reviewId: string, _seq: number, eventType: string) {
+                  return {
+                    async run() {
+                      if (eventType === 'review_retry_scheduled') {
+                        retryEventAppended = true;
+                      }
+                      return { success: true, meta: { changes: 1 } };
+                    },
+                  };
+                },
+              };
+            }
+            return {
+              bind() {
+                return {
+                  async first() {
+                    return null;
+                  },
+                  async run() {
+                    return { success: true, meta: { changes: 1 } };
+                  },
+                };
+              },
+            };
+          },
+        },
+      } as never,
+      'rev_abcd1234',
+      {
+        attemptCount: 1,
+        message: 'fetch failed',
+        reason: 'fetch failed',
+      }
+    );
+
+    assert.equal(scheduled, false);
+    assert.equal(findingsCleared, false);
+    assert.equal(retryEventAppended, false);
   }
 
   {
@@ -1166,10 +1310,13 @@ export async function runReviewRunnerTests(): Promise<void> {
     const { env, state } = createReviewRunnerEnv({
       failReviewEventTypeOnce: 'review_succeeded',
     });
-    await assert.rejects(() => processReviewRun(env as never, 'rev_abcd1234'), /retry requested/);
-    assert.equal(state.status, 'queued');
-    assert.equal(state.reportJson, null);
-    assert.equal(state.markdownSummary, null);
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.equal(state.errorCode ?? null, null);
+    assert.notEqual(state.reportJson, null);
+    assert.notEqual(state.markdownSummary, null);
+    assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), false);
+    assert.equal(state.events.some((event) => event.eventType === 'review_finalize_started'), true);
     setReviewAnalysisSandboxResolverForTests(null);
   }
 

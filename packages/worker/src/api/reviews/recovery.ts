@@ -61,6 +61,36 @@ function isValidScopedGithubToken(value: string): boolean {
   return /^(ghp_[A-Za-z0-9_]{20,}|github_pat_[A-Za-z0-9_]{20,})$/.test(token);
 }
 
+async function persistManualFailIfCurrent(input: {
+  db: D1Database;
+  reviewId: string;
+  review: { status: ReviewRunStatus; attemptCount: number };
+  message: string;
+}): Promise<boolean> {
+  const now = new Date().toISOString();
+  const sql = [
+    'UPDATE review_runs SET status = ?, updated_at = ?, report_json = NULL, markdown_summary = NULL, error_code = ?, error_message = ?, finished_at = COALESCE(finished_at, ?)',
+    'WHERE id = ? AND status = ?',
+  ];
+  const values: Array<string | number | null> = [
+    'failed',
+    now,
+    'review_execution_aborted',
+    input.message,
+    now,
+    input.reviewId,
+    input.review.status,
+  ];
+
+  if (input.review.status === 'running') {
+    sql.push('AND attempt_count = ?');
+    values.push(input.review.attemptCount);
+  }
+
+  const result = await input.db.prepare(sql.join(' ')).bind(...values).run();
+  return (result.meta?.changes ?? 0) > 0;
+}
+
 export async function recoverStaleRunningReviewIfNeeded(
   env: Env,
   reviewId: string,
@@ -279,10 +309,10 @@ export async function manuallyRecoverReviewRun(
 export async function manuallyFailReviewRun(
   env: Env,
   reviewId: string
-): Promise<{ action: 'failed'; review: Awaited<ReturnType<typeof getReviewRun>> }> {
+): Promise<{ action: 'failed' | 'unchanged'; review: Awaited<ReturnType<typeof getReviewRun>> }> {
   const review = await getReviewRun(env.DB, reviewId);
   if (!review) {
-    return { action: 'failed', review: null };
+    return { action: 'unchanged', review: null };
   }
 
   if (review.status !== 'queued' && review.status !== 'running') {
@@ -291,28 +321,33 @@ export async function manuallyFailReviewRun(
 
   const message =
     review.status === 'running'
-      ? 'Manual fail requested while review was stuck in running state.'
+      ? 'Review was manually marked failed while execution was still in progress. In-flight work may continue until the current attempt ends.'
       : 'Manual fail requested while review was queued.';
 
-  await updateReviewRunStatus(env.DB, reviewId, 'failed', {
-    report: null,
-    markdownSummary: null,
-    errorCode: 'review_execution_aborted',
-    errorMessage: message,
-  });
-  await appendReviewEvent(env.DB, {
+  const persisted = await persistManualFailIfCurrent({
+    db: env.DB,
     reviewId,
-    eventType: 'review_failed',
-    payload: {
-      code: 'review_execution_aborted',
-      message,
-      reason: 'manual_fail',
-      priorStatus: review.status,
+    review: {
+      status: review.status,
+      attemptCount: review.attemptCount,
     },
+    message,
   });
+  if (persisted) {
+    await appendReviewEvent(env.DB, {
+      reviewId,
+      eventType: 'review_failed',
+      payload: {
+        code: 'review_execution_aborted',
+        message,
+        reason: 'manual_fail',
+        priorStatus: review.status,
+      },
+    });
+  }
 
   return {
-    action: 'failed',
+    action: persisted ? 'failed' : 'unchanged',
     review: await getReviewRun(env.DB, reviewId),
   };
 }

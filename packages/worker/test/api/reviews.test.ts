@@ -1442,6 +1442,57 @@ export async function runReviewApiTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'running',
+      reviewAttemptCount: 2,
+    });
+    const db = env.DB as {
+      prepare: (sql: string) => {
+        bind: (...args: unknown[]) => {
+          first?: <T>() => Promise<T>;
+          run?: () => Promise<{ success: boolean; meta?: { changes?: number } }>;
+        };
+      };
+    };
+    const originalPrepare = db.prepare.bind(db);
+    db.prepare = ((sql: string) => {
+      const statement = originalPrepare(sql);
+      if (!/UPDATE review_runs SET /i.test(sql) || /last_event_seq = last_event_seq \+ 1/i.test(sql)) {
+        return statement;
+      }
+      return {
+        bind(...values: unknown[]) {
+          if (values[0] !== 'failed') {
+            return statement.bind(...values);
+          }
+          return {
+            async run() {
+              state.reviewStatus = 'succeeded';
+              state.reviewErrorCode = null;
+              state.reviewErrorMessage = null;
+              return { success: true, meta: { changes: 0 } };
+            },
+          };
+        },
+      };
+    }) as typeof db.prepare;
+
+    const response = await handleFailReview(
+      'rev_abcd1234',
+      new Request('https://example.com/api/reviews/rev_abcd1234/fail', { method: 'POST' }),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.action, 'unchanged');
+    const review = (body.review ?? {}) as Record<string, unknown>;
+    assert.equal(review.status, 'succeeded');
+    assert.equal(state.eventTypes.has('review_failed'), false);
+    assert.equal(state.reviewErrorCode, null);
+  }
+
+  {
     const { env } = createReviewApiEnv({
       reviewExists: true,
       initialReviewStatus: 'succeeded',

@@ -91,6 +91,7 @@ interface ReviewEvidenceState {
   readCrossFilePaths: Set<string>;
   searchUsed: boolean;
   searchMatchedChangedPath: boolean;
+  searchMatchedCrossFilePath: boolean;
 }
 
 type ReviewReasoningEffort = 'minimal' | 'low' | 'medium' | 'high';
@@ -121,6 +122,15 @@ export interface ReviewAgentAnalysisResult {
     fallbackApplied: boolean;
     fallbackReason: string | null;
   };
+}
+
+function throwIfReviewAnalysisAborted(signal: AbortSignal | undefined): void {
+  if (!signal?.aborted) {
+    return;
+  }
+  const error = new Error('Review analysis aborted by external signal');
+  error.name = 'AbortError';
+  throw error;
 }
 
 function inferFollowUpReviewScore(output: { findings: ReviewFinding[]; furtherPassesLowYield: boolean }): 1 | 2 | 3 {
@@ -200,6 +210,7 @@ function initializeEvidenceState(): ReviewEvidenceState {
     readCrossFilePaths: new Set<string>(),
     searchUsed: false,
     searchMatchedChangedPath: false,
+    searchMatchedCrossFilePath: false,
   };
 }
 
@@ -263,17 +274,25 @@ function recordEvidenceFromToolExecution(
   if (action.tool === 'search_code') {
     state.searchUsed = true;
     const matches = Array.isArray(asRecord(toolOutput).matches) ? (asRecord(toolOutput).matches as unknown[]) : [];
-    state.searchMatchedChangedPath = matches.some((match) => {
-      const matchPath = normalizePath(asRecord(match).path);
-      return Boolean(matchPath && changedPaths.has(matchPath));
-    });
+    state.searchMatchedChangedPath =
+      state.searchMatchedChangedPath ||
+      matches.some((match) => {
+        const matchPath = normalizePath(asRecord(match).path);
+        return Boolean(matchPath && changedPaths.has(matchPath));
+      });
+    state.searchMatchedCrossFilePath =
+      state.searchMatchedCrossFilePath ||
+      matches.some((match) => {
+        const matchPath = normalizePath(asRecord(match).path);
+        return Boolean(matchPath && !changedPaths.has(matchPath));
+      });
   }
 }
 
 function collectMissingEvidenceRequirements(input: {
   evidence: ReviewEvidenceState;
   changedPaths: string[];
-  requiresCrossFileEvidence: boolean;
+  requiresCrossFileIntegrationEvidence?: boolean;
 }): string[] {
   const missing: string[] = [];
   const sensitiveChangedPaths = input.changedPaths.filter((path) => isSensitiveChangedPath(path));
@@ -297,7 +316,7 @@ function collectMissingEvidenceRequirements(input: {
     missing.push(`Read sensitive changed file(s) directly: ${missingSensitivePaths.join(', ')}.`);
   }
 
-  if (input.requiresCrossFileEvidence && input.evidence.readCrossFilePaths.size === 0) {
+  if (input.requiresCrossFileIntegrationEvidence && input.evidence.readCrossFilePaths.size === 0) {
     missing.push('Read at least one non-changed file that defines or handles an integration boundary touched by the diff.');
   }
 
@@ -520,6 +539,55 @@ export function extractIntegrationSearchQueriesForTests(
   changedFiles: ReviewContext['retrieval']['changedFiles']
 ): string[] {
   return extractIntegrationSearchQueries(changedFiles).map((entry) => entry.query);
+}
+
+export function collectMissingEvidenceRequirementsForTests(input: {
+  changedPaths: string[];
+  requiresCrossFileIntegrationEvidence?: boolean;
+  diffSummaryUsed?: boolean;
+  readChangedPaths?: string[];
+  readCrossFilePaths?: string[];
+  searchUsed?: boolean;
+  searchMatchedChangedPath?: boolean;
+  searchMatchedCrossFilePath?: boolean;
+}): string[] {
+  return collectMissingEvidenceRequirements({
+    changedPaths: input.changedPaths,
+    requiresCrossFileIntegrationEvidence: input.requiresCrossFileIntegrationEvidence ?? false,
+    evidence: {
+      diffSummaryUsed: input.diffSummaryUsed ?? false,
+      readChangedPaths: new Set(input.readChangedPaths ?? []),
+      readCrossFilePaths: new Set(input.readCrossFilePaths ?? []),
+      searchUsed: input.searchUsed ?? false,
+      searchMatchedChangedPath: input.searchMatchedChangedPath ?? false,
+      searchMatchedCrossFilePath: input.searchMatchedCrossFilePath ?? false,
+    },
+  });
+}
+
+export function accumulateSearchEvidenceForTests(input: {
+  changedPaths: string[];
+  searches: Array<Array<{ path: string }>>;
+}): { searchMatchedChangedPath: boolean; searchMatchedCrossFilePath: boolean } {
+  const state = initializeEvidenceState();
+  const changedPaths = new Set(input.changedPaths);
+  const searchAction: Extract<ReviewAgentAction, { type: 'tool' }> = {
+    type: 'tool',
+    tool: 'search_code',
+    args: { query: '__test__' },
+  };
+  for (const matches of input.searches) {
+    recordEvidenceFromToolExecution(
+      state,
+      searchAction,
+      { matches },
+      changedPaths
+    );
+  }
+  return {
+    searchMatchedChangedPath: state.searchMatchedChangedPath,
+    searchMatchedCrossFilePath: state.searchMatchedCrossFilePath,
+  };
 }
 
 function topLevelPackage(path: string): string {
@@ -835,6 +903,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
   input: ReviewAgentPromptInput & {
     deploymentSandboxId: string;
     modelOverride?: string;
+    abortSignal?: AbortSignal;
   }
 ): Promise<ReviewAgentAnalysisResult | null> {
   const endpoint = (env.AGENT_SDK_URL ?? '').trim();
@@ -953,6 +1022,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     }
 
     for (let step = 1; step <= providerLoopMaxSteps; step += 1) {
+      throwIfReviewAnalysisAborted(input.abortSignal);
       if (input.onLifecycleEvent) {
         await input.onLifecycleEvent('review_analysis_provider_request_started', {
           step,
@@ -972,8 +1042,10 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         step,
         history,
         forceComplete: forceCompleteNextStep,
+        abortSignal: input.abortSignal,
       });
       forceCompleteNextStep = false;
+      throwIfReviewAnalysisAborted(input.abortSignal);
 
       if (input.onLifecycleEvent) {
         await input.onLifecycleEvent('review_analysis_step_planned', {
@@ -987,7 +1059,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         const missingEvidence = collectMissingEvidenceRequirements({
           evidence,
           changedPaths,
-          requiresCrossFileEvidence: integrationSearchQueries.length > 0,
+          requiresCrossFileIntegrationEvidence: integrationSearchQueries.length > 0,
         });
         if (missingEvidence.length > 0 && step <= providerLoopMaxSteps) {
           if (input.onLifecycleEvent) {
@@ -1118,6 +1190,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         maxFileBytes,
         action.tool === 'diff_summary' ? input.authoritativeDiffSnapshot : undefined
       );
+      throwIfReviewAnalysisAborted(input.abortSignal);
       usedTools.push(action.tool);
       recordEvidenceFromToolExecution(evidence, action, output.result, changedPathsSet);
       if (input.onLifecycleEvent) {
@@ -1133,7 +1206,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     const missingEvidence = collectMissingEvidenceRequirements({
       evidence,
       changedPaths,
-      requiresCrossFileEvidence: integrationSearchQueries.length > 0,
+      requiresCrossFileIntegrationEvidence: integrationSearchQueries.length > 0,
     });
     if (missingEvidence.length > 0) {
       throw new ReviewAgentOutputError('Review analysis completion rejected due to insufficient tool evidence').withCode(

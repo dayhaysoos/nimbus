@@ -1,7 +1,15 @@
-import { emitResolveReviewProgressForTests } from '../../../src/app/reviews/context.js';
+import {
+  emitResolveReviewProgressForTests,
+  preserveResolveReviewAbortForTests,
+  throwIfResolveReviewAbortedForTests,
+} from '../../../src/app/reviews/context.js';
 import { strict as assert } from 'assert';
 import { buildStudioReviewRoutePath } from '../../../src/app/reviews/create-shared.js';
-import { emitStudioStartEventForTests, studioBranchContextMatchesExpected } from '../../../src/app/reviews/studio-create.js';
+import {
+  emitStudioStartEventForTests,
+  shouldAbortStudioStartForTests,
+  studioBranchContextMatchesExpected,
+} from '../../../src/app/reviews/studio-create.js';
 
 export async function runStudioCreateTests(): Promise<void> {
   assert.equal(
@@ -56,6 +64,11 @@ export async function runStudioCreateTests(): Promise<void> {
     true
   );
 
+  const studioAbortController = new AbortController();
+  studioAbortController.abort();
+  assert.equal(shouldAbortStudioStartForTests(studioAbortController.signal, true), true);
+  assert.equal(shouldAbortStudioStartForTests(studioAbortController.signal, false), false);
+
   await assert.doesNotReject(async () => {
     await emitResolveReviewProgressForTests(
       {
@@ -71,6 +84,52 @@ export async function runStudioCreateTests(): Promise<void> {
       }
     );
   });
+
+  const alreadyAbortedProgressController = new AbortController();
+  alreadyAbortedProgressController.abort();
+  await assert.doesNotReject(async () => {
+    await emitResolveReviewProgressForTests(
+      {
+        signal: alreadyAbortedProgressController.signal,
+        onProgress: async () => {},
+      },
+      {
+        stage: 'workspace',
+        state: 'active',
+        label: 'Preparing workspace',
+        detail: 'detail',
+      }
+    );
+  });
+
+  const progressAbortController = new AbortController();
+  await assert.doesNotReject(async () => {
+    await emitResolveReviewProgressForTests(
+      {
+        signal: progressAbortController.signal,
+        onProgress: async () => {
+          progressAbortController.abort();
+          throw new Error('stream failed');
+        },
+      },
+      {
+        stage: 'workspace',
+        state: 'active',
+        label: 'Preparing workspace',
+        detail: 'detail',
+      }
+    );
+  });
+
+  const abortError = new Error('Review flow aborted before completion.');
+  abortError.name = 'AbortError';
+  assert.throws(() => preserveResolveReviewAbortForTests(abortError), /Review flow aborted before completion\./);
+  assert.doesNotThrow(() => preserveResolveReviewAbortForTests(new Error('ordinary failure')));
+  assert.throws(
+    () => throwIfResolveReviewAbortedForTests({ signal: alreadyAbortedProgressController.signal }),
+    /Review flow aborted before completion\./
+  );
+  assert.doesNotThrow(() => throwIfResolveReviewAbortedForTests(undefined));
 
   await assert.doesNotReject(async () => {
     await emitStudioStartEventForTests({

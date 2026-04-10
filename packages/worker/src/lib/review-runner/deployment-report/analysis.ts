@@ -84,6 +84,7 @@ export async function runDeploymentReviewAnalysisStage(
             deployedUrl: deployment.deployedUrl,
             validationSummary: JSON.stringify(inputs.requestValidation),
           },
+          abortSignal: options?.abortSignal,
           reviewContext,
           rootListing: {},
           diffSnapshot: {},

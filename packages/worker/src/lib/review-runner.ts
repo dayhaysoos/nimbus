@@ -11,13 +11,13 @@ import { ReviewContextAssemblyError } from './review-runner/cochange.js';
 import { readOptionalString } from './review-runner/context-helpers.js';
 import { assembleReviewContextBootstrap } from './review-runner/context.js';
 import { executeReviewRun } from './review-runner/execution.js';
-import { finalizeFailedReview, finalizeSuccessfulReview } from './review-runner/finalization.js';
+import { finalizeFailedReviewIfCurrent, finalizeSuccessfulReview } from './review-runner/finalization.js';
 import { intentSummaryFromApprovedPolicy, runIntentSummarizationPrePass, summarizeReviewIntentPolicy } from './review-runner/intent-summary.js';
 import {
   finalizeInlineRetryExhaustion,
   handleUnclaimedReviewRun,
   QueueRetryError,
-  scheduleReviewRetry,
+  scheduleReviewRetryIfCurrent,
   shouldRetryReviewError,
 } from './review-runner/retry.js';
 import type { ReviewRunExecutionOptions } from './review-runner/shared.js';
@@ -31,6 +31,58 @@ export { shouldRetryReviewError } from './review-runner/retry.js';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function isManuallyFailedReview(review: ReviewRunResponse | null): boolean {
+  return review?.status === 'failed' && review.error?.code === 'review_execution_aborted';
+}
+
+async function loadLatestReviewUnlessManuallyFailed(env: Env, reviewId: string): Promise<ReviewRunResponse | null> {
+  const latest = await getReviewRun(env.DB, reviewId);
+  return isManuallyFailedReview(latest) ? null : latest;
+}
+
+function startManualFailAbortMonitor(env: Env, reviewId: string): { signal: AbortSignal; stop: () => void } {
+  const controller = new AbortController();
+  let stopped = false;
+  let polling = false;
+  let timer: ReturnType<typeof setInterval> | null = null;
+
+  const stop = (): void => {
+    if (stopped) {
+      return;
+    }
+    stopped = true;
+    if (timer !== null) {
+      clearInterval(timer);
+      timer = null;
+    }
+  };
+
+  const poll = async (): Promise<void> => {
+    if (stopped || polling || controller.signal.aborted) {
+      return;
+    }
+    polling = true;
+    try {
+      const latest = await getReviewRun(env.DB, reviewId);
+      if (isManuallyFailedReview(latest)) {
+        controller.abort();
+        stop();
+      }
+    } catch {
+      // Best-effort polling only; transient read failures must not become unhandled rejections.
+    } finally {
+      polling = false;
+    }
+  };
+
+  timer = setInterval(() => {
+    void poll();
+  }, 250);
+  void poll();
+
+  return { signal: controller.signal, stop };
 }
 
 /**
@@ -48,6 +100,7 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
   }
 
   let review: ReviewRunResponse | null = null;
+  const manualFailAbortMonitor = startManualFailAbortMonitor(env, reviewId);
   try {
     review = await getReviewRun(env.DB, reviewId);
     if (!review) {
@@ -72,32 +125,50 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
     }
 
     const reviewContext = await assembleReviewContextBootstrap(env, review, payload, options);
-    const report = await executeReviewRun(env, review, payload, reviewContext, options);
-    await finalizeSuccessfulReview(env, reviewId, payload, report);
+    const report = await executeReviewRun(env, review, payload, reviewContext, {
+      ...options,
+      abortSignal: manualFailAbortMonitor.signal,
+    });
+    const latest = await loadLatestReviewUnlessManuallyFailed(env, reviewId);
+    if (!latest) {
+      return;
+    }
+    await finalizeSuccessfulReview(env, reviewId, payload, report, {
+      expectedAttemptCount: review.attemptCount,
+      allowRetryScheduling: options?.allowRetryScheduling,
+    });
   } catch (error) {
     const message = formatReviewAnalysisError(error, {
       openrouterApiKey: readOptionalString(options?.openrouterApiKey),
     });
-    const latest = await getReviewRun(env.DB, reviewId);
-    const attemptCount = latest?.attemptCount ?? review?.attemptCount ?? 0;
+    const latest = await loadLatestReviewUnlessManuallyFailed(env, reviewId);
+    if (!latest) {
+      return;
+    }
+    const attemptCount = review?.attemptCount ?? latest?.attemptCount ?? 0;
 
     const allowRetryScheduling = options?.allowRetryScheduling !== false;
     if (allowRetryScheduling && shouldRetryReviewError(error) && attemptCount <= 2) {
-      await scheduleReviewRetry(env, reviewId, {
+      const retryScheduled = await scheduleReviewRetryIfCurrent(env, reviewId, {
         attemptCount,
         message,
         reason: message.slice(0, 500),
-        throwMessage: 'Review transient failure; retry requested',
       });
+      if (retryScheduled) {
+        throw new QueueRetryError('Review transient failure; retry requested');
+      }
     }
 
     const contextAssemblyErrorCode = error instanceof ReviewContextAssemblyError ? error.code : null;
     const finalErrorCode = contextAssemblyErrorCode ?? 'review_execution_failed';
-    await finalizeFailedReview(env, reviewId, {
+    await finalizeFailedReviewIfCurrent(env, reviewId, {
       errorCode: finalErrorCode,
       message,
       contextAssemblyErrorCode,
+      expectedAttemptCount: attemptCount,
     });
+  } finally {
+    manualFailAbortMonitor.stop();
   }
 }
 
