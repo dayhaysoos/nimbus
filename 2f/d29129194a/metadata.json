@@ -1,0 +1,30 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "2fd29129194a",
+  "strategy": "manual-commit",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".audit-exceptions.json",
+    "packages/agent-endpoint/package.json",
+    "packages/report-ui/package.json",
+    "packages/worker/package-lock.json",
+    "packages/worker/package.json",
+    "pnpm-lock.yaml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/2f/d29129194a/0/metadata.json",
+      "transcript": "/2f/d29129194a/0/full.jsonl",
+      "content_hash": "/2f/d29129194a/0/content_hash.txt",
+      "prompt": "/2f/d29129194a/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2141365,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1900288,
+    "output_tokens": 22922,
+    "api_call_count": 42
+  }
+}

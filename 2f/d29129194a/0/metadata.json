@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "2fd29129194a",
+  "session_id": "019d7907-f96d-7242-a6bc-ae2ff0294b31",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-10T20:47:25.553819Z",
+  "branch": "feat/review-studio-slice-3-ux-polish",
+  "checkpoints_count": 1,
+  "files_touched": [
+    ".audit-exceptions.json",
+    "packages/agent-endpoint/package.json",
+    "packages/report-ui/package.json",
+    "packages/worker/package-lock.json",
+    "packages/worker/package.json",
+    "pnpm-lock.yaml"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "79b85f779c99",
+  "token_usage": {
+    "input_tokens": 2141365,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1900288,
+    "output_tokens": 22922,
+    "api_call_count": 42
+  },
+  "session_metrics": {
+    "turn_count": 1
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-10T20:47:25.373361Z",
+    "agent_lines": 319,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 319,
+    "agent_percentage": 100
+  }
+}
