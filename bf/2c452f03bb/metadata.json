@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "bf2c452f03bb",
+  "strategy": "manual-commit",
+  "branch": "k-labs",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "docs/the-matrix.md"
+  ],
+  "sessions": [
+    {
+      "metadata": "/bf/2c452f03bb/0/metadata.json",
+      "transcript": "/bf/2c452f03bb/0/full.jsonl",
+      "content_hash": "/bf/2c452f03bb/0/content_hash.txt",
+      "prompt": "/bf/2c452f03bb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2236729,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 1845248,
+    "output_tokens": 22459,
+    "api_call_count": 26
+  }
+}
