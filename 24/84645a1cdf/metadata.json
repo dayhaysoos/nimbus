@@ -3,7 +3,7 @@
   "checkpoint_id": "2484645a1cdf",
   "strategy": "manual-commit",
   "branch": "feat/review-studio-slice-3-ux-polish",
-  "checkpoints_count": 66,
+  "checkpoints_count": 67,
   "files_touched": [
     "packages/cli/src/app/reviews/context.ts",
     "packages/cli/src/app/reviews/studio-create.ts",
@@ -152,13 +152,19 @@
       "transcript": "/24/84645a1cdf/20/full.jsonl",
       "content_hash": "/24/84645a1cdf/20/content_hash.txt",
       "prompt": "/24/84645a1cdf/20/prompt.txt"
+    },
+    {
+      "metadata": "/24/84645a1cdf/21/metadata.json",
+      "transcript": "/24/84645a1cdf/21/full.jsonl",
+      "content_hash": "/24/84645a1cdf/21/content_hash.txt",
+      "prompt": "/24/84645a1cdf/21/prompt.txt"
     }
   ],
   "token_usage": {
-    "input_tokens": 339529368,
+    "input_tokens": 341941249,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 318786944,
-    "output_tokens": 1358808,
-    "api_call_count": 2864
+    "cache_read_tokens": 321049344,
+    "output_tokens": 1382269,
+    "api_call_count": 2899
   }
 }
