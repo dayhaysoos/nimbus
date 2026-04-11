@@ -134,6 +134,10 @@ function statusFromReviewEventType(eventType: string): ReviewResponse['status'] 
     case 'review_created':
     case 'review_enqueued':
       return 'queued';
+    case 'review_policy_derivation_started':
+      return 'policy_pending';
+    case 'review_policy_derivation_completed':
+      return 'policy_ready';
     case 'review_succeeded':
       return 'succeeded';
     case 'review_failed':
@@ -857,6 +861,20 @@ export function ReportPage(): JSX.Element {
       window.clearTimeout(timer);
     };
   }, [review?.status, policyProgressCycle]);
+
+  useEffect(() => {
+    if (!review || review.status !== 'policy_pending') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setRefreshCycle((value) => value + 1);
+    }, 2000);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [review?.id, review?.status, refreshCycle]);
 
   useEffect(() => {
     if (state !== 'loaded' || !review) {

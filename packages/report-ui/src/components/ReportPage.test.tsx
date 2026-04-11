@@ -174,6 +174,56 @@ describe('ReportPage', () => {
     expect(screen.getByText('Review review_123')).toBeInTheDocument();
   });
 
+  it('polls review status while policy derivation is pending', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'policy_pending',
+            findings: [],
+            summary: undefined,
+            summaryText: undefined,
+            markdownSummary: null,
+          },
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'policy_ready',
+            findings: [],
+            summary: undefined,
+            summaryText: undefined,
+            markdownSummary: null,
+            derivedPolicy: {
+              goal: 'Reduce risk quickly',
+              prohibitions: ['Do not alter public API behavior'],
+              constraints: ['Prefer small isolated changes'],
+            },
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Preparing policy draft');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText('Policy review required', {}, { timeout: 2900 })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+  });
+
   it('renders policy_ready editor and approves policy with accepted payload response', async () => {
     const fetchMock = vi
       .fn()
