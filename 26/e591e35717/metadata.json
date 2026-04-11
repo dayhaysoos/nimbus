@@ -1,0 +1,34 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "26e591e35717",
+  "strategy": "manual-commit",
+  "branch": "continue-slice-3-work",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/reviews/create-from-deployment.ts",
+    "packages/cli/src/app/reviews/studio-create.ts",
+    "packages/report-ui/src/App.tsx",
+    "packages/report-ui/src/components/BranchReviewsPage.tsx",
+    "packages/report-ui/src/components/PolicyPage.tsx",
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/26/e591e35717/0/metadata.json",
+      "transcript": "/26/e591e35717/0/full.jsonl",
+      "content_hash": "/26/e591e35717/0/content_hash.txt",
+      "prompt": "/26/e591e35717/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 6733882,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6601216,
+    "output_tokens": 31912,
+    "api_call_count": 64
+  }
+}
