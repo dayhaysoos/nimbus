@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "c275132312fb",
+  "strategy": "manual-commit",
+  "branch": "continue-slice-3-work",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/report-ui/src/components/ReportPage.test.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx"
+  ],
+  "sessions": [
+    {
+      "metadata": "/c2/75132312fb/0/metadata.json",
+      "transcript": "/c2/75132312fb/0/full.jsonl",
+      "content_hash": "/c2/75132312fb/0/content_hash.txt",
+      "prompt": "/c2/75132312fb/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 8642783,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8227968,
+    "output_tokens": 37399,
+    "api_call_count": 80
+  }
+}

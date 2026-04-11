@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "c275132312fb",
+  "session_id": "019d7a87-9d1d-7021-abb1-7221e341ea94",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-11T19:36:03.69866Z",
+  "branch": "continue-slice-3-work",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/components/ReportPage.test.tsx"
+  ],
+  "agent": "Codex",
+  "turn_id": "80051d181bd3",
+  "token_usage": {
+    "input_tokens": 8642783,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 8227968,
+    "output_tokens": 37399,
+    "api_call_count": 80
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-11T19:36:03.136199Z",
+    "agent_lines": 32,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 32,
+    "agent_percentage": 100
+  }
+}
