@@ -1,0 +1,48 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "2ac80f88e5ad",
+  "session_id": "019d7ea2-dd77-7633-9509-834b381e1a3b",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-11T23:04:50.914597Z",
+  "branch": "docs/architecture-consolidation",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "docs/architecture/README.md",
+    "docs/architecture/architecture.md",
+    "docs/architecture/auth-flow.md",
+    "docs/architecture/deployment-flow.md",
+    "docs/architecture/jsdoc-guidelines.md",
+    "docs/architecture/overview.md",
+    "docs/architecture/report-ui-flow.md",
+    "docs/architecture/review-flow.md",
+    "docs/architecture/review-studio-experience-build-plan.md",
+    "docs/architecture/review-studio-experience.md",
+    "docs/architecture/review-studio-implementation-plan.md",
+    "docs/architecture/workspace-flow.md",
+    "docs/jsdoc-guidelines.md",
+    "docs/refactor-audit-phase-5.md",
+    "docs/refactor-audit.md"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "9399fb770e67",
+  "token_usage": {
+    "input_tokens": 6713598,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 6053632,
+    "output_tokens": 86671,
+    "api_call_count": 74
+  },
+  "session_metrics": {
+    "turn_count": 4
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-11T23:04:49.716437Z",
+    "agent_lines": 911,
+    "human_added": 98,
+    "human_modified": 5,
+    "human_removed": 0,
+    "total_committed": 1014,
+    "agent_percentage": 89.8422090729783
+  }
+}
