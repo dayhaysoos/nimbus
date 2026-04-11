@@ -1,0 +1,91 @@
+You are working in the Nimbus repo at `/Users/nickdejesus/Code/nimbus`.
+
+  Goal:
+  Fully wrap up Slice 3 from the Review Studio implementation plan. Do not start Slice 4 or Slice 5 work except
+  where small supporting changes are strictly required to finish Slice 3 cleanly.
+
+  Authoritative docs:
+  - `/Users/nickdejesus/Code/nimbus/docs/architecture/review-studio-implementation-plan.md`
+    Focus on `Slice 3: Review Run, pre-run policy states`
+  - `/Users/nickdejesus/Code/nimbus/docs/architecture/review-studio-experience-build-plan.md`
+    Cross-check `Phase C: Review Run single-route lifecycle`
+  - `/Users/nickdejesus/Code/nimbus/docs/architecture/review-studio-experience.md`
+    Use this as the UX intent source if implementation details are ambiguous
+
+  What Slice 3 is supposed to accomplish:
+  - Policy states are rendered as distinct user-visible route states
+  - `policy_pending` shows progress without forcing a route change
+  - `policy_ready` allows review/edit/approval on the same route
+  - `policy_approved` transitions cleanly into queue/execution state on the same route
+  - refresh/restart preserves policy-stage route recovery
+  - cancellation/abandonment behavior is explicit and does not create hidden duplicate runs
+
+  Important current-state observation:
+  The repo already has substantial Home/New Review work and active-run work in progress, but policy handling is
+  still split across a separate policy route/page and report route/page. Slice 3 is not fully complete until the
+  pre-run policy states are handled on the same Review Run route, per the plan.
+
+  Likely relevant files:
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/App.tsx`
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/components/PolicyPage.tsx`
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/components/ReportPage.tsx`
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/lib/review.ts`
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/types.ts`
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/components/ReviewHistoryPage.tsx`
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/components/BranchReviewsPage.tsx`
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/components/ReportPage.test.tsx`
+  - `/Users/nickdejesus/Code/nimbus/packages/report-ui/src/lib/review.test.ts`
+  - `/Users/nickdejesus/Code/nimbus/packages/worker/test/api/reviews.test.ts`
+  - `/Users/nickdejesus/Code/nimbus/packages/worker/test/lib/db.events.test.ts`
+
+  Expected outcome:
+  - A single Review Run route/page owns pre-run policy states and the transition into execution
+  - No forced route swap from a dedicated policy page into a report page once the review advances
+  - Existing policy approval/edit behavior remains available, but lives inside the unified run surface
+  - Browser refresh on policy states restores correctly from worker truth
+  - Tests are updated to cover `policy_pending`, `policy_ready`, and `policy_approved` on the unified route
+
+  Boundaries:
+  - Do not do the broader “Agent Thinking” UX, raw-stream toggle, or major active-run redesign unless needed
+  minimally for route unification
+  - Do not implement fix-loop actions (`Fix with agent`, `Review current environment`, etc.)
+  - Keep the work focused on finishing Slice 3, not broad polish
+  - Preserve existing worker contracts unless a small fix is needed for Slice 3 correctness
+
+  What I want from you:
+  1. Inspect the current implementation against Slice 3 requirements.
+  2. Identify exactly what is still incomplete.
+  3. Implement the missing work.
+  4. Add/update tests.
+  5. Run the relevant tests.
+  6. Commit your changes with a clear commit message.
+  7. Report back with:
+     - what changed
+     - what Slice 3 criteria are now satisfied
+     - any remaining gaps that belong to Slice 4 rather than Slice 3
+
+  Definition of done:
+  - Slice 3 requirements from the implementation plan are satisfied in code, not just approximately
+  - The Review Run experience for policy states is unified on one route
+  - Refresh/restart behavior for policy-stage recovery is preserved
+  - Tests cover the new behavior
+
+---
+
+did you have to deploy to the worker?
+
+---
+
+I asked if you have to, not if you did or not. Was work done where the worker needed to get an update pushed?
+
+---
+
+go ahead and fix
+
+---
+
+how would you fix this?
+
+---
+
+sounds good do it
