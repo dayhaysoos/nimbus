@@ -15,7 +15,7 @@ import {
   reviewFailureGuidance,
   statusNarrative,
 } from '../lib/review';
-import type { GetReviewResponse, ReviewFinding, ReviewResponse, ReviewSeverity } from '../types';
+import type { GetReviewResponse, ReviewFinding, ReviewPolicyDraft, ReviewResponse, ReviewSeverity } from '../types';
 import { cn } from '../lib/utils';
 
 const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
@@ -43,6 +43,43 @@ const LIVE_STREAM_STATUSES: ReadonlySet<ReviewResponse['status']> = new Set([
 ]);
 
 const FINDING_SEVERITY_ORDER: ReviewSeverity[] = ['critical', 'high', 'medium', 'low', 'info'];
+const POLICY_DERIVATION_STEPS = [
+  'Reading session context',
+  'Drafting policy goals',
+  'Preparing policy draft for approval',
+] as const;
+
+interface EditablePolicyDraft {
+  goal: string;
+  prohibitions: string[];
+  constraints: string[];
+}
+
+function createEditablePolicyDraft(policy: ReviewPolicyDraft | undefined): EditablePolicyDraft {
+  return {
+    goal: policy?.goal ?? '',
+    prohibitions: policy?.prohibitions ?? [],
+    constraints: policy?.constraints ?? [],
+  };
+}
+
+function normalizeEditablePolicyDraft(policy: EditablePolicyDraft): ReviewPolicyDraft {
+  const normalizeList = (input: string[]): string[] =>
+    Array.from(
+      new Set(
+        input
+          .map((item) => item.trim())
+          .filter(Boolean)
+      )
+    );
+
+  const goal = policy.goal.trim();
+  return {
+    goal: goal ? goal : null,
+    prohibitions: normalizeList(policy.prohibitions),
+    constraints: normalizeList(policy.constraints),
+  };
+}
 
 interface ActivityLogEntry {
   id: string;
@@ -726,11 +763,20 @@ export function ReportPage(): JSX.Element {
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [recoveringReview, setRecoveringReview] = useState(false);
   const [recoveryError, setRecoveryError] = useState<string | null>(null);
+  const [policyActionError, setPolicyActionError] = useState<string | null>(null);
+  const [approvingPolicy, setApprovingPolicy] = useState(false);
+  const [policyDraft, setPolicyDraft] = useState<EditablePolicyDraft>({
+    goal: '',
+    prohibitions: [],
+    constraints: [],
+  });
+  const [policyProgressCycle, setPolicyProgressCycle] = useState(0);
   const [refreshCycle, setRefreshCycle] = useState(0);
   const [activityLog, setActivityLog] = useState<ActivityLogEntry[]>([]);
   const [showReviewedFiles, setShowReviewedFiles] = useState(false);
   const seenEventIds = useRef(new Set<string>());
   const fallbackEventOrdinal = useRef(0);
+  const policyDraftTouched = useRef(false);
 
   const isLive = review ? LIVE_STREAM_STATUSES.has(review.status) : false;
 
@@ -740,6 +786,11 @@ export function ReportPage(): JSX.Element {
     setActivityLog([]);
     setShowReviewedFiles(false);
     setRecoveryError(null);
+    setPolicyActionError(null);
+    setApprovingPolicy(false);
+    setPolicyProgressCycle(0);
+    setPolicyDraft({ goal: '', prohibitions: [], constraints: [] });
+    policyDraftTouched.current = false;
     setRecoveringReview(false);
   }, [reviewId]);
 
@@ -782,6 +833,30 @@ export function ReportPage(): JSX.Element {
       cancelled = true;
     };
   }, [reviewId, refreshCycle]);
+
+  useEffect(() => {
+    if (!review || review.status !== 'policy_ready') {
+      return;
+    }
+    if (policyDraftTouched.current) {
+      return;
+    }
+    setPolicyDraft(createEditablePolicyDraft(review.derivedPolicy));
+  }, [review?.id, review?.status, review?.derivedPolicy]);
+
+  useEffect(() => {
+    if (!review || review.status !== 'policy_pending') {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setPolicyProgressCycle((value) => value + 1);
+    }, 900);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [review?.status, policyProgressCycle]);
 
   useEffect(() => {
     if (state !== 'loaded' || !review) {
@@ -969,6 +1044,68 @@ export function ReportPage(): JSX.Element {
     downloadTextFile(`${reviewId}.json`, JSON.stringify(review, null, 2), 'application/json');
   }, [reviewId, review]);
 
+  const setPolicyGoal = useCallback((goal: string) => {
+    policyDraftTouched.current = true;
+    setPolicyDraft((current) => ({ ...current, goal }));
+  }, []);
+
+  const addPolicyItem = useCallback((field: 'prohibitions' | 'constraints') => {
+    policyDraftTouched.current = true;
+    setPolicyDraft((current) => ({
+      ...current,
+      [field]: [...current[field], ''],
+    }));
+  }, []);
+
+  const updatePolicyItem = useCallback((field: 'prohibitions' | 'constraints', index: number, value: string) => {
+    policyDraftTouched.current = true;
+    setPolicyDraft((current) => ({
+      ...current,
+      [field]: current[field].map((item, itemIndex) => (itemIndex === index ? value : item)),
+    }));
+  }, []);
+
+  const removePolicyItem = useCallback((field: 'prohibitions' | 'constraints', index: number) => {
+    policyDraftTouched.current = true;
+    setPolicyDraft((current) => ({
+      ...current,
+      [field]: current[field].filter((_, itemIndex) => itemIndex !== index),
+    }));
+  }, []);
+
+  const handleApprovePolicy = useCallback(async () => {
+    if (!reviewId || approvingPolicy || review?.status !== 'policy_ready') {
+      return;
+    }
+    setApprovingPolicy(true);
+    setPolicyActionError(null);
+    try {
+      const response = await fetch(`${API_BASE}/api/reviews/${encodeURIComponent(reviewId)}/policy/approve`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          approvedPolicy: normalizeEditablePolicyDraft(policyDraft),
+        }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        throw new Error((body as { error?: string } | null)?.error ?? `Failed to approve policy (${response.status})`);
+      }
+      const parsed = parseGetReviewResponse(body);
+      setReview(parsed.review);
+      setToastMessage('Policy approved');
+      setRefreshCycle((value) => value + 1);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setPolicyActionError(message);
+      setToastMessage('Policy approval failed');
+    } finally {
+      setApprovingPolicy(false);
+    }
+  }, [approvingPolicy, policyDraft, review?.status, reviewId]);
+
   const handleRecoverReview = useCallback(async () => {
     if (!reviewId) {
       return;
@@ -1076,6 +1213,11 @@ export function ReportPage(): JSX.Element {
       ? review.furtherPassesLowYield
       : review.provenance.furtherPassesLowYield?.value;
   const markdownUnavailable = normalizedMarkdown.length === 0;
+  const policyProgressLabel = POLICY_DERIVATION_STEPS[policyProgressCycle % POLICY_DERIVATION_STEPS.length];
+  const isPolicyPending = review.status === 'policy_pending';
+  const isPolicyReady = review.status === 'policy_ready';
+  const isPolicyApproved = review.status === 'policy_approved';
+  const isPolicyStage = isPolicyPending || isPolicyReady || isPolicyApproved;
 
   const recommendation = review.summary?.recommendation;
   const verdictTone = recommendationTone(recommendation);
@@ -1174,6 +1316,137 @@ export function ReportPage(): JSX.Element {
         </div>
       </section>
 
+      {isPolicyStage && (
+        <section className="policy-fade-up rounded-sm border border-border/70 bg-card/75 px-3 py-3" style={{ animationDelay: '52ms' }}>
+          {isPolicyPending && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-amber-500 animate-pulse" />
+                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Policy derivation</p>
+              </div>
+              <h2 className="text-sm font-semibold text-foreground">Preparing policy draft</h2>
+              <p className="text-sm text-muted-foreground">{policyProgressLabel}. This route will stay open while Nimbus prepares approval inputs.</p>
+            </div>
+          )}
+
+          {isPolicyReady && (
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-sm font-semibold text-foreground">Policy review required</h2>
+                  <p className="text-sm text-muted-foreground">Review and edit policy before execution. Approving continues this same review run.</p>
+                </div>
+                <Badge variant="outline" className="rounded-full border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-amber-900">
+                  pre-run
+                </Badge>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Goal</label>
+                <input
+                  value={policyDraft.goal}
+                  onChange={(event) => setPolicyGoal(event.target.value)}
+                  placeholder="Reduce production risk while keeping fixes minimal."
+                  className="h-9 w-full rounded-sm border border-border/60 bg-background/70 px-3 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted-foreground/60 focus:border-amber-400 focus:ring-1 focus:ring-amber-500/60"
+                />
+              </div>
+
+              <div className="grid gap-2 md:grid-cols-2">
+                <div className="space-y-2 rounded-sm border border-border/60 bg-background/60 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Must not</p>
+                    <button type="button" className="report-copy-btn text-xs" onClick={() => addPolicyItem('prohibitions')}>
+                      Add
+                    </button>
+                  </div>
+                  {policyDraft.prohibitions.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No prohibitions set.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {policyDraft.prohibitions.map((value, index) => (
+                        <div key={`prohibitions-${index}`} className="flex items-center gap-2">
+                          <input
+                            value={value}
+                            onChange={(event) => updatePolicyItem('prohibitions', index, event.target.value)}
+                            placeholder="Do not alter public API behavior."
+                            className="h-8 w-full rounded-sm border border-border/60 bg-background/70 px-2.5 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted-foreground/60 focus:border-amber-400 focus:ring-1 focus:ring-amber-500/60"
+                          />
+                          <button type="button" className="report-copy-btn text-xs" onClick={() => removePolicyItem('prohibitions', index)}>
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="space-y-2 rounded-sm border border-border/60 bg-background/60 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Preferences</p>
+                    <button type="button" className="report-copy-btn text-xs" onClick={() => addPolicyItem('constraints')}>
+                      Add
+                    </button>
+                  </div>
+                  {policyDraft.constraints.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No preferences set.</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {policyDraft.constraints.map((value, index) => (
+                        <div key={`constraints-${index}`} className="flex items-center gap-2">
+                          <input
+                            value={value}
+                            onChange={(event) => updatePolicyItem('constraints', index, event.target.value)}
+                            placeholder="Prefer minimal and isolated fixes."
+                            className="h-8 w-full rounded-sm border border-border/60 bg-background/70 px-2.5 text-sm text-foreground outline-none ring-offset-background placeholder:text-muted-foreground/60 focus:border-amber-400 focus:ring-1 focus:ring-amber-500/60"
+                          />
+                          <button type="button" className="report-copy-btn text-xs" onClick={() => removePolicyItem('constraints', index)}>
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {policyActionError && (
+                <p className="text-sm text-destructive">{policyActionError}</p>
+              )}
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Leaving now does not create another run. Resume this review from Home when you are ready.
+                </p>
+                <div className="flex items-center gap-2">
+                  <Link to="/" className="report-copy-btn">
+                    Return to Home
+                  </Link>
+                  <button
+                    type="button"
+                    className="report-copy-btn border-amber-300 bg-amber-50 text-amber-900 hover:border-amber-400"
+                    onClick={() => void handleApprovePolicy()}
+                    disabled={approvingPolicy}
+                  >
+                    {approvingPolicy ? 'Approving…' : 'Approve policy'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isPolicyApproved && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <span className="inline-flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
+                <p className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Policy approved</p>
+              </div>
+              <h2 className="text-sm font-semibold text-foreground">Waiting for queue handoff</h2>
+              <p className="text-sm text-muted-foreground">Nimbus is handing this approved policy to execution. You will stay on this route as the run moves to queued/running.</p>
+            </div>
+          )}
+        </section>
+      )}
+
       {showLiveActivityPanel && (
         <section className="policy-fade-up space-y-2" style={{ animationDelay: '55ms' }}>
           <div className="overflow-hidden rounded-sm border border-slate-700 bg-[#020817] text-slate-100 shadow-sm">
@@ -1199,7 +1472,7 @@ export function ReportPage(): JSX.Element {
                   >
                     {recoveringReview ? 'Failing…' : 'Fail review'}
                   </button>
-                ) : (
+                ) : review.status === 'queued' ? (
                   <button
                     type="button"
                     className="report-copy-btn border-slate-700 bg-[#0f172a] font-mono text-slate-100 hover:border-slate-500"
@@ -1208,6 +1481,11 @@ export function ReportPage(): JSX.Element {
                   >
                     {recoveringReview ? 'Recovering…' : 'Recover review'}
                   </button>
+                ) : null}
+                {(review.status === 'policy_pending' || review.status === 'policy_ready' || review.status === 'policy_approved') && (
+                  <Badge variant="outline" className="rounded-full border-slate-700 bg-[#0f172a] px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-slate-300">
+                    waiting for policy flow
+                  </Badge>
                 )}
               </div>
             </div>
@@ -1217,7 +1495,7 @@ export function ReportPage(): JSX.Element {
                 {latestActivityEntry?.detail ? <span className="text-slate-500"> · {latestActivityEntry.detail}</span> : null}
               </p>
             </div>
-            {(recoveryError || latestActivityEntry?.label === 'Sending to model') && (
+            {(recoveryError || (review.status === 'running' && latestActivityEntry?.label === 'Sending to model')) && (
               <div className="border-b border-slate-800 px-3 py-2">
                 <p className="font-mono text-xs text-amber-200">
                   {recoveryError

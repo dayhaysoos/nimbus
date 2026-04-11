@@ -233,7 +233,7 @@ export async function createReviewFromCommitCommand(
       port: options.openStudioPort,
       routePath: buildStudioReviewRoutePath({
         reviewId,
-        route: policyMode === 'review' ? 'policy' : 'reports',
+        route: 'reports',
         repo: resolvedProvenance?.repo,
         branch: resolvedProvenance?.branch,
       }),
@@ -242,7 +242,7 @@ export async function createReviewFromCommitCommand(
   }
 
   if (policyMode === 'review') {
-    p.log.message('Policy review is required before execution. Open the policy page and approve to start the run.');
+    p.log.message('Policy review is required before execution. Open the Review Run page and approve policy to start the run.');
     console.log(`Report URL: ${reviewResultUrl}`);
     return;
   }

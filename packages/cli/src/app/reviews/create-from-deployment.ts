@@ -99,7 +99,7 @@ export async function createReviewCommand(
       port: options.openStudioPort,
       routePath: buildStudioReviewRoutePath({
         reviewId,
-        route: policyMode === 'review' ? 'policy' : 'reports',
+        route: 'reports',
         repo: gitProvenance.repo,
         branch: gitProvenance.branch,
       }),
