@@ -1,3 +1,30 @@
+# Review Studio Experience Build Plan (Historical)
+
+Status: Historical planning snapshot
+Current status source: `docs/architecture/review-studio-implementation-plan.md`
+Depends on: `docs/architecture/review-studio-experience.md`
+
+## Why this file still exists
+
+This document captures the original pre-slice build sequencing and guardrails for Review Studio.
+
+Keep it for historical planning context.
+
+Do not use it as the current source of rollout status.
+
+Use instead:
+
+- `review-studio-experience.md` for the locked product spec
+- `review-studio-implementation-plan.md` for current slice status, shipped work, and next-slice guidance
+
+## Historical note
+
+Slices 1-3 have now landed in code, so some sections below are no longer forward-looking status. They remain useful as original intent and sequencing context only.
+
+---
+
+# Original Document
+
 # Review Studio Experience Build Plan (UX + Technical Guardrails)
 
 Status: Ready for implementation handoff

@@ -1,5 +1,18 @@
 # Nimbus Refactor Baseline
 
+## Status
+
+- State: historical baseline snapshot
+- Captured: 2026-03-30
+- Use this for: pre-refactor verification history and known-red baseline behavior
+- Do not use this for: current architecture or current handoff guidance
+
+Read alongside:
+
+- `docs/refactor-audit.md` for the original cleanup rationale and target direction
+- `docs/refactor-audit-phase-5.md` for the current refactor handoff/status document
+- `docs/architecture/architecture.md` for the current repo architecture
+
 ## Purpose
 
 This document records the repo state immediately before major refactor work begins.

@@ -1,5 +1,24 @@
 # Nimbus Refactor Audit Phase 5 Handoff
 
+## Status
+
+- State: current refactor handoff for readability cleanup
+- Scope: follow-on cleanup after the main CLI/worker structural refactor
+- Use this for: the active refactor workstream and guardrails
+
+Read alongside:
+
+- `docs/refactor-baseline.md` for the historical baseline and known-red verification gaps
+- `docs/refactor-audit.md` for the original cleanup rationale and target architecture
+- `docs/architecture/architecture.md` for the current repo structure
+- `docs/architecture/review-studio-implementation-plan.md` for current Review Studio delivery status
+
+## Important note
+
+This handoff is current for CLI/worker readability cleanup.
+
+It is not the source of truth for current Review Studio product delivery in `packages/report-ui`; that status now lives in the Review Studio docs under `docs/architecture/`.
+
 ## Purpose
 
 This document is the handoff for the next refactor session.
@@ -140,7 +159,7 @@ Examples of work that does **not** fit this phase:
 
 ## JSDoc Guidelines For Phase 5
 
-Use the guidance from `docs/architecture/jsdoc-guidelines.md` while doing this work.
+Use the guidance from `docs/jsdoc-guidelines.md` while doing this work.
 
 The key rule is:
 

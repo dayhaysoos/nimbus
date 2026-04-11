@@ -1,5 +1,23 @@
 # Nimbus Refactor Audit
 
+## Status
+
+- State: foundational refactor program document
+- Use this for: the original cleanup rationale, refactor ordering, and target package shape
+- Do not use this for: the current repo structure or the current implementation handoff
+
+Read alongside:
+
+- `docs/refactor-baseline.md` for the historical pre-refactor verification snapshot
+- `docs/refactor-audit-phase-5.md` for the current refactor handoff/status
+- `docs/architecture/architecture.md` for the current source-of-truth architecture
+
+## Important note
+
+Parts of the target structure described here have already landed, especially in `packages/cli` and `packages/worker`.
+
+Treat this document as the original refactor rationale and target-direction record, not as the best description of the repo as it exists today.
+
 ## Purpose
 
 This document is the starting point for a large-scale cleanup of Nimbus.
@@ -421,37 +439,38 @@ Do not combine these in one PR unless the change is tiny. It becomes too hard to
 
 ## Documentation Program
 
-Documentation should be built alongside the refactor. The app needs both broad architecture docs and narrow implementation docs for important flows.
+Documentation should be built alongside the refactor. The app needs one accurate current-state architecture document plus narrower implementation docs where complexity still justifies them.
 
 ## Required Document Types
 
-### 1. Architecture Overview
+### 1. Current-State Architecture Document
 
 Purpose:
 
 - explain the package boundaries
 - explain runtime boundaries
-- explain the main request and queue flows
+- explain the main request, queue, and UI flows
+- clearly separate what is implemented today from what is still planned
 
 Suggested path:
 
-- `docs/architecture/overview.md`
+- `docs/architecture/architecture.md`
 
-### 2. Flow Documents
+This document should be the first thing a new engineer or LLM reads.
 
-Each important user-visible or system-critical flow should get its own document.
+### 2. Module Docs For Important Subsystems
 
-Suggested set:
+Not every flow needs its own file.
 
-- `docs/architecture/review-flow.md`
-- `docs/architecture/workspace-flow.md`
-- `docs/architecture/deployment-flow.md`
-- `docs/architecture/auth-flow.md`
-- `docs/architecture/report-ui-flow.md`
+Write a focused module doc only when a subsystem still has enough sequencing, retries, state transitions, or provider behavior that a reader would otherwise need to reverse-engineer the code.
 
-Each flow doc should answer:
+Suggested path:
 
-- what triggers the flow
+- `docs/modules/`
+
+Each module doc should answer:
+
+- what the subsystem owns
 - the major steps in order
 - important inputs and outputs
 - state transitions
