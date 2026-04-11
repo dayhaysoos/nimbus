@@ -174,7 +174,7 @@ describe('ReportPage', () => {
     expect(screen.getByText('Review review_123')).toBeInTheDocument();
   });
 
-  it('renders policy_ready editor and approves policy without route swap', async () => {
+  it('renders policy_ready editor and approves policy with accepted payload response', async () => {
     const fetchMock = vi
       .fn()
       .mockResolvedValueOnce({
@@ -197,20 +197,10 @@ describe('ReportPage', () => {
       })
       .mockResolvedValueOnce({
         ok: true,
+        status: 202,
         json: async () => ({
-          review: {
-            ...mockReview,
-            status: 'policy_approved',
-            findings: [],
-            summary: undefined,
-            summaryText: undefined,
-            markdownSummary: null,
-            approvedPolicy: {
-              goal: 'Updated goal',
-              prohibitions: ['Do not alter public API behavior'],
-              constraints: ['Prefer small isolated changes'],
-            },
-          },
+          reviewId: 'review_123',
+          approvedPolicySha256: 'sha-123',
         }),
       })
       .mockResolvedValue({
@@ -228,6 +218,7 @@ describe('ReportPage', () => {
               prohibitions: ['Do not alter public API behavior'],
               constraints: ['Prefer small isolated changes'],
             },
+            approvedPolicySha256: 'sha-123',
           },
         }),
       });

@@ -1077,6 +1077,7 @@ export function ReportPage(): JSX.Element {
     if (!reviewId || approvingPolicy || review?.status !== 'policy_ready') {
       return;
     }
+    const approvedPolicy = normalizeEditablePolicyDraft(policyDraft);
     setApprovingPolicy(true);
     setPolicyActionError(null);
     try {
@@ -1086,15 +1087,38 @@ export function ReportPage(): JSX.Element {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          approvedPolicy: normalizeEditablePolicyDraft(policyDraft),
+          approvedPolicy,
         }),
       });
       const body = await response.json().catch(() => null);
       if (!response.ok) {
         throw new Error((body as { error?: string } | null)?.error ?? `Failed to approve policy (${response.status})`);
       }
-      const parsed = parseGetReviewResponse(body);
-      setReview(parsed.review);
+      const hasReviewPayload =
+        body &&
+        typeof body === 'object' &&
+        'review' in body &&
+        (body as { review?: unknown }).review &&
+        typeof (body as { review?: unknown }).review === 'object';
+      if (hasReviewPayload) {
+        const parsed = parseGetReviewResponse(body);
+        setReview(parsed.review);
+      } else {
+        const approvedPolicySha256 =
+          body && typeof body === 'object' && typeof (body as { approvedPolicySha256?: unknown }).approvedPolicySha256 === 'string'
+            ? (body as { approvedPolicySha256: string }).approvedPolicySha256
+            : undefined;
+        setReview((current) =>
+          current
+            ? {
+                ...current,
+                status: 'policy_approved',
+                approvedPolicy,
+                approvedPolicySha256: approvedPolicySha256 ?? current.approvedPolicySha256,
+              }
+            : current
+        );
+      }
       setToastMessage('Policy approved');
       setRefreshCycle((value) => value + 1);
     } catch (error) {
