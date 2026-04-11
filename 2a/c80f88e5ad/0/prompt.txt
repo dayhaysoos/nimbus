@@ -1,13 +1,1 @@
-I want you to review this code base. Look at the docs in the docs/architecture directory to understand thoroughly. Give me a summary of what you've learned about this repo and where we currently are
-
----
-
-why don't you update the architecture documentation to better reflect where we are with this repo. I actually think we should significantly reduce the amount of files in there. Perhaps we can have a single markdown file that goes over the architecture of the app. Why don't you do that first. A big priortiy for this document is to be something that will make it easier for LLMs to get a solid mental model of the repo, while also being easier for humans to read through too. You should preserve the documentation around refactoring this repo/experience as well, I want to circle back to that with you. Make sure you create a new branch for this doc work I asked you for.
-
----
-
-Can you look over the review-studio-experience related docs and tell me what would be the best course of action for these docs considering we're not quite done yet? We have slices 1-3 so far.
-
----
-
-go ahead and organize the way you've proposed.
+Go ahead with those next stps
