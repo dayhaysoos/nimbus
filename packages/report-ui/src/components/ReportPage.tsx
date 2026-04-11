@@ -781,8 +781,15 @@ export function ReportPage(): JSX.Element {
   const seenEventIds = useRef(new Set<string>());
   const fallbackEventOrdinal = useRef(0);
   const policyDraftTouched = useRef(false);
+  const latestReviewStatusRef = useRef<ReviewResponse['status'] | null>(null);
+  const authoritativeSnapshotVersionRef = useRef(0);
 
   const isLive = review ? LIVE_STREAM_STATUSES.has(review.status) : false;
+
+  const applyAuthoritativeReview = useCallback((nextReview: ReviewResponse) => {
+    authoritativeSnapshotVersionRef.current += 1;
+    setReview(nextReview);
+  }, []);
 
   useEffect(() => {
     seenEventIds.current.clear();
@@ -796,7 +803,13 @@ export function ReportPage(): JSX.Element {
     setPolicyDraft({ goal: '', prohibitions: [], constraints: [] });
     policyDraftTouched.current = false;
     setRecoveringReview(false);
+    latestReviewStatusRef.current = null;
+    authoritativeSnapshotVersionRef.current = 0;
   }, [reviewId]);
+
+  useEffect(() => {
+    latestReviewStatusRef.current = review?.status ?? null;
+  }, [review?.status]);
 
   useEffect(() => {
     if (!reviewId) {
@@ -821,7 +834,7 @@ export function ReportPage(): JSX.Element {
         const data = parseGetReviewResponse((await response.json()) as GetReviewResponse);
 
         if (!cancelled) {
-          setReview(data.review);
+          applyAuthoritativeReview(data.review);
           setState('loaded');
           setErrorMessage('');
         }
@@ -836,7 +849,7 @@ export function ReportPage(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [reviewId, refreshCycle]);
+  }, [applyAuthoritativeReview, reviewId, refreshCycle]);
 
   useEffect(() => {
     if (!review || review.status !== 'policy_ready') {
@@ -853,7 +866,11 @@ export function ReportPage(): JSX.Element {
       return;
     }
 
+    const expectedReviewId = review.id;
     const timer = window.setInterval(() => {
+      if (latestReviewStatusRef.current !== 'policy_pending' || reviewId !== expectedReviewId) {
+        return;
+      }
       setPolicyProgressCycle((value) => value + 1);
     }, 900);
 
@@ -867,7 +884,11 @@ export function ReportPage(): JSX.Element {
       return;
     }
 
+    const expectedReviewId = review.id;
     const timer = window.setInterval(() => {
+      if (latestReviewStatusRef.current !== 'policy_pending' || reviewId !== expectedReviewId) {
+        return;
+      }
       setRefreshCycle((value) => value + 1);
     }, 2000);
 
@@ -1095,6 +1116,7 @@ export function ReportPage(): JSX.Element {
     if (!reviewId || approvingPolicy || review?.status !== 'policy_ready') {
       return;
     }
+    const optimisticBaseVersion = authoritativeSnapshotVersionRef.current;
     const approvedPolicy = normalizeEditablePolicyDraft(policyDraft);
     setApprovingPolicy(true);
     setPolicyActionError(null);
@@ -1120,22 +1142,32 @@ export function ReportPage(): JSX.Element {
         typeof (body as { review?: unknown }).review === 'object';
       if (hasReviewPayload) {
         const parsed = parseGetReviewResponse(body);
-        setReview(parsed.review);
+        applyAuthoritativeReview(parsed.review);
       } else {
+        const acceptedReviewId =
+          body && typeof body === 'object' && typeof (body as { reviewId?: unknown }).reviewId === 'string'
+            ? (body as { reviewId: string }).reviewId
+            : null;
         const approvedPolicySha256 =
           body && typeof body === 'object' && typeof (body as { approvedPolicySha256?: unknown }).approvedPolicySha256 === 'string'
             ? (body as { approvedPolicySha256: string }).approvedPolicySha256
             : undefined;
-        setReview((current) =>
-          current
-            ? {
-                ...current,
-                status: 'policy_approved',
-                approvedPolicy,
-                approvedPolicySha256: approvedPolicySha256 ?? current.approvedPolicySha256,
-              }
-            : current
-        );
+        const canApplyOptimistic =
+          acceptedReviewId === null || acceptedReviewId === reviewId
+            ? authoritativeSnapshotVersionRef.current === optimisticBaseVersion
+            : false;
+        if (canApplyOptimistic) {
+          setReview((current) =>
+            current
+              ? {
+                  ...current,
+                  status: 'policy_approved',
+                  approvedPolicy,
+                  approvedPolicySha256: approvedPolicySha256 ?? current.approvedPolicySha256,
+                }
+              : current
+          );
+        }
       }
       setToastMessage('Policy approved');
       setRefreshCycle((value) => value + 1);
@@ -1146,7 +1178,7 @@ export function ReportPage(): JSX.Element {
     } finally {
       setApprovingPolicy(false);
     }
-  }, [approvingPolicy, policyDraft, review?.status, reviewId]);
+  }, [applyAuthoritativeReview, approvingPolicy, policyDraft, review?.status, reviewId]);
 
   const handleRecoverReview = useCallback(async () => {
     if (!reviewId) {
@@ -1164,7 +1196,7 @@ export function ReportPage(): JSX.Element {
       }
       const action = body && typeof body === 'object' && 'action' in body && typeof body.action === 'string' ? body.action : null;
       const parsed = parseGetReviewResponse(body);
-      setReview(parsed.review);
+      applyAuthoritativeReview(parsed.review);
       setToastMessage(action === 'failed' ? 'Review marked failed' : 'Recovery requested');
       setRefreshCycle((value) => value + 1);
     } catch (error) {
@@ -1172,7 +1204,7 @@ export function ReportPage(): JSX.Element {
     } finally {
       setRecoveringReview(false);
     }
-  }, [reviewId]);
+  }, [applyAuthoritativeReview, reviewId]);
 
   const handleFailReview = useCallback(async () => {
     if (!reviewId) {
@@ -1189,7 +1221,7 @@ export function ReportPage(): JSX.Element {
         throw new Error((body as { error?: string } | null)?.error ?? `Failed to fail review (${response.status})`);
       }
       const parsed = parseGetReviewResponse(body);
-      setReview(parsed.review);
+      applyAuthoritativeReview(parsed.review);
       setToastMessage(
         parsed.review.status === 'failed'
           ? 'Review marked failed'
@@ -1201,7 +1233,7 @@ export function ReportPage(): JSX.Element {
     } finally {
       setRecoveringReview(false);
     }
-  }, [reviewId]);
+  }, [applyAuthoritativeReview, reviewId]);
 
   if (state === 'loading') {
     return (

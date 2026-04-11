@@ -1,4 +1,4 @@
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -304,6 +304,74 @@ describe('ReportPage', () => {
       })
     );
     expect(await screen.findByText('Waiting for queue handoff')).toBeInTheDocument();
+  });
+
+  it('ignores accepted approval payload when reviewId does not match current review', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'policy_ready',
+            findings: [],
+            summary: undefined,
+            summaryText: undefined,
+            markdownSummary: null,
+            derivedPolicy: {
+              goal: 'Reduce risk quickly',
+              prohibitions: ['Do not alter public API behavior'],
+              constraints: ['Prefer small isolated changes'],
+            },
+          },
+        }),
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 202,
+        json: async () => ({
+          reviewId: 'review_other',
+          approvedPolicySha256: 'sha-other',
+        }),
+      })
+      .mockResolvedValue({
+        ok: true,
+        json: async () => ({
+          review: {
+            ...mockReview,
+            status: 'policy_ready',
+            findings: [],
+            summary: undefined,
+            summaryText: undefined,
+            markdownSummary: null,
+            derivedPolicy: {
+              goal: 'Reduce risk quickly',
+              prohibitions: ['Do not alter public API behavior'],
+              constraints: ['Prefer small isolated changes'],
+            },
+          },
+        }),
+      });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/reports/review_123']}>
+        <Routes>
+          <Route path="/reports/:reviewId" element={<ReportPage />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Policy review required');
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Approve policy' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+    });
+    expect(screen.queryByText('Waiting for queue handoff')).not.toBeInTheDocument();
+    expect(screen.getByText('Policy review required')).toBeInTheDocument();
   });
 
   it('renders policy_approved as an in-route handoff state', async () => {
