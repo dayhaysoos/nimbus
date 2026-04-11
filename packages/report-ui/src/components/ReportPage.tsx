@@ -853,28 +853,28 @@ export function ReportPage(): JSX.Element {
       return;
     }
 
-    const timer = window.setTimeout(() => {
+    const timer = window.setInterval(() => {
       setPolicyProgressCycle((value) => value + 1);
     }, 900);
 
     return () => {
-      window.clearTimeout(timer);
+      window.clearInterval(timer);
     };
-  }, [review?.status, policyProgressCycle]);
+  }, [review?.id, review?.status]);
 
   useEffect(() => {
     if (!review || review.status !== 'policy_pending') {
       return;
     }
 
-    const timer = window.setTimeout(() => {
+    const timer = window.setInterval(() => {
       setRefreshCycle((value) => value + 1);
     }, 2000);
 
     return () => {
-      window.clearTimeout(timer);
+      window.clearInterval(timer);
     };
-  }, [review?.id, review?.status, refreshCycle]);
+  }, [review?.id, review?.status]);
 
   useEffect(() => {
     if (state !== 'loaded' || !review) {
