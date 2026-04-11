@@ -213,6 +213,50 @@ describe('ReviewHistoryPage', () => {
     expect(screen.getByRole('link', { name: /feature-x/i })).toBeInTheDocument();
   });
 
+  it('routes policy-stage active reviews to the unified report route', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes('/api/studio/context')) {
+        return {
+          ok: true,
+          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({
+          reviews: [
+            {
+              id: 'rev_policy',
+              workspaceId: 'ws_policy',
+              deploymentId: 'dep_policy',
+              repo: 'acme/web',
+              branch: 'main',
+              status: 'policy_ready',
+              createdAt: '2026-03-01T00:00:04.000Z',
+              updatedAt: '2026-03-01T00:00:04.000Z',
+              startedAt: null,
+              finishedAt: null,
+              findingCount: null,
+              riskLevel: null,
+              recommendation: null,
+              summaryText: 'Policy is ready for approval.',
+            },
+          ],
+        }),
+      };
+    }));
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    const resumeLink = await screen.findByRole('link', { name: 'Resume active review' });
+    expect(resumeLink).toHaveAttribute('href', expect.stringContaining('/branches/acme%2Fweb/main/reports/rev_policy'));
+  });
+
   it('streams start progress before navigating to the branch-scoped report route', async () => {
     const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
       const url = String(input);

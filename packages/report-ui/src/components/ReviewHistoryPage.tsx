@@ -105,9 +105,6 @@ function sameBranchRef(left: StudioBranchRef | null, right: StudioBranchRef | nu
 
 function reviewDestinationPath(entry: ReviewHistoryItem): string {
   const branchBase = `/branches/${encodeURIComponent(entry.repo)}/${encodeURIComponent(entry.branch)}`;
-  if (entry.status === 'policy_pending' || entry.status === 'policy_ready' || entry.status === 'policy_approved') {
-    return `${branchBase}/policy/${entry.id}`;
-  }
   return `${branchBase}/reports/${entry.id}`;
 }
 

@@ -335,7 +335,7 @@ export async function startStudioNewReview(options: {
     label: policyMode === 'review' ? 'Creating policy review' : 'Creating review',
     detail:
       policyMode === 'review'
-        ? 'Creating the review and opening the policy screen.'
+        ? 'Creating the review and opening the Review Run route.'
         : 'Creating the review record before queueing analysis.',
   });
 
@@ -363,7 +363,7 @@ export async function startStudioNewReview(options: {
       reviewId: derived.reviewId,
       routePath: buildStudioReviewRoutePath({
         reviewId: derived.reviewId,
-        route: 'policy',
+        route: 'reports',
         repo: resolved.resolvedProvenance.repo,
         branch: resolved.resolvedProvenance.branch,
       }),
@@ -373,7 +373,7 @@ export async function startStudioNewReview(options: {
     await emitEvent({
       type: 'completed',
       ...result,
-      detail: 'Policy review is ready. Opening the policy screen.',
+      detail: 'Policy review is ready. Opening the Review Run route.',
     });
     return result;
   }
