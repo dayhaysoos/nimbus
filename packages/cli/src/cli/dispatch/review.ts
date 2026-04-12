@@ -5,6 +5,7 @@ import { exportReviewCommand } from '../../commands/review/export.js';
 import { openReviewFromCommitCommand, startReviewStudioCommand } from '../../commands/review/open.js';
 import { reviewPolicyCommand } from '../../commands/review/policy.js';
 import { reviewPreflightCommand } from '../../commands/review/preflight.js';
+import { resetReviewSessionCommand, showReviewSessionCommand } from '../../commands/review/session.js';
 import { showReviewCommand } from '../../commands/review/show.js';
 import type { ParsedCliArgs } from '../../lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from '../../lib/review-policy.js';
@@ -198,6 +199,29 @@ export async function dispatchReviewCommand(
 
     await showReviewCommand(reviewId);
     return;
+  }
+
+  if (reviewAction === 'session') {
+    const sessionAction = positional[1];
+    const sessionId = positional[2];
+
+    if (sessionAction === 'show') {
+      if (!sessionId) {
+        exitWithUsage('Usage: nimbus review session show <session-id>');
+      }
+      await showReviewSessionCommand(sessionId);
+      return;
+    }
+
+    if (sessionAction === 'reset') {
+      if (!sessionId) {
+        exitWithUsage('Usage: nimbus review session reset <session-id>');
+      }
+      await resetReviewSessionCommand(sessionId);
+      return;
+    }
+
+    exitWithUsage('Unknown review session command. Use: show, reset');
   }
 
   if (reviewAction === 'preflight') {

@@ -1,5 +1,6 @@
 import type {
   ReviewBasis,
+  ReviewEnvironmentRevision,
   ReviewRunStatus,
   ReviewSessionPassRecord,
   ReviewSessionPassSummary,
@@ -12,6 +13,32 @@ import { generatePrefixedId, parseJsonOrFallback } from './reviews/shared.js';
 
 function normalizeReviewBasis(value: unknown): ReviewBasis {
   return value === 'environment' ? 'environment' : 'checkpoint';
+}
+
+function normalizeEnvironmentRevision(value: unknown): ReviewEnvironmentRevision | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.source !== 'workspace_head' ||
+    typeof record.diffSha256 !== 'string' ||
+    !record.diffSha256.trim() ||
+    typeof record.changedFileCount !== 'number' ||
+    !Number.isFinite(record.changedFileCount) ||
+    record.changedFileCount < 0 ||
+    typeof record.generatedAt !== 'string' ||
+    !record.generatedAt.trim()
+  ) {
+    return undefined;
+  }
+
+  return {
+    source: 'workspace_head',
+    diffSha256: record.diffSha256.trim(),
+    changedFileCount: Math.max(0, Math.floor(record.changedFileCount)),
+    generatedAt: record.generatedAt.trim(),
+  };
 }
 
 function deriveSessionPhase(status: ReviewRunStatus | null): ReviewSessionPhase {
@@ -49,10 +76,17 @@ function deriveStopReason(status: ReviewRunStatus | null, passCount = 1): Review
 
 function toPassSummary(record: ReviewSessionPassRecord): ReviewSessionPassSummary {
   const requestPayload = parseJsonOrFallback<Record<string, unknown>>(record.request_payload_json, {});
+  const requestProvenance =
+    requestPayload.provenance && typeof requestPayload.provenance === 'object' && !Array.isArray(requestPayload.provenance)
+      ? (requestPayload.provenance as Record<string, unknown>)
+      : {};
+  const environmentRevision = normalizeEnvironmentRevision(requestProvenance.environmentRevision);
+
   return {
     reviewId: record.id,
     status: record.status,
     reviewBasis: normalizeReviewBasis(requestPayload.reviewBasis),
+    ...(environmentRevision ? { environmentRevision } : {}),
     createdAt: record.created_at,
     startedAt: record.started_at,
     finishedAt: record.finished_at,

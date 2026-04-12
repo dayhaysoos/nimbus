@@ -3,6 +3,7 @@ import type {
   WorkspaceDiffResponse,
   WorkspaceFileListResponse,
   WorkspaceFileResponse,
+  WorkspaceResetResponse,
   WorkspaceResponse,
 } from '../../lib/types.js';
 import { throwWorkerError, workerFetch } from './shared.js';
@@ -74,6 +75,18 @@ export async function deleteWorkspace(workerUrl: string, workspaceId: string): P
   }
 
   return response.json() as Promise<{ status: string }>;
+}
+
+export async function resetWorkspace(workerUrl: string, workspaceId: string): Promise<WorkspaceResetResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/reset`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<WorkspaceResetResponse>;
 }
 
 export async function listWorkspaceFiles(

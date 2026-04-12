@@ -96,6 +96,11 @@ export interface WorkspaceCreateResponse {
   reused?: boolean;
 }
 
+export interface WorkspaceResetResponse {
+  workspace: WorkspaceResponse;
+  warning?: string;
+}
+
 export interface WorkspaceFileListEntry {
   path: string;
   type: 'file' | 'directory';
@@ -398,6 +403,7 @@ export interface ReviewSessionResponse {
     reviewId: string;
     status: ReviewRunStatus;
     reviewBasis: ReviewBasis;
+    environmentRevision?: ReviewEnvironmentRevision;
     createdAt: string;
     startedAt: string | null;
     finishedAt: string | null;

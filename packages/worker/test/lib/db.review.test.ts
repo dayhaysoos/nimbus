@@ -384,6 +384,113 @@ export async function runReviewDbTests(): Promise<void> {
   {
     const db = {
       prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_envtrace') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_envtrace',
+                    workspace_id: 'ws_envtrace',
+                    anchor_deployment_id: 'dep_envtrace',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'b'.repeat(40),
+                    anchor_checkpoint_id: '8a513f56ed70',
+                    source_project_root: '.',
+                    active_review_id: 'review_envtrace',
+                    latest_review_id: 'review_envtrace',
+                    pass_count: 2,
+                    stop_reason: 'followup_pass_completed',
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:04:00.000Z',
+                    finished_at: '2026-03-11T00:04:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_envtrace') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'review_checkpoint',
+                        session_id: 'session_envtrace',
+                        status: 'succeeded',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:01.000Z',
+                        finished_at: '2026-03-11T00:01:00.000Z',
+                      },
+                      {
+                        id: 'review_envtrace',
+                        session_id: 'session_envtrace',
+                        status: 'succeeded',
+                        request_payload_json: JSON.stringify({
+                          reviewBasis: 'environment',
+                          provenance: {
+                            environmentRevision: {
+                              source: 'workspace_head',
+                              diffSha256: 'c'.repeat(64),
+                              changedFileCount: 3,
+                              generatedAt: '2026-03-11T00:03:00.000Z',
+                            },
+                          },
+                        }),
+                        created_at: '2026-03-11T00:03:00.000Z',
+                        started_at: '2026-03-11T00:03:02.000Z',
+                        finished_at: '2026-03-11T00:04:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_envtrace');
+    assert.ok(session);
+    assert.equal(session?.passes[1]?.reviewBasis, 'environment');
+    assert.equal(session?.passes[1]?.environmentRevision?.diffSha256, 'c'.repeat(64));
+    assert.equal(session?.passes[1]?.environmentRevision?.changedFileCount, 3);
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
         if (/SELECT review_id, request_payload_sha256, expires_at/i.test(sql)) {
           return {
             bind() {

@@ -37,6 +37,10 @@ Commands:
                        Generate review policy from Entire prompt history only
   review show <review-id>
                        Show review status and summary
+  review session show <session-id>
+                       Show review session state and pass history
+  review session reset <session-id>
+                       Reset a review session workspace back to baseline
   review events <review-id>
                        Stream review lifecycle events
   review studio
@@ -151,6 +155,8 @@ Examples:
   nimbus review policy --commit HEAD
   nimbus review policy --commit HEAD --base origin/main --model gpt-5.1 --json
   nimbus review show rev_abcd1234
+  nimbus review session show session_abcd1234
+  nimbus review session reset session_abcd1234
    nimbus review events rev_abcd1234
    nimbus review studio
    nimbus review studio --detach

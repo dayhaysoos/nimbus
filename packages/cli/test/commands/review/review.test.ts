@@ -15,6 +15,7 @@ import {
 import { reviewEventsCommand } from '../../../src/commands/review/events.js';
 import { showReviewCommand } from '../../../src/commands/review/show.js';
 import { exportReviewCommand } from '../../../src/commands/review/export.js';
+import { resetReviewSessionCommand, showReviewSessionCommand } from '../../../src/commands/review/session.js';
 import { WorkspaceCreateInProgressError } from '../../../src/clients/worker/workspaces.js';
 import {
   reviewPreflightCommand,
@@ -1794,6 +1795,147 @@ export async function runReviewCommandTests(): Promise<void> {
       console.log = (...args: unknown[]) => {
         lines.push(args.map((value) => String(value)).join(' '));
       };
+      globalThis.fetch = (async (): Promise<Response> => {
+        const body = {
+          session: {
+            ...createReviewResponseBody().session,
+            passCount: 2,
+            latestReviewId: 'rev_env1234',
+            currentReviewStatus: 'succeeded',
+            stopReason: 'followup_pass_completed',
+            passes: [
+              ...createReviewResponseBody().session.passes,
+              {
+                reviewId: 'rev_env1234',
+                status: 'succeeded',
+                reviewBasis: 'environment',
+                environmentRevision: {
+                  source: 'workspace_head',
+                  diffSha256: 'b'.repeat(64),
+                  changedFileCount: 2,
+                  generatedAt: '2026-03-11T00:02:00.000Z',
+                },
+                createdAt: '2026-03-11T00:02:00.000Z',
+                startedAt: '2026-03-11T00:02:10.000Z',
+                finishedAt: '2026-03-11T00:03:00.000Z',
+              },
+            ],
+          },
+        };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }) as typeof fetch;
+
+      try {
+        await showReviewSessionCommand('session_abcd1234');
+        assert.equal(lines.some((line) => line.includes('Pass Count:      2')), true);
+        assert.equal(lines.some((line) => line.includes('2. rev_env1234 succeeded environment')), true);
+        assert.equal(lines.some((line) => line.includes('env bbbbbbbbbbbb (2 changed files)')), true);
+      } finally {
+        console.log = originalConsoleLog;
+      }
+    }
+
+    {
+      const lines: string[] = [];
+      let resetCalled = false;
+      const originalConsoleLog = console.log;
+      console.log = (...args: unknown[]) => {
+        lines.push(args.map((value) => String(value)).join(' '));
+      };
+      globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit): Promise<Response> => {
+        const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+        if (url.endsWith('/api/review-sessions/session_abcd1234') && (!init?.method || init.method === 'GET')) {
+          return new Response(
+            JSON.stringify({
+              session: {
+                ...createReviewResponseBody().session,
+                currentReviewStatus: 'succeeded',
+                activeReviewId: null,
+              },
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        }
+        if (url.endsWith('/api/workspaces/ws_abc12345/reset') && init?.method === 'POST') {
+          resetCalled = true;
+          return new Response(
+            JSON.stringify({
+              workspace: {
+                ...createReviewResponseBody().review.target,
+                id: 'ws_abc12345',
+                status: 'ready',
+                sourceType: 'checkpoint',
+                checkpointId: '8a513f56ed70',
+                commitSha: 'a'.repeat(40),
+                sourceRef: 'main',
+                sourceProjectRoot: '.',
+                sourceBundleKey: 'bundle',
+                sourceBundleSha256: 'f'.repeat(64),
+                sourceBundleBytes: 123,
+                sandboxId: 'workspace-ws_abc12345',
+                baselineReady: true,
+                errorCode: null,
+                errorMessage: null,
+                createdAt: '2026-03-11T00:00:00.000Z',
+                updatedAt: '2026-03-11T00:05:00.000Z',
+                deletedAt: null,
+                eventsUrl: '/api/workspaces/ws_abc12345/events',
+              },
+              warning: 'post-reset cleanup warning',
+            }),
+            {
+              status: 200,
+              headers: { 'Content-Type': 'application/json' },
+            }
+          );
+        }
+        throw new Error(`Unhandled fetch in reset test: ${url}`);
+      }) as typeof fetch;
+
+      try {
+        await resetReviewSessionCommand('session_abcd1234');
+        assert.equal(resetCalled, true);
+        assert.equal(lines.some((line) => line.includes('Baseline Ready:  yes')), true);
+      } finally {
+        console.log = originalConsoleLog;
+      }
+    }
+
+    {
+      globalThis.fetch = (async (): Promise<Response> => {
+        return new Response(
+          JSON.stringify({
+            session: {
+              ...createReviewResponseBody().session,
+              activeReviewId: 'rev_running',
+              currentReviewStatus: 'running',
+            },
+          }),
+          {
+            status: 200,
+            headers: { 'Content-Type': 'application/json' },
+          }
+        );
+      }) as typeof fetch;
+
+      await assert.rejects(
+        () => resetReviewSessionCommand('session_abcd1234'),
+        /Review session session_abcd1234 still has an active pass \(running\)\. Wait for it to finish before resetting\./
+      );
+    }
+
+    {
+      const lines: string[] = [];
+      const originalConsoleLog = console.log;
+      console.log = (...args: unknown[]) => {
+        lines.push(args.map((value) => String(value)).join(' '));
+      };
       setReviewSessionCreateFlowForTests({
         createReviewSessionPass: async () => ({
           reviewId: 'rev_env1234',
@@ -1866,10 +2008,24 @@ export async function runReviewCommandTests(): Promise<void> {
         createReviewSessionPass: async () => {
           sessionCalls += 1;
           return {
-            review: createReviewResponseBody().review,
-            session: createReviewResponseBody().session,
+            reviewId: 'rev_env_dispatch',
+            sessionId: 'session_abcd1234',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_env_dispatch/events',
+            resultUrl: '/api/reviews/rev_env_dispatch',
+            sessionUrl: '/api/review-sessions/session_abcd1234',
           } as any;
         },
+        getReview: async () => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: 'rev_env_dispatch',
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: 'environment',
+          },
+          session: createReviewResponseBody().session,
+        }) as any,
         getReviewSession: async () => ({
           session: createReviewResponseBody().session,
         }) as any,

@@ -690,6 +690,7 @@ export interface ReviewSessionPassSummary {
   reviewId: string;
   status: ReviewRunStatus;
   reviewBasis: ReviewBasis;
+  environmentRevision?: ReviewEnvironmentRevision;
   createdAt: string;
   startedAt: string | null;
   finishedAt: string | null;
