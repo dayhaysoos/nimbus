@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "8f070df1a793",
+  "strategy": "manual-commit",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/cli/dispatch/review.ts",
+    "packages/worker/src/lib/review-runner/context.ts",
+    "packages/worker/src/lib/review-runner/environment.ts",
+    "packages/worker/test/api/reviews.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/8f/070df1a793/0/metadata.json",
+      "transcript": "/8f/070df1a793/0/full.jsonl",
+      "content_hash": "/8f/070df1a793/0/content_hash.txt",
+      "prompt": "/8f/070df1a793/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 604769,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 464384,
+    "output_tokens": 3541,
+    "api_call_count": 5
+  }
+}
