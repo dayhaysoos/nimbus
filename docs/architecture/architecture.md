@@ -3,7 +3,7 @@
 ## Status
 
 - State: current-state source of truth
-- Last updated: 2026-04-11
+- Last updated: 2026-04-12
 - Audience: humans and LLMs that need a fast, accurate mental model of the repo
 
 ## Why this file exists
@@ -15,6 +15,7 @@ Read this file first when you need to understand how the repo fits together toda
 Then use the narrower docs only when you need product-planning or subsystem-specific detail:
 
 - `docs/modules/*` for deep dives into a specific subsystem
+- `docs/architecture/review-session-pivot.md` for the active session-based review redesign direction
 - `docs/architecture/review-studio-experience.md` for the locked Review Studio product spec
 - `docs/architecture/review-studio-implementation-plan.md` for current Review Studio slice status, shipped work, and next-slice guidance
 - `docs/architecture/review-studio-experience-build-plan.md` for historical Review Studio planning context
@@ -72,6 +73,8 @@ Current gaps or partial areas include:
 
 - `packages/report-ui` is still the least-refactored package and still carries large mixed-concern components
 - the Review Studio spec includes worktree-backed edit/review environments and a richer fix loop that are not fully implemented in this repo yet
+- the active redesign direction is now documented in `docs/architecture/review-session-pivot.md`
+- that redesign now explicitly prefers a local-first return path using a managed local branch or worktree rather than PR-first completion or direct mutation of the current checkout
 - the current slice-by-slice rollout status lives in `docs/architecture/review-studio-implementation-plan.md`
 - the local Studio runtime already has replay-cursor metadata scaffolding, but replay persistence is not yet the center of the current implementation
 - the worker accepts `reviewBasis = checkpoint|environment`, but the main user-facing Studio path is still centered on checkpoint-based review creation
@@ -487,6 +490,8 @@ Use the docs as follows:
   - current architecture and repo mental model
 - `docs/modules/*`
   - subsystem deep dives for complicated areas
+- `docs/architecture/review-session-pivot.md`
+  - active product-direction and implementation handoff for the session-based review redesign
 - `docs/architecture/review-studio-experience.md`
   - locked product intent for Review Studio
 - `docs/architecture/review-studio-implementation-plan.md`

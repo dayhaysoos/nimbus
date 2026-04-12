@@ -3,12 +3,12 @@
 ## Status
 
 - State: living rollout status
-- Last updated: 2026-04-11
+- Last updated: 2026-04-12
 - Current completion snapshot:
   - Slice 0 foundation: partial
   - Slice 1 Home: shipped
   - Slice 2 New Review slide-over: shipped
-  - Slice 3 Review Run pre-run policy states: shipped with caveats
+  - Slice 3 Review Run pre-run policy states: functionally shipped, not yet hardened
   - Slice 4 Review Run active states: partial
   - Slice 5 terminal actions and fix loop: not started
   - Slice 6 hardening: not started
@@ -16,6 +16,10 @@
 ## Purpose
 
 This is the current source of truth for Review Studio rollout status.
+
+This file tracks the current shipped state of the existing Review Studio implementation.
+
+For the active product-direction pivot toward session-based review convergence, read `review-session-pivot.md` alongside this file.
 
 Use this file to answer:
 
@@ -149,7 +153,7 @@ Current caveat:
 
 ## Slice 3: Review Run, pre-run policy states
 
-State: shipped with caveats
+State: functionally shipped, not yet hardened
 
 What shipped:
 
@@ -157,6 +161,13 @@ What shipped:
 - those states render on the same Review Run route rather than forcing route changes
 - policy approval happens on the same route
 - the old policy page is now effectively a legacy alias over the shared Review Run surface
+
+Current progress:
+
+- the user-visible policy flow now matches the intended route model
+- policy-stage reviews no longer require a separate dedicated page to make forward progress
+- approval transitions cleanly into queue handoff on the same route
+- the behavior is covered well enough to treat the slice as landed from a product-flow perspective
 
 Primary implementation files:
 
@@ -172,9 +183,21 @@ Primary evidence in code/tests:
 - policy-state rendering and approval coverage in `packages/report-ui/src/components/ReportPage.test.tsx`
 - `PolicyPage.tsx` delegates to the shared route surface
 
-Current caveat:
+Standing problems:
 
 - refresh/restart behavior during the policy flow is acceptable today, but the stronger persisted replay/recovery guarantees from the original foundation plan are still not fully finished
+- local replay state is still primarily transient CLI memory rather than durable per-review recovery state
+- policy-stage behavior is implemented inside the still-large `ReportPage.tsx`, so the product flow is ahead of the UI structure/maintainability story
+- the current implementation relies on shared polling/live-stream behavior rather than a more explicit, hardened policy-stage recovery model
+
+Concrete gap evidence:
+
+- `packages/cli/src/app/reviews/session.ts`
+  - runtime metadata still initializes `replayCursors` as empty state rather than persisting a stronger recovery position
+- `packages/cli/src/app/reviews/ui-events-fanout.ts`
+  - replay buffering remains TTL-based in local memory
+- `packages/report-ui/src/components/ReportPage.tsx`
+  - policy timers, stream handling, recovery actions, and later run/terminal states still live in one large route component
 
 ## What is only partial
 
