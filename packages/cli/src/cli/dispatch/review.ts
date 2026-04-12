@@ -362,5 +362,5 @@ export async function dispatchReviewCommand(
     return;
   }
 
-  exitWithUsage('Unknown review command. Use: create, preflight, policy, show, events, studio, open, export');
+  exitWithUsage('Unknown review command. Use: create, preflight, policy, show, events, session, studio, open, export');
 }

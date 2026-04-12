@@ -1,7 +1,5 @@
 import type { Env, ReviewContextDiffHunk, ReviewEnvironmentRevision, WorkspaceResponse } from '../../types.js';
-import { hydrateWorkspaceToReady } from '../../api/workspaces/ready.js';
 import { runWorkspaceDiffAgainstHead, workspaceHasGitHead } from '../../api/workspaces/sandbox-git.js';
-import { loadVerifiedWorkspaceSourceBundle } from '../../api/workspaces/source-bundle.js';
 import { parseChangedPathsFromDiff, parseDiffHunks } from './context-helpers.js';
 import { ReviewContextAssemblyError } from './cochange.js';
 import { resolveReviewSandbox } from '../review-analysis/sandbox.js';
@@ -40,22 +38,9 @@ export async function captureWorkspaceEnvironmentSnapshot(
   let sandbox = await resolveReviewSandbox(env, workspace.sandboxId);
   let hasHead = await workspaceHasGitHead(sandbox as never);
   if (!hasHead) {
-    const sourceBytesOrResponse = await loadVerifiedWorkspaceSourceBundle(env, workspace);
-    if (sourceBytesOrResponse instanceof Response) {
-      const payload = (await sourceBytesOrResponse.json()) as { error?: string };
-      throw new ReviewContextAssemblyError(
-        'review_context_environment_baseline_missing',
-        payload.error ?? 'Environment-backed review requires a recoverable workspace source bundle.'
-      );
-    }
-    await hydrateWorkspaceToReady(env, workspace.id, workspace.sandboxId, sourceBytesOrResponse);
-    sandbox = await resolveReviewSandbox(env, workspace.sandboxId);
-    hasHead = await workspaceHasGitHead(sandbox as never);
-  }
-  if (!hasHead) {
     throw new ReviewContextAssemblyError(
       'review_context_environment_baseline_missing',
-      'Environment-backed review requires a ready git baseline. Run workspace reset and try again.'
+      `Environment-backed review requires git HEAD in workspace ${workspace.id}. Run workspace reset and try again.`
     );
   }
 

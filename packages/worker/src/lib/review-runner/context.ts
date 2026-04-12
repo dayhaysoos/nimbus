@@ -13,6 +13,7 @@ import {
   prepareWorkspaceSourceBundleSandbox,
   readWorkspaceFilesFromSandbox,
 } from '../review-analysis.js';
+import { resolveReviewSandbox } from '../review-analysis/sandbox.js';
 import {
   asRecord,
   discoverConventionCandidates,
@@ -221,47 +222,52 @@ export async function assembleReviewContextBootstrap(
     });
   }
 
-  const changedFileReads = changedPaths.length
-    ? reviewBasis === 'environment'
-      ? await readWorkspaceFilesFromSandbox(env, {
-          sandboxId: workspace?.sandboxId ?? '',
-          paths: changedPaths,
-        })
-      : await readWorkspaceFilesFromSandbox(env, {
-          sandboxId: checkpointSnapshotSandboxId ?? '',
-          paths: changedPaths,
-        })
-    : [];
-  const changedFiles = changedFileReads
-    .filter((item) => item.content !== null && !item.error)
-    .map((item) => ({
-      path: item.path,
-      content: item.content ?? '',
-      byteSize: item.bytes,
-      source: 'changed' as const,
-    }));
+  const shouldDestroyCheckpointSnapshotSandbox = Boolean(
+    checkpointSnapshotSandboxId && deploymentSourceBundleKey && changedPaths.length > 0
+  );
 
-  const conventionCandidates = discoverConventionCandidates(changedPaths, CONVENTION_FILE_MAX_COUNT);
-  const conventionReads = conventionCandidates.length
-    ? reviewBasis === 'environment'
-      ? await readWorkspaceFilesFromSandbox(env, {
-          sandboxId: workspace?.sandboxId ?? '',
-          paths: conventionCandidates,
-        })
-      : await readWorkspaceFilesFromSandbox(env, {
-          sandboxId: checkpointSnapshotSandboxId ?? '',
-          paths: conventionCandidates,
-        })
-    : [];
-  const conventionFiles = conventionReads
-    .filter((item) => item.content !== null && !item.error)
-    .slice(0, CONVENTION_FILE_MAX_COUNT)
-    .map((item) => ({
-      path: item.path,
-      content: item.content ?? '',
-      byteSize: item.bytes,
-      source: 'convention' as const,
-    }));
+  try {
+    const changedFileReads = changedPaths.length
+      ? reviewBasis === 'environment'
+        ? await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: workspace?.sandboxId ?? '',
+            paths: changedPaths,
+          })
+        : await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: checkpointSnapshotSandboxId ?? '',
+            paths: changedPaths,
+          })
+      : [];
+    const changedFiles = changedFileReads
+      .filter((item) => item.content !== null && !item.error)
+      .map((item) => ({
+        path: item.path,
+        content: item.content ?? '',
+        byteSize: item.bytes,
+        source: 'changed' as const,
+      }));
+
+    const conventionCandidates = discoverConventionCandidates(changedPaths, CONVENTION_FILE_MAX_COUNT);
+    const conventionReads = conventionCandidates.length
+      ? reviewBasis === 'environment'
+        ? await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: workspace?.sandboxId ?? '',
+            paths: conventionCandidates,
+          })
+        : await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: checkpointSnapshotSandboxId ?? '',
+            paths: conventionCandidates,
+          })
+      : [];
+    const conventionFiles = conventionReads
+      .filter((item) => item.content !== null && !item.error)
+      .slice(0, CONVENTION_FILE_MAX_COUNT)
+      .map((item) => ({
+        path: item.path,
+        content: item.content ?? '',
+        byteSize: item.bytes,
+        source: 'convention' as const,
+      }));
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
@@ -583,5 +589,17 @@ export async function assembleReviewContextBootstrap(
     },
   });
 
-  return contextPayload;
+    return contextPayload;
+  } finally {
+    if (shouldDestroyCheckpointSnapshotSandbox && checkpointSnapshotSandboxId) {
+      try {
+        const checkpointSandbox = await resolveReviewSandbox(env, checkpointSnapshotSandboxId);
+        if (typeof checkpointSandbox.destroy === 'function') {
+          await checkpointSandbox.destroy();
+        }
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+  }
 }
