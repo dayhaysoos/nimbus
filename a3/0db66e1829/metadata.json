@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "a30db66e1829",
+  "strategy": "manual-commit",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/cli/dispatch/review.ts",
+    "packages/cli/src/lib/args.ts",
+    "packages/cli/test/commands/review/review.test.ts",
+    "packages/cli/test/lib/args.test.ts",
+    "packages/worker/src/api/review-sessions.ts",
+    "packages/worker/src/api/workspaces/sandbox-client.ts",
+    "packages/worker/src/api/workspaces/sandbox.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/review-runner/context.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/analysis.ts",
+    "packages/worker/src/lib/review-runner/environment.ts",
+    "packages/worker/src/lib/review-runner/execution.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/lib/review-runner.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/a3/0db66e1829/0/metadata.json",
+      "transcript": "/a3/0db66e1829/0/full.jsonl",
+      "content_hash": "/a3/0db66e1829/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 19793320,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 19614976,
+    "output_tokens": 67728,
+    "api_call_count": 127
+  }
+}
