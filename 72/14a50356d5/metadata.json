@@ -16,6 +16,7 @@
     "packages/cli/src/lib/types.ts",
     "packages/cli/test/commands/review/review.test.ts",
     "packages/cli/test/commands/workspace/deploy.test.ts",
+    "packages/cli/test/lib/api.workspace.test.ts",
     "packages/worker/migrations/0015_workspace_create_idempotency.sql",
     "packages/worker/migrations/0016_review_sessions.sql",
     "packages/worker/src/api/review-sessions.ts",
@@ -35,6 +36,7 @@
     "packages/worker/src/lib/db/workspaces/shared.ts",
     "packages/worker/src/types.ts",
     "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/api/workspace-deployments.test.ts",
     "packages/worker/test/api/workspaces.test.ts",
     "packages/worker/test/lib/db.review.test.ts",
     "packages/worker/test/lib/db.workspace.test.ts"
@@ -51,6 +53,12 @@
       "transcript": "/72/14a50356d5/1/full.jsonl",
       "content_hash": "/72/14a50356d5/1/content_hash.txt",
       "prompt": "/72/14a50356d5/1/prompt.txt"
+    },
+    {
+      "metadata": "/72/14a50356d5/2/metadata.json",
+      "transcript": "/72/14a50356d5/2/full.jsonl",
+      "content_hash": "/72/14a50356d5/2/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
