@@ -1,0 +1,17 @@
+okay, I want you to commit these docs you made, then merge to main, switch to main and make a new branch for this work I want you to do. Stop there, don't actually start building until I tell you to.
+
+---
+
+Okay, I want you to try building as much of this as possible. But before we do that, do you have any questions you want to ask me about implementation details? If you do, give me what your recommendations may be. If you have enough info to begin, let me know.
+
+---
+
+I'll stick with your default recommendations. Now during this session, I want you to create tests, make sure they are green before moving on to the next slice/feature. I expect you to push workers using Wrangler. I also want you to test the actual product itself. Meaning, once you're done, run the actual tests yourself via CLI. Study the results, if things behave as expected and there nare no failures, then you've done well. If there are bugs, troubleshoot and re-run until you have it in a successful place. IS there anything you'd change about the process I laid out for you to be more efficent and secure in your output?
+
+---
+
+Yes everything as far as env variables and what not are set up and you can run anything from the CLI. Go ahead and start now.
+
+---
+
+why did you stop there? I also came back and saw a browser tab open where cloudflare was asking for wrangler to get access to my account or something? Do I need to confirm that for you to continue? It expired so I need to redo it

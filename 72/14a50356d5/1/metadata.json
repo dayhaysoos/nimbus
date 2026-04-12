@@ -1,9 +1,11 @@
 {
   "cli_version": "0.5.2",
   "checkpoint_id": "7214a50356d5",
+  "session_id": "019d7ea2-dd77-7633-9509-834b381e1a3b",
   "strategy": "manual-commit",
+  "created_at": "2026-04-12T14:23:53.964909Z",
   "branch": "review-session-redesign",
-  "checkpoints_count": 3,
+  "checkpoints_count": 2,
   "files_touched": [
     "packages/cli/src/app/reviews/context.ts",
     "packages/cli/src/app/reviews/create-from-commit.ts",
@@ -39,25 +41,28 @@
     "packages/worker/test/lib/db.review.test.ts",
     "packages/worker/test/lib/db.workspace.test.ts"
   ],
-  "sessions": [
-    {
-      "metadata": "/72/14a50356d5/0/metadata.json",
-      "transcript": "/72/14a50356d5/0/full.jsonl",
-      "content_hash": "/72/14a50356d5/0/content_hash.txt",
-      "prompt": "/72/14a50356d5/0/prompt.txt"
-    },
-    {
-      "metadata": "/72/14a50356d5/1/metadata.json",
-      "transcript": "/72/14a50356d5/1/full.jsonl",
-      "content_hash": "/72/14a50356d5/1/content_hash.txt",
-      "prompt": "/72/14a50356d5/1/prompt.txt"
-    }
-  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "8330518f8335",
+  "checkpoint_transcript_start": 1321,
+  "transcript_lines_at_start": 1321,
   "token_usage": {
-    "input_tokens": 56889714,
+    "input_tokens": 42589955,
     "cache_creation_tokens": 0,
-    "cache_read_tokens": 54296576,
-    "output_tokens": 205673,
-    "api_call_count": 394
+    "cache_read_tokens": 41204480,
+    "output_tokens": 144223,
+    "api_call_count": 270
+  },
+  "session_metrics": {
+    "turn_count": 26
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-12T14:23:49.362237Z",
+    "agent_lines": 1785,
+    "human_added": 984,
+    "human_modified": 56,
+    "human_removed": 0,
+    "total_committed": 2825,
+    "agent_percentage": 63.1858407079646
   }
 }
