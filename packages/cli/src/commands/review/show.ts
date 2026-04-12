@@ -8,13 +8,14 @@ export async function showReviewCommand(reviewId: string): Promise<void> {
     throw new Error('NIMBUS_WORKER_URL environment variable is required');
   }
 
-  const { review } = await getReview(workerUrl, reviewId);
+  const { review, session } = await getReview(workerUrl, reviewId);
 
   p.log.info(`Review ${review.id}`);
   console.log('');
   console.log(`  Status:          ${review.status}`);
   console.log(`  Workspace ID:    ${review.workspaceId}`);
   console.log(`  Deployment ID:   ${review.deploymentId}`);
+  console.log(`  Session ID:      ${review.sessionId ?? 'none'}`);
   console.log(`  Target:          ${review.target.type}`);
   console.log(`  Mode:            ${review.mode}`);
   console.log(`  Recommendation:  ${review.summary?.recommendation ?? 'pending'}`);
@@ -24,6 +25,11 @@ export async function showReviewCommand(reviewId: string): Promise<void> {
   console.log(`  Updated At:      ${review.updatedAt}`);
   if (review.error) {
     console.log(`  Error:           ${review.error.code}: ${review.error.message}`);
+  }
+  if (session) {
+    console.log(`  Session Phase:   ${session.phase}`);
+    console.log(`  Session Passes:  ${session.passCount}`);
+    console.log(`  Session Stop:    ${session.stopReason ?? 'active'}`);
   }
 
   if (review.intent?.goal) {

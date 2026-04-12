@@ -9,6 +9,8 @@ function generatePrefixedId(prefix: string, length = 8): string {
 
 export { generateJobId } from './db/jobs.js';
 export { generateWorkspaceId } from './db/workspaces.js';
+export { WorkspaceCreateIdempotencyConflictError } from './db/workspaces.js';
+export { WorkspaceCreateInProgressError } from './db/workspaces.js';
 export { generateWorkspaceOperationId, WorkspaceIdempotencyConflictError } from './db/operations.js';
 export { WorkspaceTaskIdempotencyConflictError } from './db/tasks.js';
 export { WorkspaceDeploymentIdempotencyConflictError } from './db/deployments.js';
@@ -111,6 +113,15 @@ export {
   updateReviewRunPolicy,
   updateReviewRunStatus,
 } from './db/reviews.js';
+export {
+  attachReviewPassToSession,
+  createReviewSession,
+  deleteReviewSession,
+  generateReviewSessionId,
+  getReviewSession,
+  getReviewSessionAccountId,
+  getReviewSessionByReviewId,
+} from './db/review-sessions.js';
 export {
   createReviewContextBlobReference,
   generateReviewContextId,

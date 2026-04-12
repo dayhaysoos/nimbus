@@ -1,6 +1,7 @@
 import type { AuthContext, Env, ReviewRunStatus } from '../../types.js';
 import {
   getReviewRunAccountId,
+  getReviewSessionAccountId,
   getWorkspaceAccountId,
 } from '../../lib/db.js';
 import { canAccessAccount } from '../../lib/authz.js';
@@ -48,6 +49,18 @@ export async function requireReviewAccess(env: Env, reviewId: string, authContex
   const accountId = await getReviewRunAccountId(env.DB, reviewId);
   if (!canAccessAccount(authContext, accountId)) {
     return jsonResponse({ error: 'Review not found' }, 404);
+  }
+  return null;
+}
+
+export async function requireReviewSessionAccess(
+  env: Env,
+  sessionId: string,
+  authContext: AuthContext
+): Promise<Response | null> {
+  const accountId = await getReviewSessionAccountId(env.DB, sessionId);
+  if (!canAccessAccount(authContext, accountId)) {
+    return jsonResponse({ error: 'Review session not found' }, 404);
   }
   return null;
 }

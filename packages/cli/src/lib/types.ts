@@ -79,6 +79,12 @@ export interface WorkspaceResponse {
   baselineReady: boolean;
   errorCode: string | null;
   errorMessage: string | null;
+  lastDeploymentId?: string | null;
+  lastDeploymentStatus?: WorkspaceDeploymentStatus | null;
+  lastDeployedUrl?: string | null;
+  lastDeployedAt?: string | null;
+  lastDeploymentErrorCode?: string | null;
+  lastDeploymentErrorMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -87,6 +93,7 @@ export interface WorkspaceResponse {
 
 export interface WorkspaceCreateResponse {
   workspace: WorkspaceResponse;
+  reused?: boolean;
 }
 
 export interface WorkspaceFileListEntry {
@@ -190,6 +197,7 @@ export interface WorkspaceDeploymentResponse {
 
 export interface WorkspaceDeploymentCreateResponse {
   deployment: WorkspaceDeploymentResponse;
+  reused?: boolean;
 }
 
 export interface WorkspaceDeploymentGetResponse {
@@ -243,6 +251,16 @@ export type ReviewBasis = 'checkpoint' | 'environment';
 export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ReviewConfidence = 'high' | 'medium' | 'low';
 export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
+export type ReviewSessionPhase =
+  | 'preparing'
+  | 'reviewing'
+  | 'fixing'
+  | 'verifying'
+  | 'waiting_on_human'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+export type ReviewSessionStopReason = 'initial_pass_completed' | 'initial_pass_failed' | 'cancelled';
 
 export interface ReviewSummary {
   riskLevel: ReviewSeverity;
@@ -282,6 +300,7 @@ export interface ReviewRunResponse {
   id: string;
   workspaceId: string;
   deploymentId: string;
+  sessionId: string | null;
   target: {
     type: 'workspace_deployment';
     workspaceId: string;
@@ -343,21 +362,54 @@ export interface ReviewRunResponse {
   };
 }
 
+export interface ReviewSessionResponse {
+  id: string;
+  workspaceId: string;
+  anchorDeploymentId: string;
+  repo: string;
+  branch: string;
+  initialReviewBasis: ReviewBasis;
+  anchorCommitSha: string | null;
+  anchorCheckpointId: string | null;
+  sourceProjectRoot: string | null;
+  phase: ReviewSessionPhase;
+  passCount: number;
+  activeReviewId: string | null;
+  latestReviewId: string | null;
+  currentReviewStatus: ReviewRunStatus | null;
+  stopReason: ReviewSessionStopReason | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  passes: Array<{
+    reviewId: string;
+    status: ReviewRunStatus;
+    reviewBasis: ReviewBasis;
+    createdAt: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+  }>;
+}
+
 export interface ReviewCreateResponse {
   reviewId: string;
+  sessionId?: string | null;
   status: ReviewRunStatus;
   eventsUrl: string;
   resultUrl: string;
+  sessionUrl?: string;
 }
 
 export interface ReviewPolicyDeriveResponse {
   reviewId: string;
+  sessionId?: string | null;
   status: ReviewRunStatus;
   derivedPolicy: {
     goal: string | null;
     prohibitions: string[];
     constraints: string[];
   };
+  sessionUrl?: string;
 }
 
 export interface ReviewPolicyApproveResponse {
@@ -376,6 +428,11 @@ export interface ReviewPolicyResponse {
 
 export interface ReviewGetResponse {
   review: ReviewRunResponse;
+  session?: ReviewSessionResponse;
+}
+
+export interface ReviewSessionGetResponse {
+  session: ReviewSessionResponse;
 }
 
 export interface ReviewEventEnvelope {

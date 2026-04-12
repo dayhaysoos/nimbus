@@ -40,6 +40,7 @@ export async function createReviewCommand(
   };
 
   let reviewId = '';
+  let reviewSessionId: string | null = null;
   let status = '';
   let resultUrl = '';
   let eventsUrl = '';
@@ -63,6 +64,7 @@ export async function createReviewCommand(
       provenance,
     });
     reviewId = response.reviewId;
+    reviewSessionId = response.sessionId ?? null;
     status = response.status;
     resultUrl = response.resultUrl;
     eventsUrl = response.eventsUrl;
@@ -75,6 +77,7 @@ export async function createReviewCommand(
       provenance,
     });
     reviewId = derived.reviewId;
+    reviewSessionId = derived.sessionId ?? null;
     if (policyMode === 'auto') {
       await approveReviewPolicy(workerUrl, reviewId, {
         approvedPolicy: derived.derivedPolicy,
@@ -88,6 +91,9 @@ export async function createReviewCommand(
   }
 
   p.log.success(`Review queued: ${reviewId}`);
+  if (reviewSessionId) {
+    p.log.message(`Review session: ${reviewSessionId}`);
+  }
   p.log.message(`Policy mode: ${policyMode}`);
   p.log.message(`Review basis: ${reviewBasis}`);
   p.log.message(`Status: ${status}`);

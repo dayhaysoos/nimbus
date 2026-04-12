@@ -652,6 +652,79 @@ export interface ReviewApprovedPolicy {
   constraints: string[];
 }
 
+export type ReviewSessionPhase =
+  | 'preparing'
+  | 'reviewing'
+  | 'fixing'
+  | 'verifying'
+  | 'waiting_on_human'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export type ReviewSessionStopReason = 'initial_pass_completed' | 'initial_pass_failed' | 'cancelled';
+
+export interface ReviewSessionPassRecord {
+  id: string;
+  session_id: string | null;
+  status: ReviewRunStatus;
+  request_payload_json: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface ReviewSessionPassSummary {
+  reviewId: string;
+  status: ReviewRunStatus;
+  reviewBasis: ReviewBasis;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface ReviewSessionRecord {
+  id: string;
+  workspace_id: string;
+  anchor_deployment_id: string;
+  repo: string;
+  branch: string;
+  initial_review_basis: ReviewBasis;
+  anchor_commit_sha: string | null;
+  anchor_checkpoint_id: string | null;
+  source_project_root: string | null;
+  active_review_id: string | null;
+  latest_review_id: string | null;
+  pass_count: number;
+  stop_reason: ReviewSessionStopReason | null;
+  account_id: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+}
+
+export interface ReviewSessionResponse {
+  id: string;
+  workspaceId: string;
+  anchorDeploymentId: string;
+  repo: string;
+  branch: string;
+  initialReviewBasis: ReviewBasis;
+  anchorCommitSha: string | null;
+  anchorCheckpointId: string | null;
+  sourceProjectRoot: string | null;
+  phase: ReviewSessionPhase;
+  passCount: number;
+  activeReviewId: string | null;
+  latestReviewId: string | null;
+  currentReviewStatus: ReviewRunStatus | null;
+  stopReason: ReviewSessionStopReason | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  passes: ReviewSessionPassSummary[];
+}
+
 export interface ReviewProvenanceSummary {
   repo: string;
   branch: string;
@@ -729,6 +802,7 @@ export interface ReviewRunRecord {
   id: string;
   workspace_id: string;
   deployment_id: string;
+  session_id: string | null;
   target_type: ReviewTargetType;
   mode: ReviewMode;
   status: ReviewRunStatus;
@@ -757,6 +831,7 @@ export interface ReviewRunResponse {
   id: string;
   workspaceId: string;
   deploymentId: string;
+  sessionId: string | null;
   target: {
     type: ReviewTargetType;
     workspaceId: string;

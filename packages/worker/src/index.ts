@@ -26,6 +26,7 @@ import {
   handleRecoverReview,
   handleListReviews,
 } from './api/reviews.js';
+import { handleGetReviewSession } from './api/review-sessions.js';
 import {
   handleCreateWorkspace,
   handleCreateWorkspaceGithubFork,
@@ -176,6 +177,12 @@ export default {
     const reviewMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)$/);
     if (reviewMatch && request.method === 'GET') {
       return handleGetReview(reviewMatch[1], request, env, authContext);
+    }
+
+    // Route: GET /api/review-sessions/:id - Get review session
+    const reviewSessionMatch = url.pathname.match(/^\/api\/review-sessions\/([a-z0-9_]+)$/);
+    if (reviewSessionMatch && request.method === 'GET') {
+      return handleGetReviewSession(reviewSessionMatch[1], env, authContext);
     }
 
     // Route: GET /api/workspaces/:id/events - List workspace events

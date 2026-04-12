@@ -13,6 +13,7 @@ import {
 import { reviewEventsCommand } from '../../../src/commands/review/events.js';
 import { showReviewCommand } from '../../../src/commands/review/show.js';
 import { exportReviewCommand } from '../../../src/commands/review/export.js';
+import { WorkspaceCreateInProgressError } from '../../../src/clients/worker/workspaces.js';
 import {
   reviewPreflightCommand,
   setReviewPreflightCommitResolverForTests,
@@ -29,6 +30,7 @@ function createReviewResponseBody() {
       id: 'rev_abcd1234',
       workspaceId: 'ws_abc12345',
       deploymentId: 'dep_abcd1234',
+      sessionId: 'session_abcd1234',
       target: {
         type: 'workspace_deployment',
         workspaceId: 'ws_abc12345',
@@ -68,6 +70,36 @@ function createReviewResponseBody() {
         transcriptUrl: null,
       },
       markdownSummary: '## Review Summary\n\n- Recommendation: approve\n- Risk level: low\n- Findings: 0',
+    },
+    session: {
+      id: 'session_abcd1234',
+      workspaceId: 'ws_abc12345',
+      anchorDeploymentId: 'dep_abcd1234',
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
+      initialReviewBasis: 'checkpoint',
+      anchorCommitSha: 'a'.repeat(40),
+      anchorCheckpointId: '8a513f56ed70',
+      sourceProjectRoot: '.',
+      phase: 'completed',
+      passCount: 1,
+      activeReviewId: 'rev_abcd1234',
+      latestReviewId: 'rev_abcd1234',
+      currentReviewStatus: 'succeeded',
+      stopReason: 'initial_pass_completed',
+      createdAt: '2026-03-11T00:00:00.000Z',
+      updatedAt: '2026-03-11T00:01:00.000Z',
+      finishedAt: '2026-03-11T00:01:00.000Z',
+      passes: [
+        {
+          reviewId: 'rev_abcd1234',
+          status: 'succeeded',
+          reviewBasis: 'checkpoint',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          startedAt: '2026-03-11T00:00:10.000Z',
+          finishedAt: '2026-03-11T00:01:00.000Z',
+        },
+      ],
     },
   };
 }
@@ -890,6 +922,7 @@ export async function runReviewCommandTests(): Promise<void> {
     {
       const sequence: string[] = [];
       const eventLines: string[] = [];
+      let workspaceIdempotencyKey: string | undefined;
       let deployIdempotencyKey: string | undefined;
       let reviewIdempotencyKey: string | undefined;
       let commitFlowReviewModel: string | undefined;
@@ -920,8 +953,9 @@ export async function runReviewCommandTests(): Promise<void> {
             projectRoot: options?.projectRoot ?? '.',
           };
           },
-          createWorkspace: async () => {
+          createWorkspace: async (_source, createOptions) => {
             sequence.push('workspace.create');
+            workspaceIdempotencyKey = createOptions?.idempotencyKey;
             return {
               workspace: {
                 id: 'ws_compound',
@@ -1010,13 +1044,232 @@ export async function runReviewCommandTests(): Promise<void> {
         assert.deepEqual(sequence, ['workspace.create', 'workspace.deploy', 'review.create', 'review.events', 'review.show']);
         assert.equal(eventLines.some((line) => line.includes('[1] review_created')), true);
         assert.equal(eventLines[eventLines.length - 1], 'Report URL: https://worker.example.com/reviews/rev_compound');
+        assert.equal(typeof workspaceIdempotencyKey, 'string');
         assert.equal(typeof deployIdempotencyKey, 'string');
         assert.equal(typeof reviewIdempotencyKey, 'string');
         assert.equal(commitFlowReviewModel, 'sonnet-4.5');
         assert.equal(commitFlowProjectRoot, 'apps/web');
+        assert.equal(workspaceIdempotencyKey?.startsWith('workspace-'), true);
         assert.equal(deployIdempotencyKey?.startsWith('deploy-'), true);
         assert.equal(reviewIdempotencyKey?.startsWith('review-'), true);
       } finally {
+        console.log = originalConsoleLog;
+        setReviewCommitResolverForTests(null);
+        setReviewPreflightContextResolverForTests(null);
+        setReviewCreateFlowForTests(null);
+      }
+    }
+
+    {
+      const workspaceIdempotencyKeys: string[] = [];
+      const deployIdempotencyKeys: string[] = [];
+      const reviewIdempotencyKeys: string[] = [];
+      const originalConsoleLog = console.log;
+      console.log = () => undefined;
+      try {
+        setReviewPreflightContextResolverForTests(async () => ({
+          note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+          sessionIds: ['sess_reuse'],
+          transcriptUrl: null,
+          intentSessionContext: ['Constraint: Keep scope narrow.'],
+        }));
+        setReviewCommitResolverForTests(() => ({
+          commitSha: 'c'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+        }));
+        setReviewCreateFlowForTests({
+          resolveWorkspaceSource: (_commitSha, options) => ({
+            commitSha: 'c'.repeat(40),
+            checkpointId: '8a513f56ed70',
+            sourceRef: null,
+            projectRoot: options?.projectRoot ?? '.',
+          }),
+          createWorkspace: async (_source, createOptions) => {
+            workspaceIdempotencyKeys.push(createOptions?.idempotencyKey ?? '');
+            return {
+              workspace: {
+                id: 'ws_reuse',
+                status: 'ready',
+                sourceType: 'checkpoint',
+                checkpointId: '8a513f56ed70',
+                commitSha: 'c'.repeat(40),
+                sourceRef: null,
+                sourceProjectRoot: '.',
+                sourceBundleKey: 'bundle',
+                sourceBundleSha256: 'f'.repeat(64),
+                sourceBundleBytes: 123,
+                sandboxId: 'workspace-ws_reuse',
+                baselineReady: true,
+                errorCode: null,
+                errorMessage: null,
+                createdAt: '2026-03-11T00:00:00.000Z',
+                updatedAt: '2026-03-11T00:00:00.000Z',
+                deletedAt: null,
+                eventsUrl: '/api/workspaces/ws_reuse/events',
+              },
+            };
+          },
+          deployWorkspace: async (_workspaceId, deployOptions) => {
+            deployIdempotencyKeys.push(deployOptions?.idempotencyKey ?? '');
+            return {
+              id: 'dep_reuse',
+              workspaceId: 'ws_reuse',
+              status: 'succeeded',
+              provider: 'simulated',
+              idempotencyKey: deployOptions?.idempotencyKey ?? 'idem-deploy',
+              maxRetries: 2,
+              attemptCount: 1,
+              sourceSnapshotSha256: null,
+              sourceBundleKey: 'bundle',
+              deployedUrl: 'https://example.dev',
+              providerDeploymentId: null,
+              cancelRequestedAt: null,
+              startedAt: '2026-03-11T00:00:00.000Z',
+              finishedAt: '2026-03-11T00:00:30.000Z',
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:30.000Z',
+              provenance: {},
+              toolchain: null,
+              dependencyCacheKey: null,
+              dependencyCacheHit: false,
+              remediations: [],
+            };
+          },
+          createReview: async (_workerUrl, idempotencyKey) => {
+            reviewIdempotencyKeys.push(idempotencyKey);
+            return {
+              reviewId: `rev_reuse_${reviewIdempotencyKeys.length}`,
+              status: 'queued',
+              eventsUrl: '/api/reviews/rev_reuse/events',
+              resultUrl: '/reviews/rev_reuse',
+            };
+          },
+          streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+            await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+          },
+          getReview: async () => createReviewResponseBody() as unknown as { review: any },
+        });
+
+        await createReviewFromCommitCommand({ commitish: 'HEAD' });
+        await createReviewFromCommitCommand({ commitish: 'HEAD' });
+
+        assert.equal(workspaceIdempotencyKeys.length, 2);
+        assert.equal(deployIdempotencyKeys.length, 2);
+        assert.equal(reviewIdempotencyKeys.length, 2);
+        assert.equal(workspaceIdempotencyKeys[0], workspaceIdempotencyKeys[1]);
+        assert.equal(deployIdempotencyKeys[0], deployIdempotencyKeys[1]);
+        assert.notEqual(reviewIdempotencyKeys[0], reviewIdempotencyKeys[1]);
+      } finally {
+        console.log = originalConsoleLog;
+        setReviewCommitResolverForTests(null);
+        setReviewPreflightContextResolverForTests(null);
+        setReviewCreateFlowForTests(null);
+      }
+    }
+
+    {
+      const originalFetch = globalThis.fetch;
+      const originalConsoleLog = console.log;
+      let workspacePollCount = 0;
+      let deployedWorkspaceId = '';
+      console.log = () => undefined;
+      try {
+        globalThis.fetch = (async (input: unknown): Promise<Response> => {
+          const url = String(input);
+          if (url.endsWith('/api/workspaces/ws_in_progress')) {
+            workspacePollCount += 1;
+            return new Response(
+              JSON.stringify({
+                id: 'ws_in_progress',
+                status: workspacePollCount === 1 ? 'creating' : 'ready',
+                sourceType: 'checkpoint',
+                checkpointId: '8a513f56ed70',
+                commitSha: 'd'.repeat(40),
+                sourceRef: null,
+                sourceProjectRoot: '.',
+                sourceBundleKey: 'bundle',
+                sourceBundleSha256: 'f'.repeat(64),
+                sourceBundleBytes: 123,
+                sandboxId: 'workspace-ws_in_progress',
+                baselineReady: true,
+                errorCode: null,
+                errorMessage: null,
+                createdAt: '2026-03-11T00:00:00.000Z',
+                updatedAt: '2026-03-11T00:00:00.000Z',
+                deletedAt: null,
+                eventsUrl: '/api/workspaces/ws_in_progress/events',
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+          throw new Error(`Unexpected request in in-progress workspace test: ${url}`);
+        }) as typeof fetch;
+
+        setReviewPreflightContextResolverForTests(async () => ({
+          note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+          sessionIds: ['sess_in_progress'],
+          transcriptUrl: null,
+          intentSessionContext: ['Constraint: Keep scope narrow.'],
+        }));
+        setReviewCommitResolverForTests(() => ({
+          commitSha: 'd'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+        }));
+        setReviewCreateFlowForTests({
+          resolveWorkspaceSource: () => ({
+            commitSha: 'd'.repeat(40),
+            checkpointId: '8a513f56ed70',
+            sourceRef: null,
+            projectRoot: '.',
+          }),
+          createWorkspace: async () => {
+            throw new WorkspaceCreateInProgressError('ws_in_progress');
+          },
+          deployWorkspace: async (workspaceId) => {
+            deployedWorkspaceId = workspaceId;
+            return {
+              id: 'dep_in_progress',
+              workspaceId,
+              status: 'succeeded',
+              provider: 'simulated',
+              idempotencyKey: 'idem-deploy',
+              maxRetries: 2,
+              attemptCount: 1,
+              sourceSnapshotSha256: null,
+              sourceBundleKey: 'bundle',
+              deployedUrl: 'https://example.dev',
+              providerDeploymentId: null,
+              cancelRequestedAt: null,
+              startedAt: '2026-03-11T00:00:00.000Z',
+              finishedAt: '2026-03-11T00:00:30.000Z',
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:30.000Z',
+              provenance: {},
+              toolchain: null,
+              dependencyCacheKey: null,
+              dependencyCacheHit: false,
+              remediations: [],
+            };
+          },
+          createReview: async () => ({
+            reviewId: 'rev_in_progress',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_in_progress/events',
+            resultUrl: '/reviews/rev_in_progress',
+          }),
+          streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+            await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+          },
+          getReview: async () => createReviewResponseBody() as unknown as { review: any },
+        });
+
+        await createReviewFromCommitCommand({ commitish: 'HEAD', pollIntervalMs: 10 });
+        assert.equal(workspacePollCount >= 2, true);
+        assert.equal(deployedWorkspaceId, 'ws_in_progress');
+      } finally {
+        globalThis.fetch = originalFetch;
         console.log = originalConsoleLog;
         setReviewCommitResolverForTests(null);
         setReviewPreflightContextResolverForTests(null);
@@ -1475,6 +1728,11 @@ export async function runReviewCommandTests(): Promise<void> {
 
     {
       let fetchCount = 0;
+      const lines: string[] = [];
+      const originalConsoleLog = console.log;
+      console.log = (...args: unknown[]) => {
+        lines.push(args.map((value) => String(value)).join(' '));
+      };
       globalThis.fetch = (async (): Promise<Response> => {
         fetchCount += 1;
         return new Response(JSON.stringify(createReviewResponseBody()), {
@@ -1483,8 +1741,15 @@ export async function runReviewCommandTests(): Promise<void> {
         });
       }) as typeof fetch;
 
-      await showReviewCommand('rev_abcd1234');
-      assert.equal(fetchCount, 1);
+      try {
+        await showReviewCommand('rev_abcd1234');
+        assert.equal(fetchCount, 1);
+        assert.equal(lines.some((line) => line.includes('Session ID:      session_abcd1234')), true);
+        assert.equal(lines.some((line) => line.includes('Session Phase:   completed')), true);
+        assert.equal(lines.some((line) => line.includes('Session Passes:  1')), true);
+      } finally {
+        console.log = originalConsoleLog;
+      }
     }
 
     {

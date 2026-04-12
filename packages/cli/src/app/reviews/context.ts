@@ -1,6 +1,11 @@
 import * as p from '@clack/prompts';
 import { workspaceDeployCommand } from '../../commands/workspace/deploy.js';
 import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../../commands/workspace/create.js';
+import {
+  getWorkspace as getWorkspaceFromWorker,
+  WorkspaceCreateInProgressError,
+} from '../../clients/worker/workspaces.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { resolveCochangeFromLocalGit } from '../../lib/entire/context.js';
 import {
   type IncludedCheckpointSummary,
@@ -10,7 +15,7 @@ import {
   validateReviewCommitCheckpoint,
   validateReviewEntireIntentContext,
 } from '../../commands/review/preflight.js';
-import type { WorkspaceDeploymentResponse, WorkspaceResponse } from '../../lib/types.js';
+import type { WorkspaceDeploymentResponse } from '../../lib/types.js';
 import {
   COCHANGE_LOOKBACK_SESSIONS,
   COCHANGE_TOP_N,
@@ -21,6 +26,7 @@ import {
   normalizeCommitDiffPatch,
   parseChangedPathsFromDiff,
   resolveReviewGitProvenance,
+  sleep,
 } from './create-shared.js';
 
 interface CommitResolution {
@@ -43,9 +49,43 @@ export interface ResolveReviewContextOptions {
   projectRoot?: string;
   idempotencyKey?: string;
   pollIntervalMs?: number;
+  workspaceReadyTimeoutMs?: number;
   intentSummaryModel?: string;
   signal?: AbortSignal;
   onProgress?: (event: ResolveReviewContextProgressEvent) => void | Promise<void>;
+}
+
+const DEFAULT_WORKSPACE_READY_TIMEOUT_MS = 10 * 60_000;
+
+function createAbortError(): Error {
+  const error = new Error('The operation was aborted.');
+  error.name = 'AbortError';
+  return error;
+}
+
+async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    await sleep(ms);
+    return;
+  }
+  if (signal.aborted) {
+    throw createAbortError();
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', onAbort);
+      reject(createAbortError());
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function mergeCheckpointContexts(input: {
@@ -157,7 +197,8 @@ let createWorkspaceForCommitFlow: (source: {
   checkpointId: string | null;
   sourceRef: string | null;
   projectRoot: string;
-}) => Promise<{ workspace: WorkspaceResponse }> = createWorkspaceFromResolvedSource;
+}, options?: { idempotencyKey?: string }) => Promise<Awaited<ReturnType<typeof createWorkspaceFromResolvedSource>>> =
+  createWorkspaceFromResolvedSource;
 let resolveWorkspaceSourceForCommitFlow: typeof resolveWorkspaceSource = resolveWorkspaceSource;
 let deployWorkspaceForCommitFlow: (
   workspaceId: string,
@@ -185,6 +226,41 @@ export function setReviewContextFlowForTests(overrides: ReviewContextFlowOverrid
   resolveWorkspaceSourceForCommitFlow = overrides?.resolveWorkspaceSource ?? resolveWorkspaceSource;
   deployWorkspaceForCommitFlow = overrides?.deployWorkspace ?? workspaceDeployCommand;
   resolveLocalCochangeForCommitFlow = overrides?.resolveLocalCochange ?? resolveCochangeFromLocalGit;
+}
+
+async function waitForWorkspaceReadyFromIdempotentInProgress(
+  workspaceId: string,
+  options?: { pollIntervalMs?: number; timeoutMs?: number; signal?: AbortSignal }
+): Promise<Awaited<ReturnType<typeof createWorkspaceFromResolvedSource>>> {
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) {
+    throw new Error('NIMBUS_WORKER_URL environment variable is required for workspace creation.');
+  }
+
+  const pollIntervalMs = Math.max(250, options?.pollIntervalMs ?? 1500);
+  const timeoutMs =
+    typeof options?.timeoutMs === 'number' && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? Math.floor(options.timeoutMs)
+      : DEFAULT_WORKSPACE_READY_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    if (options?.signal?.aborted) {
+      throw createAbortError();
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for workspace ${workspaceId} to become ready`);
+    }
+
+    const workspace = await getWorkspaceFromWorker(workerUrl, workspaceId);
+    if (workspace.status === 'ready') {
+      return { workspace, reused: true };
+    }
+    if (workspace.status === 'failed' || workspace.status === 'deleted') {
+      throw new Error(`Workspace ${workspaceId} ended in non-ready state: ${workspace.status}`);
+    }
+    await sleepWithAbort(pollIntervalMs, options?.signal);
+  }
 }
 
 /**
@@ -405,14 +481,40 @@ export async function resolveReviewContext(
       ...sourceResolved,
       checkpointId,
     };
-    const created = await createWorkspaceForCommitFlow(source);
+    const workspaceIdempotencyKey = options?.idempotencyKey?.trim()
+      ? deriveIdempotencyKey(options.idempotencyKey, 'workspace')
+      : buildWorkspaceIdempotencyKey({
+          repo: gitProvenance.repo,
+          commitSha,
+          checkpointId,
+          projectRoot,
+        });
+    let created: Awaited<ReturnType<typeof createWorkspaceFromResolvedSource>>;
+    try {
+      created = await createWorkspaceForCommitFlow(source, {
+        idempotencyKey: workspaceIdempotencyKey,
+      });
+    } catch (error) {
+      if (!(error instanceof WorkspaceCreateInProgressError)) {
+        throw error;
+      }
+      if (!error.retryable) {
+        throw error;
+      }
+      spinner.message(`Workspace ${error.workspaceId} is still creating; waiting for readiness...`);
+      created = await waitForWorkspaceReadyFromIdempotentInProgress(error.workspaceId, {
+        pollIntervalMs: options?.pollIntervalMs,
+        timeoutMs: options?.workspaceReadyTimeoutMs,
+        signal: options?.signal,
+      });
+    }
     workspaceId = created.workspace.id;
-    spinner.stop(`Workspace created: ${workspaceId}`);
+    spinner.stop(`${created.reused ? 'Reusing workspace' : 'Workspace created'}: ${workspaceId}`);
     await emitResolveReviewProgress(options, {
       stage: 'workspace',
       state: 'completed',
       label: 'Workspace ready',
-      detail: `Workspace ${workspaceId} created for the review target.`,
+      detail: `Workspace ${workspaceId} ${created.reused ? 'reused' : 'created'} for the review target.`,
     });
   } catch (error) {
     spinner.stop('Workspace creation failed');
@@ -432,7 +534,15 @@ export async function resolveReviewContext(
     throwIfResolveReviewAborted(options);
     const deploymentIdempotencyKey = options?.idempotencyKey?.trim()
       ? deriveIdempotencyKey(options.idempotencyKey, 'deploy')
-      : buildWorkspaceIdempotencyKey(commitSha);
+      : deriveIdempotencyKey(
+          buildWorkspaceIdempotencyKey({
+            repo: gitProvenance.repo,
+            commitSha,
+            checkpointId,
+            projectRoot,
+          }),
+          'deploy'
+        );
     const deployment = await deployWorkspaceForCommitFlow(workspaceId, {
       idempotencyKey: deploymentIdempotencyKey,
       runTestsIfPresent: false,

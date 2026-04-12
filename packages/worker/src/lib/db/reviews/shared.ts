@@ -236,6 +236,7 @@ export function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse 
     id: record.id,
     workspaceId: record.workspace_id,
     deploymentId: record.deployment_id,
+    sessionId: record.session_id,
     target: {
       type: record.target_type,
       workspaceId: record.workspace_id,

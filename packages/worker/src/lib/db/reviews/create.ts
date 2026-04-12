@@ -15,6 +15,7 @@ export async function createReviewRun(
     id: string;
     workspaceId: string;
     deploymentId: string;
+    sessionId?: string | null;
     targetType: ReviewTargetType;
     mode: ReviewMode;
     status?: ReviewRunStatus;
@@ -50,6 +51,7 @@ export async function createReviewRun(
          id,
          workspace_id,
          deployment_id,
+         session_id,
          target_type,
          mode,
          status,
@@ -66,13 +68,14 @@ export async function createReviewRun(
          created_at,
          updated_at
        )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
        RETURNING *`
     )
     .bind(
       input.id,
       input.workspaceId,
       input.deploymentId,
+      input.sessionId ?? null,
       input.targetType,
       input.mode,
       initialStatus,

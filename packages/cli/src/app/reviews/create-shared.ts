@@ -48,6 +48,15 @@ export function buildIdempotencyKey(workspaceId: string, deploymentId: string): 
   return `review-${createHash('sha256').update(seed).digest('hex').slice(0, 20)}`;
 }
 
+function normalizeProjectRootForIdempotency(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed || trimmed === '.') {
+    return '.';
+  }
+
+  return trimmed.replace(/\\/g, '/').replace(/\/+$/, '') || '.';
+}
+
 function normalizeBranchRefForProvenance(value: string): string | null {
   const normalized = value.trim().replace(/^refs\/heads\//, '');
   if (!normalized) {
@@ -172,11 +181,23 @@ export function formatReviewExecutionFailure(
   return `Review flow failed at review execution: review ended with status ${status} (${details.join(' | ')})`;
 }
 
-export function buildWorkspaceIdempotencyKey(commitSha: string): string {
-  return `workspace-${createHash('sha256').update(`${commitSha}:${Date.now()}:${Math.random()}`).digest('hex').slice(0, 20)}`;
+export function buildWorkspaceIdempotencyKey(input: {
+  repo: string;
+  commitSha: string;
+  checkpointId: string | null;
+  projectRoot: string;
+}): string {
+  const seed = JSON.stringify({
+    repo: input.repo.trim().toLowerCase(),
+    commitSha: input.commitSha.trim().toLowerCase(),
+    checkpointId: input.checkpointId?.trim().toLowerCase() || null,
+    projectRoot: normalizeProjectRootForIdempotency(input.projectRoot),
+  });
+
+  return `workspace-${createHash('sha256').update(seed).digest('hex').slice(0, 20)}`;
 }
 
-export function deriveIdempotencyKey(base: string, scope: 'deploy' | 'review'): string {
+export function deriveIdempotencyKey(base: string, scope: 'workspace' | 'deploy' | 'review'): string {
   return `${scope}-${createHash('sha256').update(`${base}:${scope}`).digest('hex').slice(0, 20)}`;
 }
 

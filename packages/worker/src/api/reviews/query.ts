@@ -1,5 +1,5 @@
 import type { AuthContext, Env, ReviewRunStatus } from '../../types.js';
-import { getReviewRun, listReviewEvents, listReviewRuns } from '../../lib/db.js';
+import { getReviewRun, getReviewSession, listReviewEvents, listReviewRuns } from '../../lib/db.js';
 import { createReviewEventsStream } from './events-stream.js';
 import { normalizeBranchRef, normalizeRepoSlug } from './request-shared.js';
 import { REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS, manuallyFailReviewRun, manuallyRecoverReviewRun, recoverStaleRunningReviewIfNeeded } from './recovery.js';
@@ -44,7 +44,12 @@ export async function handleGetReview(
     return jsonResponse({ error: 'Review not found' }, 404);
   }
 
-  return jsonResponse({ review });
+  const session = review.sessionId ? await getReviewSession(env.DB, review.sessionId) : null;
+
+  return jsonResponse({
+    review,
+    ...(session ? { session } : {}),
+  });
 }
 
 export async function handleListReviews(

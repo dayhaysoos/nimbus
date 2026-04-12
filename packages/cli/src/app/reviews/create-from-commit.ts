@@ -109,6 +109,7 @@ export async function createReviewFromCommitCommand(
     includeProvenance?: boolean;
     includeValidationEvidence?: boolean;
     pollIntervalMs?: number;
+    workspaceReadyTimeoutMs?: number;
   }
 ): Promise<void> {
   const workerUrl = getWorkerUrl();
@@ -119,6 +120,7 @@ export async function createReviewFromCommitCommand(
   let workspaceId = '';
   let deploymentId = '';
   let reviewId = '';
+  let reviewSessionId: string | null = null;
   let reviewResultUrl = '';
   let resolvedProvenance: ReviewCreateProvenance | null = null;
   const policyMode = options?.policyMode ?? 'none';
@@ -133,6 +135,7 @@ export async function createReviewFromCommitCommand(
     projectRoot: options?.projectRoot,
     idempotencyKey: options?.idempotencyKey,
     pollIntervalMs: options?.pollIntervalMs,
+    workspaceReadyTimeoutMs: options?.workspaceReadyTimeoutMs,
     intentSummaryModel: options?.intentSummaryModel,
   });
   workspaceId = resolved.workspaceId;
@@ -164,6 +167,7 @@ export async function createReviewFromCommitCommand(
         provenance: resolvedProvenance ?? undefined,
       });
       reviewId = response.reviewId;
+      reviewSessionId = response.sessionId ?? null;
       reviewResultUrl = normalizeResultUrl(workerUrl, response.resultUrl);
       spinner.stop(`Review queued: ${reviewId}`);
     } else {
@@ -175,6 +179,7 @@ export async function createReviewFromCommitCommand(
         provenance: resolvedProvenance ?? undefined,
       });
       reviewId = derived.reviewId;
+      reviewSessionId = derived.sessionId ?? null;
       reviewResultUrl = normalizeResultUrl(workerUrl, `/api/reviews/${encodeURIComponent(reviewId)}`);
       if (policyMode === 'auto') {
         await approveReviewPolicyForCommitFlow(workerUrl, reviewId, { approvedPolicy: derived.derivedPolicy });
@@ -226,6 +231,10 @@ export async function createReviewFromCommitCommand(
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Review creation failed');
     throw new Error(`Review flow failed at review creation: ${message}`);
+  }
+
+  if (reviewSessionId) {
+    p.log.message(`Review session: ${reviewSessionId}`);
   }
 
   if (options?.openStudio) {

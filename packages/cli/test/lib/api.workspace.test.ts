@@ -6,6 +6,7 @@ import {
   getWorkspaceDiff,
   getWorkspaceFile,
   listWorkspaceFiles,
+  WorkspaceCreateInProgressError,
 } from '../../src/clients/worker/workspaces.js';
 
 export async function runWorkspaceApiTests(): Promise<void> {
@@ -159,6 +160,26 @@ export async function runWorkspaceApiTests(): Promise<void> {
     });
     assert.equal(diff.summary.totalChanged, 1);
     assert.equal(diff.includePatch, true);
+
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          error: 'Workspace create is still in progress for idempotency key: idem-workspace',
+          code: 'workspace_create_in_progress',
+          workspaceId: 'ws_pending123',
+          retryable: true,
+        }),
+        { status: 409, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    await assert.rejects(
+      () => createWorkspace('https://worker.example.com', formData, { idempotencyKey: 'idem-workspace' }),
+      (error: unknown) =>
+        error instanceof WorkspaceCreateInProgressError &&
+        error.workspaceId === 'ws_pending123' &&
+        error.retryable === true
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

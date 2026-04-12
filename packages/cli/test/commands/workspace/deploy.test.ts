@@ -67,7 +67,7 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
           url.includes('/api/workspaces/ws_abc12345') &&
           !url.endsWith('/deploy/preflight') &&
           !url.endsWith('/deploy') &&
-          !url.includes('/deployments/')
+          !url.endsWith('/deployments/dep_existing')
         ) {
           return new Response(
             JSON.stringify({
@@ -251,7 +251,415 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
         intentSessionContext: [],
         rawSessionPrompts: null,
         repo: 'dayhaysoos/nimbus',
+        deployProvider: 'cloudflare_workers_assets',
+        deployOutputDir: 'dist',
       });
+    }
+
+    {
+      const requests: Array<{ url: string; body: Record<string, unknown> | null; headers: Headers }> = [];
+      let createCount = 0;
+      globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+        requests.push({ url, body, headers: new Headers(init?.headers) });
+        if (
+          url.includes('/api/workspaces/ws_abc12345') &&
+          !url.endsWith('/deploy/preflight') &&
+          !url.endsWith('/deploy') &&
+          !url.endsWith('/deployments/dep_new_retry')
+        ) {
+          return new Response(
+            JSON.stringify({
+              id: 'ws_abc12345',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: null,
+              commitSha: 'a'.repeat(40),
+              sourceRef: 'main',
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'key',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 1,
+              sandboxId: 'workspace-ws_abc12345',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              lastDeploymentId: null,
+              lastDeploymentStatus: null,
+              lastDeployedUrl: null,
+              lastDeployedAt: null,
+              lastDeploymentErrorCode: null,
+              lastDeploymentErrorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_abc12345/events',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deploy/preflight')) {
+          return new Response(
+            JSON.stringify({
+              preflight: {
+                ok: true,
+                checks: [{ code: 'workspace_ready', ok: true }],
+                remediations: [],
+              },
+              nextAction: null,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deploy')) {
+          createCount += 1;
+          if (createCount === 1) {
+            return new Response(
+              JSON.stringify({
+                deployment: {
+                  id: 'dep_old_failed',
+                  status: 'failed',
+                  provider: 'simulated',
+                  idempotencyKey: 'idem-deploy-1',
+                  maxRetries: 2,
+                  attemptCount: 1,
+                  sourceSnapshotSha256: null,
+                  sourceBundleKey: 'bundle',
+                  deployedUrl: null,
+                  providerDeploymentId: null,
+                  cancelRequestedAt: null,
+                  startedAt: '2026-03-11T00:00:00.000Z',
+                  finishedAt: '2026-03-11T00:00:30.000Z',
+                  createdAt: '2026-03-11T00:00:00.000Z',
+                  updatedAt: '2026-03-11T00:00:30.000Z',
+                  provenance: {},
+                  toolchain: null,
+                  dependencyCacheKey: null,
+                  dependencyCacheHit: false,
+                  remediations: [],
+                },
+                reused: true,
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+          return new Response(
+            JSON.stringify({
+              deployment: {
+                id: 'dep_new_retry',
+                status: 'queued',
+                provider: 'simulated',
+              },
+              reused: false,
+            }),
+            { status: 202, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deployments/dep_new_retry')) {
+          return new Response(
+            JSON.stringify({ deployment: { id: 'dep_new_retry', status: 'succeeded', provider: 'simulated', deployedUrl: 'https://example.dev' } }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        throw new Error(`Unexpected request in failed-reuse retry test: ${url}`);
+      }) as typeof fetch;
+
+      const deployment = await workspaceDeployCommand('ws_abc12345', {
+        idempotencyKey: 'idem-deploy-1',
+        runTestsIfPresent: false,
+        runBuildIfPresent: false,
+        pollIntervalMs: 1,
+      });
+
+      assert.equal(deployment?.id, 'dep_new_retry');
+      const deployRequests = requests.filter((request) => request.url.endsWith('/deploy'));
+      assert.equal(deployRequests.length, 2);
+      assert.equal(deployRequests[0].headers.get('Idempotency-Key'), 'idem-deploy-1');
+      assert.notEqual(deployRequests[1].headers.get('Idempotency-Key'), 'idem-deploy-1');
+    }
+
+    {
+      const requests: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+      globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+        requests.push({ url, body });
+        if (
+          url.includes('/api/workspaces/ws_abc12345') &&
+          !url.endsWith('/deploy/preflight') &&
+          !url.endsWith('/deploy') &&
+          !url.includes('/deployments/')
+        ) {
+          return new Response(
+            JSON.stringify({
+              id: 'ws_abc12345',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: null,
+              commitSha: 'a'.repeat(40),
+              sourceRef: 'main',
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'key',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 1,
+              sandboxId: 'workspace-ws_abc12345',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              lastDeploymentId: 'dep_existing',
+              lastDeploymentStatus: 'succeeded',
+              lastDeployedUrl: 'https://example.dev',
+              lastDeployedAt: '2026-03-11T00:00:00.000Z',
+              lastDeploymentErrorCode: null,
+              lastDeploymentErrorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_abc12345/events',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deploy/preflight')) {
+          return new Response(
+            JSON.stringify({
+              preflight: {
+                ok: false,
+                checks: [
+                  { code: 'workspace_ready', ok: true },
+                  { code: 'git_baseline', ok: false, details: 'Workspace git baseline is missing' },
+                ],
+                remediations: [],
+              },
+              nextAction: 'Reset workspace to rebuild git baseline and retry deploy.',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deployments/dep_existing')) {
+          return new Response(
+            JSON.stringify({
+              deployment: {
+                id: 'dep_existing',
+                status: 'succeeded',
+                provider: 'simulated',
+                idempotencyKey: 'idem-deploy-1',
+                maxRetries: 2,
+                attemptCount: 1,
+                sourceSnapshotSha256: null,
+                sourceBundleKey: 'bundle',
+                deployedUrl: 'https://example.dev',
+                providerDeploymentId: null,
+                cancelRequestedAt: null,
+                startedAt: '2026-03-11T00:00:00.000Z',
+                finishedAt: '2026-03-11T00:00:30.000Z',
+                createdAt: '2026-03-11T00:00:00.000Z',
+                updatedAt: '2026-03-11T00:00:30.000Z',
+                provenance: {},
+                toolchain: null,
+                dependencyCacheKey: null,
+                dependencyCacheHit: false,
+                remediations: [],
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        throw new Error(`Unexpected request in reuse-fallback test: ${url}`);
+      }) as typeof fetch;
+
+      const deployment = await workspaceDeployCommand('ws_abc12345', {
+        idempotencyKey: 'idem-deploy-1',
+        runTestsIfPresent: false,
+        runBuildIfPresent: false,
+      });
+
+      assert.equal(deployment?.id, 'dep_existing');
+      const createRequest = requests.find((request) => request.url.endsWith('/deploy'));
+      assert.equal(createRequest, undefined);
+      assert.equal(requests.some((request) => request.url.endsWith('/deployments/dep_existing')), true);
+    }
+
+    {
+      const requests: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+      globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+        requests.push({ url, body });
+        if (
+          url.includes('/api/workspaces/ws_abc12345') &&
+          !url.endsWith('/deploy/preflight') &&
+          !url.endsWith('/deploy') &&
+          !url.endsWith('/deployments/dep_existing')
+        ) {
+          return new Response(
+            JSON.stringify({
+              id: 'ws_abc12345',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: null,
+              commitSha: 'a'.repeat(40),
+              sourceRef: 'main',
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'key',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 1,
+              sandboxId: 'workspace-ws_abc12345',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              lastDeploymentId: 'dep_existing',
+              lastDeploymentStatus: 'succeeded',
+              lastDeployedUrl: 'https://example.dev',
+              lastDeployedAt: '2026-03-11T00:00:00.000Z',
+              lastDeploymentErrorCode: null,
+              lastDeploymentErrorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_abc12345/events',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deploy/preflight')) {
+          return new Response(
+            JSON.stringify({
+              preflight: {
+                ok: false,
+                checks: [
+                  { code: 'workspace_ready', ok: true },
+                  { code: 'git_baseline', ok: false, details: 'Workspace git baseline is missing' },
+                ],
+                remediations: [],
+              },
+              nextAction: 'Reset workspace to rebuild git baseline and retry deploy.',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deployments/dep_existing')) {
+          return new Response(
+            JSON.stringify({
+              deployment: {
+                id: 'dep_existing',
+                status: 'succeeded',
+                provider: 'simulated',
+                idempotencyKey: 'idem-deploy-1',
+                maxRetries: 2,
+                attemptCount: 1,
+                sourceSnapshotSha256: null,
+                sourceBundleKey: 'bundle',
+                deployedUrl: 'https://example.dev',
+                providerDeploymentId: null,
+                cancelRequestedAt: null,
+                startedAt: '2026-03-11T00:00:00.000Z',
+                finishedAt: '2026-03-11T00:00:30.000Z',
+                createdAt: '2026-03-11T00:00:00.000Z',
+                updatedAt: '2026-03-11T00:00:30.000Z',
+                provenance: {},
+                toolchain: null,
+                dependencyCacheKey: null,
+                dependencyCacheHit: false,
+                remediations: [],
+              },
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        throw new Error(`Unexpected request in provider-mismatch fallback test: ${url}`);
+      }) as typeof fetch;
+
+      await assert.rejects(
+        () =>
+          workspaceDeployCommand('ws_abc12345', {
+            idempotencyKey: 'idem-deploy-1',
+            runTestsIfPresent: false,
+            runBuildIfPresent: false,
+            provider: 'cloudflare_workers_assets',
+          }),
+        /Workspace deploy preflight failed/
+      );
+
+      const createRequest = requests.find((request) => request.url.endsWith('/deploy'));
+      assert.equal(createRequest, undefined);
+      assert.equal(requests.some((request) => request.url.endsWith('/deployments/dep_existing')), true);
+    }
+
+    {
+      const requests: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+      globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+        requests.push({ url, body });
+        if (
+          url.includes('/api/workspaces/ws_abc12345') &&
+          !url.endsWith('/deploy/preflight') &&
+          !url.endsWith('/deploy') &&
+          !url.includes('/deployments/')
+        ) {
+          return new Response(
+            JSON.stringify({
+              id: 'ws_abc12345',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: null,
+              commitSha: 'a'.repeat(40),
+              sourceRef: 'main',
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'key',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 1,
+              sandboxId: 'workspace-ws_abc12345',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              lastDeploymentId: null,
+              lastDeploymentStatus: null,
+              lastDeployedUrl: null,
+              lastDeployedAt: null,
+              lastDeploymentErrorCode: null,
+              lastDeploymentErrorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_abc12345/events',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deploy/preflight')) {
+          return new Response(
+            JSON.stringify({
+              preflight: {
+                ok: false,
+                checks: [
+                  { code: 'workspace_ready', ok: true },
+                  { code: 'git_baseline', ok: false, details: 'Workspace git baseline is missing' },
+                ],
+                remediations: [],
+              },
+              nextAction: 'Reset workspace to rebuild git baseline and retry deploy.',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        throw new Error(`Unexpected request in no-existing-deploy fallback test: ${url}`);
+      }) as typeof fetch;
+
+      await assert.rejects(
+        () =>
+          workspaceDeployCommand('ws_abc12345', {
+            idempotencyKey: 'idem-deploy-1',
+            runTestsIfPresent: false,
+            runBuildIfPresent: false,
+          }),
+        /Workspace deploy preflight failed/
+      );
+
+      const createRequest = requests.find((request) => request.url.endsWith('/deploy'));
+      assert.equal(createRequest, undefined);
     }
 
     {

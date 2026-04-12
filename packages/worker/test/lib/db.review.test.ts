@@ -1,11 +1,14 @@
 import { strict as assert } from 'assert';
 import {
   ReviewIdempotencyConflictError,
+  attachReviewPassToSession,
   appendReviewEvent,
   claimReviewRunForExecution,
+  createReviewSession,
   createReviewRun,
   getReviewCochangeCacheBatch,
   getReviewRun,
+  getReviewSession,
   listReviewEvents,
   upsertReviewCochangeCacheBatch,
 } from '../../src/lib/db.js';
@@ -49,17 +52,20 @@ export async function runReviewDbTests(): Promise<void> {
                     id: values[0],
                     workspace_id: values[1],
                     deployment_id: values[2],
-                    target_type: values[3],
-                    mode: values[4],
-                    status: values[5],
-                    idempotency_key: values[6],
-                    request_payload_json: values[7],
-                    request_payload_sha256: values[8],
-                    account_id: values[9],
-                    provenance_json: values[10],
-                    derived_policy_json: values[11],
-                    approved_policy_json: values[12],
-                    approved_policy_sha256: values[13],
+                    session_id: values[3],
+                    target_type: values[4],
+                    mode: values[5],
+                    status: values[6],
+                    idempotency_key: values[7],
+                    request_payload_json: values[8],
+                    request_payload_sha256: values[9],
+                    account_id: values[10],
+                    provenance_json: values[11],
+                    repo: values[12],
+                    branch: values[13],
+                    derived_policy_json: values[14],
+                    approved_policy_json: values[15],
+                    approved_policy_sha256: values[16],
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,
@@ -98,6 +104,7 @@ export async function runReviewDbTests(): Promise<void> {
                     id: reviewId,
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: 'session_abc12345',
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: 'queued',
@@ -105,6 +112,8 @@ export async function runReviewDbTests(): Promise<void> {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: '{}',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 1,
                     attempt_count: 0,
                     started_at: null,
@@ -197,7 +206,7 @@ export async function runReviewDbTests(): Promise<void> {
     });
     assert.equal(created.reused, false);
     assert.equal(created.review.id, 'rev_abcd1234');
-    assert.equal(insertValues[9], 'acct_workspace_owner');
+    assert.equal(insertValues[10], 'acct_workspace_owner');
 
     const review = await getReviewRun(db, 'rev_abcd1234');
     assert.ok(review);
@@ -212,6 +221,164 @@ export async function runReviewDbTests(): Promise<void> {
     const events = await listReviewEvents(db, 'rev_abcd1234');
     assert.equal(events.length, 1);
     assert.equal(events[0].eventType, 'review_created');
+  }
+
+  {
+    const state = {
+      sessionId: 'session_abcd1234',
+      activeReviewId: null as string | null,
+      latestReviewId: null as string | null,
+      passCount: 0,
+    };
+    const db = {
+      prepare(sql: string) {
+        if (/INSERT INTO review_sessions/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  state.sessionId = String(values[0]);
+                  return {
+                    id: values[0],
+                    workspace_id: values[1],
+                    anchor_deployment_id: values[2],
+                    repo: values[3],
+                    branch: values[4],
+                    initial_review_basis: values[5],
+                    anchor_commit_sha: values[6],
+                    anchor_checkpoint_id: values[7],
+                    source_project_root: values[8],
+                    active_review_id: null,
+                    latest_review_id: null,
+                    pass_count: 0,
+                    stop_reason: null,
+                    account_id: values[9],
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE review_sessions\s+SET active_review_id = \?/i.test(sql)) {
+          return {
+            bind(activeReviewId: string, latestReviewId: string) {
+              return {
+                async run() {
+                  state.activeReviewId = activeReviewId;
+                  state.latestReviewId = latestReviewId;
+                  state.passCount = 1;
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== state.sessionId) {
+                    return null as T;
+                  }
+                  return {
+                    id: state.sessionId,
+                    workspace_id: 'ws_abc12345',
+                    anchor_deployment_id: 'dep_abcd1234',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'a'.repeat(40),
+                    anchor_checkpoint_id: null,
+                    source_project_root: '.',
+                    active_review_id: state.activeReviewId,
+                    latest_review_id: state.latestReviewId,
+                    pass_count: state.passCount,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== state.sessionId || !state.latestReviewId) {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: state.latestReviewId,
+                        session_id: state.sessionId,
+                        status: 'succeeded',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:01.000Z',
+                        finished_at: '2026-03-11T00:01:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await createReviewSession(db, {
+      id: 'session_abcd1234',
+      workspaceId: 'ws_abc12345',
+      anchorDeploymentId: 'dep_abcd1234',
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
+      initialReviewBasis: 'checkpoint',
+      anchorCommitSha: 'a'.repeat(40),
+      sourceProjectRoot: '.',
+      accountId: 'acct_123',
+    });
+    assert.equal(session.id, 'session_abcd1234');
+    assert.equal(session.phase, 'preparing');
+    assert.equal(session.passCount, 0);
+
+    await attachReviewPassToSession(db, session.id, 'rev_abcd1234');
+    const hydrated = await getReviewSession(db, session.id);
+    assert.ok(hydrated);
+    assert.equal(hydrated?.passCount, 1);
+    assert.equal(hydrated?.phase, 'completed');
+    assert.equal(hydrated?.latestReviewId, 'rev_abcd1234');
+    assert.equal(hydrated?.finishedAt, '2026-03-11T00:01:00.000Z');
+    assert.equal(hydrated?.passes[0]?.reviewBasis, 'checkpoint');
   }
 
   {
@@ -286,6 +453,7 @@ export async function runReviewDbTests(): Promise<void> {
                     id: 'rev_existing',
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: 'session_existing',
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: 'queued',
@@ -293,6 +461,8 @@ export async function runReviewDbTests(): Promise<void> {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: '{}',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,
@@ -365,6 +535,7 @@ export async function runReviewDbTests(): Promise<void> {
                     id: 'rev_hiddenprov',
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: 'session_hiddenprov',
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: 'succeeded',
@@ -372,6 +543,8 @@ export async function runReviewDbTests(): Promise<void> {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: JSON.stringify({ promptSummary: 'create-time prompt summary' }),
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 0,
                     attempt_count: 1,
                     started_at: '2026-03-11T00:00:00.000Z',
@@ -455,6 +628,7 @@ export async function runReviewDbTests(): Promise<void> {
                     id: 'rev_phase2_contract',
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: 'session_phase2_contract',
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: 'succeeded',
@@ -462,6 +636,8 @@ export async function runReviewDbTests(): Promise<void> {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: '{}',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 0,
                     attempt_count: 1,
                     started_at: '2026-03-11T00:00:00.000Z',
