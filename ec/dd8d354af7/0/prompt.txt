@@ -1,0 +1,65 @@
+Go ahead with those next stps
+
+---
+
+Wait, you said Slice 3 was done but with caveats. What caveats?
+
+---
+
+Yeah update the doc with slice 3 progress and standing problems it has. I then want to bring some concerns I have about the direction we're going and see what you think
+
+---
+
+I really want to re-imagine the AI code review space. It works through CLI and I try to maintain a nice UI flow to go with it. Something feels off though. We create a sandbox for every single code review we do. this feels wasteful, especially if we run multiple reviews on the same Checkpoint/commit. there's a lot of things I want to address, but I want to talk about that specifically. Would it be more efficient to do all of this per branch? For example, when a review is requested, a sandbox is made of the current codebase with all of the changes applied to the branch. That way, we can save time/resources running multiple reviews and making code edits in place. Give me feedback on my concerns, don't say anything to appease me. Be honest.
+
+---
+
+Help me make sense of the components that make this project up. We have workspaces (these are just sandboxes right?) and durable objects. I feel like DOs can be the sort of ephemeral review/code editing space, no? Also when I said per branch, I didn't mean creating a sandbox from branch creation. It'll be created as part of the review process. Anyway, tell me about what we're leveraging from cloudflare and maybe ways we can make the most out of what we have regarding my concerns
+
+---
+
+I still want to talk this through, though. Right now the current agentic code process looks like this: 1. Agents write code, I hit the /review command. 2. Review comes back with bugs/feedback, I tell the agent to fix those things. 3. Agent applies fixes. I then hit /review again for the new, uncommitted changes. It still finds bugs, so I tell them to fix that. I basically repeat this until there's no more feedback left. This is a horribe experience, it wastes lots of time, I have to use /review to find bugs then /review the new code and still find bugs. I want to be removed from this loop of review hell, and I also want confidence in final outcome of all of them as well. THIS is what I'm striving for with nimbus. Before you talk about the technical details, give me feedback on what I'm going for. Again, no appeasement, be honest.
+
+---
+
+maybe review is underselling, but you need to relax. We're going to be doing to be focusing on making it a smooth code review process. What were you thinking as far as the true product loop? Lemme give feedback on that
+
+---
+
+The shape sounds okay. I'm curious about how much more work is going to be needed, how many more layers of ccomplexity we'll be adding, or do we have most of the pieces we need already? Also, I have zero users right now so I'm in favor of destructive action and not supporting legacy approaches
+
+---
+
+I think you should document everything we've talked about thoroughly right now. This is sort of a pivot in a way, I want the work to be very well scoped out. I'd like to think in terms of vertical slices for every aspect that needs to be taken care of. It should be one big document with enough context to let this work run in a separate session. Put that documentation together so I can begin
+
+---
+
+what does it mean to pressure test the slices ?
+
+---
+
+One thing I think should be looked at. The whole idea of nimbus being blocked. I think it should just be scoped to if a product decision is needed, not a "policy" decision. That's like..not a thing in code reviews. We have to define what a "product decision" is. If you can't find a good definition for that, we drop this. A fix too risky to apply automatically makes sense. That would be for things that can break schema, introduce a new library, or mission critial systems.. I like that. nimbus should pause then and wait for the user. And yes if the user wants more control we should give that to them. just more or less edit out that policy decision part from policy/product.
+
+---
+
+one question I have.. if changes get made within Nimbus (on the cloudflare infra) how do they get applied locally?
+
+---
+
+hmmm maybe it'll be better to start off with nimbus submitting a PR ? trying to apply it locally sounds a little complicated right now
+
+---
+
+hmm idk I'm not sure now. I really want to prioritize local first. Is there a way we can get the changes applied locally that feels kind of seamless? Like a branch the user can pull down from nimbus or something?
+
+---
+
+okay yes update the doc to reflect this. This is all very important
+
+---
+
+okay, which document is the best for pointing an llm so they can actually complete the work?
+
+---
+
+hmm what I'm tyring to figure out, should I have you handle these changes right now or should I make a new agent for session context sake?
