@@ -117,6 +117,7 @@ export {
   attachReviewPassToSession,
   createReviewSession,
   deleteReviewSession,
+  finalizeReviewSession,
   generateReviewSessionId,
   getReviewSession,
   getReviewSessionAccountId,

@@ -1757,6 +1757,51 @@ export async function runReviewApiTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createReviewApiEnv({
+      sessionExists: true,
+      sessionId: 'session_existing',
+      initialReviewStatus: 'succeeded',
+      deploymentStatus: 'failed',
+    });
+    const response = await handleCreateReviewSessionPass(
+      'session_existing',
+      new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+        method: 'POST',
+        body: JSON.stringify({ reviewBasis: 'checkpoint' }),
+      }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'deployment_not_reviewable');
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      sessionExists: true,
+      sessionId: 'session_existing',
+      initialReviewStatus: 'succeeded',
+    });
+    const response = await handleCreateReviewSessionPass(
+      'session_existing',
+      new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': '   ',
+        },
+        body: JSON.stringify({ reviewBasis: 'checkpoint' }),
+      }),
+      env as never
+    );
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'missing_idempotency_key');
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
     let hasHead = false;
     const sandboxResolver = async () => ({
       async exec(command: string) {

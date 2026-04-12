@@ -41,7 +41,16 @@ function normalizeEnvironmentRevision(value: unknown): ReviewEnvironmentRevision
   };
 }
 
-function deriveSessionPhase(status: ReviewRunStatus | null): ReviewSessionPhase {
+function deriveSessionPhase(
+  status: ReviewRunStatus | null,
+  stopReason: ReviewSessionStopReason | null
+): ReviewSessionPhase {
+  if (stopReason === 'risky_fix_requires_approval') {
+    return 'waiting_on_human';
+  }
+  if (stopReason === 'auto_remediation_failed') {
+    return 'failed';
+  }
   switch (status) {
     case 'policy_pending':
     case 'policy_ready':
@@ -101,6 +110,7 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
   const derivedUpdatedAt =
     latestPass?.finishedAt ?? latestPass?.startedAt ?? latestPass?.createdAt ?? record.updated_at;
   const derivedFinishedAt = record.finished_at ?? latestPass?.finishedAt ?? null;
+  const stopReason = record.stop_reason ?? deriveStopReason(currentReviewStatus, derivedPassCount);
 
   return {
     id: record.id,
@@ -112,12 +122,12 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
     anchorCommitSha: record.anchor_commit_sha,
     anchorCheckpointId: record.anchor_checkpoint_id,
     sourceProjectRoot: record.source_project_root,
-    phase: deriveSessionPhase(currentReviewStatus),
+    phase: deriveSessionPhase(currentReviewStatus, stopReason),
     passCount: derivedPassCount,
     activeReviewId: record.active_review_id,
     latestReviewId: record.latest_review_id,
     currentReviewStatus,
-    stopReason: record.stop_reason ?? deriveStopReason(currentReviewStatus, derivedPassCount),
+    stopReason,
     createdAt: record.created_at,
     updatedAt: derivedUpdatedAt,
     finishedAt: derivedFinishedAt,
@@ -222,6 +232,40 @@ export async function attachReviewPassToSession(
       sessionId
     )
     .run();
+}
+
+export async function finalizeReviewSession(
+  db: D1Database,
+  sessionId: string,
+  input: {
+    latestReviewId?: string | null;
+    stopReason: ReviewSessionStopReason;
+    expectedLatestReviewId?: string | null;
+  }
+): Promise<boolean> {
+  const now = new Date().toISOString();
+  const result = await db
+    .prepare(
+      `UPDATE review_sessions
+       SET active_review_id = NULL,
+            latest_review_id = COALESCE(?, latest_review_id),
+            stop_reason = ?,
+            finished_at = COALESCE(finished_at, ?),
+            updated_at = ?
+       WHERE id = ?
+         AND (? IS NULL OR latest_review_id = ?)`
+    )
+    .bind(
+      input.latestReviewId ?? null,
+      input.stopReason,
+      now,
+      now,
+      sessionId,
+      input.expectedLatestReviewId ?? null,
+      input.expectedLatestReviewId ?? null
+    )
+    .run();
+  return (result.meta?.changes ?? 0) > 0;
 }
 
 export async function deleteReviewSession(db: D1Database, sessionId: string): Promise<void> {

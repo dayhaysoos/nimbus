@@ -1,17 +1,7 @@
 import type { AuthContext, Env } from '../types.js';
-import {
-  attachReviewPassToSession,
-  appendReviewEvent,
-  createReviewRun,
-  generateReviewRunId,
-  getReviewRunByIdempotency,
-  getReviewSession,
-  getWorkspace,
-  getWorkspaceAccountId,
-  getWorkspaceDeployment,
-} from '../lib/db.js';
-import { captureWorkspaceEnvironmentSnapshot } from '../lib/review-runner/environment.js';
-import { buildReviewRequestPayload, normalizePolicyMode, normalizeReviewBasis, sha256Hex, stripSensitiveTokenFields } from './reviews/request-shared.js';
+import { getReviewSession } from '../lib/db.js';
+import { CreateReviewSessionPassError, createReviewSessionPass } from '../lib/review-session-pass.js';
+import { normalizePolicyMode, normalizeReviewBasis } from './reviews/request-shared.js';
 import { enqueueReviewRunIfNeeded } from './reviews/queue.js';
 import {
   isRecord,
@@ -127,133 +117,28 @@ export async function handleCreateReviewSessionPass(
       );
     }
 
-    const workspace = await getWorkspace(env.DB, session.workspaceId);
-    if (!workspace || workspace.status === 'deleted') {
-      return jsonResponse({ error: 'Workspace not found' }, 404);
-    }
-    const workspaceAccountId = await getWorkspaceAccountId(env.DB, session.workspaceId);
-    if (workspaceAccountId === undefined) {
-      return jsonResponse({ error: 'Workspace not found' }, 404);
-    }
-
-    const deployment = await getWorkspaceDeployment(env.DB, session.workspaceId, session.anchorDeploymentId);
-    if (!deployment) {
-      return jsonResponse({ error: 'Anchor deployment not found' }, 404);
-    }
-    if (deployment.status !== 'succeeded') {
-      return jsonResponse(
-        {
-          error: 'Review session anchor deployment must be succeeded',
-          code: 'deployment_not_reviewable',
-        },
-        409
-      );
-    }
-
     const reviewGithubToken = readReviewGithubTokenHeader(request);
     const openrouterApiKey = readOpenrouterApiKeyHeader(request);
     const userProvenance = isRecord(payload.provenance) ? payload.provenance : {};
-    const environmentSnapshot =
-      reviewBasis === 'environment'
-        ? await captureWorkspaceEnvironmentSnapshot(env, {
-            id: workspace.id,
-            status: workspace.status,
-            sandboxId: workspace.sandboxId,
-            baselineReady: workspace.baselineReady,
-            sourceBundleKey: workspace.sourceBundleKey,
-            sourceBundleSha256: workspace.sourceBundleSha256,
-          })
-        : null;
-    const defaultIdempotencyKey =
-      reviewBasis === 'environment' && environmentSnapshot
-        ? `review-session-pass:${session.id}:${environmentSnapshot.revision.diffSha256.slice(0, 24)}`
-        : `review-session-pass:${session.id}:${session.passCount + 1}`;
-    const idempotencyKey = (request.headers.get('Idempotency-Key') ?? defaultIdempotencyKey).trim();
-    if (!idempotencyKey) {
-      return jsonResponse({ error: 'Missing required Idempotency-Key header' }, 400);
-    }
-
-    const { requestPayload, idempotencyPayload } = buildReviewRequestPayload({
-      workspaceId: session.workspaceId,
-      deploymentId: session.anchorDeploymentId,
-      policyMode: 'none',
-      reviewBasis,
-      policy: isRecord(payload.policy) ? payload.policy : {},
-      format: isRecord(payload.format) ? payload.format : {},
-      provenance: {
-        ...userProvenance,
-        repo: session.repo,
-        branch: session.branch,
-        ...(environmentSnapshot ? { environmentRevision: environmentSnapshot.revision } : {}),
-      },
-      repo: session.repo,
-      branch: session.branch,
-      model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined,
-    });
-    const sanitizedRequestPayload = stripSensitiveTokenFields(requestPayload) as Record<string, unknown>;
-    const requestPayloadSha256 = await sha256Hex(JSON.stringify(idempotencyPayload));
-    const existingReview = await getReviewRunByIdempotency(
-      env.DB,
-      session.workspaceId,
-      idempotencyKey,
-      requestPayloadSha256
-    );
-    if (existingReview) {
-      const enqueueError = await enqueueReviewRunIfNeeded(env, existingReview, {
-        reused: true,
-        reviewGithubToken,
-        openrouterApiKey,
-      });
-      if (enqueueError) {
-        return enqueueError;
-      }
-
+    const requestedIdempotencyKey = request.headers.get('Idempotency-Key');
+    if (requestedIdempotencyKey !== null && !requestedIdempotencyKey.trim()) {
       return jsonResponse(
         {
-          reviewId: existingReview.id,
-          sessionId: session.id,
-          status: existingReview.status,
-          eventsUrl: `/api/reviews/${existingReview.id}/events`,
-          resultUrl: `/api/reviews/${existingReview.id}`,
-          sessionUrl: `/api/review-sessions/${session.id}`,
+          error: 'Missing required Idempotency-Key header',
+          code: 'missing_idempotency_key',
         },
-        200
+        400
       );
     }
-
-    const created = await createReviewRun(env.DB, {
-      id: generateReviewRunId(),
-      workspaceId: session.workspaceId,
-      deploymentId: session.anchorDeploymentId,
-      sessionId: session.id,
-      targetType: 'workspace_deployment',
-      mode: 'report_only',
-      idempotencyKey,
-      requestPayload: sanitizedRequestPayload,
-      requestPayloadSha256,
-      accountId: workspaceAccountId,
-      provenance: {
-        promptSummary:
-          reviewBasis === 'environment'
-            ? `Environment re-review for session ${session.id}`
-            : `Checkpoint re-review for session ${session.id}`,
-      },
-      repo: session.repo,
-      branch: session.branch,
-    });
-
-    await attachReviewPassToSession(env.DB, session.id, created.review.id);
-    await appendReviewEvent(env.DB, {
-      reviewId: created.review.id,
-      eventType: 'review_created',
-      payload: {
-        workspaceId: session.workspaceId,
-        deploymentId: session.anchorDeploymentId,
-        mode: 'report_only',
-        sessionId: session.id,
-        reviewBasis,
-        environmentRevision: environmentSnapshot?.revision ?? null,
-      },
+    const created = await createReviewSessionPass(env, {
+      session,
+      reviewBasis,
+      policyMode: 'none',
+      policy: isRecord(payload.policy) ? payload.policy : {},
+      format: isRecord(payload.format) ? payload.format : {},
+      provenance: userProvenance,
+      model: typeof payload.model === 'string' && payload.model.trim() ? payload.model.trim() : undefined,
+      ...(requestedIdempotencyKey?.trim() ? { idempotencyKey: requestedIdempotencyKey.trim() } : {}),
     });
 
     const enqueueError = await enqueueReviewRunIfNeeded(env, created.review, {
@@ -274,11 +159,20 @@ export async function handleCreateReviewSessionPass(
         resultUrl: `/api/reviews/${created.review.id}`,
         sessionUrl: `/api/review-sessions/${session.id}`,
       },
-      202
+      created.reused ? 200 : 202
     );
   } catch (error) {
     if (error instanceof SyntaxError) {
       return jsonResponse({ error: 'Invalid JSON body' }, 400);
+    }
+    if (error instanceof CreateReviewSessionPassError) {
+      return jsonResponse(
+        {
+          error: error.message,
+          ...(error.code ? { code: error.code } : {}),
+        },
+        error.status
+      );
     }
     const message = error instanceof Error ? error.message : String(error);
     return jsonResponse({ error: `Failed to create review session pass: ${message}` }, 500);

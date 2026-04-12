@@ -667,6 +667,12 @@ export type ReviewSessionStopReason =
   | 'initial_pass_failed'
   | 'followup_pass_completed'
   | 'followup_pass_failed'
+  | 'diminishing_returns'
+  | 'risky_fix_requires_approval'
+  | 'no_safe_fixes'
+  | 'no_progress'
+  | 'max_repair_cycles_reached'
+  | 'auto_remediation_failed'
   | 'cancelled';
 
 export interface ReviewEnvironmentRevision {

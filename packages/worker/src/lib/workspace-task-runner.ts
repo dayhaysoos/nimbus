@@ -790,6 +790,32 @@ export async function processWorkspaceTask(env: Env, workspaceId: string, taskId
   }
 }
 
+export async function runWorkspaceTaskInlineWithRetries(
+  env: Env,
+  workspaceId: string,
+  taskId: string,
+  maxCycles = 8
+): Promise<void> {
+  for (let cycle = 0; cycle < maxCycles; cycle += 1) {
+    try {
+      await processWorkspaceTask(env, workspaceId, taskId);
+    } catch {
+      // Retry scheduling is inferred from persisted task status.
+    }
+
+    const latest = await getWorkspaceTask(env.DB, workspaceId, taskId);
+    if (!latest) {
+      return;
+    }
+    if (latest.status !== 'queued') {
+      return;
+    }
+    if (latest.error?.code !== 'retry_scheduled') {
+      return;
+    }
+  }
+}
+
 export function shouldRetryWorkspaceTaskError(error: unknown): boolean {
   if (error instanceof QueueRetryError) {
     return true;

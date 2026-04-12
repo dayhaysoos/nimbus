@@ -13,6 +13,7 @@ import { assembleReviewContextBootstrap } from './review-runner/context.js';
 import { executeReviewRun } from './review-runner/execution.js';
 import { finalizeFailedReviewIfCurrent, finalizeSuccessfulReview } from './review-runner/finalization.js';
 import { intentSummaryFromApprovedPolicy, runIntentSummarizationPrePass, summarizeReviewIntentPolicy } from './review-runner/intent-summary.js';
+import { continueReviewSessionAfterSuccessfulPass } from './review-runner/session-remediation.js';
 import {
   finalizeInlineRetryExhaustion,
   handleUnclaimedReviewRun,
@@ -141,6 +142,14 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
       expectedAttemptCount: review.attemptCount,
       allowRetryScheduling: options?.allowRetryScheduling,
     });
+    const latestAfterFinalize = await loadLatestReviewUnlessManuallyFailed(env, reviewId);
+    if (!latestAfterFinalize || latestAfterFinalize.status !== 'succeeded') {
+      return;
+    }
+    const continuation = await continueReviewSessionAfterSuccessfulPass(env, latestAfterFinalize, report);
+    if (continuation.nextReviewId) {
+      await runReviewInlineWithRetries(env, continuation.nextReviewId, 4, options);
+    }
   } catch (error) {
     const message = formatReviewAnalysisError(error, {
       openrouterApiKey: readOptionalString(options?.openrouterApiKey),

@@ -14,7 +14,7 @@ import {
 } from '../lib/db.js';
 import { canAccessAccount } from '../lib/authz.js';
 import { createWorkspaceTaskQueueMessage } from '../lib/workspace-task-queue.js';
-import { processWorkspaceTask } from '../lib/workspace-task-runner.js';
+import { processWorkspaceTask, runWorkspaceTaskInlineWithRetries } from '../lib/workspace-task-runner.js';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -143,32 +143,6 @@ async function ensureWorkspaceAgentRuntimeEnabled(env: Env): Promise<Response | 
     );
   }
   return null;
-}
-
-async function runTaskInlineWithRetries(
-  env: Env,
-  workspaceId: string,
-  taskId: string,
-  maxCycles = 8
-): Promise<void> {
-  for (let cycle = 0; cycle < maxCycles; cycle += 1) {
-    try {
-      await processWorkspaceTask(env, workspaceId, taskId);
-    } catch {
-      // Retry scheduling is inferred from persisted task status.
-    }
-
-    const latest = await getWorkspaceTask(env.DB, workspaceId, taskId);
-    if (!latest) {
-      return;
-    }
-    if (latest.status !== 'queued') {
-      return;
-    }
-    if (latest.error?.code !== 'retry_scheduled') {
-      return;
-    }
-  }
 }
 
 function defaultToolPolicy(): Record<string, unknown> {
@@ -316,7 +290,7 @@ export async function handleCreateWorkspaceTask(
           scheduled = true;
         } else if (ctx) {
           const maxCycles = Math.max(1, task.maxRetries + 1);
-          ctx.waitUntil(runTaskInlineWithRetries(env, workspaceId, task.id, maxCycles));
+          ctx.waitUntil(runWorkspaceTaskInlineWithRetries(env, workspaceId, task.id, maxCycles));
           scheduled = true;
         }
 
