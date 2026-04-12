@@ -1,0 +1,41 @@
+that nuance is fine. Can you just show me the results of the review findings that came back from what you checked?
+
+---
+
+Can you run a review on this commit? 463e2d3 this should have at least 1 finding
+
+---
+
+Go ahead and check, I already resolved them in another review, but I want you to confirm they've been taken care of. That work should be committed already. This is good progress tho!
+
+---
+
+nah it's okay, what's next slice 4 right?
+
+---
+
+I want to call out one thing. We have a value for whether or not the LLM should run again based on a score. I forgot the name, but the idea is, if the results coming back from the findings are very niche, edge-case-y or the review results are giving back diminishing returns, it probably isn't worth running a review unless the user thinks otherwise. I think this should be facotred in to whether it stops or not. What do you think?
+
+---
+
+actually furtherPassLowYield is one of the worst names to ever be made. There's another value there instead. We should deprocate that one and not make it a core part of the experience. There should be a score instead, I think it was 3-1. 3 meaning the findings are severe and another review might reveal more stuff, 2 means the last findings were moderate, maybe another review is good. 1 means we're hitting edge cases that nuance, might be a good idea to stop here if you want.
+
+---
+
+I agree with everything you've said. Now with all that in mind, go ahead and start Slice 4. Work the way you've been working on them
+
+---
+
+I didn't see the login tab, so I ran it myself and logged in. Can you confirm it worked now?
+
+---
+
+before we begin, how many slices are left?
+
+---
+
+what's in slice 5-6?
+
+---
+
+nice, sounds like most of the really complex stuff is out of the way then? slice 4 seems pretty heavy

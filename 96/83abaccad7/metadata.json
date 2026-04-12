@@ -1,0 +1,36 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "9683abaccad7",
+  "strategy": "manual-commit",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 5,
+  "files_touched": [
+    "packages/worker/migrations/0017_review_session_stop_reasons.sql",
+    "packages/worker/src/api/review-sessions.ts",
+    "packages/worker/src/api/workspace-tasks.ts",
+    "packages/worker/src/lib/db.ts",
+    "packages/worker/src/lib/db/review-sessions.ts",
+    "packages/worker/src/lib/review-runner.ts",
+    "packages/worker/src/lib/review-runner/session-remediation.ts",
+    "packages/worker/src/lib/review-session-pass.ts",
+    "packages/worker/src/lib/workspace-task-runner.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/lib/review-session-remediation.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/96/83abaccad7/0/metadata.json",
+      "transcript": "/96/83abaccad7/0/full.jsonl",
+      "content_hash": "/96/83abaccad7/0/content_hash.txt",
+      "prompt": "/96/83abaccad7/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 17126238,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 16139392,
+    "output_tokens": 94546,
+    "api_call_count": 127
+  }
+}
