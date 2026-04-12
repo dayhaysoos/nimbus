@@ -260,7 +260,19 @@ export type ReviewSessionPhase =
   | 'completed'
   | 'failed'
   | 'cancelled';
-export type ReviewSessionStopReason = 'initial_pass_completed' | 'initial_pass_failed' | 'cancelled';
+export type ReviewSessionStopReason =
+  | 'initial_pass_completed'
+  | 'initial_pass_failed'
+  | 'followup_pass_completed'
+  | 'followup_pass_failed'
+  | 'cancelled';
+
+export interface ReviewEnvironmentRevision {
+  source: 'workspace_head';
+  diffSha256: string;
+  changedFileCount: number;
+  generatedAt: string;
+}
 
 export interface ReviewSummary {
   riskLevel: ReviewSeverity;
@@ -340,6 +352,7 @@ export interface ReviewRunResponse {
     branch: string;
     sessionIds: string[];
     policyItems: string[];
+    environmentRevision?: ReviewEnvironmentRevision;
     rawSessionPrompts?: string | null;
     intentSummary?: {
       goal: string | null;

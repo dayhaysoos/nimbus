@@ -34,12 +34,12 @@ function deriveSessionPhase(status: ReviewRunStatus | null): ReviewSessionPhase 
   }
 }
 
-function deriveStopReason(status: ReviewRunStatus | null): ReviewSessionStopReason | null {
+function deriveStopReason(status: ReviewRunStatus | null, passCount = 1): ReviewSessionStopReason | null {
   switch (status) {
     case 'succeeded':
-      return 'initial_pass_completed';
+      return passCount > 1 ? 'followup_pass_completed' : 'initial_pass_completed';
     case 'failed':
-      return 'initial_pass_failed';
+      return passCount > 1 ? 'followup_pass_failed' : 'initial_pass_failed';
     case 'cancelled':
       return 'cancelled';
     default:
@@ -63,6 +63,7 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
   const passSummaries = passes.map(toPassSummary);
   const latestPass = passSummaries[passSummaries.length - 1] ?? null;
   const currentReviewStatus = latestPass?.status ?? null;
+  const derivedPassCount = typeof record.pass_count === 'number' ? record.pass_count : passSummaries.length;
   const derivedUpdatedAt =
     latestPass?.finishedAt ?? latestPass?.startedAt ?? latestPass?.createdAt ?? record.updated_at;
   const derivedFinishedAt = record.finished_at ?? latestPass?.finishedAt ?? null;
@@ -78,11 +79,11 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
     anchorCheckpointId: record.anchor_checkpoint_id,
     sourceProjectRoot: record.source_project_root,
     phase: deriveSessionPhase(currentReviewStatus),
-    passCount: typeof record.pass_count === 'number' ? record.pass_count : passSummaries.length,
+    passCount: derivedPassCount,
     activeReviewId: record.active_review_id,
     latestReviewId: record.latest_review_id,
     currentReviewStatus,
-    stopReason: record.stop_reason ?? deriveStopReason(currentReviewStatus),
+    stopReason: record.stop_reason ?? deriveStopReason(currentReviewStatus, derivedPassCount),
     createdAt: record.created_at,
     updatedAt: derivedUpdatedAt,
     finishedAt: derivedFinishedAt,
@@ -173,7 +174,7 @@ export async function attachReviewPassToSession(
              ELSE pass_count + 1
            END,
            stop_reason = ?,
-           finished_at = COALESCE(?, finished_at),
+           finished_at = ?,
            updated_at = ?
        WHERE id = ?`
     )

@@ -9,22 +9,22 @@ import {
   getWorkspaceDeploymentRequestPayload,
   upsertReviewCochangeCacheBatch,
 } from '../db.js';
-import { readWorkspaceFilesFromSourceBundle } from '../review-analysis.js';
+import { readWorkspaceFilesFromSandbox, readWorkspaceFilesFromSourceBundle } from '../review-analysis.js';
 import {
   asRecord,
   discoverConventionCandidates,
   estimateTokenCount,
   mergeProvenance,
-    parseChangedPathsFromDiff,
-    parseDiffHunks,
-    parseLocalCochangeFromProvenance,
-    parseStringArray,
-    rankAggregatedRelatedPaths,
-    readOptionalNumber,
-    readOptionalString,
-    stripSensitiveTokenFields,
-    uniqueStrings,
-  } from './context-helpers.js';
+  parseChangedPathsFromDiff,
+  parseDiffHunks,
+  parseLocalCochangeFromProvenance,
+  parseStringArray,
+  rankAggregatedRelatedPaths,
+  readOptionalNumber,
+  readOptionalString,
+  stripSensitiveTokenFields,
+  uniqueStrings,
+} from './context-helpers.js';
 import {
   classifyCochangeSkipReason,
   fetchCochangeFromCheckpointBranch,
@@ -32,6 +32,7 @@ import {
   ReviewContextAssemblyError,
 } from './cochange.js';
 import { loadAuthoritativeDeploymentDiff } from './context-diff.js';
+import { captureWorkspaceEnvironmentSnapshot } from './environment.js';
 import type { ReviewRunExecutionOptions } from './shared.js';
 
 /**
@@ -47,12 +48,14 @@ export async function assembleReviewContextBootstrap(
   const COCHANGE_LOOKBACK_SESSIONS = 5;
   const COCHANGE_TOP_N = 20;
   const CONVENTION_FILE_MAX_COUNT = 10;
+  const reviewBasis = review.reviewBasis ?? 'checkpoint';
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
     eventType: 'review_context_assembly_started',
     payload: {
       source: 'entire/checkpoints/v1',
+      reviewBasis,
     },
   });
 
@@ -108,46 +111,83 @@ export async function assembleReviewContextBootstrap(
   const result = asRecord(deployment.result);
   const resultProvenance = asRecord(result.provenance);
   const resultArtifact = asRecord(result.artifact);
-  const provenanceOperationId = typeof resultProvenance.operationId === 'string'
-    ? resultProvenance.operationId
-    : typeof requestProvenance.operationId === 'string'
-      ? requestProvenance.operationId
-      : null;
-  const reviewDiffArtifactId = typeof resultArtifact.reviewDiffArtifactId === 'string'
-    ? resultArtifact.reviewDiffArtifactId
-    : typeof resultProvenance.reviewDiffArtifactId === 'string'
-      ? resultProvenance.reviewDiffArtifactId
-      : typeof requestProvenance.reviewDiffArtifactId === 'string'
-        ? requestProvenance.reviewDiffArtifactId
-        : null;
+  const environmentRevision = asRecord(requestProvenance.environmentRevision);
+  const expectedEnvironmentDiffSha256 = readOptionalString(environmentRevision.diffSha256);
+  const deploymentSourceBundleKey =
+    typeof resultArtifact.sourceBundleKey === 'string' && resultArtifact.sourceBundleKey.trim()
+      ? resultArtifact.sourceBundleKey.trim()
+      : deployment.sourceBundleKey ?? null;
 
-  const authoritativeDiff = await loadAuthoritativeDeploymentDiff(
-    env,
-    review.workspaceId,
-    provenanceOperationId,
-    reviewDiffArtifactId
-  );
-  const commitDiffPatch = readOptionalString(requestProvenance.commitDiffPatch);
-  const authoritativeDiffPatch = readOptionalString(authoritativeDiff?.patch);
-  const diffPatch = authoritativeDiffPatch ?? commitDiffPatch ?? null;
-  if (!diffPatch) {
-    throw new ReviewContextAssemblyError(
-      'review_context_diff_missing',
-      'Review context assembly requires non-empty diff patch context. Ensure deployment provenance includes review diff artifact or commit diff patch.'
+  let diffPatch: string | null = null;
+  let changedPaths: string[] = [];
+  let diffHunks: ReviewContext['retrieval']['diffHunks'] = [];
+  let diffSource: string | null = null;
+  let diffArtifactId: string | null = null;
+  let diffFallbackUsed = false;
+
+  if (reviewBasis === 'environment') {
+    const environmentSnapshot = await captureWorkspaceEnvironmentSnapshot(env, {
+      id: review.workspaceId,
+      status: workspace?.status ?? 'ready',
+      sandboxId: workspace?.sandboxId ?? '',
+      baselineReady: workspace?.baselineReady ?? false,
+    });
+    if (expectedEnvironmentDiffSha256 && expectedEnvironmentDiffSha256 !== environmentSnapshot.revision.diffSha256) {
+      throw new ReviewContextAssemblyError(
+        'review_context_environment_drift',
+        'Workspace environment changed after this review pass was requested. Start a new environment review pass.'
+      );
+    }
+    diffPatch = environmentSnapshot.patch;
+    changedPaths = environmentSnapshot.changedPaths;
+    diffHunks = environmentSnapshot.diffHunks;
+    diffSource = environmentSnapshot.revision.source;
+  } else {
+    const provenanceOperationId = typeof resultProvenance.operationId === 'string'
+      ? resultProvenance.operationId
+      : typeof requestProvenance.operationId === 'string'
+        ? requestProvenance.operationId
+        : null;
+    const reviewDiffArtifactId = typeof resultArtifact.reviewDiffArtifactId === 'string'
+      ? resultArtifact.reviewDiffArtifactId
+      : typeof resultProvenance.reviewDiffArtifactId === 'string'
+        ? resultProvenance.reviewDiffArtifactId
+        : typeof requestProvenance.reviewDiffArtifactId === 'string'
+          ? requestProvenance.reviewDiffArtifactId
+          : null;
+
+    const authoritativeDiff = await loadAuthoritativeDeploymentDiff(
+      env,
+      review.workspaceId,
+      provenanceOperationId,
+      reviewDiffArtifactId
     );
+    const commitDiffPatch = readOptionalString(requestProvenance.commitDiffPatch);
+    const authoritativeDiffPatch = readOptionalString(authoritativeDiff?.patch);
+    diffPatch = authoritativeDiffPatch ?? commitDiffPatch ?? null;
+    if (!diffPatch) {
+      throw new ReviewContextAssemblyError(
+        'review_context_diff_missing',
+        'Review context assembly requires non-empty diff patch context. Ensure deployment provenance includes review diff artifact or commit diff patch.'
+      );
+    }
+    changedPaths = parseChangedPathsFromDiff(diffPatch);
+    diffHunks = parseDiffHunks(diffPatch);
+    diffSource = authoritativeDiffPatch ? authoritativeDiff?.source ?? null : commitDiffPatch ? 'commit_patch' : null;
+    diffArtifactId = authoritativeDiffPatch ? authoritativeDiff?.artifactId ?? null : null;
+    diffFallbackUsed = !authoritativeDiffPatch && Boolean(commitDiffPatch);
   }
-  const changedPaths = diffPatch ? parseChangedPathsFromDiff(diffPatch) : [];
-  const diffHunks = diffPatch ? parseDiffHunks(diffPatch) : [];
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
     eventType: 'review_context_diff_collected',
     payload: {
-      source: authoritativeDiffPatch ? authoritativeDiff?.source ?? null : commitDiffPatch ? 'commit_patch' : null,
-      artifactId: authoritativeDiffPatch ? authoritativeDiff?.artifactId ?? null : null,
+      source: diffSource,
+      artifactId: diffArtifactId,
       hasDiff: Boolean(diffPatch),
       patchBytes: diffPatch ? new TextEncoder().encode(diffPatch).byteLength : 0,
-      fallbackUsed: !authoritativeDiffPatch && Boolean(commitDiffPatch),
+      fallbackUsed: diffFallbackUsed,
+      reviewBasis,
     },
   });
 
@@ -159,11 +199,7 @@ export async function assembleReviewContextBootstrap(
     },
   });
 
-  const deploymentSourceBundleKey =
-    typeof resultArtifact.sourceBundleKey === 'string' && resultArtifact.sourceBundleKey.trim()
-      ? resultArtifact.sourceBundleKey.trim()
-      : deployment.sourceBundleKey ?? null;
-  if (!deploymentSourceBundleKey) {
+  if (!deploymentSourceBundleKey && reviewBasis !== 'environment') {
     throw new ReviewContextAssemblyError(
       'review_context_source_bundle_missing',
       'Review context assembly requires deployment source bundle key.'
@@ -171,11 +207,16 @@ export async function assembleReviewContextBootstrap(
   }
 
   const changedFileReads = changedPaths.length
-    ? await readWorkspaceFilesFromSourceBundle(env, {
-        sourceBundleKey: deploymentSourceBundleKey,
-        sandboxId: `review-context-${review.id}-changed`,
-        paths: changedPaths,
-      })
+    ? reviewBasis === 'environment'
+      ? await readWorkspaceFilesFromSandbox(env, {
+          sandboxId: workspace?.sandboxId ?? '',
+          paths: changedPaths,
+        })
+      : await readWorkspaceFilesFromSourceBundle(env, {
+          sourceBundleKey: deploymentSourceBundleKey ?? '',
+          sandboxId: `review-context-${review.id}-changed`,
+          paths: changedPaths,
+        })
     : [];
   const changedFiles = changedFileReads
     .filter((item) => item.content !== null && !item.error)
@@ -188,11 +229,16 @@ export async function assembleReviewContextBootstrap(
 
   const conventionCandidates = discoverConventionCandidates(changedPaths, CONVENTION_FILE_MAX_COUNT);
   const conventionReads = conventionCandidates.length
-    ? await readWorkspaceFilesFromSourceBundle(env, {
-        sourceBundleKey: deploymentSourceBundleKey,
-        sandboxId: `review-context-${review.id}-conventions`,
-        paths: conventionCandidates,
-      })
+    ? reviewBasis === 'environment'
+      ? await readWorkspaceFilesFromSandbox(env, {
+          sandboxId: workspace?.sandboxId ?? '',
+          paths: conventionCandidates,
+        })
+      : await readWorkspaceFilesFromSourceBundle(env, {
+          sourceBundleKey: deploymentSourceBundleKey ?? '',
+          sandboxId: `review-context-${review.id}-conventions`,
+          paths: conventionCandidates,
+        })
     : [];
   const conventionFiles = conventionReads
     .filter((item) => item.content !== null && !item.error)
@@ -326,11 +372,16 @@ export async function assembleReviewContextBootstrap(
     const rankedRelated = rankAggregatedRelatedPaths(changedPaths, entriesByChangedPath, effectiveTopN);
 
     const relatedReads = rankedRelated.length
-      ? await readWorkspaceFilesFromSourceBundle(env, {
-          sourceBundleKey: deploymentSourceBundleKey,
-          sandboxId: `review-context-${review.id}-related`,
-          paths: rankedRelated.map((item) => item.path),
-        })
+      ? reviewBasis === 'environment'
+        ? await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: workspace?.sandboxId ?? '',
+            paths: rankedRelated.map((item) => item.path),
+          })
+        : await readWorkspaceFilesFromSourceBundle(env, {
+            sourceBundleKey: deploymentSourceBundleKey ?? '',
+            sandboxId: `review-context-${review.id}-related`,
+            paths: rankedRelated.map((item) => item.path),
+          })
       : [];
     const readByPath = new Map(relatedReads.map((item) => [item.path, item]));
     relatedFiles = rankedRelated
@@ -516,6 +567,7 @@ export async function assembleReviewContextBootstrap(
       sessionId,
       changedFileCount: changedPaths.length,
       contextId: ref.id,
+      reviewBasis,
     },
   });
 

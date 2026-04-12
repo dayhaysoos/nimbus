@@ -262,6 +262,12 @@ export function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse 
       branch: typeof requestProvenance.branch === 'string' && requestProvenance.branch.trim() ? requestProvenance.branch.trim() : (record.branch ?? ''),
       sessionIds: report?.provenance && Array.isArray(report.provenance.sessionIds) ? report.provenance.sessionIds : [],
       policyItems: intentSummary ? [] : policyItems,
+      environmentRevision:
+        report?.provenance &&
+        report.provenance.environmentRevision &&
+        typeof report.provenance.environmentRevision === 'object'
+          ? report.provenance.environmentRevision
+          : undefined,
       ...(intentSummary ? { intentSummary } : {}),
       promptSummary:
         report?.provenance && typeof report.provenance.promptSummary === 'string'

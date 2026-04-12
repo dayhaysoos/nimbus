@@ -18,6 +18,7 @@ export async function showReviewCommand(reviewId: string): Promise<void> {
   console.log(`  Session ID:      ${review.sessionId ?? 'none'}`);
   console.log(`  Target:          ${review.target.type}`);
   console.log(`  Mode:            ${review.mode}`);
+  console.log(`  Basis:           ${review.reviewBasis ?? 'checkpoint'}`);
   console.log(`  Recommendation:  ${review.summary?.recommendation ?? 'pending'}`);
   console.log(`  Risk Level:      ${review.summary?.riskLevel ?? 'pending'}`);
   console.log(`  Findings:        ${review.findings.length}`);
@@ -30,6 +31,9 @@ export async function showReviewCommand(reviewId: string): Promise<void> {
     console.log(`  Session Phase:   ${session.phase}`);
     console.log(`  Session Passes:  ${session.passCount}`);
     console.log(`  Session Stop:    ${session.stopReason ?? 'active'}`);
+  }
+  if (review.provenance.environmentRevision) {
+    console.log(`  Env Revision:    ${review.provenance.environmentRevision.diffSha256.slice(0, 12)} (${review.provenance.environmentRevision.changedFileCount} changed files)`);
   }
 
   if (review.intent?.goal) {

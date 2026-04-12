@@ -7,6 +7,7 @@ import type {
   ReviewPolicyDeriveResponse,
   ReviewPolicyMode,
   ReviewPolicyResponse,
+  ReviewSessionGetResponse,
 } from '../../lib/types.js';
 import { throwWorkerError, withReviewHeaders, workerFetch } from './shared.js';
 
@@ -71,6 +72,47 @@ export async function createReview(
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
     }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<ReviewCreateResponse>;
+}
+
+export async function createReviewSessionPass(
+  workerUrl: string,
+  sessionId: string,
+  payload: {
+    reviewBasis?: ReviewBasis;
+    policy?: {
+      severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
+      maxFindings?: number;
+      includeProvenance?: boolean;
+      includeValidationEvidence?: boolean;
+    };
+    model?: string;
+    provenance?: {
+      note?: string | null;
+      transcriptUrl?: string | null;
+    };
+  },
+  options?: {
+    idempotencyKey?: string;
+  }
+): Promise<ReviewCreateResponse> {
+  const headers = withReviewHeaders({
+    'Content-Type': 'application/json',
+  });
+  if (options?.idempotencyKey?.trim()) {
+    headers['Idempotency-Key'] = options.idempotencyKey.trim();
+  }
+
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/review-sessions/${encodeURIComponent(sessionId)}/reviews`, {
+    method: 'POST',
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -164,6 +206,17 @@ export async function getReview(workerUrl: string, reviewId: string): Promise<Re
   }
 
   return response.json() as Promise<ReviewGetResponse>;
+}
+
+export async function getReviewSession(workerUrl: string, sessionId: string): Promise<ReviewSessionGetResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/review-sessions/${encodeURIComponent(sessionId)}`, {
+    headers: withReviewHeaders(),
+  });
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<ReviewSessionGetResponse>;
 }
 
 function parseSseChunk(chunk: string): ReviewEventEnvelope[] {

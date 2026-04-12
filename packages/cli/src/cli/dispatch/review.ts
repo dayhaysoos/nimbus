@@ -1,5 +1,5 @@
 import * as p from '@clack/prompts';
-import { createReviewCommand, createReviewFromCommitCommand } from '../../commands/review/create.js';
+import { createReviewCommand, createReviewFromCommitCommand, createReviewSessionCommand } from '../../commands/review/create.js';
 import { reviewEventsCommand } from '../../commands/review/events.js';
 import { exportReviewCommand } from '../../commands/review/export.js';
 import { openReviewFromCommitCommand, startReviewStudioCommand } from '../../commands/review/open.js';
@@ -67,6 +67,8 @@ export async function dispatchReviewCommand(
     const commitFlag = flags.commit;
     const workspaceId = typeof workspaceFlag === 'string' ? workspaceFlag : undefined;
     const deploymentId = typeof deploymentFlag === 'string' ? deploymentFlag : undefined;
+    const sessionFlag = flags.session;
+    const sessionId = typeof sessionFlag === 'string' ? sessionFlag : undefined;
     const idempotencyKeyFlag = flags['idempotency-key'];
     const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
     const modelFlag = flags.model;
@@ -98,22 +100,31 @@ export async function dispatchReviewCommand(
     const openStudioPort = parsePositiveIntegerFlag(flags.port);
     const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;
     const hasWorkspaceInputs = Boolean(workspaceId || deploymentId);
+    const hasSessionInput = Boolean(sessionId);
     const unexpectedPositional = positional[1];
 
     if (typeof unexpectedPositional === 'string' && unexpectedPositional.trim()) {
       exitWithUsage('Usage error: review create does not accept positional arguments. Use --commit or --workspace/--deployment flags.');
     }
 
-    if (commitModeRequested && hasWorkspaceInputs) {
-      exitWithUsage('Usage error: --commit cannot be combined with --workspace/--deployment. Choose one review create mode.');
+    if (commitModeRequested && (hasWorkspaceInputs || hasSessionInput)) {
+      exitWithUsage('Usage error: --commit cannot be combined with --workspace/--deployment or --session. Choose one review create mode.');
     }
 
-    if (hasWorkspaceInputs && (checkpointRange || lastCheckpoints)) {
+    if ((hasWorkspaceInputs || hasSessionInput) && (checkpointRange || lastCheckpoints)) {
       exitWithUsage('Usage error: --last-checkpoints/--checkpoint-range can only be used with commit-based review create.');
     }
 
-    if (baseRef && (checkpointRange || lastCheckpoints)) {
+    if (baseRef && (checkpointRange || lastCheckpoints || hasSessionInput)) {
       exitWithUsage('Usage error: --base cannot be combined with --last-checkpoints or --checkpoint-range.');
+    }
+
+    if (hasSessionInput && hasWorkspaceInputs) {
+      exitWithUsage('Usage error: --session cannot be combined with --workspace/--deployment.');
+    }
+
+    if (hasSessionInput && policyMode !== 'none') {
+      exitWithUsage('Usage error: session re-review currently supports --policy-mode none only.');
     }
 
     if (checkpointRange && lastCheckpoints) {
@@ -146,8 +157,22 @@ export async function dispatchReviewCommand(
       return;
     }
 
+    if (sessionId) {
+      await createReviewSessionCommand(sessionId, {
+        idempotencyKey,
+        severityThreshold,
+        maxFindings,
+        openStudio,
+        openStudioPort,
+        model,
+        includeProvenance: !Boolean(flags['no-provenance']),
+        includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
+      });
+      return;
+    }
+
     if (!workspaceId || !deploymentId) {
-      exitWithUsage('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id>');
+      exitWithUsage('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id> OR --session <session-id>');
     }
 
     await createReviewCommand(workspaceId, deploymentId, {

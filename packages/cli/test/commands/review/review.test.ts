@@ -7,8 +7,10 @@ import * as p from '@clack/prompts';
 import {
   createReviewCommand,
   createReviewFromCommitCommand,
+  createReviewSessionCommand,
   setReviewCommitResolverForTests,
   setReviewCreateFlowForTests,
+  setReviewSessionCreateFlowForTests,
 } from '../../../src/commands/review/create.js';
 import { reviewEventsCommand } from '../../../src/commands/review/events.js';
 import { showReviewCommand } from '../../../src/commands/review/show.js';
@@ -38,6 +40,7 @@ function createReviewResponseBody() {
       },
       mode: 'report_only',
       status: 'succeeded',
+      reviewBasis: 'checkpoint',
       idempotencyKey: 'idem-review',
       attemptCount: 1,
       startedAt: '2026-03-11T00:00:00.000Z',
@@ -66,6 +69,7 @@ function createReviewResponseBody() {
       ],
       provenance: {
         sessionIds: [],
+        environmentRevision: undefined,
         promptSummary: 'Review generated for deployment dep_abcd1234.',
         transcriptUrl: null,
       },
@@ -1745,10 +1749,108 @@ export async function runReviewCommandTests(): Promise<void> {
         await showReviewCommand('rev_abcd1234');
         assert.equal(fetchCount, 1);
         assert.equal(lines.some((line) => line.includes('Session ID:      session_abcd1234')), true);
+        assert.equal(lines.some((line) => line.includes('Basis:           checkpoint')), true);
         assert.equal(lines.some((line) => line.includes('Session Phase:   completed')), true);
         assert.equal(lines.some((line) => line.includes('Session Passes:  1')), true);
       } finally {
         console.log = originalConsoleLog;
+      }
+    }
+
+    {
+      const lines: string[] = [];
+      const originalConsoleLog = console.log;
+      console.log = (...args: unknown[]) => {
+        lines.push(args.map((value) => String(value)).join(' '));
+      };
+      globalThis.fetch = (async (): Promise<Response> => {
+        const body = createReviewResponseBody() as any;
+        body.review.reviewBasis = 'environment';
+        body.review.provenance.environmentRevision = {
+          source: 'workspace_head',
+          diffSha256: 'b'.repeat(64),
+          changedFileCount: 2,
+          generatedAt: '2026-03-11T00:02:00.000Z',
+        };
+        return new Response(JSON.stringify(body), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }) as typeof fetch;
+
+      try {
+        await showReviewCommand('rev_env1234');
+        assert.equal(lines.some((line) => line.includes('Basis:           environment')), true);
+        assert.equal(lines.some((line) => line.includes('Env Revision:    bbbbbbbbbbbb (2 changed files)')), true);
+      } finally {
+        console.log = originalConsoleLog;
+      }
+    }
+
+    {
+      const lines: string[] = [];
+      const originalConsoleLog = console.log;
+      console.log = (...args: unknown[]) => {
+        lines.push(args.map((value) => String(value)).join(' '));
+      };
+      setReviewSessionCreateFlowForTests({
+        createReviewSessionPass: async () => ({
+          reviewId: 'rev_env1234',
+          sessionId: 'session_abcd1234',
+          status: 'queued',
+          eventsUrl: '/api/reviews/rev_env1234/events',
+          resultUrl: '/api/reviews/rev_env1234',
+          sessionUrl: '/api/review-sessions/session_abcd1234',
+        }) as any,
+        getReview: async () => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: 'rev_env1234',
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: 'environment',
+            provenance: {
+              ...createReviewResponseBody().review.provenance,
+              environmentRevision: {
+                source: 'workspace_head',
+                diffSha256: 'a'.repeat(64),
+                changedFileCount: 0,
+                generatedAt: '2026-03-11T00:02:00.000Z',
+              },
+            },
+          },
+          session: {
+            ...createReviewResponseBody().session,
+            passCount: 2,
+            latestReviewId: 'rev_env1234',
+            activeReviewId: 'rev_env1234',
+            stopReason: 'followup_pass_completed',
+            passes: [
+              ...createReviewResponseBody().session.passes,
+              {
+                reviewId: 'rev_env1234',
+                status: 'succeeded',
+                reviewBasis: 'environment',
+                createdAt: '2026-03-11T00:02:00.000Z',
+                startedAt: '2026-03-11T00:02:10.000Z',
+                finishedAt: '2026-03-11T00:03:00.000Z',
+              },
+            ],
+          },
+        }) as any,
+        getReviewSession: async () => ({
+          session: createReviewResponseBody().session,
+        }) as any,
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+        },
+      });
+      try {
+        await assert.doesNotReject(() => createReviewSessionCommand('session_abcd1234'));
+        assert.equal(lines.some((line) => line.includes('Report URL:')), true);
+      } finally {
+        console.log = originalConsoleLog;
+        setReviewSessionCreateFlowForTests(null);
       }
     }
 

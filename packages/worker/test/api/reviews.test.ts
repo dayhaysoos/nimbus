@@ -1,5 +1,7 @@
 import { strict as assert } from 'assert';
 import { handleCreateReview, handleFailReview, handleGetReview, handleGetReviewEvents, handleListReviews, handleRecoverReview } from '../../src/api/reviews.js';
+import { handleCreateReviewSessionPass } from '../../src/api/review-sessions.js';
+import { setReviewAnalysisSandboxResolverForTests } from '../../src/lib/review-analysis.js';
 
 function withRequiredProvenance(payload: Record<string, unknown>): Record<string, unknown> {
   const provenance =
@@ -39,6 +41,8 @@ function createReviewApiEnv(options?: {
   workspaceAccountId?: string | null;
   storedReviewRequestPayload?: Record<string, unknown>;
   reviewListRows?: Array<Record<string, unknown>>;
+  sessionExists?: boolean;
+  sessionId?: string;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -56,8 +60,8 @@ function createReviewApiEnv(options?: {
 } {
   const state = {
     reviewExists: options?.reviewExists ?? false,
-    reviewSessionExists: false,
-    reviewSessionId: options?.reused ? 'session_existing' : null as string | null,
+    reviewSessionExists: options?.sessionExists ?? false,
+    reviewSessionId: options?.sessionId ?? (options?.reused ? 'session_existing' : null as string | null),
     queueSendCount: 0,
     eventTypes: new Set<string>(options?.existingEventTypes ?? []),
     reviewStatus: (options?.initialReviewStatus ?? 'queued') as 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled',
@@ -288,7 +292,7 @@ function createReviewApiEnv(options?: {
             bind(sessionId: string) {
               return {
                 async first<T>() {
-                  const resolvedSessionId = state.reviewSessionId ?? (options?.reused ? 'session_existing' : null);
+                  const resolvedSessionId = state.reviewSessionExists ? state.reviewSessionId : null;
                   if (!resolvedSessionId || sessionId !== resolvedSessionId) {
                     return null as T;
                   }
@@ -323,7 +327,7 @@ function createReviewApiEnv(options?: {
             bind(sessionId: string) {
               return {
                 async first<T>() {
-                  const resolvedSessionId = state.reviewSessionId ?? (options?.reused ? 'session_existing' : null);
+                  const resolvedSessionId = state.reviewSessionExists ? state.reviewSessionId : null;
                   if (!resolvedSessionId || sessionId !== resolvedSessionId) {
                     return null as T;
                   }
@@ -342,7 +346,7 @@ function createReviewApiEnv(options?: {
             bind(sessionId: string) {
               return {
                 async all<T>() {
-                  const resolvedSessionId = state.reviewSessionId ?? (options?.reused ? 'session_existing' : null);
+                  const resolvedSessionId = state.reviewSessionExists ? state.reviewSessionId : null;
                   if (!resolvedSessionId || sessionId !== resolvedSessionId) {
                     return { results: [] } as unknown as T;
                   }
@@ -1690,6 +1694,68 @@ export async function runReviewApiTests(): Promise<void> {
     assert.equal(state.eventTypes.has('review_failed'), false);
     assert.equal(state.reviewStatus, 'queued');
     assert.equal(state.findingsClearedCount, 0);
+  }
+
+  {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec() {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+    }) as never);
+    try {
+      const { env, state } = createReviewApiEnv({
+        sessionExists: true,
+        sessionId: 'session_existing',
+        initialReviewStatus: 'succeeded',
+      });
+      const response = await handleCreateReviewSessionPass(
+        'session_existing',
+        new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+          method: 'POST',
+          body: JSON.stringify({
+            reviewBasis: 'environment',
+            policy: {
+              severityThreshold: 'medium',
+              maxFindings: 12,
+            },
+          }),
+        }),
+        env as never
+      );
+      assert.equal(response.status, 202);
+      const body = (await response.json()) as Record<string, unknown>;
+      assert.equal(body.sessionId, 'session_existing');
+      assert.equal(body.status, 'queued');
+      assert.equal(state.queueSendCount, 1);
+      assert.equal(state.createdRequestPayload?.reviewBasis, 'environment');
+      const provenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
+      const environmentRevision = (provenance.environmentRevision ?? {}) as Record<string, unknown>;
+      assert.equal(environmentRevision.source, 'workspace_head');
+      assert.equal(typeof environmentRevision.diffSha256, 'string');
+      assert.equal(environmentRevision.changedFileCount, 0);
+    } finally {
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const { env } = createReviewApiEnv({
+      sessionExists: true,
+      sessionId: 'session_existing',
+      initialReviewStatus: 'running',
+    });
+    const response = await handleCreateReviewSessionPass(
+      'session_existing',
+      new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+        method: 'POST',
+        body: JSON.stringify({ reviewBasis: 'environment' }),
+      }),
+      env as never
+    );
+    assert.equal(response.status, 409);
   }
 
   {

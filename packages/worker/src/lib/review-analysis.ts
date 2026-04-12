@@ -177,6 +177,41 @@ export interface ReviewSourceFileReadResult {
 export { extractJsonObject, stripCodeFences } from './review-analysis/helpers.js';
 export { setReviewAnalysisSandboxResolverForTests } from './review-analysis/sandbox.js';
 
+async function readFilesFromSandboxClient(
+  sandbox: SandboxClient,
+  paths: string[],
+  maxFileBytes: number
+): Promise<ReviewSourceFileReadResult[]> {
+  const policy: ReviewCommandPolicy = {
+    commandAllow: [],
+    commandDeny: [],
+    maxCommandTimeoutMs: MAX_COMMAND_TIMEOUT_MS,
+    maxOutputBytes: DEFAULT_REVIEW_MAX_OUTPUT_BYTES,
+    rootPath: WORKSPACE_ROOT,
+  };
+
+  const uniquePaths = Array.from(new Set(paths.map((path) => path.trim()).filter(Boolean)));
+  const results: ReviewSourceFileReadResult[] = [];
+  for (const path of uniquePaths) {
+    const toolResult = await executeReviewTool(
+      sandbox,
+      { type: 'tool', tool: 'read_file', args: { path, maxBytes: maxFileBytes } },
+      policy,
+      maxFileBytes
+    );
+    const resultRecord = asRecord(toolResult.result);
+    const error = typeof resultRecord.error === 'string' ? resultRecord.error : null;
+    const content = typeof resultRecord.content === 'string' ? resultRecord.content : null;
+    const bytes = typeof resultRecord.bytes === 'number' && Number.isFinite(resultRecord.bytes)
+      ? Math.max(0, Math.floor(resultRecord.bytes))
+      : 0;
+    const truncated = Boolean(resultRecord.truncated);
+    results.push({ path, content, bytes, truncated, error });
+  }
+
+  return results;
+}
+
 function parseCompleteActionPayload(action: Extract<ReviewAgentAction, { type: 'complete' }>): unknown {
   if (action.finalOutput !== undefined && action.finalOutput !== null) {
     return action.finalOutput;
@@ -854,35 +889,7 @@ export async function readWorkspaceFilesFromSourceBundle(
   const sandbox = await resolveReviewSandbox(env, input.sandboxId);
   try {
     await hydrateReviewSandbox(sandbox, await bundle.arrayBuffer());
-
-    const policy: ReviewCommandPolicy = {
-      commandAllow: [],
-      commandDeny: [],
-      maxCommandTimeoutMs: MAX_COMMAND_TIMEOUT_MS,
-      maxOutputBytes: DEFAULT_REVIEW_MAX_OUTPUT_BYTES,
-      rootPath: WORKSPACE_ROOT,
-    };
-
-    const uniquePaths = Array.from(new Set(input.paths.map((path) => path.trim()).filter(Boolean)));
-    const results: ReviewSourceFileReadResult[] = [];
-    for (const path of uniquePaths) {
-      const toolResult = await executeReviewTool(
-        sandbox,
-        { type: 'tool', tool: 'read_file', args: { path, maxBytes: effectiveMaxFileBytes } },
-        policy,
-        effectiveMaxFileBytes
-      );
-      const resultRecord = asRecord(toolResult.result);
-      const error = typeof resultRecord.error === 'string' ? resultRecord.error : null;
-      const content = typeof resultRecord.content === 'string' ? resultRecord.content : null;
-      const bytes = typeof resultRecord.bytes === 'number' && Number.isFinite(resultRecord.bytes)
-        ? Math.max(0, Math.floor(resultRecord.bytes))
-        : 0;
-      const truncated = Boolean(resultRecord.truncated);
-      results.push({ path, content, bytes, truncated, error });
-    }
-
-    return results;
+    return readFilesFromSandboxClient(sandbox, input.paths, effectiveMaxFileBytes);
   } finally {
     if (typeof sandbox.destroy === 'function') {
       try {
@@ -894,6 +901,23 @@ export async function readWorkspaceFilesFromSourceBundle(
   }
 }
 
+export async function readWorkspaceFilesFromSandbox(
+  env: Env,
+  input: {
+    sandboxId: string;
+    paths: string[];
+    maxFileBytes?: number;
+  }
+): Promise<ReviewSourceFileReadResult[]> {
+  const maxFileBytes = parseIntegerString(env.REVIEW_AGENT_MAX_FILE_BYTES, DEFAULT_REVIEW_MAX_FILE_BYTES, 1_024, 200_000);
+  const effectiveMaxFileBytes =
+    typeof input.maxFileBytes === 'number' && Number.isFinite(input.maxFileBytes)
+      ? Math.max(1_024, Math.min(maxFileBytes, Math.floor(input.maxFileBytes)))
+      : maxFileBytes;
+  const sandbox = await resolveReviewSandbox(env, input.sandboxId);
+  return readFilesFromSandboxClient(sandbox, input.paths, effectiveMaxFileBytes);
+}
+
 /**
  * Runs the model-backed review analysis loop against a hydrated deployment snapshot using
  * the read-only review tools and strict structured-output validation.
@@ -902,6 +926,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
   env: Env,
   input: ReviewAgentPromptInput & {
     deploymentSandboxId: string;
+    workspaceSandboxId?: string;
     modelOverride?: string;
     abortSignal?: AbortSignal;
   }
@@ -932,19 +957,30 @@ export async function runWorkspaceDeploymentAgentAnalysis(
 
   const maxSteps = parseIntegerString(env.REVIEW_AGENT_MAX_STEPS, DEFAULT_REVIEW_AGENT_MAX_STEPS, 1, MAX_REVIEW_AGENT_MAX_STEPS);
   const maxFileBytes = parseIntegerString(env.REVIEW_AGENT_MAX_FILE_BYTES, DEFAULT_REVIEW_MAX_FILE_BYTES, 1_024, 200_000);
-  if (!env.WORKSPACE_ARTIFACTS && !env.SOURCE_BUNDLES) {
-    throw new Error('WORKSPACE_ARTIFACTS or SOURCE_BUNDLES binding is required for review analysis');
-  }
-  const bundle =
-    (env.WORKSPACE_ARTIFACTS ? await env.WORKSPACE_ARTIFACTS.get(input.sourceBundleKey) : null) ??
-    (env.SOURCE_BUNDLES ? await env.SOURCE_BUNDLES.get(input.sourceBundleKey) : null);
-  if (!bundle) {
-    throw new Error(`Review source bundle not found: ${input.sourceBundleKey}`);
-  }
-
-  const sandbox = await resolveReviewSandbox(env, input.deploymentSandboxId);
+  let sandbox: SandboxClient | null = null;
+  let shouldDestroy = false;
   try {
-    await hydrateReviewSandbox(sandbox, await bundle.arrayBuffer());
+    if (input.workspaceSandboxId) {
+      sandbox = await resolveReviewSandbox(env, input.workspaceSandboxId);
+    } else {
+      if (!env.WORKSPACE_ARTIFACTS && !env.SOURCE_BUNDLES) {
+        throw new Error('WORKSPACE_ARTIFACTS or SOURCE_BUNDLES binding is required for review analysis');
+      }
+      const bundle =
+        (env.WORKSPACE_ARTIFACTS ? await env.WORKSPACE_ARTIFACTS.get(input.sourceBundleKey) : null) ??
+        (env.SOURCE_BUNDLES ? await env.SOURCE_BUNDLES.get(input.sourceBundleKey) : null);
+      if (!bundle) {
+        throw new Error(`Review source bundle not found: ${input.sourceBundleKey}`);
+      }
+
+      sandbox = await resolveReviewSandbox(env, input.deploymentSandboxId);
+      await hydrateReviewSandbox(sandbox, await bundle.arrayBuffer());
+      shouldDestroy = typeof sandbox.destroy === 'function';
+    }
+    if (!sandbox) {
+      throw new Error('Review sandbox unavailable');
+    }
+
     const { rootListing, diffSnapshot } = await snapshotInitialContext(sandbox, maxFileBytes);
     const prompt = buildReviewAgentPrompt(
       sanitizePromptInput({
@@ -1222,7 +1258,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     }
     throw new Error('Review analysis exceeded maximum step count');
   } finally {
-    if (typeof sandbox.destroy === 'function') {
+    if (shouldDestroy && sandbox && typeof sandbox.destroy === 'function') {
       try {
         await sandbox.destroy();
       } catch {

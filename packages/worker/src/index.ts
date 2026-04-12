@@ -26,7 +26,7 @@ import {
   handleRecoverReview,
   handleListReviews,
 } from './api/reviews.js';
-import { handleGetReviewSession } from './api/review-sessions.js';
+import { handleCreateReviewSessionPass, handleGetReviewSession } from './api/review-sessions.js';
 import {
   handleCreateWorkspace,
   handleCreateWorkspaceGithubFork,
@@ -183,6 +183,12 @@ export default {
     const reviewSessionMatch = url.pathname.match(/^\/api\/review-sessions\/([a-z0-9_]+)$/);
     if (reviewSessionMatch && request.method === 'GET') {
       return handleGetReviewSession(reviewSessionMatch[1], env, authContext);
+    }
+
+    // Route: POST /api/review-sessions/:id/reviews - Create next review pass inside an existing session
+    const reviewSessionReviewsMatch = url.pathname.match(/^\/api\/review-sessions\/([a-z0-9_]+)\/reviews$/);
+    if (reviewSessionReviewsMatch && request.method === 'POST') {
+      return handleCreateReviewSessionPass(reviewSessionReviewsMatch[1], request, env, ctx, authContext);
     }
 
     // Route: GET /api/workspaces/:id/events - List workspace events

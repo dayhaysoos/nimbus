@@ -29,6 +29,8 @@ Commands:
                         Create workspace+deployment+review (default policy mode: none)
   review create --workspace <id> --deployment <id>
                        Create a report-only review run for an existing deployment
+  review create --session <id>
+                       Create an environment-backed re-review pass in an existing session
   review preflight [commit-ish]
                        Validate Entire checkpoint/session metadata for review create
   review policy --commit [commit-ish]
@@ -80,6 +82,7 @@ Options:
                       Require direct Entire checkpoint context (disable branch fallback)
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
+  --session <id>      Review session ID for environment-backed re-review
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
   --policy-mode <mode>
                      Review policy mode (none|auto|review)
@@ -138,6 +141,7 @@ Examples:
   nimbus review create --commit HEAD --project-root apps/web
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
+  nimbus review create --session session_abcd1234
   nimbus review create --commit HEAD --model gpt-5.1
   nimbus review create --commit HEAD --last-checkpoints 2
   nimbus review create --checkpoint-range checkpoint:8a513f56ed70..checkpoint:9b624a67fe81

@@ -186,6 +186,38 @@ function assignIdempotencyNestedField(
   };
 }
 
+function normalizeEnvironmentRevision(value: unknown):
+  | {
+      source: 'workspace_head';
+      diffSha256: string;
+      changedFileCount: number;
+      generatedAt: string;
+    }
+  | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  const source = typeof value.source === 'string' ? value.source.trim() : '';
+  const diffSha256 = typeof value.diffSha256 === 'string' ? value.diffSha256.trim().toLowerCase() : '';
+  const changedFileCount =
+    typeof value.changedFileCount === 'number' && Number.isFinite(value.changedFileCount)
+      ? Math.max(0, Math.floor(value.changedFileCount))
+      : 0;
+  const generatedAt = typeof value.generatedAt === 'string' ? value.generatedAt.trim() : '';
+  if (source !== 'workspace_head') {
+    return undefined;
+  }
+  if (!/^[a-f0-9]{64}$/.test(diffSha256) || !generatedAt) {
+    return undefined;
+  }
+  return {
+    source: 'workspace_head',
+    diffSha256,
+    changedFileCount,
+    generatedAt,
+  };
+}
+
 /**
  * Normalizes review create request payloads and derives the canonical idempotency subset.
  * This keeps equivalent requests stable even when optional fields are omitted.
@@ -241,6 +273,7 @@ export function buildReviewRequestPayload(input: {
     typeof input.provenance.commitDiffPatchOriginalChars === 'number' && Number.isFinite(input.provenance.commitDiffPatchOriginalChars)
       ? Math.max(0, Math.floor(input.provenance.commitDiffPatchOriginalChars))
       : undefined;
+  const environmentRevision = normalizeEnvironmentRevision(input.provenance.environmentRevision);
   const contextResolution =
     input.provenance.contextResolution === 'branch_fallback' || input.provenance.contextResolution === 'direct'
       ? input.provenance.contextResolution
@@ -333,6 +366,7 @@ export function buildReviewRequestPayload(input: {
       ...(commitDiffPatchSha256 ? { commitDiffPatchSha256 } : {}),
       ...(commitDiffPatchTruncated ? { commitDiffPatchTruncated } : {}),
       ...(typeof commitDiffPatchOriginalChars === 'number' ? { commitDiffPatchOriginalChars } : {}),
+      ...(environmentRevision ? { environmentRevision } : {}),
       ...(contextResolution ? { contextResolution } : {}),
       ...(contextResolutionOriginalCheckpointId ? { contextResolutionOriginalCheckpointId } : {}),
       ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),

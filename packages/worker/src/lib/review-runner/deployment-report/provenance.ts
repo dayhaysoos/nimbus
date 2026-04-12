@@ -95,13 +95,16 @@ export async function buildDeploymentReportInputs(
     reviewContextFilesConsidered > LARGE_DIFF_ADVISORY_THRESHOLD
       ? [`Large diff detected (${reviewContextFilesConsidered} files). Consider smaller, focused commits for higher quality reviews.`]
       : [];
+  const reviewBasis = payload.reviewBasis === 'environment' ? 'environment' : 'checkpoint';
 
   const baseGoal =
     typeof provenanceTask?.prompt === 'string' && provenanceTask.prompt.trim()
       ? provenanceTask.prompt.trim()
       : typeof requestProvenance.note === 'string' && requestProvenance.note.trim()
         ? requestProvenance.note.trim()
-        : `Assess workspace deployment ${review.deploymentId} for review-first handoff readiness.`;
+        : reviewBasis === 'environment'
+          ? `Assess the current mutable workspace state for session ${review.sessionId ?? 'unknown'} against the anchor deployment ${review.deploymentId}.`
+          : `Assess workspace deployment ${review.deploymentId} for review-first handoff readiness.`;
   const baseConstraints = [
     'Non-mutating review only.',
     `Target limited to ${review.target.type}.`,
@@ -113,6 +116,9 @@ export async function buildDeploymentReportInputs(
       : 'Build validation was eligible during deployment validation.',
   ];
   const baseDecisions = [
+    reviewBasis === 'environment'
+      ? 'Review basis: current workspace environment state.'
+      : 'Review basis: anchor checkpoint/deployment snapshot.',
     typeof resultProvenance.trigger === 'string'
       ? `Deployment trigger: ${resultProvenance.trigger}.`
       : typeof requestProvenance.trigger === 'string'

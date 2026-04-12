@@ -11,3 +11,7 @@ export type {
   ResolveReviewContextOptions,
   ResolveReviewContextResult,
 } from '../../app/reviews/context.js';
+export {
+  createReviewSessionCommand,
+  setReviewSessionCreateFlowForTests,
+} from '../../app/reviews/create-from-session.js';

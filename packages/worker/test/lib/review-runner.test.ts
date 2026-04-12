@@ -612,7 +612,7 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const { env, state } = createReviewRunnerEnv();
     await processReviewRun(env as never, 'rev_abcd1234', { cochangeGithubToken: 'ghp_test_token' });
-    assert.equal(state.status, 'succeeded');
+    assert.equal(state.status, 'succeeded', `${state.errorCode ?? 'no_error_code'} :: ${JSON.stringify(state.events.at(-1) ?? null)}`);
     assert.equal(state.events.some((event) => event.eventType === 'review_preflight_started'), true);
     assert.equal(state.events.some((event) => event.eventType === 'review_finalize_started'), true);
     assert.equal(state.events.some((event) => event.eventType === 'review_succeeded'), true);
@@ -621,6 +621,43 @@ export async function runReviewRunnerTests(): Promise<void> {
     const report = JSON.parse(state.reportJson ?? '{}') as { evidence: Array<{ type: string; status: string }> };
     const validationStarted = report.evidence.find((item) => item.type === 'validation_started');
     assert.equal(validationStarted?.status, 'info');
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv({
+      payload: {
+        reviewBasis: 'environment',
+        provenance: {
+          trigger: 'manual_cli',
+          repo: 'dayhaysoos/nimbus',
+          branch: 'main',
+          environmentRevision: {
+            source: 'workspace_head',
+            diffSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            changedFileCount: 0,
+            generatedAt: '2026-03-11T00:00:00.000Z',
+          },
+        },
+      },
+      deploymentSourceBundleKey: null,
+    });
+    await processReviewRun(env as never, 'rev_abcd1234', { cochangeGithubToken: 'ghp_test_token' });
+    assert.equal(state.status, 'succeeded');
+    const report = JSON.parse(state.reportJson ?? '{}') as {
+      provenance: {
+        environmentRevision?: {
+          source: string;
+          diffSha256: string;
+          changedFileCount: number;
+        };
+        reviewedFiles?: {
+          changed: string[];
+        };
+      };
+    };
+    assert.equal(report.provenance.environmentRevision?.source, 'workspace_head');
+    assert.equal(report.provenance.environmentRevision?.changedFileCount, 0);
+    assert.deepEqual(report.provenance.reviewedFiles?.changed ?? [], []);
   }
 
   {
