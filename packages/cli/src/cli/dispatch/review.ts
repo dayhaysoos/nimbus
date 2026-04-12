@@ -131,7 +131,21 @@ export async function dispatchReviewCommand(
       exitWithUsage('Usage error: --last-checkpoints and --checkpoint-range cannot be used together.');
     }
 
-    if (commitModeRequested || (!workspaceId && !deploymentId)) {
+    if (sessionId) {
+      await createReviewSessionCommand(sessionId, {
+        idempotencyKey,
+        severityThreshold,
+        maxFindings,
+        openStudio,
+        openStudioPort,
+        model,
+        includeProvenance: !Boolean(flags['no-provenance']),
+        includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
+      });
+      return;
+    }
+
+    if (commitModeRequested || (!workspaceId && !deploymentId && !sessionId)) {
       if (!commitModeRequested && !workspaceId && !deploymentId) {
         p.log.message('No review target flags provided; defaulting to `nimbus review create --commit HEAD`.');
       }
@@ -153,20 +167,6 @@ export async function dispatchReviewCommand(
         includeProvenance: !Boolean(flags['no-provenance']),
         includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
         pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),
-      });
-      return;
-    }
-
-    if (sessionId) {
-      await createReviewSessionCommand(sessionId, {
-        idempotencyKey,
-        severityThreshold,
-        maxFindings,
-        openStudio,
-        openStudioPort,
-        model,
-        includeProvenance: !Boolean(flags['no-provenance']),
-        includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
       });
       return;
     }

@@ -1,7 +1,10 @@
 import { strict as assert } from 'assert';
 import { handleCreateReview, handleFailReview, handleGetReview, handleGetReviewEvents, handleListReviews, handleRecoverReview } from '../../src/api/reviews.js';
 import { handleCreateReviewSessionPass } from '../../src/api/review-sessions.js';
+import { setWorkspaceSandboxResolverForTests } from '../../src/api/workspaces/sandbox.js';
 import { setReviewAnalysisSandboxResolverForTests } from '../../src/lib/review-analysis.js';
+
+const TEST_SOURCE_BUNDLE_SHA256 = '6189e319ec3a587c508e6aa679e149462bcff5c4c1f64dc8b50a57e82937e7d4';
 
 function withRequiredProvenance(payload: Record<string, unknown>): Record<string, unknown> {
   const provenance =
@@ -95,6 +98,18 @@ function createReviewApiEnv(options?: {
         };
       },
     },
+    SOURCE_BUNDLES: {
+      async get(key: string) {
+        if (key !== 'key') {
+          return null;
+        }
+        return {
+          async arrayBuffer() {
+            return new TextEncoder().encode('artifact bundle bytes').buffer;
+          },
+        };
+      },
+    },
     DB: {
       prepare(sql: string) {
         if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
@@ -111,7 +126,7 @@ function createReviewApiEnv(options?: {
                     source_ref: 'main',
                     source_project_root: '.',
                     source_bundle_key: 'key',
-                    source_bundle_sha256: 'f'.repeat(64),
+                    source_bundle_sha256: TEST_SOURCE_BUNDLE_SHA256,
                     source_bundle_bytes: 1,
                     sandbox_id: 'workspace-ws_abc12345',
                     baseline_ready: 1,
@@ -1738,6 +1753,54 @@ export async function runReviewApiTests(): Promise<void> {
       assert.equal(environmentRevision.changedFileCount, 0);
     } finally {
       setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    let hasHead = false;
+    const sandboxResolver = async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: hasHead ? 0 : 2 };
+        }
+        if (command.includes('git init -q')) {
+          hasHead = true;
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('git read-tree HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+    });
+    setReviewAnalysisSandboxResolverForTests(sandboxResolver as never);
+    setWorkspaceSandboxResolverForTests(sandboxResolver as never);
+    try {
+      const { env, state } = createReviewApiEnv({
+        sessionExists: true,
+        sessionId: 'session_existing',
+        initialReviewStatus: 'succeeded',
+      });
+      const response = await handleCreateReviewSessionPass(
+        'session_existing',
+        new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+          method: 'POST',
+          body: JSON.stringify({ reviewBasis: 'environment' }),
+        }),
+        env as never
+      );
+      assert.equal(response.status, 202);
+      assert.equal(state.queueSendCount, 1);
+      assert.equal(hasHead, true);
+    } finally {
+      setReviewAnalysisSandboxResolverForTests(null);
+      setWorkspaceSandboxResolverForTests(null);
     }
   }
 

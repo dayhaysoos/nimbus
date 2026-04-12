@@ -51,6 +51,8 @@ export async function runDeploymentReviewAnalysisStage(
       status: workspace.status,
       sandboxId: workspace.sandboxId,
       baselineReady: workspace.baselineReady,
+      sourceBundleKey: workspace.sourceBundleKey,
+      sourceBundleSha256: workspace.sourceBundleSha256,
     });
     authoritativeDiff = {
       source: environmentSnapshot.revision.source,

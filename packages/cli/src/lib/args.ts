@@ -16,6 +16,7 @@ const LONG_VALUE_FLAGS = new Set([
   'output-dir',
   'workspace',
   'deployment',
+  'session',
   'format',
   'out',
   'severity-threshold',

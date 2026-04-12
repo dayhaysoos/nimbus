@@ -459,6 +459,11 @@ function createReviewRunnerEnv(options?: {
             bind(status: string, _updatedAt: string, ...values: unknown[]) {
               return {
                 async run() {
+                  const requiredStatusMatch = sql.match(/WHERE\s+id = \?\s+AND status = '([a-z]+)'/i);
+                  const requiredStatus = requiredStatusMatch?.[1] ?? null;
+                  if (requiredStatus && state.status !== requiredStatus) {
+                    return { success: true, meta: { changes: 0 } };
+                  }
                   state.status = status;
                   state.updatedAt = _updatedAt;
                   if (status === 'queued') {
@@ -1166,6 +1171,21 @@ export async function runReviewRunnerTests(): Promise<void> {
                   } as T;
                 }
                 return row as T;
+              },
+            };
+          },
+        };
+      }
+      if (/UPDATE review_runs SET status =/i.test(sql)) {
+        return {
+          bind(...args: unknown[]) {
+            const bound = statement.bind(...args);
+            if (!manuallyFailed) {
+              return bound;
+            }
+            return {
+              async run() {
+                return { success: true, meta: { changes: 0 } };
               },
             };
           },
@@ -1879,6 +1899,95 @@ export async function runReviewRunnerTests(): Promise<void> {
       await processReviewRun(env as never, 'rev_abcd1234');
       assert.equal(state.status === 'succeeded' || state.status === 'failed', true);
       assert.equal(bundleBucketReads, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    let bundleReads = 0;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes("print(json.dumps({'content': text, 'truncated': truncated, 'bytes': len(data)}))")) {
+          return {
+            stdout: JSON.stringify({ content: 'export const value = 1;\n', truncated: false, bytes: 24 }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = originalFetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        payload: {
+          provenance: {
+            repo: 'dayhaysoos/nimbus',
+            branch: 'main',
+            sessionIds: ['ses_123'],
+            commitDiffPatch: [
+              'diff --git a/src/example.ts b/src/example.ts',
+              'index 1111111..2222222 100644',
+              '--- a/src/example.ts',
+              '+++ b/src/example.ts',
+              '@@ -1 +1 @@',
+              '-export const value = 0;',
+              '+export const value = 1;',
+            ].join('\n'),
+            localCochange: {
+              source: 'local_git',
+              lookbackSessions: 5,
+              topN: 5,
+              sessionsScanned: 3,
+              relatedByChangedPath: {
+                'src/example.ts': [
+                  {
+                    path: 'src/related.ts',
+                    frequency: 2,
+                    sessionIds: ['ses_prev_1', 'ses_prev_2'],
+                  },
+                ],
+              },
+            },
+          },
+        },
+        envOverrides: {
+          AGENT_SDK_URL: '',
+          OPENROUTER_API_KEY: '',
+          WORKSPACE_ARTIFACTS: undefined,
+          SOURCE_BUNDLES: {
+            async get(key: string) {
+              if (key === 'bundle') {
+                bundleReads += 1;
+                return {
+                  async arrayBuffer() {
+                    return new TextEncoder().encode('artifact bundle bytes').buffer;
+                  },
+                };
+              }
+              return null;
+            },
+            async put() {
+              return;
+            },
+          },
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(bundleReads, 1);
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);

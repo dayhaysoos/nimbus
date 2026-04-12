@@ -9,7 +9,10 @@ import {
   getWorkspaceDeploymentRequestPayload,
   upsertReviewCochangeCacheBatch,
 } from '../db.js';
-import { readWorkspaceFilesFromSandbox, readWorkspaceFilesFromSourceBundle } from '../review-analysis.js';
+import {
+  prepareWorkspaceSourceBundleSandbox,
+  readWorkspaceFilesFromSandbox,
+} from '../review-analysis.js';
 import {
   asRecord,
   discoverConventionCandidates,
@@ -131,6 +134,8 @@ export async function assembleReviewContextBootstrap(
       status: workspace?.status ?? 'ready',
       sandboxId: workspace?.sandboxId ?? '',
       baselineReady: workspace?.baselineReady ?? false,
+      sourceBundleKey: workspace?.sourceBundleKey ?? '',
+      sourceBundleSha256: workspace?.sourceBundleSha256 ?? '',
     });
     if (expectedEnvironmentDiffSha256 && expectedEnvironmentDiffSha256 !== environmentSnapshot.revision.diffSha256) {
       throw new ReviewContextAssemblyError(
@@ -206,15 +211,24 @@ export async function assembleReviewContextBootstrap(
     );
   }
 
+  const checkpointSnapshotSandboxId = reviewBasis === 'checkpoint' ? `review-context-${review.id}` : null;
+  if (checkpointSnapshotSandboxId && deploymentSourceBundleKey && changedPaths.length > 0) {
+    // Reuse one hydrated snapshot sandbox across all checkpoint context reads. Immediate destroy on
+    // per-read temp sandboxes has proven flaky against @cloudflare/sandbox in live execution.
+    await prepareWorkspaceSourceBundleSandbox(env, {
+      sourceBundleKey: deploymentSourceBundleKey,
+      sandboxId: checkpointSnapshotSandboxId,
+    });
+  }
+
   const changedFileReads = changedPaths.length
     ? reviewBasis === 'environment'
       ? await readWorkspaceFilesFromSandbox(env, {
           sandboxId: workspace?.sandboxId ?? '',
           paths: changedPaths,
         })
-      : await readWorkspaceFilesFromSourceBundle(env, {
-          sourceBundleKey: deploymentSourceBundleKey ?? '',
-          sandboxId: `review-context-${review.id}-changed`,
+      : await readWorkspaceFilesFromSandbox(env, {
+          sandboxId: checkpointSnapshotSandboxId ?? '',
           paths: changedPaths,
         })
     : [];
@@ -234,9 +248,8 @@ export async function assembleReviewContextBootstrap(
           sandboxId: workspace?.sandboxId ?? '',
           paths: conventionCandidates,
         })
-      : await readWorkspaceFilesFromSourceBundle(env, {
-          sourceBundleKey: deploymentSourceBundleKey ?? '',
-          sandboxId: `review-context-${review.id}-conventions`,
+      : await readWorkspaceFilesFromSandbox(env, {
+          sandboxId: checkpointSnapshotSandboxId ?? '',
           paths: conventionCandidates,
         })
     : [];
@@ -377,9 +390,8 @@ export async function assembleReviewContextBootstrap(
             sandboxId: workspace?.sandboxId ?? '',
             paths: rankedRelated.map((item) => item.path),
           })
-        : await readWorkspaceFilesFromSourceBundle(env, {
-            sourceBundleKey: deploymentSourceBundleKey ?? '',
-            sandboxId: `review-context-${review.id}-related`,
+        : await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: checkpointSnapshotSandboxId ?? '',
             paths: rankedRelated.map((item) => item.path),
           })
       : [];

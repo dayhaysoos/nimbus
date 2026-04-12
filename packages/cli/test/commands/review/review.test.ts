@@ -25,6 +25,7 @@ import {
   setReviewPreflightLastValidContextResolverForTests,
   setReviewPreflightTokenReadinessResolverForTests,
 } from '../../../src/commands/review/preflight.js';
+import { dispatchReviewCommand } from '../../../src/cli/dispatch/review.js';
 
 function createReviewResponseBody() {
   return {
@@ -1850,6 +1851,46 @@ export async function runReviewCommandTests(): Promise<void> {
         assert.equal(lines.some((line) => line.includes('Report URL:')), true);
       } finally {
         console.log = originalConsoleLog;
+        setReviewSessionCreateFlowForTests(null);
+      }
+    }
+
+    {
+      let sessionCalls = 0;
+      let commitResolverCalls = 0;
+      setReviewCommitResolverForTests(() => {
+        commitResolverCalls += 1;
+        throw new Error('commit path should not be used for --session');
+      });
+      setReviewSessionCreateFlowForTests({
+        createReviewSessionPass: async () => {
+          sessionCalls += 1;
+          return {
+            review: createReviewResponseBody().review,
+            session: createReviewResponseBody().session,
+          } as any;
+        },
+        getReviewSession: async () => ({
+          session: createReviewResponseBody().session,
+        }) as any,
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+        },
+      });
+      try {
+        await assert.doesNotReject(() =>
+          dispatchReviewCommand(
+            ['create'],
+            { session: 'session_abcd1234' },
+            (message) => {
+              throw new Error(message);
+            }
+          )
+        );
+        assert.equal(sessionCalls, 1);
+        assert.equal(commitResolverCalls, 0);
+      } finally {
+        setReviewCommitResolverForTests(null);
         setReviewSessionCreateFlowForTests(null);
       }
     }

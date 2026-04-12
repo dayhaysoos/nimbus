@@ -125,6 +125,10 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
     }
 
     const reviewContext = await assembleReviewContextBootstrap(env, review, payload, options);
+    const latestBeforeExecution = await loadLatestReviewUnlessManuallyFailed(env, reviewId);
+    if (!latestBeforeExecution) {
+      return;
+    }
     const report = await executeReviewRun(env, review, payload, reviewContext, {
       ...options,
       abortSignal: manualFailAbortMonitor.signal,

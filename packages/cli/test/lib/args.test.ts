@@ -115,6 +115,12 @@ export function runArgsParsingTests(): void {
   }
 
   {
+    const parsed = parseArgs(['review', 'create', '--session', 'session_abcd1234']);
+    assert.equal(parsed.flags.session, 'session_abcd1234');
+    assert.deepEqual(parsed.positional, ['create']);
+  }
+
+  {
     const parsed = parseArgs(['review', 'open', '--port', '2001']);
     assert.equal(parsed.flags.port, '2001');
     assert.deepEqual(parsed.positional, ['open']);

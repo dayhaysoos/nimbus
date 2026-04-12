@@ -1,4 +1,9 @@
-export { WORKSPACE_ROOT, getWorkspaceSandbox, isSandboxAlreadyGoneError } from './sandbox-client.js';
+export {
+  WORKSPACE_ROOT,
+  getWorkspaceSandbox,
+  isSandboxAlreadyGoneError,
+  setWorkspaceSandboxResolverForTests,
+} from './sandbox-client.js';
 export type { SandboxClient } from './sandbox-client.js';
 export {
   executeSandboxCommand,

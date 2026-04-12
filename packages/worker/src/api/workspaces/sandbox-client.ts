@@ -18,9 +18,21 @@ export interface SandboxClient {
   destroy(): Promise<void>;
 }
 
-export async function getWorkspaceSandbox(env: Env, sandboxId: string): Promise<SandboxClient> {
+async function getCloudflareWorkspaceSandbox(env: Env, sandboxId: string): Promise<SandboxClient> {
   const { getSandbox } = await import('@cloudflare/sandbox');
   return getSandbox(env.Sandbox as DurableObjectNamespace<Sandbox>, sandboxId) as SandboxClient;
+}
+
+let workspaceSandboxResolver: (env: Env, sandboxId: string) => Promise<SandboxClient> = getCloudflareWorkspaceSandbox;
+
+export function setWorkspaceSandboxResolverForTests(
+  resolver: ((env: Env, sandboxId: string) => Promise<SandboxClient>) | null
+): void {
+  workspaceSandboxResolver = resolver ?? getCloudflareWorkspaceSandbox;
+}
+
+export async function getWorkspaceSandbox(env: Env, sandboxId: string): Promise<SandboxClient> {
+  return workspaceSandboxResolver(env, sandboxId);
 }
 
 export function isSandboxAlreadyGoneError(error: unknown): boolean {
