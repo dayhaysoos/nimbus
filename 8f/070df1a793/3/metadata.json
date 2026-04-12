@@ -1,0 +1,26 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "8f070df1a793",
+  "session_id": "ses_27d853a63ffeMBkzC5mZrVUSU7",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-12T16:46:33.184963Z",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/cli/dispatch/review.ts",
+    "packages/worker/src/lib/review-runner/context.ts",
+    "packages/worker/src/lib/review-runner/environment.ts",
+    "packages/worker/test/api/reviews.test.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "f0d776f04fd5",
+  "initial_attribution": {
+    "calculated_at": "2026-04-12T16:46:33.183517Z",
+    "agent_lines": 67,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 67,
+    "agent_percentage": 100
+  }
+}
