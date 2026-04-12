@@ -1,0 +1,46 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "073bd96ba005",
+  "strategy": "manual-commit",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/app/reviews/create-from-session.ts",
+    "packages/cli/src/cli/dispatch/review.ts",
+    "packages/cli/src/cli/help.ts",
+    "packages/cli/src/clients/worker/reviews.ts",
+    "packages/cli/src/commands/review/create.ts",
+    "packages/cli/src/commands/review/show.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/cli/test/commands/review/review.test.ts",
+    "packages/worker/src/api/review-sessions.ts",
+    "packages/worker/src/api/reviews/request-shared.ts",
+    "packages/worker/src/index.ts",
+    "packages/worker/src/lib/db/review-sessions.ts",
+    "packages/worker/src/lib/db/reviews/shared.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner/context.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/analysis.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/output.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/provenance.ts",
+    "packages/worker/src/lib/review-runner/environment.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/lib/review-runner.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/07/3bd96ba005/0/metadata.json",
+      "transcript": "/07/3bd96ba005/0/full.jsonl",
+      "content_hash": "/07/3bd96ba005/0/content_hash.txt",
+      "prompt": ""
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 29398058,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 28962560,
+    "output_tokens": 89211,
+    "api_call_count": 171
+  }
+}
