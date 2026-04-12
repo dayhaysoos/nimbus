@@ -78,6 +78,12 @@
       "transcript": "/96/83abaccad7/9/full.jsonl",
       "content_hash": "/96/83abaccad7/9/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/96/83abaccad7/10/metadata.json",
+      "transcript": "/96/83abaccad7/10/full.jsonl",
+      "content_hash": "/96/83abaccad7/10/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
