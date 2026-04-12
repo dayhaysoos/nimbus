@@ -96,6 +96,12 @@
       "transcript": "/96/83abaccad7/12/full.jsonl",
       "content_hash": "/96/83abaccad7/12/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/96/83abaccad7/13/metadata.json",
+      "transcript": "/96/83abaccad7/13/full.jsonl",
+      "content_hash": "/96/83abaccad7/13/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
