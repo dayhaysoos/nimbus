@@ -152,6 +152,59 @@ export interface WorkspaceDiffResponse {
   patchTotalBytes?: number;
 }
 
+export type WorkspaceOperationType = 'export_zip' | 'export_patch' | 'fork_github';
+export type WorkspaceOperationStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export interface WorkspaceOperationResponse {
+  id: string;
+  type: WorkspaceOperationType;
+  status: WorkspaceOperationStatus;
+  workspaceId: string;
+  idempotencyKey: string;
+  createdAt: string;
+  updatedAt: string;
+  result?: unknown;
+  warnings?: unknown[];
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+export interface WorkspaceOperationCreateResponse {
+  operation: WorkspaceOperationResponse;
+}
+
+export interface WorkspaceArtifactDownload {
+  url: string;
+  expiresAt: string;
+}
+
+export type WorkspaceArtifactType = 'zip' | 'patch';
+export type WorkspaceArtifactStatus = 'available' | 'expired';
+
+export interface WorkspaceArtifactResponse {
+  id: string;
+  type: WorkspaceArtifactType;
+  status: WorkspaceArtifactStatus;
+  bytes: number;
+  contentType: string;
+  sha256: string;
+  workspaceId: string;
+  sourceBaselineSha: string;
+  creatorId: string | null;
+  createdAt: string;
+  expiresAt: string;
+  warnings: unknown[];
+  metadata: Record<string, unknown>;
+  download?: WorkspaceArtifactDownload | null;
+}
+
+export interface WorkspaceArtifactListResponse {
+  artifacts: WorkspaceArtifactResponse[];
+}
+
 export type WorkspaceDeploymentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface WorkspaceToolchainProfile {

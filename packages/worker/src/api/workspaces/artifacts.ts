@@ -112,26 +112,33 @@ export async function handleDownloadWorkspaceArtifact(
     }
 
     const downloadSecret = getArtifactDownloadSecret(env);
-    if (!downloadSecret) {
-      return jsonResponse({ error: 'Artifact download signing is not configured' }, 500);
-    }
-
+    const allowsAuthenticatedDownload = Boolean(authContext && (!authContext.isHostedMode || authContext.isAuthenticated || authContext.isAdmin));
     const url = new URL(request.url);
     const expRaw = url.searchParams.get('exp');
     const sigRaw = url.searchParams.get('sig');
-    const exp = expRaw ? Number(expRaw) : NaN;
-    if (!Number.isFinite(exp) || !sigRaw) {
+    const hasSignedDownloadParams = Boolean(expRaw && sigRaw);
+
+    if (hasSignedDownloadParams) {
+      if (!downloadSecret) {
+        return jsonResponse({ error: 'Artifact download signing is not configured' }, 500);
+      }
+
+      const exp = Number(expRaw);
+      if (!Number.isFinite(exp) || !sigRaw) {
+        return jsonResponse({ error: 'Missing or invalid download signature' }, 403);
+      }
+
+      const nowEpochSec = Math.floor(Date.now() / 1000);
+      if (exp < nowEpochSec) {
+        return jsonResponse({ error: 'Download signature expired' }, 403);
+      }
+
+      const expectedSig = await signArtifactDownload(workspaceId, artifactId, exp, downloadSecret);
+      if (sigRaw !== expectedSig) {
+        return jsonResponse({ error: 'Download signature invalid' }, 403);
+      }
+    } else if (!allowsAuthenticatedDownload) {
       return jsonResponse({ error: 'Missing or invalid download signature' }, 403);
-    }
-
-    const nowEpochSec = Math.floor(Date.now() / 1000);
-    if (exp < nowEpochSec) {
-      return jsonResponse({ error: 'Download signature expired' }, 403);
-    }
-
-    const expectedSig = await signArtifactDownload(workspaceId, artifactId, exp, downloadSecret);
-    if (sigRaw !== expectedSig) {
-      return jsonResponse({ error: 'Download signature invalid' }, 403);
     }
 
     const nowIso = new Date().toISOString();

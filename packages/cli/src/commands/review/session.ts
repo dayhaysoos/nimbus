@@ -90,3 +90,6 @@ export async function resetReviewSessionCommand(sessionId: string): Promise<void
     p.log.warning(response.warning);
   }
 }
+
+export { materializeReviewSessionCommand } from '../../app/reviews/materialize.js';
+export { setReviewSessionMaterializeFlowForTests } from '../../app/reviews/materialize.js';

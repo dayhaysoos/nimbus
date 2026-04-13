@@ -127,6 +127,13 @@ export function runArgsParsingTests(): void {
   }
 
   {
+    const parsed = parseArgs(['review', 'session', 'materialize', '--branch', 'main', '--path', 'tmp/report.md']);
+    assert.equal(parsed.flags.branch, 'main');
+    assert.equal(parsed.flags.path, 'tmp/report.md');
+    assert.deepEqual(parsed.positional, ['session', 'materialize']);
+  }
+
+  {
     const parsed = parseArgs(['review', 'studio', '--detach', '--dev-ui']);
     assert.equal(parsed.flags.detach, true);
     assert.equal(parsed.flags['dev-ui'], true);

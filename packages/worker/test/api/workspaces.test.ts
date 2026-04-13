@@ -4,6 +4,7 @@ import {
   handleCreateWorkspacePatchExport,
   handleCreateWorkspaceZipExport,
   handleCreateWorkspace,
+  handleDownloadWorkspaceArtifact,
   handleDeleteWorkspace,
   handleGetWorkspaceDiff,
   handleGetWorkspaceFile,
@@ -806,6 +807,104 @@ export async function runWorkspaceApiTests(): Promise<void> {
   {
     const response = await handleListWorkspaceArtifacts('ws_missing', createEnvWithEmptyWorkspace() as never);
     assert.equal(response.status, 404);
+  }
+
+  {
+    const env = {
+      DB: {
+        prepare(sql: string) {
+          if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
+            return {
+              bind() {
+                return {
+                  async first<T>() {
+                    return {
+                      id: 'ws_ready',
+                      status: 'ready',
+                      source_type: 'checkpoint',
+                      checkpoint_id: '8a513f56ed70',
+                      commit_sha: 'a'.repeat(40),
+                      source_ref: 'main',
+                      source_project_root: '.',
+                      source_bundle_key: 'workspaces/ws_ready/source/a.tar.gz',
+                      source_bundle_sha256: 'f'.repeat(64),
+                      source_bundle_bytes: 123,
+                      sandbox_id: 'workspace-ws_ready',
+                      baseline_ready: 1,
+                      error_code: null,
+                      error_message: null,
+                      last_event_seq: 0,
+                      created_at: '2026-03-07T00:00:00.000Z',
+                      updated_at: '2026-03-07T00:00:00.000Z',
+                      deleted_at: null,
+                    } as T;
+                  },
+                };
+              },
+            };
+          }
+
+          if (/SELECT \* FROM workspace_artifacts WHERE id = \? AND workspace_id = \?/i.test(sql)) {
+            return {
+              bind() {
+                return {
+                  async first<T>() {
+                    return {
+                      id: 'artifact_patch',
+                      workspace_id: 'ws_ready',
+                      operation_id: 'op_patch',
+                      type: 'patch',
+                      status: 'available',
+                      object_key: 'workspaces/ws_ready/artifacts/artifact_patch.patch',
+                      bytes: 18,
+                      content_type: 'text/x-diff',
+                      sha256: 'f'.repeat(64),
+                      source_baseline_sha: 'a'.repeat(40),
+                      creator_id: null,
+                      retention_expires_at: '2099-03-18T00:03:11.000Z',
+                      expired_at: null,
+                      warnings_json: '[]',
+                      metadata_json: '{}',
+                      created_at: '2026-03-11T00:03:11.000Z',
+                      updated_at: '2026-03-11T00:03:11.000Z',
+                    } as T;
+                  },
+                };
+              },
+            };
+          }
+
+          return {
+            bind() {
+              return {
+                async first() {
+                  return null;
+                },
+              };
+            },
+          };
+        },
+      },
+      WORKSPACE_ARTIFACTS: {
+        async get(key: string) {
+          assert.equal(key, 'workspaces/ws_ready/artifacts/artifact_patch.patch');
+          const response = new Response('diff --git a/math.js b/math.js\n');
+          return {
+            body: response.body,
+          };
+        },
+      },
+    };
+
+    const request = new Request('https://example.com/api/workspaces/ws_ready/artifacts/artifact_patch/download');
+    const response = await handleDownloadWorkspaceArtifact('ws_ready', 'artifact_patch', request, env as never, {
+      accountId: 'self-hosted',
+      isAdmin: true,
+      isAuthenticated: false,
+      isHostedMode: false,
+    });
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), 'diff --git a/math.js b/math.js\n');
   }
 
   {

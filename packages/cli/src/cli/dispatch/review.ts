@@ -5,7 +5,7 @@ import { exportReviewCommand } from '../../commands/review/export.js';
 import { openReviewFromCommitCommand, startReviewStudioCommand } from '../../commands/review/open.js';
 import { reviewPolicyCommand } from '../../commands/review/policy.js';
 import { reviewPreflightCommand } from '../../commands/review/preflight.js';
-import { resetReviewSessionCommand, showReviewSessionCommand } from '../../commands/review/session.js';
+import { materializeReviewSessionCommand, resetReviewSessionCommand, showReviewSessionCommand } from '../../commands/review/session.js';
 import { showReviewCommand } from '../../commands/review/show.js';
 import type { ParsedCliArgs } from '../../lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from '../../lib/review-policy.js';
@@ -221,7 +221,23 @@ export async function dispatchReviewCommand(
       return;
     }
 
-    exitWithUsage('Unknown review session command. Use: show, reset');
+    if (sessionAction === 'materialize') {
+      if (!sessionId) {
+        exitWithUsage('Usage: nimbus review session materialize <session-id>');
+      }
+      const branchFlag = flags.branch;
+      const branchName = typeof branchFlag === 'string' && branchFlag.trim() ? branchFlag.trim() : undefined;
+      const pathFlag = flags.path;
+      const path = typeof pathFlag === 'string' && pathFlag.trim() ? pathFlag.trim() : undefined;
+      await materializeReviewSessionCommand(sessionId, {
+        branchName,
+        path,
+        pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),
+      });
+      return;
+    }
+
+    exitWithUsage('Unknown review session command. Use: show, reset, materialize');
   }
 
   if (reviewAction === 'preflight') {

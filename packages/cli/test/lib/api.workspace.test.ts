@@ -2,6 +2,7 @@ import { strict as assert } from 'assert';
 import {
   createWorkspace,
   deleteWorkspace,
+  downloadWorkspaceArtifact,
   getWorkspace,
   getWorkspaceDiff,
   getWorkspaceFile,
@@ -11,8 +12,12 @@ import {
 
 export async function runWorkspaceApiTests(): Promise<void> {
   const originalFetch = globalThis.fetch;
+  const originalApiKey = process.env.NIMBUS_API_KEY;
+  let lastDownloadUrl: string | null = null;
+  let lastDownloadAuthHeader: string | null = null;
 
   try {
+    process.env.NIMBUS_API_KEY = 'test-api-key';
     globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {
       const url = String(input);
       if (url.endsWith('/api/workspaces') && init?.method === 'POST') {
@@ -127,6 +132,19 @@ export async function runWorkspaceApiTests(): Promise<void> {
         );
       }
 
+      if (
+        url.includes('/api/workspaces/ws_abc12345/artifacts/artifact_patch_1/download') ||
+        url.startsWith('https://cdn.example.com/artifacts/artifact_patch_1/download')
+      ) {
+        const headers = new Headers(init?.headers);
+        lastDownloadUrl = url;
+        lastDownloadAuthHeader = headers.get('X-Nimbus-Api-Key');
+        return new Response(new TextEncoder().encode('patch-bytes'), {
+          status: 200,
+          headers: { 'Content-Type': 'application/octet-stream' },
+        });
+      }
+
       return new Response(JSON.stringify({ error: 'not found' }), {
         status: 404,
         headers: { 'Content-Type': 'application/json' },
@@ -161,6 +179,26 @@ export async function runWorkspaceApiTests(): Promise<void> {
     assert.equal(diff.summary.totalChanged, 1);
     assert.equal(diff.includePatch, true);
 
+    const sameOriginBytes = await downloadWorkspaceArtifact(
+      'https://worker.example.com',
+      'ws_abc12345',
+      'artifact_patch_1',
+      '/api/workspaces/ws_abc12345/artifacts/artifact_patch_1/download?exp=123&sig=abc'
+    );
+    assert.equal(new TextDecoder().decode(sameOriginBytes), 'patch-bytes');
+    assert.equal(lastDownloadUrl, 'https://worker.example.com/api/workspaces/ws_abc12345/artifacts/artifact_patch_1/download?exp=123&sig=abc');
+    assert.equal(lastDownloadAuthHeader, 'test-api-key');
+
+    const crossOriginBytes = await downloadWorkspaceArtifact(
+      'https://worker.example.com',
+      'ws_abc12345',
+      'artifact_patch_1',
+      'https://cdn.example.com/artifacts/artifact_patch_1/download?sig=external'
+    );
+    assert.equal(new TextDecoder().decode(crossOriginBytes), 'patch-bytes');
+    assert.equal(lastDownloadUrl, 'https://cdn.example.com/artifacts/artifact_patch_1/download?sig=external');
+    assert.equal(lastDownloadAuthHeader, null);
+
     globalThis.fetch = (async (): Promise<Response> => {
       return new Response(
         JSON.stringify({
@@ -181,6 +219,7 @@ export async function runWorkspaceApiTests(): Promise<void> {
         error.retryable === true
     );
   } finally {
+    process.env.NIMBUS_API_KEY = originalApiKey;
     globalThis.fetch = originalFetch;
   }
 }

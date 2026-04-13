@@ -41,6 +41,8 @@ Commands:
                        Show review session state and pass history
   review session reset <session-id>
                        Reset a review session workspace back to baseline
+  review session materialize <session-id>
+                       Create an isolated local branch/worktree from converged session changes
   review events <review-id>
                        Stream review lifecycle events
   review studio
@@ -74,6 +76,8 @@ Options:
                      Stable idempotency key for workspace deploy retries
   --poll-interval-ms <n>
                       Poll interval for workspace deploy status checks
+  --branch <name>     Managed branch name for review session materialization
+  --path <path>       Destination path for review session local materialization
   --provider <name>   Deploy provider (simulated|cloudflare_workers_assets)
   --output-dir <path> Static build output directory (required for real provider)
   --summarize-session <mode>
@@ -157,6 +161,8 @@ Examples:
   nimbus review show rev_abcd1234
   nimbus review session show session_abcd1234
   nimbus review session reset session_abcd1234
+  nimbus review session materialize session_abcd1234
+  nimbus review session materialize session_abcd1234 --branch nimbus/fix-math --path .nimbus/studio/worktrees/fix-math
    nimbus review events rev_abcd1234
    nimbus review studio
    nimbus review studio --detach

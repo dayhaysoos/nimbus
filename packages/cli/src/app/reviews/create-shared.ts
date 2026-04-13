@@ -306,11 +306,41 @@ function shouldWaitForSessionSettlement(session: ReviewSessionResponse | undefin
   return true;
 }
 
+function reviewMayAdvanceSession(finalReview: ReviewGetResponse): boolean {
+  const totalFindingCount = Object.values(finalReview.review.summary?.findingCounts ?? {}).reduce((sum, value) => {
+    return sum + (typeof value === 'number' && Number.isFinite(value) ? value : 0);
+  }, 0);
+  const followUpReviewScore =
+    (
+      finalReview.review.provenance as
+        | {
+            validation?: {
+              followUpReviewScore?: unknown;
+            };
+          }
+        | undefined
+    )?.validation?.followUpReviewScore;
+  const recommendation = finalReview.review.summary?.recommendation;
+  const hasExplicitNonApproveRecommendation =
+    typeof recommendation === 'string' && recommendation.trim().length > 0 && recommendation !== 'approve';
+  return (
+    finalReview.review.status === 'succeeded' &&
+    (
+      (Array.isArray(finalReview.review.findings) && finalReview.review.findings.length > 0) ||
+      totalFindingCount > 0 ||
+      hasExplicitNonApproveRecommendation ||
+      followUpReviewScore === 2 ||
+      followUpReviewScore === 3
+    )
+  );
+}
+
 async function waitForSessionFollowup(input: {
   workerUrl: string;
   sessionId: string;
   currentReviewId: string;
-  minimumPassCount: number;
+  minimumPassCount: number | null;
+  allowTransientInitialPassCompletion?: boolean;
   getReviewSession: (workerUrl: string, sessionId: string) => Promise<ReviewSessionGetResponse>;
   pollIntervalMs?: number;
   timeoutMs?: number;
@@ -324,10 +354,12 @@ async function waitForSessionFollowup(input: {
       ? Math.max(10_000, Math.min(30 * 60_000, Math.floor(input.timeoutMs)))
       : 30_000;
   const deadline = Date.now() + timeoutMs;
+  let minimumPassCount = input.minimumPassCount;
   let latestSession: ReviewSessionResponse | null = null;
   let successfulReads = 0;
   let readErrorCount = 0;
   let lastReadErrorMessage: string | null = null;
+  let settledInitialPassProbeUsed = false;
   const settlingTimeoutWarning =
     'Review session is still settling; a follow-up pass may appear shortly. Re-run `nimbus review events` to continue watching.';
 
@@ -340,6 +372,32 @@ async function waitForSessionFollowup(input: {
       readErrorCount += 1;
       const message = error instanceof Error ? error.message : String(error);
       lastReadErrorMessage = `Failed to read review session state while awaiting follow-up pass: ${message}`;
+      if (latestSession) {
+        const isInitialPassCompletionWithoutAdvance = Boolean(
+          input.allowTransientInitialPassCompletion &&
+            latestSession.latestReviewId === input.currentReviewId &&
+            (minimumPassCount === null || latestSession.passCount <= minimumPassCount) &&
+            latestSession.stopReason === 'initial_pass_completed'
+        );
+        const shouldProbeSettledInitialPass = Boolean(
+          isInitialPassCompletionWithoutAdvance &&
+            latestSession.finishedAt &&
+            !latestSession.activeReviewId &&
+            !settledInitialPassProbeUsed
+        );
+        const shouldContinueTransientGrace = Boolean(isInitialPassCompletionWithoutAdvance && !latestSession.finishedAt);
+        const shouldContinueWaiting =
+          shouldWaitForSessionSettlement(latestSession, input.currentReviewId) ||
+          shouldContinueTransientGrace ||
+          shouldProbeSettledInitialPass;
+        if (!shouldContinueWaiting) {
+          return {
+            nextReviewId: null,
+            session: latestSession,
+            warning: lastReadErrorMessage,
+          };
+        }
+      }
       if (Date.now() >= deadline) {
         return {
           nextReviewId: null,
@@ -355,12 +413,32 @@ async function waitForSessionFollowup(input: {
       continue;
     }
     const nextReviewId = resolveFollowupReviewId(latestSession, input.currentReviewId, {
-      minimumPassCount: input.minimumPassCount,
+      minimumPassCount: minimumPassCount ?? 0,
     });
     if (nextReviewId) {
       return { nextReviewId, session: latestSession };
     }
-    if (!shouldWaitForSessionSettlement(latestSession, input.currentReviewId)) {
+    const isInitialPassCompletionWithoutAdvance = Boolean(
+      input.allowTransientInitialPassCompletion &&
+        latestSession?.latestReviewId === input.currentReviewId &&
+        (minimumPassCount === null || latestSession.passCount <= minimumPassCount) &&
+        latestSession.stopReason === 'initial_pass_completed'
+    );
+    const shouldProbeSettledInitialPass = Boolean(
+      isInitialPassCompletionWithoutAdvance &&
+        latestSession?.finishedAt &&
+        !latestSession.activeReviewId &&
+        !settledInitialPassProbeUsed
+    );
+    if (shouldProbeSettledInitialPass) {
+      settledInitialPassProbeUsed = true;
+    }
+    const shouldContinueTransientGrace = Boolean(isInitialPassCompletionWithoutAdvance && !latestSession?.finishedAt);
+    const shouldContinueWaiting =
+      shouldWaitForSessionSettlement(latestSession, input.currentReviewId) ||
+      shouldContinueTransientGrace ||
+      shouldProbeSettledInitialPass;
+    if (!shouldContinueWaiting) {
       return { nextReviewId: null, session: latestSession };
     }
     if (Date.now() >= deadline) {
@@ -461,13 +539,16 @@ export async function followReviewChain(input: {
     }
     const shouldReadSessionForFollowup =
       Boolean(sessionId && input.getReviewSession) &&
-      (!finalReview.session || shouldWaitForSessionSettlement(finalReview.session, currentReviewId));
+      (!finalReview.session ||
+        shouldWaitForSessionSettlement(finalReview.session, currentReviewId) ||
+        reviewMayAdvanceSession(finalReview));
     if (!nextReviewId && shouldReadSessionForFollowup && sessionId && input.getReviewSession) {
       const awaitedSession = await waitForSessionFollowup({
         workerUrl: input.workerUrl,
         sessionId,
         currentReviewId,
-        minimumPassCount: finalReview.session?.passCount ?? 0,
+        minimumPassCount: typeof finalReview.session?.passCount === 'number' ? finalReview.session.passCount : null,
+        allowTransientInitialPassCompletion: reviewMayAdvanceSession(finalReview),
         getReviewSession: input.getReviewSession,
         pollIntervalMs: input.pollIntervalMs,
       });

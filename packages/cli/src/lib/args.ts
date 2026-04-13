@@ -33,6 +33,8 @@ const LONG_VALUE_FLAGS = new Set([
   'policy-mode',
   'last-checkpoints',
   'checkpoint-range',
+  'branch',
+  'path',
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',
