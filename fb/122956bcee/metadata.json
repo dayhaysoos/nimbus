@@ -199,6 +199,12 @@
       "transcript": "/fb/122956bcee/29/full.jsonl",
       "content_hash": "/fb/122956bcee/29/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/fb/122956bcee/30/metadata.json",
+      "transcript": "/fb/122956bcee/30/full.jsonl",
+      "content_hash": "/fb/122956bcee/30/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
