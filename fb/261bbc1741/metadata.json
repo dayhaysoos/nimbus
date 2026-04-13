@@ -17,6 +17,7 @@
     "packages/worker/src/lib/review-runner/session-remediation.ts",
     "packages/worker/test/api/reviews.test.ts",
     "packages/worker/test/lib/db.review.test.ts",
+    "packages/worker/test/lib/review-environment.test.ts",
     "packages/worker/test/lib/review-session-remediation.test.ts",
     "packages/worker/test/lib/workspace-task-runner.test.ts"
   ],
@@ -26,6 +27,12 @@
       "transcript": "/fb/261bbc1741/0/full.jsonl",
       "content_hash": "/fb/261bbc1741/0/content_hash.txt",
       "prompt": "/fb/261bbc1741/0/prompt.txt"
+    },
+    {
+      "metadata": "/fb/261bbc1741/1/metadata.json",
+      "transcript": "/fb/261bbc1741/1/full.jsonl",
+      "content_hash": "/fb/261bbc1741/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
