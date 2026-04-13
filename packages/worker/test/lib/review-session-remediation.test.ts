@@ -19,6 +19,7 @@ interface TestState {
   sessionLatestReviewId: string | null;
   sessionPassCount: number;
   failReviewEventsFor: Set<string>;
+  reviewContextInPrimaryBucket: boolean;
 }
 
 function createBaseReport(findings: ReviewReport['findings'], followUpReviewScore: 1 | 2 | 3): ReviewReport {
@@ -42,6 +43,10 @@ function createBaseReport(findings: ReviewReport['findings'], followUpReviewScor
       sessionIds: ['session_slice4'],
       policyItems: [],
       promptSummary: 'Slice 4 remediation test',
+      reviewContextRef: {
+        id: 'rctx_slice4',
+        r2Key: 'review-context-key',
+      },
       followUpReview: {
         score: followUpReviewScore,
         rationale: 'test rationale',
@@ -88,9 +93,30 @@ function createReviewResponse(): ReviewRunResponse {
       sessionIds: ['session_slice4'],
       policyItems: [],
       promptSummary: 'Slice 4 remediation test',
+      reviewContextRef: {
+        id: 'rctx_slice4',
+        r2Key: 'review-context-key',
+      },
     },
     markdownSummary: null,
   };
+}
+
+function tryHandleWriteFileCommand(
+  command: string,
+  onWrite: (contents: string) => void
+): boolean {
+  if (!command.includes("with open(path, 'w', encoding='utf-8')")) {
+    return false;
+  }
+
+  const match = command.match(/content = (".*?")\nos\.makedirs/s);
+  if (!match) {
+    return false;
+  }
+
+  onWrite(JSON.parse(match[1]));
+  return true;
 }
 
 function createRemediationEnv(): { env: Record<string, unknown>; state: TestState } {
@@ -149,7 +175,37 @@ function createRemediationEnv(): { env: Record<string, unknown>; state: TestStat
     sessionLatestReviewId: 'review_current',
     sessionPassCount: 1,
     failReviewEventsFor: new Set<string>(),
+    reviewContextInPrimaryBucket: true,
   };
+
+  const reviewContextObject = {
+    async text() {
+      return JSON.stringify({
+        checkpoint: {
+          branch: 'entire/checkpoints/v1',
+        },
+        retrieval: {
+          changedFiles: [{ path: 'src/value.ts' }],
+          relatedFiles: [],
+              coChange: {
+                source: 'local_git',
+                lookbackSessions: 5,
+                topN: 20,
+                sessionsScanned: 1,
+              },
+              relatedByChangedPath: {
+                'src/value.ts': [
+                  {
+                    path: 'src/helper.ts',
+                    frequency: 2,
+                    sessionIds: ['sess_001', 'sess_002'],
+                  },
+                ],
+              },
+            },
+          });
+        },
+      };
 
   const env = {
     AGENT_PROVIDER: 'cloudflare_agents_sdk',
@@ -159,6 +215,22 @@ function createRemediationEnv(): { env: Record<string, unknown>; state: TestStat
     REVIEW_AGENT_MAX_STEPS: '4',
     WORKSPACE_AGENT_MAX_STEPS: '4',
     WORKSPACE_AGENT_MAX_RETRIES: '0',
+    REVIEW_CONTEXTS: {
+      async get(key: string) {
+        if (key !== 'review-context-key') {
+          return null;
+        }
+        return state.reviewContextInPrimaryBucket ? reviewContextObject : null;
+      },
+    },
+    WORKSPACE_ARTIFACTS: {
+      async get(key: string) {
+        if (key !== 'review-context-key') {
+          return null;
+        }
+        return state.reviewContextInPrimaryBucket ? null : reviewContextObject;
+      },
+    },
     DB: {
       prepare(sql: string) {
         if (/SELECT key, value FROM runtime_flags/i.test(sql)) {
@@ -758,6 +830,14 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
             exitCode: 0,
           };
         }
+        if (
+          tryHandleWriteFileCommand(command, (contents) => {
+            state.fileContent = contents;
+            state.changed = true;
+          })
+        ) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
         return { stdout: '', stderr: '', exitCode: 0 };
       },
       async writeFile(_path: string, contents: string) {
@@ -822,6 +902,170 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
     assert.ok(followup);
     assert.equal(String(followup?.request_payload_json).includes('"reviewBasis":"environment"'), true);
     assert.equal(String(followup?.request_payload_json).includes('"changedFileCount":1'), true);
+    assert.equal(String(followup?.request_payload_json).includes('"localCochange":{"source":"local_git"'), true);
+  }
+
+  {
+    const { env, state } = createRemediationEnv();
+    state.reviewContextInPrimaryBucket = false;
+    const sandbox = {
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('git diff --cached -M HEAD')) {
+          return {
+            stdout: state.changed
+              ? 'diff --git a/src/value.ts b/src/value.ts\n--- a/src/value.ts\n+++ b/src/value.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n'
+              : '',
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile(_path: string, contents: string) {
+        state.fileContent = contents;
+        state.changed = true;
+        return {};
+      },
+      async destroy() {
+        return undefined;
+      },
+    };
+    setWorkspaceTaskSandboxResolverForTests(async () => sandbox as never);
+    setReviewAnalysisSandboxResolverForTests(async () => sandbox as never);
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return new Response(
+          JSON.stringify({
+            action: {
+              type: 'tool',
+              tool: 'write_file',
+              args: { path: 'src/value.ts', content: 'export const value = 2;\n' },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: 'Updated src/value.ts to address the reported logic issue.',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const review = createReviewResponse();
+    const report = createBaseReport(
+      [
+        {
+          severity: 'medium',
+          category: 'logic',
+          passType: 'single',
+          description: 'value.ts returns the wrong constant.',
+          suggestedFix: 'Update the exported value to 2.',
+          locations: [{ filePath: 'src/value.ts', startLine: 1, endLine: 1 }],
+        },
+      ],
+      3
+    );
+
+    const result = await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
+    const followup = result.nextReviewId ? state.reviewRunRecords.get(result.nextReviewId) : null;
+    assert.ok(followup);
+    assert.equal(String(followup?.request_payload_json).includes('"localCochange":{"source":"local_git"'), true);
+  }
+
+  {
+    const { env, state } = createRemediationEnv();
+    const sandbox = {
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('git diff --cached -M HEAD')) {
+          return {
+            stdout: state.changed
+              ? 'diff --git a/src/value.ts b/src/value.ts\n--- a/src/value.ts\n+++ b/src/value.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n'
+              : '',
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        if (
+          tryHandleWriteFileCommand(command, (contents) => {
+            state.fileContent = contents;
+            state.changed = true;
+          })
+        ) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile(_path: string, contents: string) {
+        state.fileContent = contents;
+        state.changed = true;
+        return {};
+      },
+      async destroy() {
+        return undefined;
+      },
+    };
+    setWorkspaceTaskSandboxResolverForTests(async () => sandbox as never);
+    setReviewAnalysisSandboxResolverForTests(async () => sandbox as never);
+    let fetchCount = 0;
+    globalThis.fetch = (async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return new Response(
+          JSON.stringify({
+            action: {
+              type: 'tool',
+              tool: 'write_file',
+              args: { path: 'src/value.ts', content: 'export const value = 2;\n' },
+            },
+          }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } }
+        );
+      }
+      return new Response(
+        JSON.stringify({
+          action: {
+            type: 'final',
+            summary: 'Updated src/value.ts to address the reported high-severity logic issue.',
+          },
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    const review = createReviewResponse();
+    const report = createBaseReport(
+      [
+        {
+          severity: 'high',
+          category: 'logic',
+          passType: 'single',
+          description: 'value.ts returns the wrong constant and breaks the helper for valid inputs.',
+          suggestedFix: 'Update the exported value to 2.',
+          locations: [{ filePath: 'src/value.ts', startLine: 1, endLine: 1 }],
+        },
+      ],
+      3
+    );
+
+    const result = await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
+    assert.ok(result.nextReviewId);
+    assert.equal(state.fileContent, 'export const value = 2;\n');
+    assert.equal(state.workspaceTaskEvents.some((event) => event.eventType === 'task_succeeded'), true);
+    assert.equal(state.reviewEvents.some((event) => event.eventType === 'review_auto_remediation_completed'), true);
+    assert.equal(state.sessionPassCount, 2);
   }
 
   {
@@ -916,8 +1160,65 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
 
     const result = await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
     assert.equal(result.nextReviewId, null);
-    assert.equal(state.sessionStopReason, null);
+    assert.equal(state.sessionStopReason, 'initial_pass_completed');
+    assert.equal(state.sessionActiveReviewId, null);
+    assert.equal(state.sessionLatestReviewId, 'review_current');
     assert.equal(state.reviewEvents.some((event) => event.eventType === 'review_auto_remediation_failed'), false);
+  }
+
+  {
+    const { env, state } = createRemediationEnv();
+    state.sessionPassCount = 2;
+    state.sessionActiveReviewId = 'review_followup';
+    state.sessionLatestReviewId = 'review_followup';
+    state.reviewRunRecords.set('review_followup', {
+      id: 'review_followup',
+      workspace_id: 'ws_slice4',
+      deployment_id: 'dep_slice4',
+      session_id: 'session_slice4',
+      target_type: 'workspace_deployment',
+      mode: 'report_only',
+      status: 'succeeded',
+      idempotency_key: 'idem_followup',
+      request_payload_json: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_slice4', deploymentId: 'dep_slice4' },
+        mode: 'report_only',
+        reviewBasis: 'environment',
+        provenance: {
+          repo: 'dayhaysoos/nimbus',
+          branch: 'main',
+        },
+      }),
+      request_payload_sha256: 'hash_followup',
+      provenance_json: JSON.stringify({ promptSummary: 'Slice 4 remediation test' }),
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
+      derived_policy_json: null,
+      approved_policy_json: null,
+      approved_policy_sha256: null,
+      last_event_seq: 0,
+      attempt_count: 1,
+      started_at: '2026-04-12T12:04:00.000Z',
+      finished_at: '2026-04-12T12:05:00.000Z',
+      report_json: null,
+      markdown_summary: null,
+      error_code: null,
+      error_message: null,
+      created_at: '2026-04-12T12:04:00.000Z',
+      updated_at: '2026-04-12T12:05:00.000Z',
+    });
+    const review = {
+      ...createReviewResponse(),
+      id: 'review_followup',
+      reviewBasis: 'environment' as const,
+    };
+    const report = createBaseReport([], 1);
+
+    const result = await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
+    assert.equal(result.nextReviewId, null);
+    assert.equal(state.sessionStopReason, 'followup_pass_completed');
+    assert.equal(state.sessionActiveReviewId, null);
+    assert.equal(state.sessionLatestReviewId, 'review_followup');
   }
 
   {
@@ -986,6 +1287,17 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
             stderr: '',
             exitCode: 0,
           };
+        }
+        if (
+          tryHandleWriteFileCommand(command, (contents) => {
+            state.fileContent = contents;
+            state.changed = true;
+            state.sessionActiveReviewId = 'review_manual';
+            state.sessionLatestReviewId = 'review_manual';
+            state.sessionPassCount = 2;
+          })
+        ) {
+          return { stdout: '', stderr: '', exitCode: 0 };
         }
         return { stdout: '', stderr: '', exitCode: 0 };
       },

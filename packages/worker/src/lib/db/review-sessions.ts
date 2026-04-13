@@ -43,8 +43,15 @@ function normalizeEnvironmentRevision(value: unknown): ReviewEnvironmentRevision
 
 function deriveSessionPhase(
   status: ReviewRunStatus | null,
-  stopReason: ReviewSessionStopReason | null
+  stopReason: ReviewSessionStopReason | null,
+  options?: { hasActiveCurrentPass?: boolean }
 ): ReviewSessionPhase {
+  if (
+    options?.hasActiveCurrentPass &&
+    (status === 'queued' || status === 'running' || status === 'policy_approved')
+  ) {
+    return 'reviewing';
+  }
   if (stopReason === 'risky_fix_requires_approval') {
     return 'waiting_on_human';
   }
@@ -107,10 +114,19 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
   const latestPass = passSummaries[passSummaries.length - 1] ?? null;
   const currentReviewStatus = latestPass?.status ?? null;
   const derivedPassCount = typeof record.pass_count === 'number' ? record.pass_count : passSummaries.length;
+  const hasActiveCurrentPass = Boolean(record.active_review_id && latestPass?.reviewId === record.active_review_id);
+  const hasActiveNonTerminalPass =
+    hasActiveCurrentPass &&
+    (currentReviewStatus === 'queued' ||
+      currentReviewStatus === 'running' ||
+      currentReviewStatus === 'policy_pending' ||
+      currentReviewStatus === 'policy_ready' ||
+      currentReviewStatus === 'policy_approved');
   const derivedUpdatedAt =
     latestPass?.finishedAt ?? latestPass?.startedAt ?? latestPass?.createdAt ?? record.updated_at;
-  const derivedFinishedAt = record.finished_at ?? latestPass?.finishedAt ?? null;
-  const stopReason = record.stop_reason ?? deriveStopReason(currentReviewStatus, derivedPassCount);
+  const derivedFinishedAt = record.finished_at ?? (!hasActiveNonTerminalPass ? (latestPass?.finishedAt ?? null) : null);
+  const stopReason =
+    record.stop_reason ?? (!hasActiveNonTerminalPass ? deriveStopReason(currentReviewStatus, derivedPassCount) : null);
 
   return {
     id: record.id,
@@ -122,7 +138,7 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
     anchorCommitSha: record.anchor_commit_sha,
     anchorCheckpointId: record.anchor_checkpoint_id,
     sourceProjectRoot: record.source_project_root,
-    phase: deriveSessionPhase(currentReviewStatus, stopReason),
+    phase: deriveSessionPhase(currentReviewStatus, stopReason, { hasActiveCurrentPass }),
     passCount: derivedPassCount,
     activeReviewId: record.active_review_id,
     latestReviewId: record.latest_review_id,

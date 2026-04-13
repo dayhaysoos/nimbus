@@ -7,6 +7,8 @@ type AgentHistoryEntry =
 export type AgentAction =
   | { type: 'tool'; tool: 'list_files'; args: { path?: string } }
   | { type: 'tool'; tool: 'read_file'; args: { path: string; maxBytes?: number } }
+  | { type: 'tool'; tool: 'write_file'; args: { path: string; content: string } }
+  | { type: 'tool'; tool: 'run_command'; args: { command: string; timeoutMs?: number } }
   | { type: 'tool'; tool: 'diff_summary'; args: { maxBytes?: number } }
   | { type: 'final'; summary: string };
 
@@ -183,6 +185,42 @@ const reviewOutputV2JsonSchema = {
   },
 } as const;
 
+const WORKSPACE_TASK_TOOL_NAMES = ['list_files', 'read_file', 'write_file', 'run_command', 'diff_summary'] as const;
+
+const workspaceTaskActionJsonSchema = {
+  name: 'WorkspaceTaskAction',
+  strict: true,
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      type: { type: 'string', enum: ['tool', 'final'] },
+      tool: {
+        anyOf: [{ type: 'string', enum: [...WORKSPACE_TASK_TOOL_NAMES] }, { type: 'null' }],
+      },
+      args: {
+        anyOf: [
+          {
+            type: 'object',
+            additionalProperties: false,
+            properties: {
+              path: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              content: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              command: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+              maxBytes: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+              timeoutMs: { anyOf: [{ type: 'number' }, { type: 'null' }] },
+            },
+            required: ['path', 'content', 'command', 'maxBytes', 'timeoutMs'],
+          },
+          { type: 'null' },
+        ],
+      },
+      summary: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+    },
+    required: ['type', 'tool', 'args', 'summary'],
+  },
+} as const;
+
 function hasToolOutput(history: AgentHistoryEntry[], tool: string): boolean {
   return history.some((entry) => entry.role === 'tool' && entry.tool === tool);
 }
@@ -243,6 +281,28 @@ function extractJsonObjectCandidate(raw: string): string | null {
   return null;
 }
 
+function parseJsonCandidate(content: string): unknown {
+  try {
+    return JSON.parse(stripCodeFences(content));
+  } catch {
+    const candidate = extractJsonObjectCandidate(content);
+    if (!candidate) {
+      throw new AgentEndpointError('invalid_model_output', 422, {
+        errors: [{ path: '$', message: 'model response was not valid JSON' }],
+        preview: content.slice(0, 500),
+      });
+    }
+    try {
+      return JSON.parse(candidate);
+    } catch {
+      throw new AgentEndpointError('invalid_model_output', 422, {
+        errors: [{ path: '$', message: 'model response was not valid JSON' }],
+        preview: content.slice(0, 500),
+      });
+    }
+  }
+}
+
 function resolveOpenRouterModel(requestModel: string | undefined, defaultModel: string | undefined): string {
   const raw = (typeof requestModel === 'string' ? requestModel : '').trim() || (defaultModel ?? '').trim();
   if (!raw) {
@@ -252,6 +312,103 @@ function resolveOpenRouterModel(requestModel: string | undefined, defaultModel: 
     return 'anthropic/claude-sonnet-4-5';
   }
   return raw;
+}
+
+function buildWorkspaceTaskStepPrompt(input: {
+  prompt: string;
+  maxSteps: number;
+  step: number;
+  history: AgentHistoryEntry[];
+}): string {
+  return [
+    input.prompt,
+    '',
+    'Task loop instructions:',
+    `- Current step: ${input.step} of ${input.maxSteps}.`,
+    '- You are inside Nimbus\'s internal workspace remediation loop.',
+    '- Decide whether to request exactly ONE tool call or finish with type="final".',
+    '- Tools available: list_files, read_file, write_file, diff_summary, run_command.',
+    '- Prefer using the exact file paths and file snapshots already present in the task prompt.',
+    '- If the prompt already includes the full current file contents for the target file and the fix is straightforward, you may go directly to write_file.',
+    '- Do not stop after list_files or a failed read_file unless the prompt truly lacks enough information to continue safely.',
+    '- Use write_file with the FULL desired file contents, not a patch.',
+    '- Use run_command only when the file tools are insufficient.',
+    '- Return ONLY a valid action object matching the response schema.',
+    '',
+    `Prior loop history JSON: ${JSON.stringify(input.history)}`,
+  ].join('\n');
+}
+
+function validateWorkspaceTaskAction(payload: unknown): AgentAction {
+  const record = payload && typeof payload === 'object' && !Array.isArray(payload) ? (payload as Record<string, unknown>) : null;
+  if (!record) {
+    throw new AgentEndpointError('invalid_model_output', 422, {
+      errors: [{ path: '$', message: 'workspace task action must be an object' }],
+    });
+  }
+
+  if (record.type === 'final') {
+    const summary = typeof record.summary === 'string' ? record.summary.trim() : '';
+    if (!summary) {
+      throw new AgentEndpointError('invalid_model_output', 422, {
+        errors: [{ path: '$.summary', message: 'final workspace task action requires a non-empty summary' }],
+      });
+    }
+    return { type: 'final', summary };
+  }
+
+  if (record.type !== 'tool') {
+    throw new AgentEndpointError('invalid_model_output', 422, {
+      errors: [{ path: '$.type', message: 'workspace task action type must be tool or final' }],
+    });
+  }
+
+  const tool = typeof record.tool === 'string' ? record.tool : '';
+  const args =
+    record.args && typeof record.args === 'object' && !Array.isArray(record.args)
+      ? (record.args as Record<string, unknown>)
+      : {};
+
+  switch (tool) {
+    case 'list_files': {
+      const path = typeof args.path === 'string' ? args.path.trim() : '';
+      return path ? { type: 'tool', tool, args: { path } } : { type: 'tool', tool, args: {} };
+    }
+    case 'read_file': {
+      const path = typeof args.path === 'string' ? args.path.trim() : '';
+      if (!path) {
+        break;
+      }
+      const maxBytes = typeof args.maxBytes === 'number' && Number.isFinite(args.maxBytes) ? args.maxBytes : undefined;
+      return { type: 'tool', tool, args: maxBytes !== undefined ? { path, maxBytes } : { path } };
+    }
+    case 'write_file': {
+      const path = typeof args.path === 'string' ? args.path.trim() : '';
+      const content = typeof args.content === 'string' ? args.content : null;
+      if (!path || content === null) {
+        break;
+      }
+      return { type: 'tool', tool, args: { path, content } };
+    }
+    case 'run_command': {
+      const command = typeof args.command === 'string' ? args.command.trim() : '';
+      if (!command) {
+        break;
+      }
+      const timeoutMs = typeof args.timeoutMs === 'number' && Number.isFinite(args.timeoutMs) ? args.timeoutMs : undefined;
+      return { type: 'tool', tool, args: timeoutMs !== undefined ? { command, timeoutMs } : { command } };
+    }
+    case 'diff_summary': {
+      const maxBytes = typeof args.maxBytes === 'number' && Number.isFinite(args.maxBytes) ? args.maxBytes : undefined;
+      return { type: 'tool', tool, args: maxBytes !== undefined ? { maxBytes } : {} };
+    }
+    default:
+      break;
+  }
+
+  throw new AgentEndpointError('invalid_model_output', 422, {
+    errors: [{ path: '$', message: `invalid workspace task action for tool '${tool || 'unknown'}'` }],
+  });
 }
 
 function parseOpenRouterContent(payload: unknown): string {
@@ -289,6 +446,7 @@ export async function callOpenRouter(input: {
   prompt: string;
   httpReferer?: string;
   xTitle?: string;
+  responseSchema?: typeof reviewOutputV2JsonSchema | typeof workspaceTaskActionJsonSchema;
 }): Promise<string> {
   let response: Response;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
@@ -311,7 +469,7 @@ export async function callOpenRouter(input: {
       },
       body: JSON.stringify({
         model: input.model,
-        response_format: { type: 'json_schema', json_schema: reviewOutputV2JsonSchema },
+        response_format: { type: 'json_schema', json_schema: input.responseSchema ?? reviewOutputV2JsonSchema },
         plugins: [{ id: 'response-healing' }],
         messages: [{ role: 'user', content: input.prompt }],
       }),
@@ -425,10 +583,6 @@ export async function nextAgentActionWithInference(
   const prompt = typeof request.prompt === 'string' ? request.prompt : '';
   const history = Array.isArray(request.history) ? request.history : [];
 
-  if (!isReviewPrompt(prompt)) {
-    return nextWorkspaceTaskAction(history);
-  }
-
   const requestApiKey = typeof options?.openrouterApiKey === 'string' ? options.openrouterApiKey.trim() : '';
   const envApiKey = (env.OPENROUTER_API_KEY ?? '').trim();
   const apiKey = requestApiKey || envApiKey;
@@ -441,35 +595,35 @@ export async function nextAgentActionWithInference(
   const model = resolveOpenRouterModel(request.model, env.DEFAULT_MODEL);
   const httpReferer = typeof env.OPENROUTER_HTTP_REFERER === 'string' ? env.OPENROUTER_HTTP_REFERER.trim() : '';
   const xTitle = typeof env.OPENROUTER_X_TITLE === 'string' ? env.OPENROUTER_X_TITLE.trim() : '';
+  if (!isReviewPrompt(prompt)) {
+    const step = typeof request.step === 'number' && Number.isFinite(request.step) ? Math.max(1, Math.floor(request.step)) : 1;
+    const maxSteps =
+      typeof request.maxSteps === 'number' && Number.isFinite(request.maxSteps) ? Math.max(step, Math.floor(request.maxSteps)) : step;
+    const content = await callOpenRouter({
+      apiKey,
+      model,
+      prompt: buildWorkspaceTaskStepPrompt({
+        prompt,
+        maxSteps,
+        step,
+        history,
+      }),
+      responseSchema: workspaceTaskActionJsonSchema,
+      ...(httpReferer ? { httpReferer } : {}),
+      ...(xTitle ? { xTitle } : {}),
+    });
+    return validateWorkspaceTaskAction(parseJsonCandidate(content));
+  }
+
   const content = await callOpenRouter({
     apiKey,
     model,
     prompt,
+    responseSchema: reviewOutputV2JsonSchema,
     ...(httpReferer ? { httpReferer } : {}),
     ...(xTitle ? { xTitle } : {}),
   });
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(stripCodeFences(content));
-  } catch {
-    const candidate = extractJsonObjectCandidate(content);
-    if (!candidate) {
-      throw new AgentEndpointError('invalid_model_output', 422, {
-        errors: [{ path: '$', message: 'model response was not valid JSON' }],
-        preview: content.slice(0, 500),
-      });
-    }
-    try {
-      parsed = JSON.parse(candidate);
-    } catch {
-      throw new AgentEndpointError('invalid_model_output', 422, {
-        errors: [{ path: '$', message: 'model response was not valid JSON' }],
-        preview: content.slice(0, 500),
-      });
-    }
-  }
-
-  const validated = validateReviewOutputV2(parsed);
+  const validated = validateReviewOutputV2(parseJsonCandidate(content));
   return {
     type: 'final',
     summary: JSON.stringify(validated),

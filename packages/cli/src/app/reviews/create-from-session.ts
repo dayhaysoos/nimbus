@@ -9,9 +9,9 @@ import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { formatEvent } from '../../commands/review/events.js';
 import {
   buildStudioReviewRoutePath,
+  followReviewChain,
   formatReviewExecutionFailure,
   normalizeResultUrl,
-  sleep,
 } from './create-shared.js';
 import { startReviewStudioCommand } from './open.js';
 
@@ -36,33 +36,6 @@ export function setReviewSessionCreateFlowForTests(
   streamReviewEventsForFlow = overrides?.streamReviewEvents ?? streamReviewEvents;
 }
 
-async function pollReviewUntilTerminalStatus(
-  workerUrl: string,
-  reviewId: string,
-  options?: { intervalMs?: number; timeoutMs?: number }
-): Promise<Awaited<ReturnType<typeof getReviewForFlow>>> {
-  const intervalMs =
-    typeof options?.intervalMs === 'number' && Number.isFinite(options.intervalMs)
-      ? Math.max(1_000, Math.min(10_000, Math.floor(options.intervalMs)))
-      : 2_000;
-  const timeoutMs =
-    typeof options?.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
-      ? Math.max(10_000, Math.min(30 * 60_000, Math.floor(options.timeoutMs)))
-      : 10 * 60_000;
-  const deadline = Date.now() + timeoutMs;
-
-  while (true) {
-    const latest = await getReviewForFlow(workerUrl, reviewId);
-    if (latest.review.status !== 'queued' && latest.review.status !== 'running') {
-      return latest;
-    }
-    if (Date.now() >= deadline) {
-      return latest;
-    }
-    await sleep(intervalMs);
-  }
-}
-
 export async function createReviewSessionCommand(
   sessionId: string,
   options?: {
@@ -83,8 +56,6 @@ export async function createReviewSessionCommand(
 
   let reviewId = '';
   let reviewResultUrl = '';
-  let lastFailureEvent: Record<string, unknown> | null = null;
-  let terminalStatus: string | null = null;
   const spinner = p.spinner();
 
   spinner.start('Creating environment review pass...');
@@ -133,30 +104,35 @@ export async function createReviewSessionCommand(
   }
 
   p.log.info(`Streaming review events for ${reviewId}`);
-  try {
-    await streamReviewEventsForFlow(workerUrl, reviewId, (event) => {
-      const data = event.data ?? {};
-      if (data.type === 'terminal' && typeof data.status === 'string') {
-        terminalStatus = data.status;
-      }
-      if (data.type === 'error') {
-        lastFailureEvent = data;
-      }
-      const line = formatEvent(event);
-      if (line) {
-        console.log(line);
-      }
-    });
-  } catch (error) {
-    p.log.warning(`Review event stream ended early: ${error instanceof Error ? error.message : String(error)}`);
+  const final = await followReviewChain({
+    workerUrl,
+    initialReviewId: reviewId,
+    initialResultUrl: reviewResultUrl,
+    streamReviewEvents: streamReviewEventsForFlow,
+    getReview: getReviewForFlow,
+    getReviewSession: getReviewSessionForFlow,
+    formatEvent,
+    onStreamWarning: (message) => p.log.warning(message),
+    onFollowupReview: (nextReviewId) => p.log.info(`Continuing review session with follow-up pass ${nextReviewId}`),
+  });
+
+  if (final.finalReview.review.status !== 'succeeded') {
+    if (
+      final.finalReview.review.status === 'policy_pending' ||
+      final.finalReview.review.status === 'policy_ready'
+    ) {
+      p.log.message('Review is waiting on policy approval before execution can continue.');
+      console.log(`Report URL: ${final.finalResultUrl}`);
+      return;
+    }
+    if (final.finalReview.review.status === 'policy_approved') {
+      p.log.message('Policy is approved; execution is starting. Continue watching review events for completion.');
+      console.log(`Report URL: ${final.finalResultUrl}`);
+      return;
+    }
+    throw new Error(formatReviewExecutionFailure(final.finalReview.review.status, final.finalReview.review, final.lastFailureEvent));
   }
 
-  const finalReview = await pollReviewUntilTerminalStatus(workerUrl, reviewId);
-  terminalStatus = finalReview.review.status;
-  if (finalReview.review.status !== 'succeeded') {
-    throw new Error(formatReviewExecutionFailure(finalReview.review.status, finalReview.review, lastFailureEvent));
-  }
-
-  p.log.success(`Review completed: ${reviewId}`);
-  console.log(`Report URL: ${reviewResultUrl}`);
+  p.log.success(`Review completed: ${final.finalReviewId}`);
+  console.log(`Report URL: ${final.finalResultUrl}`);
 }

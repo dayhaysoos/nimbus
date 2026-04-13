@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import type { ReviewEventEnvelope, ReviewGetResponse, ReviewSessionGetResponse, ReviewSessionResponse } from '../../lib/types.js';
 import type { createReview } from '../../clients/worker/reviews.js';
 import { detectRepoSlugFromGitOrigin } from '../../lib/git.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
@@ -206,6 +207,288 @@ export function normalizeResultUrl(workerUrl: string, resultUrl: string): string
     return new URL(resultUrl, workerUrl).toString();
   } catch {
     return resultUrl;
+  }
+}
+
+function isTerminalReviewStatus(status: string): boolean {
+  return status === 'succeeded' || status === 'failed' || status === 'cancelled';
+}
+
+function isInProgressReviewStatus(status: string): boolean {
+  return (
+    status === 'queued' ||
+    status === 'running' ||
+    status === 'policy_approved'
+  );
+}
+
+async function pollReviewUntilTerminalStatus(
+  getReview: (workerUrl: string, reviewId: string) => Promise<ReviewGetResponse>,
+  workerUrl: string,
+  reviewId: string,
+  options?: { intervalMs?: number; timeoutMs?: number }
+): Promise<ReviewGetResponse> {
+  const intervalMs =
+    typeof options?.intervalMs === 'number' && Number.isFinite(options.intervalMs)
+      ? Math.max(1_000, Math.min(10_000, Math.floor(options.intervalMs)))
+      : 2_000;
+  const timeoutMs =
+    typeof options?.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
+      ? Math.max(10_000, Math.min(30 * 60_000, Math.floor(options.timeoutMs)))
+      : 10 * 60_000;
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    const latest = await getReview(workerUrl, reviewId);
+    if (!isInProgressReviewStatus(latest.review.status)) {
+      return latest;
+    }
+    if (Date.now() >= deadline) {
+      return latest;
+    }
+    await sleep(intervalMs);
+  }
+}
+
+function resolveFollowupReviewId(
+  session: ReviewSessionResponse | undefined,
+  currentReviewId: string,
+  options?: { minimumPassCount?: number }
+): string | null {
+  if (!session) {
+    return null;
+  }
+
+  if (
+    session.activeReviewId &&
+    session.activeReviewId !== currentReviewId &&
+    (session.currentReviewStatus === 'policy_pending' ||
+      session.currentReviewStatus === 'policy_ready' ||
+      session.currentReviewStatus === 'policy_approved' ||
+      session.currentReviewStatus === 'queued' ||
+      session.currentReviewStatus === 'running')
+  ) {
+    return session.activeReviewId;
+  }
+
+  const currentPassIndex = session.passes.findIndex((pass) => pass.reviewId === currentReviewId);
+  if (currentPassIndex >= 0 && currentPassIndex < session.passes.length - 1) {
+    return session.passes[currentPassIndex + 1]?.reviewId ?? null;
+  }
+
+  if (
+    session.latestReviewId &&
+    session.latestReviewId !== currentReviewId &&
+    (
+      (typeof options?.minimumPassCount === 'number' && session.passCount > options.minimumPassCount) ||
+      session.passCount > session.passes.length
+    )
+  ) {
+    return session.latestReviewId;
+  }
+
+  return null;
+}
+
+function shouldWaitForSessionSettlement(session: ReviewSessionResponse | undefined, currentReviewId: string): boolean {
+  if (!session) {
+    return false;
+  }
+
+  if (session.latestReviewId !== currentReviewId) {
+    return false;
+  }
+
+  if (session.stopReason || session.finishedAt) {
+    return false;
+  }
+
+  return true;
+}
+
+async function waitForSessionFollowup(input: {
+  workerUrl: string;
+  sessionId: string;
+  currentReviewId: string;
+  minimumPassCount: number;
+  getReviewSession: (workerUrl: string, sessionId: string) => Promise<ReviewSessionGetResponse>;
+  pollIntervalMs?: number;
+  timeoutMs?: number;
+}): Promise<{ nextReviewId: string | null; session: ReviewSessionResponse | null; warning?: string }> {
+  const intervalMs =
+    typeof input.pollIntervalMs === 'number' && Number.isFinite(input.pollIntervalMs)
+      ? Math.max(1_000, Math.min(10_000, Math.floor(input.pollIntervalMs)))
+      : 2_000;
+  const timeoutMs =
+    typeof input.timeoutMs === 'number' && Number.isFinite(input.timeoutMs)
+      ? Math.max(10_000, Math.min(30 * 60_000, Math.floor(input.timeoutMs)))
+      : 30_000;
+  const deadline = Date.now() + timeoutMs;
+  let latestSession: ReviewSessionResponse | null = null;
+  let successfulReads = 0;
+  let readErrorCount = 0;
+  let lastReadErrorMessage: string | null = null;
+  const settlingTimeoutWarning =
+    'Review session is still settling; a follow-up pass may appear shortly. Re-run `nimbus review events` to continue watching.';
+
+  while (true) {
+    try {
+      const response = await input.getReviewSession(input.workerUrl, input.sessionId);
+      latestSession = response.session;
+      successfulReads += 1;
+    } catch (error) {
+      readErrorCount += 1;
+      const message = error instanceof Error ? error.message : String(error);
+      lastReadErrorMessage = `Failed to read review session state while awaiting follow-up pass: ${message}`;
+      if (Date.now() >= deadline) {
+        return {
+          nextReviewId: null,
+          session: latestSession,
+          ...(readErrorCount > 0 && successfulReads === 0
+            ? { warning: lastReadErrorMessage ?? undefined }
+            : latestSession && shouldWaitForSessionSettlement(latestSession, input.currentReviewId)
+              ? { warning: settlingTimeoutWarning }
+              : {}),
+        };
+      }
+      await sleep(intervalMs);
+      continue;
+    }
+    const nextReviewId = resolveFollowupReviewId(latestSession, input.currentReviewId, {
+      minimumPassCount: input.minimumPassCount,
+    });
+    if (nextReviewId) {
+      return { nextReviewId, session: latestSession };
+    }
+    if (!shouldWaitForSessionSettlement(latestSession, input.currentReviewId)) {
+      return { nextReviewId: null, session: latestSession };
+    }
+    if (Date.now() >= deadline) {
+      return {
+        nextReviewId: null,
+        session: latestSession,
+        ...(readErrorCount > 0 && successfulReads === 0
+          ? { warning: lastReadErrorMessage ?? 'Failed to read review session state while awaiting follow-up pass.' }
+          : shouldWaitForSessionSettlement(latestSession, input.currentReviewId)
+            ? { warning: settlingTimeoutWarning }
+            : {}),
+      };
+    }
+    await sleep(intervalMs);
+  }
+}
+
+export async function followReviewChain(input: {
+  workerUrl: string;
+  initialReviewId: string;
+  initialResultUrl: string;
+  streamReviewEvents: (workerUrl: string, reviewId: string, onEvent: (event: ReviewEventEnvelope) => void | Promise<void>) => Promise<void>;
+  getReview: (workerUrl: string, reviewId: string) => Promise<ReviewGetResponse>;
+  getReviewSession?: (workerUrl: string, sessionId: string) => Promise<ReviewSessionGetResponse>;
+  formatEvent: (event: ReviewEventEnvelope) => string;
+  onStreamWarning?: (message: string) => void;
+  onFollowupReview?: (reviewId: string) => void;
+  pollIntervalMs?: number;
+}): Promise<{
+  finalReviewId: string;
+  finalReview: ReviewGetResponse;
+  finalResultUrl: string;
+  lastFailureEvent: Record<string, unknown> | null;
+}> {
+  let currentReviewId = input.initialReviewId;
+  let currentResultUrl = input.initialResultUrl;
+  let lastFailureEvent: Record<string, unknown> | null = null;
+
+  while (true) {
+    let terminalStatus: string | null = null;
+    let nextReviewId: string | null = null;
+    let streamErrorMessage: string | null = null;
+
+    try {
+      await input.streamReviewEvents(input.workerUrl, currentReviewId, async (event) => {
+        const data = event.data ?? {};
+        if (
+          data.type === 'review_context_cochange_failed' ||
+          data.type === 'review_context_assembly_failed' ||
+          data.type === 'review_failed' ||
+          data.type === 'error'
+        ) {
+          lastFailureEvent = data;
+        }
+        if (data.type === 'review_auto_remediation_completed' && typeof data.nextReviewId === 'string' && data.nextReviewId.trim()) {
+          nextReviewId = data.nextReviewId.trim();
+        }
+        if (data.type === 'terminal' && typeof data.status === 'string') {
+          terminalStatus = data.status;
+        }
+        const line = input.formatEvent(event);
+        if (line) {
+          console.log(line);
+        }
+      });
+    } catch (error) {
+      streamErrorMessage = error instanceof Error ? error.message : String(error);
+      input.onStreamWarning?.(`Event stream interrupted before terminal status: ${streamErrorMessage}`);
+    }
+
+    let finalReview = await input.getReview(input.workerUrl, currentReviewId);
+    const reviewStillInProgress = isInProgressReviewStatus(finalReview.review.status);
+    if (reviewStillInProgress && (!terminalStatus || terminalStatus === 'succeeded')) {
+      input.onStreamWarning?.('Review status has not settled yet; falling back to status polling.');
+      finalReview = await pollReviewUntilTerminalStatus(input.getReview, input.workerUrl, currentReviewId, {
+        intervalMs: input.pollIntervalMs,
+        timeoutMs: finalReview.review.status === 'policy_approved' ? 30_000 : undefined,
+      });
+    }
+
+    const status = isTerminalReviewStatus(finalReview.review.status)
+      ? finalReview.review.status
+      : typeof terminalStatus === 'string'
+        ? terminalStatus
+        : finalReview.review.status;
+    if (status !== 'succeeded') {
+      return {
+        finalReviewId: currentReviewId,
+        finalReview,
+        finalResultUrl: currentResultUrl,
+        lastFailureEvent,
+      };
+    }
+
+    const sessionId = finalReview.review.sessionId ?? finalReview.session?.id ?? null;
+    if (!nextReviewId) {
+      nextReviewId = resolveFollowupReviewId(finalReview.session, currentReviewId);
+    }
+    const shouldReadSessionForFollowup =
+      Boolean(sessionId && input.getReviewSession) &&
+      (!finalReview.session || shouldWaitForSessionSettlement(finalReview.session, currentReviewId));
+    if (!nextReviewId && shouldReadSessionForFollowup && sessionId && input.getReviewSession) {
+      const awaitedSession = await waitForSessionFollowup({
+        workerUrl: input.workerUrl,
+        sessionId,
+        currentReviewId,
+        minimumPassCount: finalReview.session?.passCount ?? 0,
+        getReviewSession: input.getReviewSession,
+        pollIntervalMs: input.pollIntervalMs,
+      });
+      if (awaitedSession.warning) {
+        input.onStreamWarning?.(awaitedSession.warning);
+      }
+      nextReviewId = awaitedSession.nextReviewId;
+    }
+
+    if (!nextReviewId || nextReviewId === currentReviewId) {
+      return {
+        finalReviewId: currentReviewId,
+        finalReview,
+        finalResultUrl: currentResultUrl,
+        lastFailureEvent,
+      };
+    }
+
+    currentReviewId = nextReviewId;
+    currentResultUrl = normalizeResultUrl(input.workerUrl, `/api/reviews/${encodeURIComponent(nextReviewId)}`);
+    input.onFollowupReview?.(nextReviewId);
   }
 }
 

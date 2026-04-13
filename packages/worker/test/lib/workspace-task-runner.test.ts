@@ -212,7 +212,13 @@ export async function runWorkspaceTaskRunnerTests(): Promise<void> {
   {
     const { env, state } = createRunnerEnv();
     setWorkspaceTaskSandboxResolverForTests(async () => ({
-      async exec() {
+      async exec(command: string) {
+        if (command.includes("with open(path, 'w', encoding='utf-8')")) {
+          const match = command.match(/content = (".*?")\nos\.makedirs/s);
+          if (match) {
+            state.fileContent = JSON.parse(match[1]);
+          }
+        }
         return { stdout: '', stderr: '', exitCode: 0 };
       },
       async writeFile(_path: string, contents: string) {

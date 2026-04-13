@@ -13,11 +13,15 @@ import { loadRuntimeFlags } from '../flags.js';
 import { createReviewSessionPass } from '../review-session-pass.js';
 import { captureWorkspaceEnvironmentSnapshot } from './environment.js';
 import { runWorkspaceTaskInlineWithRetries } from '../workspace-task-runner.js';
+import { readWorkspaceFilesFromSandbox } from '../review-analysis.js';
+import { asRecord, parseLocalCochangeFromProvenance, readOptionalNumber, readOptionalString } from './context-helpers.js';
 
-const SAFE_AUTO_FIX_SEVERITIES = new Set<ReviewFinding['severity']>(['low', 'medium']);
+const SAFE_AUTO_FIX_SEVERITIES = new Set<ReviewFinding['severity']>(['low', 'medium', 'high']);
 const SAFE_AUTO_FIX_CATEGORIES = new Set<ReviewFinding['category']>(['style', 'logic']);
 const RISKY_KEYWORD_PATTERN =
   /\b(schema|migration|database|sql|dependency|dependencies|package\.json|lockfile|library|auth|authentication|authorization|billing|payment|secret|credential|token|deployment|infra|production|rollback|queue|cache|storage)\b/i;
+const MAX_REMEDIATION_FILE_SNAPSHOTS = 5;
+const MAX_REMEDIATION_FILE_CHARS = 12_000;
 
 function readFollowUpReviewScore(report: ReviewReport): 1 | 2 | 3 {
   const fromStructured = report.provenance.followUpReview?.score;
@@ -32,9 +36,6 @@ function readFollowUpReviewScore(report: ReviewReport): 1 | 2 | 3 {
 }
 
 function isRiskyFinding(finding: ReviewFinding): boolean {
-  if (finding.severity === 'high' || finding.severity === 'critical') {
-    return true;
-  }
   if (finding.category === 'security' || finding.category === 'breaking-change') {
     return true;
   }
@@ -66,6 +67,7 @@ function buildRemediationPrompt(input: {
   reviewId: string;
   safeFindings: ReviewFinding[];
   riskyFindingCount: number;
+  fileSnapshots: Array<{ path: string; content: string | null; truncated: boolean }>;
 }): string {
   const lines: string[] = [
     'Apply the smallest safe code changes needed to address the review findings below.',
@@ -73,6 +75,8 @@ function buildRemediationPrompt(input: {
     'Do not add dependencies, edit lockfiles, change schemas/migrations, or alter auth/deployment/infrastructure behavior.',
     'Only touch files referenced by the findings unless a tiny adjacent edit is required to make the fix correct.',
     'If a finding seems ambiguous or risky, leave the code unchanged and note that in the final summary.',
+    'Prefer editing the exact file paths listed under Locations.',
+    'Do not stop after listing files or probing a wrong path; either apply a safe edit to the referenced files or explain why the exact referenced file is missing.',
     `Source review: ${input.reviewId}`,
     `Safe findings to address: ${input.safeFindings.length}`,
   ];
@@ -97,9 +101,107 @@ function buildRemediationPrompt(input: {
     );
   }
 
+  if (input.fileSnapshots.length > 0) {
+    lines.push('');
+    lines.push('Current file snapshots');
+    lines.push('Use these exact paths and contents as your starting point.');
+    if (input.fileSnapshots.some((snapshot) => snapshot.truncated || snapshot.content === null)) {
+      lines.push('If a file snapshot is marked as omitted due to size, call read_file for that path before any write_file edits.');
+      lines.push('Do not overwrite a file using incomplete or omitted snapshot text.');
+    }
+
+    for (const snapshot of input.fileSnapshots) {
+      lines.push('');
+      lines.push(`File: ${snapshot.path}`);
+      if (snapshot.truncated || snapshot.content === null) {
+        lines.push('[snapshot omitted due to size; read_file required before edits]');
+      } else {
+        lines.push('```');
+        lines.push(snapshot.content);
+        lines.push('```');
+      }
+    }
+  }
+
   lines.push('');
   lines.push('When finished, return a concise summary of what changed.');
   return lines.join('\n');
+}
+
+async function deriveFollowupLocalCochange(
+  env: Env,
+  review: ReviewRunResponse,
+  report: ReviewReport
+): Promise<
+  | {
+      source: 'local_git';
+      checkpointsRef: string;
+      lookbackSessions: number;
+      topN: number;
+      sessionsScanned: number;
+      relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
+    }
+  | null
+> {
+  const reviewContextRef = report.provenance.reviewContextRef ?? review.provenance.reviewContextRef;
+  if (!reviewContextRef?.r2Key) {
+    return null;
+  }
+  const storageBucketCandidates = [env.REVIEW_CONTEXTS, env.WORKSPACE_ARTIFACTS, env.SOURCE_BUNDLES];
+  const readableBuckets = storageBucketCandidates.filter(
+    (bucket): bucket is R2Bucket => Boolean(bucket && typeof bucket.get === 'function')
+  );
+  if (readableBuckets.length === 0) {
+    return null;
+  }
+
+  let object: R2ObjectBody | null = null;
+  for (const bucket of readableBuckets) {
+    try {
+      const candidate = await bucket.get(reviewContextRef.r2Key);
+      if (candidate) {
+        object = candidate;
+        break;
+      }
+    } catch {
+      continue;
+    }
+  }
+  if (!object) {
+    return null;
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(await object.text());
+  } catch {
+    return null;
+  }
+
+  const context = asRecord(parsed);
+  const checkpoint = asRecord(context.checkpoint);
+  const retrieval = asRecord(context.retrieval);
+  const coChange = asRecord(retrieval.coChange);
+  if (readOptionalString(coChange.source) !== 'local_git') {
+    return null;
+  }
+
+  const checkpointsRef = readOptionalString(checkpoint.branch) ?? 'entire/checkpoints/v1';
+  const lookbackSessions = Math.max(1, Math.floor(readOptionalNumber(coChange.lookbackSessions) ?? 5));
+  const topN = Math.max(1, Math.floor(readOptionalNumber(coChange.topN) ?? 20));
+  const sessionsScanned = Math.max(0, Math.floor(readOptionalNumber(coChange.sessionsScanned) ?? 0));
+  const parsedLocalCochange = parseLocalCochangeFromProvenance({
+    source: 'local_git',
+    checkpointsRef,
+    lookbackSessions,
+    topN,
+    sessionsScanned,
+    relatedByChangedPath: retrieval.relatedByChangedPath,
+  });
+  if (!parsedLocalCochange || Object.keys(parsedLocalCochange.relatedByChangedPath).length === 0) {
+    return null;
+  }
+  return parsedLocalCochange;
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -160,6 +262,10 @@ function isActiveSessionStatus(status: ReviewRunResponse['status'] | null): bool
   return status === 'policy_pending' || status === 'policy_ready' || status === 'policy_approved' || status === 'queued' || status === 'running';
 }
 
+function successfulPassStopReason(sessionPassCount: number): ReviewSessionStopReason {
+  return sessionPassCount > 1 ? 'followup_pass_completed' : 'initial_pass_completed';
+}
+
 export async function continueReviewSessionAfterSuccessfulPass(
   env: Env,
   review: ReviewRunResponse,
@@ -192,9 +298,11 @@ export async function continueReviewSessionAfterSuccessfulPass(
   try {
     const flags = await loadRuntimeFlags(env);
     if (!flags.workspaceAgentRuntimeEnabled || flags.maxRepairCycles <= 0) {
+      await finalizeIfCurrent(successfulPassStopReason(session.passCount));
       return { nextReviewId: null };
     }
     if (report.findings.length === 0) {
+      await finalizeIfCurrent(successfulPassStopReason(session.passCount));
       return { nextReviewId: null };
     }
 
@@ -241,10 +349,36 @@ export async function continueReviewSessionAfterSuccessfulPass(
       return { nextReviewId: null };
     }
 
+    const remediationPaths = Array.from(
+      new Set(
+        safeFindings
+          .flatMap((finding) => finding.locations.map((location) => location.filePath.trim()))
+          .filter(Boolean)
+      )
+    ).slice(0, MAX_REMEDIATION_FILE_SNAPSHOTS);
+    const remediationFileReads =
+      remediationPaths.length > 0
+        ? await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: workspace.sandboxId,
+            paths: remediationPaths,
+          })
+        : [];
+    const fileSnapshots = remediationFileReads
+      .filter((entry) => entry.content !== null && !entry.error)
+      .map((entry) => ({
+        path: entry.path,
+        content:
+          entry.truncated || (entry.content ?? '').length > MAX_REMEDIATION_FILE_CHARS
+            ? null
+            : (entry.content ?? ''),
+        truncated: entry.truncated || (entry.content ?? '').length > MAX_REMEDIATION_FILE_CHARS,
+      }));
+
     const prompt = buildRemediationPrompt({
       reviewId: review.id,
       safeFindings,
       riskyFindingCount: report.findings.filter((finding) => !safeFindings.includes(finding)).length,
+      fileSnapshots,
     });
     const preTaskWorkspaceSnapshot = await captureWorkspaceEnvironmentSnapshot(env, {
       id: session.workspaceId,
@@ -391,6 +525,12 @@ export async function continueReviewSessionAfterSuccessfulPass(
       return { nextReviewId: null };
     }
 
+    let followupLocalCochange: Awaited<ReturnType<typeof deriveFollowupLocalCochange>> = null;
+    try {
+      followupLocalCochange = await deriveFollowupLocalCochange(env, review, report);
+    } catch {
+      followupLocalCochange = null;
+    }
     const followupPass = await createReviewSessionPass(env, {
       session: latestSession,
       reviewBasis: 'environment',
@@ -399,6 +539,7 @@ export async function continueReviewSessionAfterSuccessfulPass(
         trigger: 'session_auto_remediation',
         remediationSourceReviewId: review.id,
         remediationTaskId: task.id,
+        ...(followupLocalCochange ? { localCochange: followupLocalCochange } : {}),
         remediationTaskSummary:
           task.result &&
           typeof task.result === 'object' &&

@@ -27,6 +27,7 @@ import {
   setReviewPreflightTokenReadinessResolverForTests,
 } from '../../../src/commands/review/preflight.js';
 import { dispatchReviewCommand } from '../../../src/cli/dispatch/review.js';
+import { followReviewChain } from '../../../src/app/reviews/create-shared.js';
 
 function createReviewResponseBody() {
   return {
@@ -311,23 +312,27 @@ export async function runReviewCommandTests(): Promise<void> {
 
     {
       let fetchCount = 0;
-      globalThis.fetch = (async (): Promise<Response> => {
-        fetchCount += 1;
-        throw new Error('fetch should not be called when checkpoint trailer is missing');
-      }) as typeof fetch;
+      try {
+        globalThis.fetch = (async (): Promise<Response> => {
+          fetchCount += 1;
+          throw new Error('fetch should not be called when checkpoint trailer is missing');
+        }) as typeof fetch;
 
-      setReviewCommitResolverForTests(() => ({
-        commitSha: 'a'.repeat(40),
-        checkpointId: null,
-        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
-      }));
+        setReviewCommitResolverForTests(() => ({
+          commitSha: 'a'.repeat(40),
+          checkpointId: null,
+          commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+        }));
 
-      await assert.rejects(
-        () => createReviewFromCommitCommand({ commitish: 'HEAD' }),
-        /Review flow failed at checkpoint resolution/
-      );
-      assert.equal(fetchCount, 0);
-      setReviewCommitResolverForTests(null);
+        await assert.rejects(
+          () => createReviewFromCommitCommand({ commitish: 'HEAD' }),
+          /Review flow failed at checkpoint resolution/
+        );
+        assert.equal(fetchCount, 0);
+      } finally {
+        globalThis.fetch = originalFetch;
+        setReviewCommitResolverForTests(null);
+      }
     }
 
     {
@@ -767,6 +772,157 @@ export async function runReviewCommandTests(): Promise<void> {
         assert.equal(existsSync(reviewIdPath), true);
         const saved = await readFile(reviewIdPath, 'utf8');
         assert.equal(saved.trim(), 'rev_review_id_fail');
+      } finally {
+        setReviewCommitResolverForTests(null);
+        setReviewPreflightContextResolverForTests(null);
+        setReviewCreateFlowForTests(null);
+        await rm(dir, { recursive: true, force: true });
+      }
+    }
+
+    {
+      const dir = await mkdtemp(join(tmpdir(), 'nimbus-review-id-followup-'));
+      const reviewIdPath = join(dir, 'review-id.txt');
+      try {
+        let sessionReads = 0;
+        setReviewPreflightContextResolverForTests(async () => ({
+          note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+          sessionIds: ['sess_review_id_followup'],
+          transcriptUrl: null,
+          intentSessionContext: ['Constraint: Keep scope narrow.'],
+        }));
+        setReviewCommitResolverForTests(() => ({
+          commitSha: '8'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+        }));
+        setReviewCreateFlowForTests({
+          resolveWorkspaceSource: () => ({
+            commitSha: '8'.repeat(40),
+            checkpointId: '8a513f56ed70',
+            sourceRef: null,
+            projectRoot: '.',
+          }),
+          createWorkspace: async () => ({
+            workspace: {
+              id: 'ws_review_id_followup',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: '8a513f56ed70',
+              commitSha: '8'.repeat(40),
+              sourceRef: null,
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'bundle',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 123,
+              sandboxId: 'workspace-ws_review_id_followup',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_review_id_followup/events',
+            },
+          }),
+          deployWorkspace: async () => ({
+            id: 'dep_review_id_followup',
+            workspaceId: 'ws_review_id_followup',
+            status: 'succeeded',
+            provider: 'simulated',
+            idempotencyKey: 'idem-deploy',
+            maxRetries: 2,
+            attemptCount: 1,
+            sourceSnapshotSha256: null,
+            sourceBundleKey: 'bundle',
+            deployedUrl: 'https://example.dev',
+            providerDeploymentId: null,
+            cancelRequestedAt: null,
+            startedAt: '2026-03-11T00:00:00.000Z',
+            finishedAt: '2026-03-11T00:00:30.000Z',
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:30.000Z',
+            provenance: {},
+            toolchain: null,
+            dependencyCacheKey: null,
+            dependencyCacheHit: false,
+            remediations: [],
+          }),
+          createReview: async () => ({
+            reviewId: 'rev_review_id_followup_1',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_review_id_followup_1/events',
+            resultUrl: '/reviews/rev_review_id_followup_1',
+          }),
+          streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+            await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+          },
+          getReview: async (_workerUrl, reviewId) => ({
+            review: {
+              ...createReviewResponseBody().review,
+              id: reviewId,
+              sessionId: 'session_abcd1234',
+              status: 'succeeded',
+              reviewBasis: reviewId === 'rev_review_id_followup_2' ? 'environment' : 'checkpoint',
+            },
+            session:
+              reviewId === 'rev_review_id_followup_2'
+                ? {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_review_id_followup_2',
+                    activeReviewId: null,
+                    passCount: 2,
+                    stopReason: 'followup_pass_completed',
+                    finishedAt: '2026-03-11T00:03:00.000Z',
+                  }
+                : {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_review_id_followup_1',
+                    activeReviewId: 'rev_review_id_followup_1',
+                    passCount: 1,
+                    stopReason: null,
+                    finishedAt: null,
+                  },
+          }) as any,
+          getReviewSession: async () => {
+            sessionReads += 1;
+            return {
+              session:
+                sessionReads === 1
+                  ? {
+                      ...createReviewResponseBody().session,
+                      latestReviewId: 'rev_review_id_followup_2',
+                      activeReviewId: 'rev_review_id_followup_2',
+                      passCount: 2,
+                      stopReason: null,
+                      finishedAt: null,
+                      passes: [
+                        ...createReviewResponseBody().session.passes,
+                        {
+                          reviewId: 'rev_review_id_followup_2',
+                          status: 'queued',
+                          reviewBasis: 'environment',
+                          createdAt: '2026-03-11T00:02:00.000Z',
+                          startedAt: null,
+                          finishedAt: null,
+                        },
+                      ],
+                    }
+                  : {
+                      ...createReviewResponseBody().session,
+                      latestReviewId: 'rev_review_id_followup_2',
+                      activeReviewId: null,
+                      passCount: 2,
+                      stopReason: 'followup_pass_completed',
+                      finishedAt: '2026-03-11T00:03:00.000Z',
+                    },
+            } as any;
+          },
+        });
+
+        await createReviewFromCommitCommand({ commitish: 'HEAD', outputReviewIdPath: reviewIdPath, pollIntervalMs: 1 });
+        const saved = await readFile(reviewIdPath, 'utf8');
+        assert.equal(saved.trim(), 'rev_review_id_followup_2');
       } finally {
         setReviewCommitResolverForTests(null);
         setReviewPreflightContextResolverForTests(null);
@@ -1593,6 +1749,154 @@ export async function runReviewCommandTests(): Promise<void> {
     }
 
     {
+      const streamedReviewIds: string[] = [];
+      let sessionReads = 0;
+      setReviewPreflightContextResolverForTests(async () => ({
+        note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
+        sessionIds: ['sess_chain_missing'],
+        transcriptUrl: null,
+        intentSessionContext: ['Constraint: Keep scope narrow.'],
+      }));
+      setReviewCommitResolverForTests(() => ({
+        commitSha: '1'.repeat(40),
+        checkpointId: '8a513f56ed70',
+        commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
+      }));
+      setReviewCreateFlowForTests({
+        resolveWorkspaceSource: () => ({
+          commitSha: '1'.repeat(40),
+          checkpointId: '8a513f56ed70',
+          sourceRef: null,
+          projectRoot: '.',
+        }),
+        createWorkspace: async () => ({
+          workspace: {
+            id: 'ws_chain_missing',
+            status: 'ready',
+            sourceType: 'checkpoint',
+            checkpointId: '8a513f56ed70',
+            commitSha: '1'.repeat(40),
+            sourceRef: null,
+            sourceProjectRoot: '.',
+            sourceBundleKey: 'bundle',
+            sourceBundleSha256: 'f'.repeat(64),
+            sourceBundleBytes: 123,
+            sandboxId: 'workspace-ws_chain_missing',
+            baselineReady: true,
+            errorCode: null,
+            errorMessage: null,
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:00.000Z',
+            deletedAt: null,
+            eventsUrl: '/api/workspaces/ws_chain_missing/events',
+          },
+        }),
+        deployWorkspace: async () => ({
+          id: 'dep_chain_missing',
+          workspaceId: 'ws_chain_missing',
+          status: 'succeeded',
+          provider: 'simulated',
+          idempotencyKey: 'idem-deploy',
+          maxRetries: 2,
+          attemptCount: 1,
+          sourceSnapshotSha256: null,
+          sourceBundleKey: 'bundle',
+          deployedUrl: 'https://example.dev',
+          providerDeploymentId: null,
+          cancelRequestedAt: null,
+          startedAt: '2026-03-11T00:00:00.000Z',
+          finishedAt: '2026-03-11T00:00:30.000Z',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          updatedAt: '2026-03-11T00:00:30.000Z',
+          provenance: {},
+          toolchain: null,
+          dependencyCacheKey: null,
+          dependencyCacheHit: false,
+          remediations: [],
+        }),
+        createReview: async () => ({
+          reviewId: 'rev_chain_missing_1',
+          status: 'queued',
+          eventsUrl: '/api/reviews/rev_chain_missing_1/events',
+          resultUrl: '/api/reviews/rev_chain_missing_1',
+        }),
+        streamReviewEvents: async (_workerUrl, reviewId, onEvent) => {
+          streamedReviewIds.push(reviewId);
+          await onEvent({ id: `terminal-${reviewId}`, data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async (_workerUrl, reviewId) => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: reviewId,
+            sessionId: 'session_chain_missing',
+            status: 'succeeded',
+            reviewBasis: reviewId === 'rev_chain_missing_2' ? 'environment' : 'checkpoint',
+          },
+          session:
+            reviewId === 'rev_chain_missing_2'
+              ? {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_chain_missing_2',
+                  activeReviewId: null,
+                  passCount: 2,
+                  stopReason: 'followup_pass_completed',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                }
+              : {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_chain_missing_1',
+                  activeReviewId: 'rev_chain_missing_1',
+                  passCount: 1,
+                  stopReason: null,
+                  finishedAt: null,
+                },
+        }) as any,
+        getReviewSession: async () => {
+          sessionReads += 1;
+          return {
+            session:
+              sessionReads === 1
+                ? {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_chain_missing_2',
+                    activeReviewId: 'rev_chain_missing_2',
+                    passCount: 2,
+                    stopReason: null,
+                    finishedAt: null,
+                    passes: [
+                      ...createReviewResponseBody().session.passes,
+                      {
+                        reviewId: 'rev_chain_missing_2',
+                        status: 'queued',
+                        reviewBasis: 'environment',
+                        createdAt: '2026-03-11T00:02:00.000Z',
+                        startedAt: null,
+                        finishedAt: null,
+                      },
+                    ],
+                  }
+                : {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_chain_missing_2',
+                    activeReviewId: null,
+                    passCount: 2,
+                    stopReason: 'followup_pass_completed',
+                    finishedAt: '2026-03-11T00:03:00.000Z',
+                  },
+          } as any;
+        },
+      });
+
+      await createReviewFromCommitCommand({ commitish: 'HEAD', pollIntervalMs: 1 });
+      assert.deepEqual(streamedReviewIds, ['rev_chain_missing_1', 'rev_chain_missing_2']);
+      assert.equal(sessionReads >= 1, true);
+
+      setReviewCommitResolverForTests(null);
+      setReviewPreflightContextResolverForTests(null);
+      setReviewCreateFlowForTests(null);
+    }
+
+    {
       setReviewPreflightContextResolverForTests(async () => ({
         note: 'Review with Entire checkpoint intent context (8a513f56ed70).',
         sessionIds: ['sess_faildeploy'],
@@ -1995,6 +2299,671 @@ export async function runReviewCommandTests(): Promise<void> {
         console.log = originalConsoleLog;
         setReviewSessionCreateFlowForTests(null);
       }
+    }
+
+    {
+      const lines: string[] = [];
+      const originalConsoleLog = console.log;
+      console.log = (...args: unknown[]) => {
+        lines.push(args.map((value) => String(value)).join(' '));
+      };
+      const streamedReviewIds: string[] = [];
+      setReviewSessionCreateFlowForTests({
+        createReviewSessionPass: async () => ({
+          reviewId: 'rev_env_chain_1',
+          sessionId: 'session_abcd1234',
+          status: 'queued',
+          eventsUrl: '/api/reviews/rev_env_chain_1/events',
+          resultUrl: '/api/reviews/rev_env_chain_1',
+          sessionUrl: '/api/review-sessions/session_abcd1234',
+        }) as any,
+        getReview: async (_workerUrl, reviewId) => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: reviewId,
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: 'environment',
+          },
+          session: {
+            ...createReviewResponseBody().session,
+            latestReviewId: reviewId,
+            activeReviewId: reviewId,
+            passCount: reviewId === 'rev_env_chain_2' ? 3 : 2,
+            stopReason: 'followup_pass_completed',
+          },
+        }) as any,
+        getReviewSession: async () => ({
+          session: {
+            ...createReviewResponseBody().session,
+            latestReviewId: 'rev_env_chain_2',
+            activeReviewId: 'rev_env_chain_2',
+            passCount: 3,
+            stopReason: 'followup_pass_completed',
+          },
+        }) as any,
+        streamReviewEvents: async (_workerUrl, reviewId, onEvent) => {
+          streamedReviewIds.push(reviewId);
+          if (reviewId === 'rev_env_chain_1') {
+            await onEvent({ id: '1', data: { type: 'review_auto_remediation_completed', nextReviewId: 'rev_env_chain_2' } });
+            await onEvent({ id: '2', data: { type: 'terminal', status: 'succeeded' } });
+            return;
+          }
+          await onEvent({ id: '3', data: { type: 'terminal', status: 'succeeded' } });
+        },
+      });
+      try {
+        await assert.doesNotReject(() => createReviewSessionCommand('session_abcd1234'));
+        assert.deepEqual(streamedReviewIds, ['rev_env_chain_1', 'rev_env_chain_2']);
+        assert.equal(lines.some((line) => line.includes('Report URL: https://worker.example.com/api/reviews/rev_env_chain_2')), true);
+      } finally {
+        console.log = originalConsoleLog;
+        setReviewSessionCreateFlowForTests(null);
+      }
+    }
+
+    {
+      const streamedReviewIds: string[] = [];
+      let sessionReads = 0;
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_env_delayed_1',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_env_delayed_1',
+        streamReviewEvents: async (_workerUrl, reviewId, onEvent) => {
+          streamedReviewIds.push(reviewId);
+          await onEvent({ id: `terminal-${reviewId}`, data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async (_workerUrl, reviewId) => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: reviewId,
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: reviewId === 'rev_env_delayed_2' ? 'environment' : 'checkpoint',
+          },
+          session:
+            reviewId === 'rev_env_delayed_2'
+              ? {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_env_delayed_2',
+                  activeReviewId: null,
+                  passCount: 2,
+                  stopReason: 'followup_pass_completed',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                  passes: [
+                    ...createReviewResponseBody().session.passes,
+                    {
+                      reviewId: 'rev_env_delayed_2',
+                      status: 'succeeded',
+                      reviewBasis: 'environment',
+                      createdAt: '2026-03-11T00:02:00.000Z',
+                      startedAt: '2026-03-11T00:02:10.000Z',
+                      finishedAt: '2026-03-11T00:03:00.000Z',
+                    },
+                  ],
+                }
+              : {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_env_delayed_1',
+                  activeReviewId: 'rev_env_delayed_1',
+                  passCount: 1,
+                  stopReason: null,
+                  finishedAt: null,
+                },
+        }) as any,
+        getReviewSession: async () => {
+          sessionReads += 1;
+          return {
+            session:
+              sessionReads === 1
+                ? {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_env_delayed_1',
+                    activeReviewId: 'rev_env_delayed_1',
+                    passCount: 1,
+                    stopReason: null,
+                    finishedAt: null,
+                  }
+                : sessionReads === 2
+                  ? {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_env_delayed_2',
+                    activeReviewId: 'rev_env_delayed_2',
+                    passCount: 2,
+                    stopReason: null,
+                    finishedAt: null,
+                    passes: [
+                      ...createReviewResponseBody().session.passes,
+                      {
+                        reviewId: 'rev_env_delayed_2',
+                        status: 'queued',
+                        reviewBasis: 'environment',
+                        createdAt: '2026-03-11T00:02:00.000Z',
+                        startedAt: null,
+                        finishedAt: null,
+                      },
+                    ],
+                  }
+                  : {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_env_delayed_2',
+                    activeReviewId: null,
+                    passCount: 2,
+                    stopReason: 'followup_pass_completed',
+                    finishedAt: '2026-03-11T00:03:00.000Z',
+                    passes: [
+                      ...createReviewResponseBody().session.passes,
+                      {
+                        reviewId: 'rev_env_delayed_2',
+                        status: 'succeeded',
+                        reviewBasis: 'environment',
+                        createdAt: '2026-03-11T00:02:00.000Z',
+                        startedAt: '2026-03-11T00:02:10.000Z',
+                        finishedAt: '2026-03-11T00:03:00.000Z',
+                      },
+                    ],
+                  },
+          } as any;
+        },
+        formatEvent: () => '',
+        pollIntervalMs: 1000,
+      });
+      assert.deepEqual(streamedReviewIds, ['rev_env_delayed_1', 'rev_env_delayed_2']);
+      assert.equal(sessionReads >= 2, true);
+      assert.equal(final.finalReviewId, 'rev_env_delayed_2');
+      assert.equal(final.finalResultUrl, 'https://worker.example.com/api/reviews/rev_env_delayed_2');
+    }
+
+    {
+      let reviewReads = 0;
+      const warnings: string[] = [];
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_stale_terminal',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_stale_terminal',
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: 'terminal-stale', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => {
+          reviewReads += 1;
+          return {
+            review: {
+              ...createReviewResponseBody().review,
+              id: 'rev_stale_terminal',
+              sessionId: null,
+              status: reviewReads === 1 ? 'running' : 'succeeded',
+              reviewBasis: 'checkpoint',
+            },
+            session: null,
+          } as any;
+        },
+        formatEvent: () => '',
+        onStreamWarning: (message) => warnings.push(message),
+        pollIntervalMs: 1,
+      });
+
+      assert.equal(reviewReads >= 2, true);
+      assert.equal(final.finalReview.review.status, 'succeeded');
+      assert.equal(warnings.some((message) => message.includes('status has not settled yet')), true);
+    }
+
+    {
+      let reviewReads = 0;
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_policy_approved_pending',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_policy_approved_pending',
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: 'terminal-policy-approved', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => {
+          reviewReads += 1;
+          return {
+            review: {
+              ...createReviewResponseBody().review,
+              id: 'rev_policy_approved_pending',
+              sessionId: null,
+              status: reviewReads === 1 ? 'policy_approved' : 'succeeded',
+              reviewBasis: 'checkpoint',
+            },
+            session: null,
+          } as any;
+        },
+        formatEvent: () => '',
+        pollIntervalMs: 1,
+      });
+
+      assert.equal(reviewReads >= 2, true);
+      assert.equal(final.finalReview.review.status, 'succeeded');
+    }
+
+    {
+      let reviewReads = 0;
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_policy_pending_pending',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_policy_pending_pending',
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: 'terminal-policy-pending', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => {
+          reviewReads += 1;
+          return {
+            review: {
+              ...createReviewResponseBody().review,
+              id: 'rev_policy_pending_pending',
+              sessionId: null,
+              status: reviewReads === 1 ? 'policy_pending' : 'succeeded',
+              reviewBasis: 'checkpoint',
+            },
+            session: null,
+          } as any;
+        },
+        formatEvent: () => '',
+        pollIntervalMs: 1,
+      });
+
+      assert.equal(reviewReads, 1);
+      assert.equal(final.finalReview.review.status, 'policy_pending');
+    }
+
+    {
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_terminal_conflict',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_terminal_conflict',
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: 'terminal-conflict', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: 'rev_terminal_conflict',
+            sessionId: null,
+            status: 'failed',
+            reviewBasis: 'checkpoint',
+          },
+          session: null,
+        }) as any,
+        formatEvent: () => '',
+      });
+
+      assert.equal(final.finalReview.review.status, 'failed');
+      assert.equal(final.finalReviewId, 'rev_terminal_conflict');
+    }
+
+    {
+      const streamedReviewIds: string[] = [];
+      let sessionReads = 0;
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_env_retry_1',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_env_retry_1',
+        streamReviewEvents: async (_workerUrl, reviewId, onEvent) => {
+          streamedReviewIds.push(reviewId);
+          await onEvent({ id: `terminal-${reviewId}`, data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async (_workerUrl, reviewId) => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: reviewId,
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: reviewId === 'rev_env_retry_2' ? 'environment' : 'checkpoint',
+          },
+          session:
+            reviewId === 'rev_env_retry_2'
+              ? {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_env_retry_2',
+                  activeReviewId: null,
+                  passCount: 2,
+                  stopReason: 'followup_pass_completed',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                  passes: [
+                    ...createReviewResponseBody().session.passes,
+                    {
+                      reviewId: 'rev_env_retry_2',
+                      status: 'succeeded',
+                      reviewBasis: 'environment',
+                      createdAt: '2026-03-11T00:02:00.000Z',
+                      startedAt: '2026-03-11T00:02:10.000Z',
+                      finishedAt: '2026-03-11T00:03:00.000Z',
+                    },
+                  ],
+                }
+              : {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_env_retry_1',
+                  activeReviewId: 'rev_env_retry_1',
+                  passCount: 1,
+                  stopReason: null,
+                  finishedAt: null,
+                },
+        }) as any,
+        getReviewSession: async () => {
+          sessionReads += 1;
+          if (sessionReads === 1) {
+            throw new Error('temporary session read failure');
+          }
+          return {
+            session:
+              sessionReads === 2
+                ? {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_env_retry_2',
+                    activeReviewId: 'rev_env_retry_2',
+                    passCount: 2,
+                    stopReason: null,
+                    finishedAt: null,
+                    passes: [
+                      ...createReviewResponseBody().session.passes,
+                      {
+                        reviewId: 'rev_env_retry_2',
+                        status: 'queued',
+                        reviewBasis: 'environment',
+                        createdAt: '2026-03-11T00:02:00.000Z',
+                        startedAt: null,
+                        finishedAt: null,
+                      },
+                    ],
+                  }
+                : {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_env_retry_2',
+                    activeReviewId: null,
+                    passCount: 2,
+                    stopReason: 'followup_pass_completed',
+                    finishedAt: '2026-03-11T00:03:00.000Z',
+                    passes: [
+                      ...createReviewResponseBody().session.passes,
+                      {
+                        reviewId: 'rev_env_retry_2',
+                        status: 'succeeded',
+                        reviewBasis: 'environment',
+                        createdAt: '2026-03-11T00:02:00.000Z',
+                        startedAt: '2026-03-11T00:02:10.000Z',
+                        finishedAt: '2026-03-11T00:03:00.000Z',
+                      },
+                    ],
+                  },
+          } as any;
+        },
+        formatEvent: () => '',
+        pollIntervalMs: 1000,
+      });
+      assert.deepEqual(streamedReviewIds, ['rev_env_retry_1', 'rev_env_retry_2']);
+      assert.equal(sessionReads >= 2, true);
+      assert.equal(final.finalReviewId, 'rev_env_retry_2');
+    }
+
+    {
+      let sessionReads = 0;
+      const streamedReviewIds: string[] = [];
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_policy_chain_1',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_policy_chain_1',
+        streamReviewEvents: async (_workerUrl, reviewId, onEvent) => {
+          streamedReviewIds.push(reviewId);
+          await onEvent({ id: `terminal-${reviewId}`, data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async (_workerUrl, reviewId) => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: reviewId,
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: reviewId === 'rev_policy_chain_2' ? 'environment' : 'checkpoint',
+          },
+          session:
+            reviewId === 'rev_policy_chain_2'
+              ? {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_policy_chain_2',
+                  activeReviewId: null,
+                  passCount: 2,
+                  stopReason: 'followup_pass_completed',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                }
+              : {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_policy_chain_1',
+                  activeReviewId: 'rev_policy_chain_1',
+                  passCount: 1,
+                  stopReason: null,
+                  finishedAt: null,
+                },
+        }) as any,
+        getReviewSession: async () => {
+          sessionReads += 1;
+          return {
+            session:
+              sessionReads === 1
+                ? {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_policy_chain_2',
+                    activeReviewId: 'rev_policy_chain_2',
+                    currentReviewStatus: 'policy_pending',
+                    passCount: 2,
+                    stopReason: null,
+                    finishedAt: null,
+                    passes: [
+                      ...createReviewResponseBody().session.passes,
+                      {
+                        reviewId: 'rev_policy_chain_2',
+                        status: 'policy_pending',
+                        reviewBasis: 'environment',
+                        createdAt: '2026-03-11T00:02:00.000Z',
+                        startedAt: null,
+                        finishedAt: null,
+                      },
+                    ],
+                  }
+                : {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_policy_chain_2',
+                    activeReviewId: null,
+                    currentReviewStatus: 'succeeded',
+                    passCount: 2,
+                    stopReason: 'followup_pass_completed',
+                    finishedAt: '2026-03-11T00:03:00.000Z',
+                  },
+          } as any;
+        },
+        formatEvent: () => '',
+        pollIntervalMs: 1,
+      });
+
+      assert.deepEqual(streamedReviewIds, ['rev_policy_chain_1', 'rev_policy_chain_2']);
+      assert.equal(sessionReads >= 1, true);
+      assert.equal(final.finalReviewId, 'rev_policy_chain_2');
+    }
+
+    {
+      let sessionReads = 0;
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_settled_session',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_settled_session',
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: 'terminal', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: 'rev_settled_session',
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: 'checkpoint',
+          },
+          session: {
+            ...createReviewResponseBody().session,
+            latestReviewId: 'rev_settled_session',
+            activeReviewId: null,
+            passCount: 1,
+            stopReason: 'initial_pass_completed',
+            finishedAt: '2026-03-11T00:01:00.000Z',
+          },
+        }) as any,
+        getReviewSession: async () => {
+          sessionReads += 1;
+          throw new Error('session read should not be called for settled sessions');
+        },
+        formatEvent: () => '',
+      });
+
+      assert.equal(final.finalReviewId, 'rev_settled_session');
+      assert.equal(sessionReads, 0);
+    }
+
+    {
+      const warnings: string[] = [];
+      const originalDateNow = Date.now;
+      const baseNow = originalDateNow();
+      let dateNowCalls = 0;
+      Date.now = () => {
+        dateNowCalls += 1;
+        return dateNowCalls >= 3 ? baseNow + 31_000 : baseNow;
+      };
+      try {
+        const final = await followReviewChain({
+          workerUrl: 'https://worker.example.com',
+          initialReviewId: 'rev_followup_settling',
+          initialResultUrl: 'https://worker.example.com/api/reviews/rev_followup_settling',
+          streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+            await onEvent({ id: 'terminal', data: { type: 'terminal', status: 'succeeded' } });
+          },
+          getReview: async () => ({
+            review: {
+              ...createReviewResponseBody().review,
+              id: 'rev_followup_settling',
+              sessionId: 'session_abcd1234',
+              status: 'succeeded',
+              reviewBasis: 'checkpoint',
+            },
+            session: {
+              ...createReviewResponseBody().session,
+              latestReviewId: 'rev_followup_settling',
+              activeReviewId: 'rev_followup_settling',
+              passCount: 1,
+              stopReason: null,
+              finishedAt: null,
+            },
+          }) as any,
+          getReviewSession: async () => ({
+            session: {
+              ...createReviewResponseBody().session,
+              latestReviewId: 'rev_followup_settling',
+              activeReviewId: 'rev_followup_settling',
+              passCount: 1,
+              stopReason: null,
+              finishedAt: null,
+            },
+          }) as any,
+          formatEvent: () => '',
+          onStreamWarning: (message) => warnings.push(message),
+          pollIntervalMs: 1,
+        });
+
+        assert.equal(final.finalReviewId, 'rev_followup_settling');
+        assert.equal(warnings.some((message) => message.includes('still settling')), true);
+      } finally {
+        Date.now = originalDateNow;
+      }
+    }
+
+    {
+      const streamedReviewIds: string[] = [];
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_latest_only_1',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_latest_only_1',
+        streamReviewEvents: async (_workerUrl, reviewId, onEvent) => {
+          streamedReviewIds.push(reviewId);
+          await onEvent({ id: `terminal-${reviewId}`, data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async (_workerUrl, reviewId) => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: reviewId,
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: reviewId === 'rev_latest_only_2' ? 'environment' : 'checkpoint',
+          },
+          session:
+            reviewId === 'rev_latest_only_2'
+              ? {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_latest_only_2',
+                  activeReviewId: null,
+                  passCount: 2,
+                  stopReason: 'followup_pass_completed',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                }
+              : {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_latest_only_2',
+                  activeReviewId: null,
+                  passCount: 2,
+                  stopReason: null,
+                  finishedAt: null,
+                  passes: [
+                    {
+                      reviewId: 'rev_latest_only_1',
+                      status: 'succeeded',
+                      reviewBasis: 'checkpoint',
+                      createdAt: '2026-03-11T00:00:00.000Z',
+                      startedAt: '2026-03-11T00:00:10.000Z',
+                      finishedAt: '2026-03-11T00:01:00.000Z',
+                    },
+                  ],
+                },
+        }) as any,
+        formatEvent: () => '',
+        pollIntervalMs: 1,
+      });
+
+      assert.deepEqual(streamedReviewIds, ['rev_latest_only_1', 'rev_latest_only_2']);
+      assert.equal(final.finalReviewId, 'rev_latest_only_2');
+    }
+
+    {
+      const warnings: string[] = [];
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_session_read_warning',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_session_read_warning',
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: 'terminal', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: 'rev_session_read_warning',
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: 'checkpoint',
+          },
+          session: {
+            ...createReviewResponseBody().session,
+            latestReviewId: 'rev_session_read_warning',
+            activeReviewId: 'rev_session_read_warning',
+            passCount: 1,
+            stopReason: null,
+            finishedAt: null,
+          },
+        }) as any,
+        getReviewSession: async () => {
+          throw new Error('session read unavailable');
+        },
+        formatEvent: () => '',
+        onStreamWarning: (message) => warnings.push(message),
+        pollIntervalMs: 1,
+      });
+
+      assert.equal(final.finalReviewId, 'rev_session_read_warning');
+      assert.equal(warnings.some((message) => message.includes('Failed to read review session state while awaiting follow-up pass')), true);
     }
 
     {

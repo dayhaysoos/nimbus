@@ -324,11 +324,11 @@ export async function runReviewDbTests(): Promise<void> {
                       {
                         id: state.latestReviewId,
                         session_id: state.sessionId,
-                        status: 'succeeded',
+                        status: 'running',
                         request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
                         created_at: '2026-03-11T00:00:00.000Z',
                         started_at: '2026-03-11T00:00:01.000Z',
-                        finished_at: '2026-03-11T00:01:00.000Z',
+                        finished_at: null,
                       },
                     ],
                   } as unknown as T;
@@ -375,10 +375,99 @@ export async function runReviewDbTests(): Promise<void> {
     const hydrated = await getReviewSession(db, session.id);
     assert.ok(hydrated);
     assert.equal(hydrated?.passCount, 1);
-    assert.equal(hydrated?.phase, 'completed');
+    assert.equal(hydrated?.phase, 'reviewing');
     assert.equal(hydrated?.latestReviewId, 'rev_abcd1234');
-    assert.equal(hydrated?.finishedAt, '2026-03-11T00:01:00.000Z');
+    assert.equal(hydrated?.stopReason, null);
+    assert.equal(hydrated?.finishedAt, null);
     assert.equal(hydrated?.passes[0]?.reviewBasis, 'checkpoint');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_active_failed') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_active_failed',
+                    workspace_id: 'ws_active_failed',
+                    anchor_deployment_id: 'dep_active_failed',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'a'.repeat(40),
+                    anchor_checkpoint_id: null,
+                    source_project_root: '.',
+                    active_review_id: 'rev_failed_active',
+                    latest_review_id: 'rev_failed_active',
+                    pass_count: 1,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:02:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_active_failed') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'rev_failed_active',
+                        session_id: 'session_active_failed',
+                        status: 'failed',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:05.000Z',
+                        finished_at: '2026-03-11T00:01:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_active_failed');
+    assert.ok(session);
+    assert.equal(session?.phase, 'failed');
+    assert.equal(session?.stopReason, 'initial_pass_failed');
+    assert.equal(session?.finishedAt, '2026-03-11T00:01:00.000Z');
   }
 
   {
@@ -486,6 +575,92 @@ export async function runReviewDbTests(): Promise<void> {
     assert.equal(session?.passes[1]?.reviewBasis, 'environment');
     assert.equal(session?.passes[1]?.environmentRevision?.diffSha256, 'c'.repeat(64));
     assert.equal(session?.passes[1]?.environmentRevision?.changedFileCount, 3);
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_policy_wait') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_policy_wait',
+                    workspace_id: 'ws_policy_wait',
+                    anchor_deployment_id: 'dep_policy_wait',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'd'.repeat(40),
+                    anchor_checkpoint_id: null,
+                    source_project_root: '.',
+                    active_review_id: 'review_policy_wait',
+                    latest_review_id: 'review_policy_wait',
+                    pass_count: 1,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:01:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_policy_wait') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'review_policy_wait',
+                        session_id: 'session_policy_wait',
+                        status: 'policy_pending',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: null,
+                        finished_at: null,
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_policy_wait');
+    assert.ok(session);
+    assert.equal(session?.phase, 'waiting_on_human');
   }
 
   {

@@ -1,5 +1,7 @@
 import type { Env, ReviewContextDiffHunk, ReviewEnvironmentRevision, WorkspaceResponse } from '../../types.js';
 import { runWorkspaceDiffAgainstHead, workspaceHasGitHead } from '../../api/workspaces/sandbox-git.js';
+import { hydrateWorkspaceToReady } from '../../api/workspaces/ready.js';
+import { loadVerifiedWorkspaceSourceBundle } from '../../api/workspaces/source-bundle.js';
 import { parseChangedPathsFromDiff, parseDiffHunks } from './context-helpers.js';
 import { ReviewContextAssemblyError } from './cochange.js';
 import { resolveReviewSandbox } from '../review-analysis/sandbox.js';
@@ -18,6 +20,34 @@ export interface WorkspaceEnvironmentSnapshot {
   revision: ReviewEnvironmentRevision;
 }
 
+async function ensureWorkspaceEnvironmentBaseline(
+  env: Env,
+  workspace: Pick<WorkspaceResponse, 'id' | 'status' | 'sandboxId' | 'baselineReady' | 'sourceBundleKey' | 'sourceBundleSha256'>
+): Promise<void> {
+  if (!workspace.sourceBundleKey || !workspace.sourceBundleSha256) {
+    throw new ReviewContextAssemblyError(
+      'review_context_environment_baseline_missing',
+      `Environment-backed review requires a source bundle for workspace ${workspace.id}. Run workspace reset and try again.`
+    );
+  }
+
+  const sourceBytesOrResponse = await loadVerifiedWorkspaceSourceBundle(env, workspace);
+  if (sourceBytesOrResponse instanceof Response) {
+    let message = `Environment-backed review could not reload source bundle for workspace ${workspace.id}.`;
+    try {
+      const payload = (await sourceBytesOrResponse.json()) as { error?: unknown };
+      if (typeof payload.error === 'string' && payload.error.trim()) {
+        message = payload.error.trim();
+      }
+    } catch {
+      // Fall back to the generic message above.
+    }
+    throw new ReviewContextAssemblyError('review_context_environment_baseline_missing', message);
+  }
+
+  await hydrateWorkspaceToReady(env, workspace.id, workspace.sandboxId, sourceBytesOrResponse);
+}
+
 export async function captureWorkspaceEnvironmentSnapshot(
   env: Env,
   workspace: Pick<WorkspaceResponse, 'id' | 'status' | 'sandboxId' | 'baselineReady' | 'sourceBundleKey' | 'sourceBundleSha256'>
@@ -28,20 +58,18 @@ export async function captureWorkspaceEnvironmentSnapshot(
       `Workspace ${workspace.id} must be ready before running an environment-backed review.`
     );
   }
-  if (!workspace.baselineReady) {
-    throw new ReviewContextAssemblyError(
-      'review_context_environment_baseline_missing',
-      'Environment-backed review requires a ready git baseline. Run workspace reset and try again.'
-    );
-  }
-
   let sandbox = await resolveReviewSandbox(env, workspace.sandboxId);
   let hasHead = await workspaceHasGitHead(sandbox as never);
   if (!hasHead) {
-    throw new ReviewContextAssemblyError(
-      'review_context_environment_baseline_missing',
-      `Environment-backed review requires git HEAD in workspace ${workspace.id}. Run workspace reset and try again.`
-    );
+    await ensureWorkspaceEnvironmentBaseline(env, workspace);
+    sandbox = await resolveReviewSandbox(env, workspace.sandboxId);
+    hasHead = await workspaceHasGitHead(sandbox as never);
+    if (!hasHead) {
+      throw new ReviewContextAssemblyError(
+        'review_context_environment_baseline_missing',
+        `Environment-backed review requires git HEAD in workspace ${workspace.id}. Run workspace reset and try again.`
+      );
+    }
   }
 
   const patch = await runWorkspaceDiffAgainstHead(sandbox as never, '');

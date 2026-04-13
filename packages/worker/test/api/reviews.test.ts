@@ -1840,12 +1840,12 @@ export async function runReviewApiTests(): Promise<void> {
         }),
         env as never
       );
-      assert.equal(response.status, 500);
+      assert.equal(response.status, 202);
       const body = (await response.json()) as Record<string, unknown>;
-      assert.equal(typeof body.error, 'string');
-      assert.equal(String(body.error).includes('requires git HEAD'), true);
-      assert.equal(state.queueSendCount, 0);
-      assert.equal(hasHead, false);
+      assert.equal(typeof body.reviewId, 'string');
+      assert.equal(body.sessionId, 'session_existing');
+      assert.equal(state.queueSendCount, 1);
+      assert.equal(hasHead, true);
     } finally {
       setReviewAnalysisSandboxResolverForTests(null);
       setWorkspaceSandboxResolverForTests(null);
