@@ -33,6 +33,12 @@
       "transcript": "/fb/261bbc1741/1/full.jsonl",
       "content_hash": "/fb/261bbc1741/1/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/fb/261bbc1741/2/metadata.json",
+      "transcript": "/fb/261bbc1741/2/full.jsonl",
+      "content_hash": "/fb/261bbc1741/2/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
