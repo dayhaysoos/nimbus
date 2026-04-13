@@ -253,6 +253,12 @@
       "transcript": "/fb/122956bcee/38/full.jsonl",
       "content_hash": "/fb/122956bcee/38/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/fb/122956bcee/39/metadata.json",
+      "transcript": "/fb/122956bcee/39/full.jsonl",
+      "content_hash": "/fb/122956bcee/39/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
