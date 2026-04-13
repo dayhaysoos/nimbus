@@ -1,0 +1,42 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "197fc1a939a1",
+  "session_id": "ses_27bca6ae2ffekNVV5tGVSyRx3m",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-13T13:42:11.237132Z",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/app/reviews/context.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/worker/src/lib/review-runner/deployment-report.ts",
+    "packages/worker/test/lib/review-prompt.test.ts",
+    "packages/worker/test/lib/review-runner.test.ts",
+    "packages/cli/src/clients/worker/reviews.ts",
+    "packages/cli/src/commands/review/preflight.ts",
+    "packages/worker/src/api/reviews/request-shared.ts",
+    "packages/worker/src/lib/review-analysis/prompt.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/src/lib/review-runner/context.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/provenance.ts",
+    "packages/worker/src/lib/review-session-pass.ts",
+    "packages/worker/test/lib/review-request-shared.test.ts",
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/workspaces/deploy.ts",
+    "packages/cli/src/cli/help.ts",
+    "packages/cli/test/commands/review/review.test.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/output.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "32c9bb0a2ced",
+  "initial_attribution": {
+    "calculated_at": "2026-04-13T13:42:11.233167Z",
+    "agent_lines": 746,
+    "human_added": 64,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 810,
+    "agent_percentage": 92.09876543209876
+  }
+}
