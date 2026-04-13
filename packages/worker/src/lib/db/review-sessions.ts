@@ -1,15 +1,23 @@
 import type {
   ReviewBasis,
+  ReviewContextMode,
   ReviewEnvironmentRevision,
+  ReviewEvidenceItem,
+  ReviewFinding,
+  ReviewFindingSeverityV2,
+  ReviewRecommendation,
+  ReviewRunRecord,
+  ReviewRunResponse,
   ReviewRunStatus,
-  ReviewSessionPassRecord,
   ReviewSessionPassSummary,
+  ReviewSessionOutcomeSummary,
   ReviewSessionPhase,
   ReviewSessionRecord,
   ReviewSessionResponse,
   ReviewSessionStopReason,
+  ReviewSeverity,
 } from '../../types.js';
-import { generatePrefixedId, parseJsonOrFallback } from './reviews/shared.js';
+import { generatePrefixedId, parseJsonOrFallback, toReviewRunResponse } from './reviews/shared.js';
 
 function normalizeReviewBasis(value: unknown): ReviewBasis {
   return value === 'environment' ? 'environment' : 'checkpoint';
@@ -90,28 +98,296 @@ function deriveStopReason(status: ReviewRunStatus | null, passCount = 1): Review
   }
 }
 
-function toPassSummary(record: ReviewSessionPassRecord): ReviewSessionPassSummary {
-  const requestPayload = parseJsonOrFallback<Record<string, unknown>>(record.request_payload_json, {});
+function severityRank(value: ReviewFindingSeverityV2): number {
+  switch (value) {
+    case 'critical':
+      return 5;
+    case 'high':
+      return 4;
+    case 'medium':
+      return 3;
+    case 'low':
+      return 2;
+    case 'info':
+    default:
+      return 1;
+  }
+}
+
+function statusRank(value: ReviewEvidenceItem['status']): number {
+  switch (value) {
+    case 'failed':
+      return 4;
+    case 'warning':
+      return 3;
+    case 'passed':
+      return 2;
+    case 'info':
+    default:
+      return 1;
+  }
+}
+
+function normalizeContextMode(value: unknown): ReviewContextMode | null {
+  return value === 'basic' || value === 'intent_aware' ? value : null;
+}
+
+function readRequestPayload(record: ReviewRunRecord): Record<string, unknown> {
+  return parseJsonOrFallback<Record<string, unknown>>(record.request_payload_json, {});
+}
+
+function readRequestProvenance(requestPayload: Record<string, unknown>): Record<string, unknown> {
   const requestProvenance =
     requestPayload.provenance && typeof requestPayload.provenance === 'object' && !Array.isArray(requestPayload.provenance)
       ? (requestPayload.provenance as Record<string, unknown>)
       : {};
+  return requestProvenance;
+}
+
+function toPassSummary(review: ReviewRunResponse, requestPayload: Record<string, unknown>): ReviewSessionPassSummary {
+  const requestProvenance = readRequestProvenance(requestPayload);
   const environmentRevision = normalizeEnvironmentRevision(requestProvenance.environmentRevision);
 
   return {
-    reviewId: record.id,
-    status: record.status,
-    reviewBasis: normalizeReviewBasis(requestPayload.reviewBasis),
+    reviewId: review.id,
+    status: review.status,
+    reviewBasis: normalizeReviewBasis(requestPayload.reviewBasis ?? review.reviewBasis),
     ...(environmentRevision ? { environmentRevision } : {}),
-    createdAt: record.created_at,
-    startedAt: record.started_at,
-    finishedAt: record.finished_at,
+    createdAt: review.createdAt,
+    startedAt: review.startedAt,
+    finishedAt: review.finishedAt,
   };
 }
 
-function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSessionPassRecord[]): ReviewSessionResponse {
-  const passSummaries = passes.map(toPassSummary);
+function summarizeEvidence(reviews: ReviewRunResponse[]): ReviewSessionOutcomeSummary['evidence'] {
+  const latestByKey = new Map<string, ReviewEvidenceItem>();
+
+  const evidenceKey = (item: ReviewEvidenceItem): string => {
+    if (typeof item.id === 'string' && item.id.trim().length > 0) {
+      return `id:${item.id.trim()}`;
+    }
+    return `fallback:${JSON.stringify([item.type, item.label, item.metadata ?? null])}`;
+  };
+
+  for (const review of reviews) {
+    for (const item of review.evidence) {
+      latestByKey.set(evidenceKey(item), item);
+    }
+  }
+
+  const deduped = [...latestByKey.values()];
+
+  const counts = deduped.reduce(
+    (acc, item) => {
+      acc[item.status] += 1;
+      return acc;
+    },
+    { passed: 0, failed: 0, warning: 0, info: 0 }
+  );
+
+  const highlights = [...deduped]
+    .sort((left, right) => statusRank(right.status) - statusRank(left.status))
+    .slice(0, 5);
+
+  return {
+    ...counts,
+    highlights,
+  };
+}
+
+function summarizeUnresolved(findings: ReviewFinding[]): ReviewSessionOutcomeSummary['unresolved'] {
+  const sorted = [...findings].sort((left, right) => severityRank(right.severity) - severityRank(left.severity));
+  return {
+    findingCount: findings.length,
+    highestSeverity: sorted[0]?.severity ?? null,
+    highlights: sorted.slice(0, 3).map((finding) => ({
+      severity: finding.severity,
+      category: finding.category,
+      description: finding.description,
+      filePath: finding.locations[0]?.filePath ?? null,
+    })),
+  };
+}
+
+function deriveOutcomeKind(input: {
+  stopReason: ReviewSessionStopReason | null;
+  currentReviewStatus: ReviewRunStatus | null;
+  unresolvedFindingCount: number;
+  hasTerminalState: boolean;
+}): ReviewSessionOutcomeSummary['kind'] | null {
+  if (!input.hasTerminalState) {
+    return null;
+  }
+
+  switch (input.stopReason) {
+    case 'cancelled':
+      return 'cancelled';
+    case 'risky_fix_requires_approval':
+      return 'converged_with_blockers';
+    case 'initial_pass_failed':
+    case 'followup_pass_failed':
+    case 'auto_remediation_failed':
+    case 'no_safe_fixes':
+      return 'blocked';
+    case 'diminishing_returns':
+    case 'no_progress':
+    case 'max_repair_cycles_reached':
+      return 'exhausted';
+    default:
+      break;
+  }
+
+  if (input.currentReviewStatus === 'cancelled') {
+    return 'cancelled';
+  }
+  if (input.currentReviewStatus === 'failed') {
+    return 'blocked';
+  }
+  if (input.currentReviewStatus === 'succeeded' && input.unresolvedFindingCount === 0) {
+    return 'clean';
+  }
+  if (input.currentReviewStatus === 'succeeded') {
+    return 'converged_with_blockers';
+  }
+
+  return null;
+}
+
+function summarizeOutcomeText(input: {
+  kind: ReviewSessionOutcomeSummary['kind'];
+  latestReview: ReviewRunResponse | null;
+  stopReason: ReviewSessionStopReason | null;
+  remediationCount: number;
+  unresolvedFindingCount: number;
+}): string | null {
+  const latestSummary = input.latestReview?.summaryText?.trim();
+  const remediationSummary =
+    input.remediationCount > 0 ? `Nimbus applied ${input.remediationCount} remediation pass${input.remediationCount === 1 ? '' : 'es'}.` : null;
+
+  switch (input.kind) {
+    case 'clean':
+      return latestSummary ?? remediationSummary ?? 'Nimbus completed review and no actionable findings remain.';
+    case 'converged_with_blockers':
+      if (input.stopReason === 'risky_fix_requires_approval') {
+        return 'Nimbus stopped because the remaining fixes require human approval.';
+      }
+      return latestSummary ?? `Nimbus stopped with ${input.unresolvedFindingCount} unresolved finding${input.unresolvedFindingCount === 1 ? '' : 's'}.`;
+    case 'blocked':
+      if (input.stopReason === 'no_safe_fixes') {
+        return 'Nimbus found remaining issues but could not apply a safe automatic fix.';
+      }
+      if (input.stopReason === 'auto_remediation_failed') {
+        return 'Nimbus attempted remediation but the fix pass failed.';
+      }
+      return latestSummary ?? 'Nimbus could not continue the review session safely.';
+    case 'exhausted':
+      if (input.stopReason === 'diminishing_returns') {
+        return 'Nimbus stopped because further review passes looked low-yield relative to the remaining issues.';
+      }
+      if (input.stopReason === 'no_progress') {
+        return 'Nimbus stopped because remediation did not materially change the workspace state.';
+      }
+      if (input.stopReason === 'max_repair_cycles_reached') {
+        return 'Nimbus stopped after reaching the configured remediation budget.';
+      }
+      return latestSummary ?? 'Nimbus exhausted its automatic remediation budget.';
+    case 'cancelled':
+      return 'Nimbus cancelled the review session before it reached a final verified state.';
+    default:
+      return latestSummary ?? null;
+  }
+}
+
+function deriveOutcome(
+  input: {
+    phase: ReviewSessionPhase;
+    stopReason: ReviewSessionStopReason | null;
+    currentReviewStatus: ReviewRunStatus | null;
+    passCount: number;
+    latestReview: ReviewRunResponse | null;
+    passSummaries: ReviewSessionPassSummary[];
+    passRecords: Array<{ review: ReviewRunResponse; requestPayload: Record<string, unknown> }>;
+    hasActiveNonTerminalPass: boolean;
+  }
+): ReviewSessionOutcomeSummary | null {
+  const latestReview = input.latestReview;
+  const unresolved = summarizeUnresolved(latestReview?.findings ?? []);
+  const remediationPasses = input.passRecords.flatMap(({ requestPayload }) => {
+    const requestProvenance = readRequestProvenance(requestPayload);
+    const trigger = typeof requestProvenance.trigger === 'string' ? requestProvenance.trigger.trim() : '';
+    if (trigger !== 'session_auto_remediation') {
+      return [];
+    }
+    const summary =
+      typeof requestProvenance.remediationTaskSummary === 'string' && requestProvenance.remediationTaskSummary.trim()
+        ? requestProvenance.remediationTaskSummary.trim()
+        : null;
+    return [{ summary }];
+  });
+  const remediationSummaries = Array.from(
+    new Set(
+      remediationPasses
+        .map((item) => item.summary)
+        .filter((item): item is string => Boolean(item))
+    )
+  );
+  const latestEnvironmentRevision = input.passSummaries
+    .slice()
+    .reverse()
+    .find((pass) => pass.environmentRevision)?.environmentRevision ?? null;
+  const kind = deriveOutcomeKind({
+    stopReason: input.stopReason,
+    currentReviewStatus: input.currentReviewStatus,
+    unresolvedFindingCount: unresolved.findingCount,
+    hasTerminalState:
+      !input.hasActiveNonTerminalPass &&
+      (input.phase === 'completed' || input.phase === 'failed' || input.phase === 'cancelled' || input.phase === 'waiting_on_human'),
+  });
+  if (!kind) {
+    return null;
+  }
+
+  return {
+    kind,
+    summary: summarizeOutcomeText({
+      kind,
+      latestReview,
+      stopReason: input.stopReason,
+      remediationCount: remediationPasses.length,
+      unresolvedFindingCount: unresolved.findingCount,
+    }),
+    residualRisk: latestReview?.summary?.riskLevel ?? null,
+    recommendation: latestReview?.summary?.recommendation ?? null,
+    materializeReady: input.currentReviewStatus === 'succeeded' && Boolean(latestEnvironmentRevision && latestEnvironmentRevision.changedFileCount > 0),
+    reviewed: {
+      contextMode: normalizeContextMode(latestReview?.provenance.reviewContextMode),
+      latestReviewBasis: input.passSummaries[input.passSummaries.length - 1]?.reviewBasis ?? null,
+      passCount: input.passCount,
+    },
+    changes: {
+      applied: remediationPasses.length > 0 && Boolean(latestEnvironmentRevision && latestEnvironmentRevision.changedFileCount > 0),
+      remediationCount: remediationPasses.length,
+      changedFileCount: latestEnvironmentRevision?.changedFileCount ?? 0,
+      summaries: remediationSummaries,
+      environmentRevision: latestEnvironmentRevision,
+    },
+    evidence: summarizeEvidence(input.passRecords.map((item) => item.review)),
+    unresolved,
+  };
+}
+
+function toReviewSessionResponse(record: ReviewSessionRecord, passRecords: ReviewRunRecord[]): ReviewSessionResponse {
+  const parsedPasses = passRecords.map((passRecord) => {
+    const requestPayload = readRequestPayload(passRecord);
+    const review = toReviewRunResponse(passRecord);
+    return {
+      requestPayload,
+      review,
+    };
+  });
+  const passSummaries = parsedPasses.map(({ review, requestPayload }) => toPassSummary(review, requestPayload));
   const latestPass = passSummaries[passSummaries.length - 1] ?? null;
+  const latestReview = parsedPasses[parsedPasses.length - 1]?.review ?? null;
   const currentReviewStatus = latestPass?.status ?? null;
   const derivedPassCount = typeof record.pass_count === 'number' ? record.pass_count : passSummaries.length;
   const hasActiveCurrentPass = Boolean(record.active_review_id && latestPass?.reviewId === record.active_review_id);
@@ -127,6 +403,17 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
   const derivedFinishedAt = record.finished_at ?? (!hasActiveNonTerminalPass ? (latestPass?.finishedAt ?? null) : null);
   const stopReason =
     record.stop_reason ?? (!hasActiveNonTerminalPass ? deriveStopReason(currentReviewStatus, derivedPassCount) : null);
+  const phase = deriveSessionPhase(currentReviewStatus, stopReason, { hasActiveCurrentPass });
+  const outcome = deriveOutcome({
+    phase,
+    stopReason,
+    currentReviewStatus,
+    passCount: derivedPassCount,
+    latestReview,
+    passSummaries,
+    passRecords: parsedPasses,
+    hasActiveNonTerminalPass,
+  });
 
   return {
     id: record.id,
@@ -138,7 +425,7 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
     anchorCommitSha: record.anchor_commit_sha,
     anchorCheckpointId: record.anchor_checkpoint_id,
     sourceProjectRoot: record.source_project_root,
-    phase: deriveSessionPhase(currentReviewStatus, stopReason, { hasActiveCurrentPass }),
+    phase,
     passCount: derivedPassCount,
     activeReviewId: record.active_review_id,
     latestReviewId: record.latest_review_id,
@@ -148,6 +435,7 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passes: ReviewSess
     updatedAt: derivedUpdatedAt,
     finishedAt: derivedFinishedAt,
     passes: passSummaries,
+    outcome,
   };
 }
 
@@ -296,13 +584,13 @@ export async function getReviewSession(db: D1Database, sessionId: string): Promi
 
   const passes = await db
     .prepare(
-      `SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at
+      `SELECT *
        FROM review_runs
        WHERE session_id = ?
        ORDER BY created_at ASC, id ASC`
     )
     .bind(sessionId)
-    .all<ReviewSessionPassRecord>();
+    .all<ReviewRunRecord>();
 
   return toReviewSessionResponse(record, passes.results);
 }

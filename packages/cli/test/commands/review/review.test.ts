@@ -114,6 +114,45 @@ function createReviewResponseBody() {
           finishedAt: '2026-03-11T00:01:00.000Z',
         },
       ],
+      outcome: {
+        kind: 'clean',
+        summary: 'Nimbus completed review and no actionable findings remain.',
+        residualRisk: 'low',
+        recommendation: 'approve',
+        materializeReady: false,
+        reviewed: {
+          contextMode: 'intent_aware',
+          latestReviewBasis: 'checkpoint',
+          passCount: 1,
+        },
+        changes: {
+          applied: false,
+          remediationCount: 0,
+          changedFileCount: 0,
+          summaries: [],
+          environmentRevision: null,
+        },
+        evidence: {
+          passed: 1,
+          failed: 0,
+          warning: 0,
+          info: 0,
+          highlights: [
+            {
+              id: 'ev_deployed_url',
+              type: 'deploy_probe',
+              label: 'Deployed URL present',
+              status: 'passed',
+              metadata: { url: 'https://example.com' },
+            },
+          ],
+        },
+        unresolved: {
+          findingCount: 0,
+          highestSeverity: null,
+          highlights: [],
+        },
+      },
     },
   };
 }
@@ -1424,6 +1463,8 @@ export async function runReviewCommandTests(): Promise<void> {
         });
         assert.deepEqual(sequence, ['workspace.create', 'workspace.deploy', 'review.create', 'review.events', 'review.show']);
         assert.equal(eventLines.some((line) => line.includes('[1] review_created')), true);
+        assert.equal(eventLines.some((line) => line.includes('Session Outcome:')), true);
+        assert.equal(eventLines.some((line) => line.includes('Outcome:') && line.includes('clean')), true);
         assert.equal(eventLines[eventLines.length - 1], 'Report URL: https://worker.example.com/reviews/rev_compound');
         assert.equal(typeof workspaceIdempotencyKey, 'string');
         assert.equal(typeof deployIdempotencyKey, 'string');
@@ -2277,6 +2318,9 @@ export async function runReviewCommandTests(): Promise<void> {
         assert.equal(lines.some((line) => line.includes('Basis:           checkpoint')), true);
         assert.equal(lines.some((line) => line.includes('Session Phase:   completed')), true);
         assert.equal(lines.some((line) => line.includes('Session Passes:  1')), true);
+        assert.equal(lines.some((line) => line.includes('Session Outcome:')), true);
+        assert.equal(lines.some((line) => line.includes('Outcome:') && line.includes('clean')), true);
+        assert.equal(lines.some((line) => line.includes('Evidence:') && line.includes('1 passed check')), true);
       } finally {
         console.log = originalConsoleLog;
       }
@@ -2354,6 +2398,8 @@ export async function runReviewCommandTests(): Promise<void> {
       try {
         await showReviewSessionCommand('session_abcd1234');
         assert.equal(lines.some((line) => line.includes('Pass Count:      2')), true);
+        assert.equal(lines.some((line) => line.includes('Session Outcome:')), true);
+        assert.equal(lines.some((line) => line.includes('Summary:') && line.includes('no actionable findings remain')), true);
         assert.equal(lines.some((line) => line.includes('2. rev_env1234 succeeded environment')), true);
         assert.equal(lines.some((line) => line.includes('env bbbbbbbbbbbb (2 changed files)')), true);
       } finally {
@@ -3148,6 +3194,8 @@ export async function runReviewCommandTests(): Promise<void> {
       });
       try {
         await assert.doesNotReject(() => createReviewSessionCommand('session_abcd1234'));
+        assert.equal(lines.some((line) => line.includes('Session Outcome:')), true);
+        assert.equal(lines.some((line) => line.includes('Outcome:') && line.includes('clean')), true);
         assert.equal(lines.some((line) => line.includes('Report URL:')), true);
       } finally {
         console.log = originalConsoleLog;
@@ -3209,6 +3257,7 @@ export async function runReviewCommandTests(): Promise<void> {
       try {
         await assert.doesNotReject(() => createReviewSessionCommand('session_abcd1234'));
         assert.deepEqual(streamedReviewIds, ['rev_env_chain_1', 'rev_env_chain_2']);
+        assert.equal(lines.some((line) => line.includes('Session Outcome:')), true);
         assert.equal(lines.some((line) => line.includes('Report URL: https://worker.example.com/api/reviews/rev_env_chain_2')), true);
       } finally {
         console.log = originalConsoleLog;
@@ -3326,6 +3375,130 @@ export async function runReviewCommandTests(): Promise<void> {
       assert.equal(sessionReads >= 2, true);
       assert.equal(final.finalReviewId, 'rev_env_delayed_2');
       assert.equal(final.finalResultUrl, 'https://worker.example.com/api/reviews/rev_env_delayed_2');
+    }
+
+    {
+      const streamedReviewIds: string[] = [];
+      let sessionReads = 0;
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_env_settling_1',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_env_settling_1',
+        streamReviewEvents: async (_workerUrl, reviewId, onEvent) => {
+          streamedReviewIds.push(reviewId);
+          await onEvent({ id: `terminal-${reviewId}`, data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async (_workerUrl, reviewId) => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: reviewId,
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: reviewId === 'rev_env_settling_2' ? 'environment' : 'checkpoint',
+            summary:
+              reviewId === 'rev_env_settling_1'
+                ? {
+                    riskLevel: 'high',
+                    findingCounts: { critical: 0, high: 1, medium: 0, low: 0 },
+                    recommendation: 'request_changes',
+                  }
+                : createReviewResponseBody().review.summary,
+            findings:
+              reviewId === 'rev_env_settling_1'
+                ? [
+                    {
+                      id: 'finding_1',
+                      severity: 'high',
+                      confidence: 'high',
+                      title: 'logic bug',
+                      description: 'add() subtracts instead of adds.',
+                      conditions: null,
+                      locations: [{ path: 'math.js', line: 1 }],
+                      suggestedFix: { kind: 'text', value: 'return a + b;' },
+                      evidenceRefs: [],
+                    },
+                  ]
+                : [],
+            provenance:
+              reviewId === 'rev_env_settling_1'
+                ? {
+                    ...createReviewResponseBody().review.provenance,
+                    validation: {
+                      followUpReviewScore: 3,
+                    },
+                  }
+                : createReviewResponseBody().review.provenance,
+          },
+          session:
+            reviewId === 'rev_env_settling_2'
+              ? {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_env_settling_2',
+                  activeReviewId: null,
+                  passCount: 2,
+                  stopReason: 'followup_pass_completed',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                  passes: [
+                    ...createReviewResponseBody().session.passes,
+                    {
+                      reviewId: 'rev_env_settling_2',
+                      status: 'succeeded',
+                      reviewBasis: 'environment',
+                      createdAt: '2026-03-11T00:02:00.000Z',
+                      startedAt: '2026-03-11T00:02:10.000Z',
+                      finishedAt: '2026-03-11T00:03:00.000Z',
+                    },
+                  ],
+                }
+              : {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_env_settling_1',
+                  activeReviewId: null,
+                  passCount: 1,
+                  stopReason: 'initial_pass_completed',
+                  finishedAt: '2026-03-11T00:01:00.000Z',
+                },
+        }) as any,
+        getReviewSession: async () => {
+          sessionReads += 1;
+          return {
+            session:
+              sessionReads < 3
+                ? {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_env_settling_1',
+                    activeReviewId: null,
+                    passCount: 1,
+                    stopReason: 'initial_pass_completed',
+                    finishedAt: '2026-03-11T00:01:00.000Z',
+                  }
+                : {
+                    ...createReviewResponseBody().session,
+                    latestReviewId: 'rev_env_settling_2',
+                    activeReviewId: 'rev_env_settling_2',
+                    passCount: 2,
+                    stopReason: null,
+                    finishedAt: null,
+                    passes: [
+                      ...createReviewResponseBody().session.passes,
+                      {
+                        reviewId: 'rev_env_settling_2',
+                        status: 'queued',
+                        reviewBasis: 'environment',
+                        createdAt: '2026-03-11T00:02:00.000Z',
+                        startedAt: null,
+                        finishedAt: null,
+                      },
+                    ],
+                  },
+          } as any;
+        },
+        formatEvent: () => '',
+        pollIntervalMs: 1000,
+      });
+      assert.deepEqual(streamedReviewIds, ['rev_env_settling_1', 'rev_env_settling_2']);
+      assert.equal(sessionReads >= 3, true);
+      assert.equal(final.finalReviewId, 'rev_env_settling_2');
     }
 
     {
@@ -3955,13 +4128,113 @@ export async function runReviewCommandTests(): Promise<void> {
       });
 
       assert.equal(final.finalReviewId, 'rev_settled_probe_read_error');
-      assert.equal(sessionReads, 2);
+      assert.equal(sessionReads, 3);
       assert.equal(
         warnings.some((message) =>
           message.includes('Failed to read review session state while awaiting follow-up pass: session read unavailable')
         ),
         true
       );
+    }
+
+    {
+      let sessionReads = 0;
+      const streamedReviewIds: string[] = [];
+      const final = await followReviewChain({
+        workerUrl: 'https://worker.example.com',
+        initialReviewId: 'rev_settled_probe_read_error_followup',
+        initialResultUrl: 'https://worker.example.com/api/reviews/rev_settled_probe_read_error_followup',
+        streamReviewEvents: async (_workerUrl, reviewId, onEvent) => {
+          streamedReviewIds.push(reviewId);
+          await onEvent({ id: `terminal-${reviewId}`, data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async (_workerUrl, reviewId) => ({
+          review: {
+            ...createReviewResponseBody().review,
+            id: reviewId,
+            sessionId: 'session_abcd1234',
+            status: 'succeeded',
+            reviewBasis: reviewId === 'rev_settled_probe_read_error_followup_2' ? 'environment' : 'checkpoint',
+            findings:
+              reviewId === 'rev_settled_probe_read_error_followup_2'
+                ? []
+                : [
+                    {
+                      sequence: 1,
+                      severity: 'high',
+                      category: 'logic',
+                      passType: 'single',
+                      locations: [{ filePath: 'math.js', startLine: 1, endLine: 3 }],
+                      description: 'Broken add helper',
+                    },
+                  ],
+          },
+          session:
+            reviewId === 'rev_settled_probe_read_error_followup_2'
+              ? {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_settled_probe_read_error_followup_2',
+                  activeReviewId: null,
+                  passCount: 2,
+                  stopReason: 'followup_pass_completed',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                }
+              : {
+                  ...createReviewResponseBody().session,
+                  latestReviewId: 'rev_settled_probe_read_error_followup',
+                  activeReviewId: null,
+                  passCount: 1,
+                  stopReason: 'initial_pass_completed',
+                  finishedAt: '2026-03-11T00:01:00.000Z',
+                },
+        }) as any,
+        getReviewSession: async () => {
+          sessionReads += 1;
+          if (sessionReads === 1) {
+            return {
+              session: {
+                ...createReviewResponseBody().session,
+                latestReviewId: 'rev_settled_probe_read_error_followup',
+                activeReviewId: null,
+                passCount: 1,
+                stopReason: 'initial_pass_completed',
+                finishedAt: '2026-03-11T00:01:00.000Z',
+              },
+            } as any;
+          }
+          if (sessionReads === 2) {
+            throw new Error('transient read error after settled probe');
+          }
+          return {
+            session: {
+              ...createReviewResponseBody().session,
+              latestReviewId: 'rev_settled_probe_read_error_followup_2',
+              activeReviewId: 'rev_settled_probe_read_error_followup_2',
+              currentReviewStatus: 'queued',
+              passCount: 2,
+              stopReason: null,
+              finishedAt: null,
+              passes: [
+                ...createReviewResponseBody().session.passes,
+                {
+                  reviewId: 'rev_settled_probe_read_error_followup_2',
+                  status: 'queued',
+                  reviewBasis: 'environment',
+                  createdAt: '2026-03-11T00:02:00.000Z',
+                  startedAt: null,
+                  finishedAt: null,
+                },
+              ],
+            },
+          } as any;
+        },
+        formatEvent: () => '',
+        pollIntervalMs: 1,
+      });
+
+      assert.deepEqual(streamedReviewIds, ['rev_settled_probe_read_error_followup', 'rev_settled_probe_read_error_followup_2']);
+      assert.equal(sessionReads, 3);
+      assert.equal(final.finalReviewId, 'rev_settled_probe_read_error_followup_2');
     }
 
     {

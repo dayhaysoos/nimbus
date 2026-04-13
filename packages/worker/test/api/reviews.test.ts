@@ -356,7 +356,7 @@ function createReviewApiEnv(options?: {
           };
         }
 
-        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
           return {
             bind(sessionId: string) {
               return {

@@ -1,6 +1,7 @@
 import * as p from '@clack/prompts';
 import { getReview } from '../../clients/worker/reviews.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
+import { printReviewSessionOutcome } from '../../app/reviews/session-outcome.js';
 
 export async function showReviewCommand(reviewId: string): Promise<void> {
   const workerUrl = getWorkerUrl();
@@ -31,6 +32,7 @@ export async function showReviewCommand(reviewId: string): Promise<void> {
     console.log(`  Session Phase:   ${session.phase}`);
     console.log(`  Session Passes:  ${session.passCount}`);
     console.log(`  Session Stop:    ${session.stopReason ?? 'active'}`);
+    printReviewSessionOutcome(session, { detailed: false });
   }
   if (review.provenance.environmentRevision) {
     console.log(`  Env Revision:    ${review.provenance.environmentRevision.diffSha256.slice(0, 12)} (${review.provenance.environmentRevision.changedFileCount} changed files)`);

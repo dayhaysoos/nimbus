@@ -260,6 +260,12 @@ export function toReviewRunResponse(record: ReviewRunRecord): ReviewRunResponse 
     provenance: {
       repo: typeof requestProvenance.repo === 'string' && requestProvenance.repo.trim() ? requestProvenance.repo.trim() : (record.repo ?? ''),
       branch: typeof requestProvenance.branch === 'string' && requestProvenance.branch.trim() ? requestProvenance.branch.trim() : (record.branch ?? ''),
+      reviewContextMode:
+        report?.provenance?.reviewContextMode === 'basic' || report?.provenance?.reviewContextMode === 'intent_aware'
+          ? report.provenance.reviewContextMode
+          : requestProvenance.reviewContextMode === 'basic' || requestProvenance.reviewContextMode === 'intent_aware'
+            ? requestProvenance.reviewContextMode
+            : undefined,
       sessionIds: report?.provenance && Array.isArray(report.provenance.sessionIds) ? report.provenance.sessionIds : [],
       policyItems: intentSummary ? [] : policyItems,
       environmentRevision:

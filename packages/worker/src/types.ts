@@ -678,6 +678,52 @@ export type ReviewSessionStopReason =
   | 'auto_remediation_failed'
   | 'cancelled';
 
+export type ReviewSessionOutcomeKind =
+  | 'clean'
+  | 'converged_with_blockers'
+  | 'blocked'
+  | 'exhausted'
+  | 'cancelled';
+
+export interface ReviewSessionOutcomeFindingSummary {
+  severity: ReviewFindingSeverityV2;
+  category: ReviewFindingCategory;
+  description: string;
+  filePath: string | null;
+}
+
+export interface ReviewSessionOutcomeSummary {
+  kind: ReviewSessionOutcomeKind;
+  summary: string | null;
+  residualRisk: ReviewSeverity | null;
+  recommendation: ReviewRecommendation | null;
+  materializeReady: boolean;
+  reviewed: {
+    contextMode: ReviewContextMode | null;
+    latestReviewBasis: ReviewBasis | null;
+    passCount: number;
+  };
+  changes: {
+    applied: boolean;
+    remediationCount: number;
+    changedFileCount: number;
+    summaries: string[];
+    environmentRevision: ReviewEnvironmentRevision | null;
+  };
+  evidence: {
+    passed: number;
+    failed: number;
+    warning: number;
+    info: number;
+    highlights: ReviewEvidenceItem[];
+  };
+  unresolved: {
+    findingCount: number;
+    highestSeverity: ReviewFindingSeverityV2 | null;
+    highlights: ReviewSessionOutcomeFindingSummary[];
+  };
+}
+
 export interface ReviewEnvironmentRevision {
   source: 'workspace_head';
   diffSha256: string;
@@ -745,6 +791,7 @@ export interface ReviewSessionResponse {
   updatedAt: string;
   finishedAt: string | null;
   passes: ReviewSessionPassSummary[];
+  outcome: ReviewSessionOutcomeSummary | null;
 }
 
 export interface ReviewProvenanceSummary {

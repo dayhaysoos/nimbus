@@ -311,7 +311,7 @@ export async function runReviewDbTests(): Promise<void> {
           };
         }
 
-        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
           return {
             bind(sessionId: string) {
               return {
@@ -418,7 +418,7 @@ export async function runReviewDbTests(): Promise<void> {
           };
         }
 
-        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
           return {
             bind(sessionId: string) {
               return {
@@ -506,7 +506,7 @@ export async function runReviewDbTests(): Promise<void> {
           };
         }
 
-        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
           return {
             bind(sessionId: string) {
               return {
@@ -518,20 +518,77 @@ export async function runReviewDbTests(): Promise<void> {
                     results: [
                       {
                         id: 'review_checkpoint',
+                        workspace_id: 'ws_envtrace',
+                        deployment_id: 'dep_envtrace',
                         session_id: 'session_envtrace',
+                        target_type: 'workspace_deployment',
+                        mode: 'report_only',
                         status: 'succeeded',
+                        idempotency_key: 'idem-review-checkpoint',
                         request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        request_payload_sha256: 'hash-checkpoint',
+                        provenance_json: JSON.stringify({ promptSummary: 'Initial checkpoint review.' }),
+                        repo: 'dayhaysoos/nimbus',
+                        branch: 'main',
+                        derived_policy_json: null,
+                        approved_policy_json: null,
+                        approved_policy_sha256: null,
+                        last_event_seq: 1,
+                        attempt_count: 1,
                         created_at: '2026-03-11T00:00:00.000Z',
                         started_at: '2026-03-11T00:00:01.000Z',
                         finished_at: '2026-03-11T00:01:00.000Z',
+                        report_json: JSON.stringify({
+                          summary: {
+                            riskLevel: 'medium',
+                            findingCounts: { critical: 0, high: 0, medium: 1, low: 0 },
+                            recommendation: 'comment',
+                          },
+                          findings: [
+                            {
+                              severity: 'medium',
+                              category: 'logic',
+                              passType: 'single',
+                              locations: [{ filePath: 'src/math.ts', startLine: 1, endLine: 1 }],
+                              description: 'add() subtracts instead of adds.',
+                              suggestedFix: 'Return a + b.',
+                            },
+                          ],
+                          evidence: [
+                            {
+                              id: 'ev_test_passed',
+                              type: 'test',
+                              label: 'Unit tests passed',
+                              status: 'failed',
+                            },
+                          ],
+                          provenance: {
+                            reviewContextMode: 'intent_aware',
+                            sessionIds: ['sess_checkpoint'],
+                            policyItems: [],
+                            promptSummary: 'Initial checkpoint review.',
+                          },
+                        }),
+                        markdown_summary: null,
+                        error_code: null,
+                        error_message: null,
+                        updated_at: '2026-03-11T00:01:00.000Z',
                       },
                       {
                         id: 'review_envtrace',
+                        workspace_id: 'ws_envtrace',
+                        deployment_id: 'dep_envtrace',
                         session_id: 'session_envtrace',
+                        target_type: 'workspace_deployment',
+                        mode: 'report_only',
                         status: 'succeeded',
+                        idempotency_key: 'idem-review-envtrace',
                         request_payload_json: JSON.stringify({
                           reviewBasis: 'environment',
                           provenance: {
+                            trigger: 'session_auto_remediation',
+                            remediationTaskSummary: 'Updated add() to return the sum.',
+                            reviewContextMode: 'basic',
                             environmentRevision: {
                               source: 'workspace_head',
                               diffSha256: 'c'.repeat(64),
@@ -540,9 +597,49 @@ export async function runReviewDbTests(): Promise<void> {
                             },
                           },
                         }),
+                        request_payload_sha256: 'hash-envtrace',
+                        provenance_json: JSON.stringify({ promptSummary: 'Follow-up environment review.' }),
+                        repo: 'dayhaysoos/nimbus',
+                        branch: 'main',
+                        derived_policy_json: null,
+                        approved_policy_json: null,
+                        approved_policy_sha256: null,
+                        last_event_seq: 2,
+                        attempt_count: 1,
                         created_at: '2026-03-11T00:03:00.000Z',
                         started_at: '2026-03-11T00:03:02.000Z',
                         finished_at: '2026-03-11T00:04:00.000Z',
+                        report_json: JSON.stringify({
+                          summary: {
+                            riskLevel: 'low',
+                            findingCounts: { critical: 0, high: 0, medium: 0, low: 0 },
+                            recommendation: 'approve',
+                          },
+                          summaryText: 'Nimbus completed review and no actionable findings remain.',
+                          findings: [],
+                          evidence: [
+                            {
+                              id: 'ev_test_passed',
+                              type: 'test',
+                              label: 'Unit tests passed',
+                              status: 'passed',
+                            },
+                          ],
+                          provenance: {
+                            reviewContextMode: 'basic',
+                            sessionIds: [],
+                            policyItems: [],
+                            promptSummary: 'Follow-up environment review.',
+                            validation: {
+                              followUpReviewScore: 1,
+                              followUpReviewRationale: 'No additional meaningful issues remain.',
+                            },
+                          },
+                        }),
+                        markdown_summary: null,
+                        error_code: null,
+                        error_message: null,
+                        updated_at: '2026-03-11T00:04:00.000Z',
                       },
                     ],
                   } as unknown as T;
@@ -575,6 +672,15 @@ export async function runReviewDbTests(): Promise<void> {
     assert.equal(session?.passes[1]?.reviewBasis, 'environment');
     assert.equal(session?.passes[1]?.environmentRevision?.diffSha256, 'c'.repeat(64));
     assert.equal(session?.passes[1]?.environmentRevision?.changedFileCount, 3);
+    assert.equal(session?.outcome?.kind, 'clean');
+    assert.equal(session?.outcome?.reviewed.contextMode, 'basic');
+    assert.equal(session?.outcome?.changes.applied, true);
+    assert.equal(session?.outcome?.changes.remediationCount, 1);
+    assert.equal(session?.outcome?.changes.changedFileCount, 3);
+    assert.equal(session?.outcome?.materializeReady, true);
+    assert.equal(session?.outcome?.unresolved.findingCount, 0);
+    assert.equal(session?.outcome?.evidence.passed, 1);
+    assert.equal(session?.outcome?.evidence.failed, 0);
   }
 
   {
@@ -613,7 +719,7 @@ export async function runReviewDbTests(): Promise<void> {
           };
         }
 
-        if (/SELECT id, session_id, status, request_payload_json, created_at, started_at, finished_at\s+FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
           return {
             bind(sessionId: string) {
               return {

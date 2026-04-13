@@ -14,6 +14,7 @@ import {
   normalizeResultUrl,
 } from './create-shared.js';
 import { startReviewStudioCommand } from './open.js';
+import { printReviewSessionOutcome } from './session-outcome.js';
 
 let createReviewSessionPassForFlow: typeof createReviewSessionPass = createReviewSessionPass;
 let getReviewForFlow: typeof getReview = getReview;
@@ -134,5 +135,8 @@ export async function createReviewSessionCommand(
   }
 
   p.log.success(`Review completed: ${final.finalReviewId}`);
+  if (final.finalReview.session) {
+    printReviewSessionOutcome(final.finalReview.session, { detailed: false, heading: 'Session Outcome:' });
+  }
   console.log(`Report URL: ${final.finalResultUrl}`);
 }

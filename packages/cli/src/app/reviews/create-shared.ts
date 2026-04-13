@@ -359,7 +359,9 @@ async function waitForSessionFollowup(input: {
   let successfulReads = 0;
   let readErrorCount = 0;
   let lastReadErrorMessage: string | null = null;
-  let settledInitialPassProbeUsed = false;
+  let settledInitialPassProbeCount = 0;
+  const maxSettledInitialPassProbes = 2;
+  let settledInitialPassReadErrorRetryUsed = false;
   const settlingTimeoutWarning =
     'Review session is still settling; a follow-up pass may appear shortly. Re-run `nimbus review events` to continue watching.';
 
@@ -379,17 +381,21 @@ async function waitForSessionFollowup(input: {
             (minimumPassCount === null || latestSession.passCount <= minimumPassCount) &&
             latestSession.stopReason === 'initial_pass_completed'
         );
-        const shouldProbeSettledInitialPass = Boolean(
+        const shouldRetrySettledProbeAfterReadError = Boolean(
           isInitialPassCompletionWithoutAdvance &&
             latestSession.finishedAt &&
             !latestSession.activeReviewId &&
-            !settledInitialPassProbeUsed
+            settledInitialPassProbeCount > 0 &&
+            !settledInitialPassReadErrorRetryUsed
         );
+        if (shouldRetrySettledProbeAfterReadError) {
+          settledInitialPassReadErrorRetryUsed = true;
+        }
         const shouldContinueTransientGrace = Boolean(isInitialPassCompletionWithoutAdvance && !latestSession.finishedAt);
         const shouldContinueWaiting =
           shouldWaitForSessionSettlement(latestSession, input.currentReviewId) ||
           shouldContinueTransientGrace ||
-          shouldProbeSettledInitialPass;
+          shouldRetrySettledProbeAfterReadError;
         if (!shouldContinueWaiting) {
           return {
             nextReviewId: null,
@@ -428,15 +434,14 @@ async function waitForSessionFollowup(input: {
       isInitialPassCompletionWithoutAdvance &&
         latestSession?.finishedAt &&
         !latestSession.activeReviewId &&
-        !settledInitialPassProbeUsed
+        settledInitialPassProbeCount < maxSettledInitialPassProbes
     );
     if (shouldProbeSettledInitialPass) {
-      settledInitialPassProbeUsed = true;
+      settledInitialPassProbeCount += 1;
     }
-    const shouldContinueTransientGrace = Boolean(isInitialPassCompletionWithoutAdvance && !latestSession?.finishedAt);
     const shouldContinueWaiting =
       shouldWaitForSessionSettlement(latestSession, input.currentReviewId) ||
-      shouldContinueTransientGrace ||
+      (isInitialPassCompletionWithoutAdvance && !latestSession?.finishedAt) ||
       shouldProbeSettledInitialPass;
     if (!shouldContinueWaiting) {
       return { nextReviewId: null, session: latestSession };

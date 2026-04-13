@@ -21,6 +21,7 @@ import {
   ReviewCreateProvenance,
 } from './create-shared.js';
 import { startReviewStudioCommand } from './open.js';
+import { printReviewSessionOutcome } from './session-outcome.js';
 
 let createReviewForCommitFlow: typeof createReview = createReview;
 let deriveReviewPolicyForCommitFlow: typeof deriveReviewPolicy = deriveReviewPolicy;
@@ -271,5 +272,8 @@ export async function createReviewFromCommitCommand(
   }
 
   await writeOutputReviewId(final.finalReviewId);
+  if (final.finalReview.session) {
+    printReviewSessionOutcome(final.finalReview.session, { detailed: false, heading: 'Session Outcome:' });
+  }
   console.log(`Report URL: ${final.finalResultUrl}`);
 }

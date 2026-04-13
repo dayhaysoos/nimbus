@@ -323,7 +323,59 @@ export type ReviewSessionStopReason =
   | 'initial_pass_failed'
   | 'followup_pass_completed'
   | 'followup_pass_failed'
+  | 'diminishing_returns'
+  | 'risky_fix_requires_approval'
+  | 'no_safe_fixes'
+  | 'no_progress'
+  | 'max_repair_cycles_reached'
+  | 'auto_remediation_failed'
   | 'cancelled';
+
+export type ReviewSessionOutcomeKind =
+  | 'clean'
+  | 'converged_with_blockers'
+  | 'blocked'
+  | 'exhausted'
+  | 'cancelled';
+
+export interface ReviewSessionOutcomeFindingSummary {
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  category: 'security' | 'logic' | 'style' | 'breaking-change';
+  description: string;
+  filePath: string | null;
+}
+
+export interface ReviewSessionOutcomeSummary {
+  kind: ReviewSessionOutcomeKind;
+  summary: string | null;
+  residualRisk: ReviewSeverity | null;
+  recommendation: ReviewRecommendation | null;
+  materializeReady: boolean;
+  reviewed: {
+    contextMode: 'basic' | 'intent_aware' | null;
+    latestReviewBasis: ReviewBasis | null;
+    passCount: number;
+  };
+  changes: {
+    applied: boolean;
+    remediationCount: number;
+    changedFileCount: number;
+    summaries: string[];
+    environmentRevision: ReviewEnvironmentRevision | null;
+  };
+  evidence: {
+    passed: number;
+    failed: number;
+    warning: number;
+    info: number;
+    highlights: ReviewEvidenceItem[];
+  };
+  unresolved: {
+    findingCount: number;
+    highestSeverity: 'info' | 'low' | 'medium' | 'high' | 'critical' | null;
+    highlights: ReviewSessionOutcomeFindingSummary[];
+  };
+}
 
 export interface ReviewEnvironmentRevision {
   source: 'workspace_head';
@@ -462,6 +514,7 @@ export interface ReviewSessionResponse {
     startedAt: string | null;
     finishedAt: string | null;
   }>;
+  outcome: ReviewSessionOutcomeSummary | null;
 }
 
 export interface ReviewCreateResponse {

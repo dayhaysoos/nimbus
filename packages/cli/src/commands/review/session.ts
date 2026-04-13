@@ -2,6 +2,7 @@ import * as p from '@clack/prompts';
 import { getReviewSession } from '../../clients/worker/reviews.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { resetWorkspace } from '../../clients/worker/workspaces.js';
+import { printReviewSessionOutcome } from '../../app/reviews/session-outcome.js';
 import type { ReviewEnvironmentRevision, ReviewRunStatus, ReviewSessionResponse } from '../../lib/types.js';
 
 function isActiveReviewStatus(status: ReviewRunStatus | null): boolean {
@@ -36,6 +37,8 @@ function printSessionDetails(session: ReviewSessionResponse): void {
   console.log(`  Created At:      ${session.createdAt}`);
   console.log(`  Updated At:      ${session.updatedAt}`);
   console.log(`  Finished At:     ${session.finishedAt ?? 'none'}`);
+
+  printReviewSessionOutcome(session, { detailed: true });
 
   if (session.passes.length > 0) {
     console.log('');
