@@ -1,0 +1,38 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "fb261bbc1741",
+  "strategy": "manual-commit",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "packages/agent-endpoint/src/lib/agent.ts",
+    "packages/agent-endpoint/test/index.test.ts",
+    "packages/agent-endpoint/test/lib/agent.test.ts",
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/reviews/create-from-session.ts",
+    "packages/cli/src/app/reviews/create-shared.ts",
+    "packages/cli/test/commands/review/review.test.ts",
+    "packages/worker/src/lib/db/review-sessions.ts",
+    "packages/worker/src/lib/review-runner/environment.ts",
+    "packages/worker/src/lib/review-runner/session-remediation.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/lib/db.review.test.ts",
+    "packages/worker/test/lib/review-session-remediation.test.ts",
+    "packages/worker/test/lib/workspace-task-runner.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/fb/261bbc1741/0/metadata.json",
+      "transcript": "/fb/261bbc1741/0/full.jsonl",
+      "content_hash": "/fb/261bbc1741/0/content_hash.txt",
+      "prompt": "/fb/261bbc1741/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 90924999,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 89643776,
+    "output_tokens": 248390,
+    "api_call_count": 621
+  }
+}
