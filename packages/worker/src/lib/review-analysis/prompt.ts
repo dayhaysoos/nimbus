@@ -110,18 +110,21 @@ export function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
   const sensitiveChangedPaths = context.retrieval.changedFiles
     .map((file) => file.path)
     .filter((path) => isSensitiveFocusPath(path));
-  const intentSummaryBlock = input.intentSummary
-    ? [
-        'Developer intent summary (derived from session context):',
-        `Goal: ${input.intentSummary.goal ?? 'Not specified'}`,
-        input.intentSummary.prohibitions.length > 0
-          ? `Prohibitions:\n${input.intentSummary.prohibitions.map((item) => `- ${item}`).join('\n')}`
-          : 'Prohibitions: None stated',
-        input.intentSummary.constraints.length > 0
-          ? `Constraints:\n${input.intentSummary.constraints.map((item) => `- ${item}`).join('\n')}`
-          : 'Constraints: None stated',
-      ].join('\n')
-    : `Intent session context excerpts: ${JSON.stringify(input.intentSessionContext)}`;
+  const intentSummaryBlock =
+    context.contextMode === 'basic'
+      ? 'Entire intent/session context is unavailable for this review. Review only against the diff, changed files, repository conventions, and validation evidence. Do not infer product intent.'
+      : input.intentSummary
+        ? [
+            'Developer intent summary (derived from session context):',
+            `Goal: ${input.intentSummary.goal ?? 'Not specified'}`,
+            input.intentSummary.prohibitions.length > 0
+              ? `Prohibitions:\n${input.intentSummary.prohibitions.map((item) => `- ${item}`).join('\n')}`
+              : 'Prohibitions: None stated',
+            input.intentSummary.constraints.length > 0
+              ? `Constraints:\n${input.intentSummary.constraints.map((item) => `- ${item}`).join('\n')}`
+              : 'Constraints: None stated',
+          ].join('\n')
+        : `Intent session context excerpts: ${JSON.stringify(input.intentSessionContext)}`;
 
   return [
     'You are a Senior Software Engineer conducting a pre-merge code review.',
@@ -226,8 +229,9 @@ export function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     `Review ID: ${input.reviewId}`,
     `Workspace ID: ${input.workspaceId}`,
     `Deployment ID: ${input.deploymentId}`,
-    `Checkpoint: ${context.checkpoint.checkpointId} (${context.checkpoint.branch})`,
-    `Checkpoint Session ID: ${context.checkpoint.session.sessionId}`,
+    `Review context mode: ${context.contextMode}`,
+    `Checkpoint: ${context.checkpoint.checkpointId ? `${context.checkpoint.checkpointId}${context.checkpoint.branch ? ` (${context.checkpoint.branch})` : ''}` : 'none'}`,
+    `Checkpoint Session ID: ${context.checkpoint.session.sessionId ?? 'none'}`,
     sensitiveChangedPaths.length > 0
       ? `Priority focus paths: ${JSON.stringify(sensitiveChangedPaths)}`
       : 'Priority focus paths: []',
@@ -240,7 +244,7 @@ export function buildReviewAgentPrompt(input: ReviewAgentPromptInput): string {
     '',
     `Diff hunks (direct changes): ${boundedJson(context.retrieval.diffHunks, PROMPT_DIFF_HUNKS_MAX_BYTES)}`,
     `Changed files (directly modified): ${boundedJson(changedFiles, PROMPT_CHANGED_FILES_MAX_BYTES)}`,
-    `Related files (historical co-change context only): ${boundedJson(relatedFiles, PROMPT_RELATED_FILES_MAX_BYTES)}`,
+    `Related files (additional historical/co-change context when available): ${boundedJson(relatedFiles, PROMPT_RELATED_FILES_MAX_BYTES)}`,
     `Convention/config files: ${boundedJson(conventionFiles, PROMPT_CONVENTION_FILES_MAX_BYTES)}`,
     `Co-change retrieval stats: ${JSON.stringify(context.retrieval.coChange)}`,
     `Review context stats: ${JSON.stringify(context.stats)}`,

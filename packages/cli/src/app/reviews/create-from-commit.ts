@@ -154,10 +154,14 @@ export async function createReviewFromCommitCommand(
   workspaceId = resolved.workspaceId;
   deploymentId = resolved.deploymentId;
   resolvedProvenance = resolved.resolvedProvenance;
+  const effectivePolicyMode =
+    resolvedProvenance?.reviewContextMode === 'basic' && policyMode !== 'none'
+      ? (p.log.warning('Entire intent context is unavailable for this target; skipping policy derivation and continuing with a basic review.'), 'none' as const)
+      : policyMode;
 
   spinner.start('Creating review...');
   try {
-    if (policyMode === 'none') {
+    if (effectivePolicyMode === 'none') {
       const reviewIdempotencyKey = options?.idempotencyKey?.trim()
         ? deriveIdempotencyKey(options.idempotencyKey, 'review')
         : buildIdempotencyKey(workspaceId, deploymentId);
@@ -168,7 +172,7 @@ export async function createReviewFromCommitCommand(
           deploymentId,
         },
         mode: 'report_only',
-        policyMode,
+        policyMode: effectivePolicyMode,
         reviewBasis,
         policy: {
           severityThreshold: options?.severityThreshold ?? 'low',
@@ -187,7 +191,7 @@ export async function createReviewFromCommitCommand(
       const derived = await deriveReviewPolicyForCommitFlow(workerUrl, {
         workspaceId,
         deploymentId,
-        policyMode,
+        policyMode: effectivePolicyMode,
         reviewBasis,
         provenance: resolvedProvenance ?? undefined,
       });
@@ -225,7 +229,7 @@ export async function createReviewFromCommitCommand(
     });
   }
 
-  if (policyMode === 'review') {
+  if (effectivePolicyMode === 'review') {
     await writeOutputReviewId(reviewId);
     p.log.message('Policy review is required before execution. Open the Review Run page and approve policy to start the run.');
     console.log(`Report URL: ${reviewResultUrl}`);

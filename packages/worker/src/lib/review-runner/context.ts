@@ -1,4 +1,4 @@
-import type { Env, ReviewContext, ReviewRunResponse } from '../../types.js';
+import type { Env, ReviewContext, ReviewContextMode, ReviewRunResponse } from '../../types.js';
 import {
   appendReviewEvent,
   createReviewContextBlobReference,
@@ -58,19 +58,16 @@ export async function assembleReviewContextBootstrap(
     reviewId: review.id,
     eventType: 'review_context_assembly_started',
     payload: {
-      source: 'entire/checkpoints/v1',
+      source: 'review_context_bootstrap',
       reviewBasis,
     },
   });
 
   const workspace = await getWorkspace(env.DB, review.workspaceId);
-  const checkpointId = workspace?.checkpointId?.trim() ?? '';
-  if (!checkpointId) {
-    throw new ReviewContextAssemblyError(
-      'unsupported_without_entire_checkpoint_context',
-      'Review context assembly requires an Entire checkpoint-backed workspace with a checkpointId.'
-    );
+  if (!workspace) {
+    throw new ReviewContextAssemblyError('review_context_workspace_not_found', `Workspace ${review.workspaceId} was not found.`);
   }
+  const checkpointId = workspace.checkpointId?.trim() || null;
 
   const deployment = await getWorkspaceDeployment(env.DB, review.workspaceId, review.deploymentId);
   if (!deployment) {
@@ -82,18 +79,28 @@ export async function assembleReviewContextBootstrap(
   const reviewRequestProvenance = asRecord(reviewPayload.provenance);
   const requestProvenance = mergeProvenance(deploymentRequestProvenance, reviewRequestProvenance);
   const sessionIds = uniqueStrings(parseStringArray(requestProvenance.sessionIds));
-  if (sessionIds.length === 0) {
+  const sessionIntentCandidates = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext));
+  const hasRawSessionPrompts = typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim().length > 0;
+  const requestedReviewContextMode = readOptionalString(requestProvenance.reviewContextMode);
+  const reviewContextMode: ReviewContextMode =
+    requestedReviewContextMode === 'basic'
+      ? 'basic'
+      : requestedReviewContextMode === 'intent_aware'
+        ? 'intent_aware'
+        : sessionIds.length > 0 || sessionIntentCandidates.length > 0 || hasRawSessionPrompts
+          ? 'intent_aware'
+          : 'basic';
+  if (reviewContextMode === 'intent_aware' && sessionIds.length === 0) {
     throw new ReviewContextAssemblyError(
       'unsupported_without_entire_checkpoint_context',
       'Review context assembly requires at least one Entire sessionId in deployment provenance.'
     );
   }
 
-  const sessionId = sessionIds[0] ?? '';
-  const sessionIntentCandidates = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext));
-  const sessionIntent = sessionIntentCandidates[0] ?? null;
+  const sessionId = reviewContextMode === 'intent_aware' ? (sessionIds[0] ?? null) : null;
+  const sessionIntent = reviewContextMode === 'intent_aware' ? (sessionIntentCandidates[0] ?? null) : null;
   const attributionTrailer = readOptionalString(requestProvenance.attributionTrailer);
-  const agentType = readOptionalString(requestProvenance.agentType);
+  const agentType = reviewContextMode === 'intent_aware' ? readOptionalString(requestProvenance.agentType) : null;
   const requestedTokenBudget =
     readOptionalNumber(requestProvenance.reviewContextTokenBudget) ??
     readOptionalNumber(requestProvenance.contextTokenBudget) ??
@@ -109,6 +116,7 @@ export async function assembleReviewContextBootstrap(
       sessionId,
       sessionCount: sessionIds.length,
       hasSessionIntent: Boolean(sessionIntent),
+      reviewContextMode,
     },
   });
 
@@ -284,10 +292,12 @@ export async function assembleReviewContextBootstrap(
     readOptionalString(requestProvenance.repository) ??
     readOptionalString(env.REVIEW_CONTEXT_REPO);
   if (!repoSlug) {
-    throw new ReviewContextAssemblyError(
-      'unsupported_without_entire_checkpoint_context',
-      'Review context assembly requires repository slug in deployment provenance (provenance.repo).'
-    );
+    if (reviewContextMode === 'intent_aware') {
+      throw new ReviewContextAssemblyError(
+        'unsupported_without_entire_checkpoint_context',
+        'Review context assembly requires repository slug in deployment provenance (provenance.repo).'
+      );
+    }
   }
 
   let relatedFiles: Array<{
@@ -303,13 +313,17 @@ export async function assembleReviewContextBootstrap(
   let coChangeSkipped = false;
   let coChangeSkipReason: string | null = null;
   let coChangeAvailable = false;
-  let coChangeSource: 'entire/checkpoints/v1' | 'local_git' = 'entire/checkpoints/v1';
+  let coChangeSource: 'entire/checkpoints/v1' | 'local_git' | 'none' =
+    reviewContextMode === 'basic' ? 'none' : 'entire/checkpoints/v1';
   let coChangeLookbackSessions = COCHANGE_LOOKBACK_SESSIONS;
   let coChangeTopN = COCHANGE_TOP_N;
   const localCochange = parseLocalCochangeFromProvenance(requestProvenance.localCochange);
   const githubToken = readOptionalString(options?.cochangeGithubToken);
 
-  try {
+  if (reviewContextMode === 'basic') {
+    coChangeSkipped = true;
+    coChangeSkipReason = 'basic_review_mode';
+  } else try {
     const effectiveLookback = localCochange?.lookbackSessions ?? COCHANGE_LOOKBACK_SESSIONS;
     const effectiveTopN = localCochange?.topN ?? COCHANGE_TOP_N;
     coChangeLookbackSessions = effectiveLookback;
@@ -347,7 +361,7 @@ export async function assembleReviewContextBootstrap(
         lastUpdated: string;
         lookbackSessions: number;
       }> = await getReviewCochangeCacheBatch(env.DB, {
-        repo: repoSlug,
+        repo: repoSlug ?? '',
         filePaths: changedPaths,
       });
       const cacheByPath = new Map(cachedRows.map((row) => [row.filePath, row]));
@@ -364,7 +378,12 @@ export async function assembleReviewContextBootstrap(
       }
 
       if (changedPathsMissingCache.length > 0) {
-        const fetched = await fetchCochangeFromCheckpointBranch(repoSlug, changedPathsMissingCache, COCHANGE_LOOKBACK_SESSIONS, githubToken);
+        const fetched = await fetchCochangeFromCheckpointBranch(
+          repoSlug ?? '',
+          changedPathsMissingCache,
+          COCHANGE_LOOKBACK_SESSIONS,
+          githubToken
+        );
         sessionsScanned += fetched.sessionsScanned;
         const cacheUpserts: Array<{
           filePath: string;
@@ -378,7 +397,7 @@ export async function assembleReviewContextBootstrap(
           entriesByChangedPath.set(changedPath, entries);
           cacheUpserts.push({
             filePath: changedPath,
-            repo: repoSlug,
+            repo: repoSlug ?? '',
             branch: 'entire/checkpoints/v1',
             cochange: entries,
             lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
@@ -472,9 +491,10 @@ export async function assembleReviewContextBootstrap(
     deploymentId: review.deploymentId,
     commitSha: workspace?.commitSha ?? '',
     assembledAt,
+    contextMode: reviewContextMode,
     checkpoint: {
       checkpointId,
-      branch: 'entire/checkpoints/v1',
+      branch: reviewContextMode === 'intent_aware' ? 'entire/checkpoints/v1' : null,
       attributionTrailer,
       session: {
         sessionId,
@@ -586,6 +606,7 @@ export async function assembleReviewContextBootstrap(
       changedFileCount: changedPaths.length,
       contextId: ref.id,
       reviewBasis,
+      reviewContextMode,
     },
   });
 

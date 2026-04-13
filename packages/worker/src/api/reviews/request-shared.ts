@@ -133,6 +133,30 @@ export function normalizeReviewBasis(value: unknown): 'checkpoint' | 'environmen
   return 'checkpoint';
 }
 
+export function normalizeReviewContextMode(
+  value: unknown,
+  fallback?: {
+    sessionIds?: string[];
+    rawSessionPrompts?: string | null;
+    intentSessionContext?: string[];
+  }
+): 'intent_aware' | 'basic' {
+  const candidate = typeof value === 'string' ? value.trim() : value;
+  if (candidate === 'intent_aware' || candidate === 'basic') {
+    return candidate;
+  }
+  if ((fallback?.sessionIds?.length ?? 0) > 0) {
+    return 'intent_aware';
+  }
+  if (typeof fallback?.rawSessionPrompts === 'string' && fallback.rawSessionPrompts.trim()) {
+    return 'intent_aware';
+  }
+  if ((fallback?.intentSessionContext?.length ?? 0) > 0) {
+    return 'intent_aware';
+  }
+  return 'basic';
+}
+
 export function stripSensitiveTokenFields(value: unknown): unknown {
   if (Array.isArray(value)) {
     return value.map((item) => stripSensitiveTokenFields(item));
@@ -234,6 +258,8 @@ export function buildReviewRequestPayload(input: {
   branch: string;
   model: string | undefined;
 }) {
+  const rawReviewContextMode = typeof input.provenance.reviewContextMode === 'string' ? input.provenance.reviewContextMode.trim() : '';
+  const explicitReviewContextMode = rawReviewContextMode === 'intent_aware' || rawReviewContextMode === 'basic' ? rawReviewContextMode : undefined;
   const note = typeof input.provenance.note === 'string' && input.provenance.note.trim()
     ? input.provenance.note.trim()
     : null;
@@ -257,6 +283,12 @@ export function buildReviewRequestPayload(input: {
     typeof input.provenance.rawSessionPrompts === 'string' && input.provenance.rawSessionPrompts.trim()
       ? input.provenance.rawSessionPrompts.trim().slice(0, 6000)
       : null;
+  const reviewContextMode = normalizeReviewContextMode(explicitReviewContextMode, {
+    sessionIds,
+    rawSessionPrompts,
+    intentSessionContext,
+  });
+  const persistedReviewContextMode = explicitReviewContextMode ?? (reviewContextMode === 'intent_aware' ? 'intent_aware' : undefined);
   const intentSummaryModel = normalizeIntentSummaryModel(input.provenance.intentSummaryModel);
   const commitSha = typeof input.provenance.commitSha === 'string' && input.provenance.commitSha.trim()
     ? input.provenance.commitSha.trim()
@@ -355,6 +387,7 @@ export function buildReviewRequestPayload(input: {
     },
     provenance: {
       trigger: 'api',
+      ...(persistedReviewContextMode ? { reviewContextMode: persistedReviewContextMode } : {}),
       ...(note ? { note } : {}),
       ...(transcriptUrl ? { transcriptUrl } : {}),
       ...(sessionIds.length > 0 ? { sessionIds } : {}),

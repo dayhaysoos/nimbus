@@ -475,6 +475,7 @@ function createReviewRunnerEnv(options?: {
                       (value === 'retry_scheduled' ||
                         value === 'review_execution_failed' ||
                         value === 'unsupported_without_entire_checkpoint_context' ||
+                        value === 'review_context_workspace_not_found' ||
                         value === 'review_context_deployment_not_found' ||
                         value === 'review_context_storage_unavailable' ||
                         value === 'review_context_budget_exceeded' ||
@@ -716,8 +717,10 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const { env, state } = createReviewRunnerEnv({
       deploymentRequestProvenance: {
+        reviewContextMode: 'intent_aware',
         rawSessionPrompts: null,
         intentSessionContext: [],
+        sessionIds: ['ses_1'],
       },
     });
     await processReviewRun(env as never, 'rev_abcd1234');
@@ -726,6 +729,18 @@ export async function runReviewRunnerTests(): Promise<void> {
       | { eventType: string; payload: { code?: string } }
       | undefined;
     assert.equal(failedEvent?.payload?.code, 'review_context_prompt_history_missing');
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv({
+      deploymentRequestProvenance: {
+        rawSessionPrompts: null,
+        intentSessionContext: [],
+        sessionIds: [],
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
   }
 
   {
@@ -2184,7 +2199,7 @@ export async function runReviewRunnerTests(): Promise<void> {
     });
     await processReviewRun(env as never, 'rev_abcd1234', { cochangeGithubToken: null });
     assert.equal(state.status, 'failed');
-    assert.equal(state.errorCode, 'unsupported_without_entire_checkpoint_context');
+    assert.equal(state.errorCode, 'review_context_workspace_not_found');
     assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_failed'), true);
   }
 

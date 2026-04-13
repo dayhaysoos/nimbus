@@ -582,6 +582,8 @@ export interface ReviewContextRelatedFile extends ReviewContextFile {
   supportingSessionIds: string[];
 }
 
+export type ReviewContextMode = 'intent_aware' | 'basic';
+
 export interface ReviewContext {
   id: string;
   reviewId: string;
@@ -589,12 +591,13 @@ export interface ReviewContext {
   deploymentId: string;
   commitSha: string;
   assembledAt: string;
+  contextMode: ReviewContextMode;
   checkpoint: {
-    checkpointId: string;
-    branch: 'entire/checkpoints/v1';
+    checkpointId: string | null;
+    branch: 'entire/checkpoints/v1' | null;
     attributionTrailer: string | null;
     session: {
-      sessionId: string;
+      sessionId: string | null;
       agentType: string | null;
       sessionIntent: string | null;
     };
@@ -605,7 +608,7 @@ export interface ReviewContext {
     relatedFiles: ReviewContextRelatedFile[];
     conventionFiles: ReviewContextFile[];
     coChange: {
-      source: 'entire/checkpoints/v1' | 'local_git';
+      source: 'entire/checkpoints/v1' | 'local_git' | 'none';
       lookbackSessions: number;
       sessionsScanned: number;
       filesConsidered: number;
@@ -747,6 +750,7 @@ export interface ReviewSessionResponse {
 export interface ReviewProvenanceSummary {
   repo: string;
   branch: string;
+  reviewContextMode?: ReviewContextMode;
   sessionIds: string[];
   policyItems: string[];
   environmentRevision?: ReviewEnvironmentRevision;

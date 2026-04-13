@@ -231,7 +231,7 @@ function buildWorkspaceDeployCreatePayload(input: {
   outputDir: string | null;
   repositorySlug: string;
   entireIntentContext: DeployIntentContext;
-  contextOverride?: ReviewEntireContextResolution;
+  contextOverride?: ReviewEntireContextResolution | null;
 }): DeployRequestPayload {
   return {
     provider: input.provider,
@@ -288,10 +288,13 @@ async function resolveDeployIntentContext(
   options?: {
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
-    entireIntentContextOverride?: ReviewEntireContextResolution;
+    entireIntentContextOverride?: ReviewEntireContextResolution | null;
   }
 ): Promise<DeployIntentContext> {
   const contextOverride = options?.entireIntentContextOverride;
+  if (contextOverride === null) {
+    return buildEmptyDeployIntentContext();
+  }
   if (contextOverride) {
     return contextOverride.context;
   }
@@ -331,7 +334,7 @@ export async function workspaceDeployCommand(
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
     reporter?: WorkspaceDeployReporter;
-    entireIntentContextOverride?: ReviewEntireContextResolution;
+    entireIntentContextOverride?: ReviewEntireContextResolution | null;
   }
 ): Promise<WorkspaceDeploymentResponse | null> {
   const reporter = options?.reporter ?? DEFAULT_REPORTER;

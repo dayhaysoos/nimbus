@@ -41,6 +41,7 @@ export function buildDeploymentReportOutput(input: {
   contextResolutionResolvedCheckpointId: string | null;
   contextResolutionResolvedCommitSha: string | null;
   contextResolutionResolvedCommitMessage: string | null;
+  reviewContextMode: 'intent_aware' | 'basic';
   advisories: string[];
     agentAnalysis: ReviewAgentAnalysisResult | null;
     deploymentEvents: Array<{ eventType: string; payload: unknown; seq: number }>;
@@ -124,6 +125,7 @@ export function buildDeploymentReportOutput(input: {
       ? {
           repo: input.provenanceRepo,
           branch: input.provenanceBranch,
+          reviewContextMode: input.reviewContextMode,
           sessionIds: parseStringArray(input.requestProvenance.sessionIds),
           policyItems: input.policyItems,
           ...(environmentRevision ? { environmentRevision } : {}),
@@ -213,6 +215,7 @@ export function buildDeploymentReportOutput(input: {
       : {
           repo: input.provenanceRepo,
           branch: input.provenanceBranch,
+          reviewContextMode: input.reviewContextMode,
           sessionIds: [],
           policyItems: [],
           ...(environmentRevision ? { environmentRevision } : {}),

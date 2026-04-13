@@ -2,7 +2,7 @@ export const VERSION = '0.1.0';
 
 export function showHelp(): void {
   console.log(`
-nimbus - Entire checkpoint deployment CLI
+nimbus - code review and deployment CLI
 
 Usage:
   nimbus <command> [options]
@@ -26,13 +26,13 @@ Commands:
   workspace deploy <workspace-id>
                        Run deploy preflight, queue deploy, and poll status
   review create --commit [commit-ish]
-                        Create workspace+deployment+review (default policy mode: none)
+                        Create workspace+deployment+review (Entire context optional)
   review create --workspace <id> --deployment <id>
                        Create a report-only review run for an existing deployment
   review create --session <id>
                        Create an environment-backed re-review pass in an existing session
   review preflight [commit-ish]
-                       Validate Entire checkpoint/session metadata for review create
+                       Validate review readiness; Entire context upgrades review quality when available
   review policy --commit [commit-ish]
                        Generate review policy from Entire prompt history only
   review show <review-id>
@@ -83,7 +83,7 @@ Options:
   --intent-summary-model <name>
                        Intent summary model override for this run
   --strict-entire-context
-                      Require direct Entire checkpoint context (disable branch fallback)
+                      Require direct Entire checkpoint context for intent-aware review mode
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
   --session <id>      Review session ID for environment-backed re-review

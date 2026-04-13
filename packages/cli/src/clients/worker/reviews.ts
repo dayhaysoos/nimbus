@@ -32,6 +32,7 @@ export async function createReview(
     model?: string;
     provenance: {
       note?: string | null;
+      reviewContextMode?: 'basic' | 'intent_aware';
       repo: string;
       branch: string;
       intentSummaryModel?: string;

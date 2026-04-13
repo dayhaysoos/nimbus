@@ -355,6 +355,7 @@ export interface ReviewRunResponse {
   provenance: {
     repo: string;
     branch: string;
+    reviewContextMode?: 'basic' | 'intent_aware';
     sessionIds: string[];
     policyItems: string[];
     environmentRevision?: ReviewEnvironmentRevision;

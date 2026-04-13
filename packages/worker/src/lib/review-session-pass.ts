@@ -5,12 +5,48 @@ import {
   createReviewRun,
   generateReviewRunId,
   getReviewRunByIdempotency,
+  getReviewRunRequestPayload,
   getWorkspace,
   getWorkspaceAccountId,
   getWorkspaceDeployment,
 } from './db.js';
 import { captureWorkspaceEnvironmentSnapshot, type WorkspaceEnvironmentSnapshot } from './review-runner/environment.js';
 import { buildReviewRequestPayload, sha256Hex, stripSensitiveTokenFields } from '../api/reviews/request-shared.js';
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
+}
+
+function buildInheritedSessionPassProvenance(value: unknown): Record<string, unknown> {
+  const provenance = asRecord(value);
+  const reviewContextMode =
+    provenance.reviewContextMode === 'intent_aware' || provenance.reviewContextMode === 'basic'
+      ? provenance.reviewContextMode
+      : undefined;
+
+  const sessionIds = Array.isArray(provenance.sessionIds)
+    ? provenance.sessionIds.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const intentSessionContext = Array.isArray(provenance.intentSessionContext)
+    ? provenance.intentSessionContext.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : [];
+  const rawSessionPrompts =
+    typeof provenance.rawSessionPrompts === 'string' && provenance.rawSessionPrompts.trim().length > 0
+      ? provenance.rawSessionPrompts
+      : undefined;
+  const intentSummaryModel =
+    typeof provenance.intentSummaryModel === 'string' && provenance.intentSummaryModel.trim().length > 0
+      ? provenance.intentSummaryModel
+      : undefined;
+
+  return {
+    ...(reviewContextMode ? { reviewContextMode } : {}),
+    ...(sessionIds.length > 0 ? { sessionIds } : {}),
+    ...(intentSessionContext.length > 0 ? { intentSessionContext } : {}),
+    ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
+    ...(intentSummaryModel ? { intentSummaryModel } : {}),
+  };
+}
 
 export interface CreateReviewSessionPassInput {
   session: ReviewSessionResponse;
@@ -87,6 +123,9 @@ export async function createReviewSessionPass(
     throw new CreateReviewSessionPassError('Missing required Idempotency-Key value', 400, 'missing_idempotency_key');
   }
 
+  const latestRequestPayload = session.latestReviewId ? await getReviewRunRequestPayload(env.DB, session.latestReviewId) : null;
+  const inheritedProvenance = buildInheritedSessionPassProvenance(asRecord(latestRequestPayload).provenance);
+
   const { requestPayload, idempotencyPayload } = buildReviewRequestPayload({
     workspaceId: session.workspaceId,
     deploymentId: session.anchorDeploymentId,
@@ -95,6 +134,7 @@ export async function createReviewSessionPass(
     policy: input.policy ?? {},
     format: input.format ?? {},
     provenance: {
+      ...inheritedProvenance,
       ...(input.provenance ?? {}),
       repo: session.repo,
       branch: session.branch,

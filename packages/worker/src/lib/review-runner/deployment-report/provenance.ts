@@ -48,6 +48,7 @@ export async function buildDeploymentReportInputs(
   contextResolutionResolvedCheckpointId: string | null;
   contextResolutionResolvedCommitSha: string | null;
   contextResolutionResolvedCommitMessage: string | null;
+  reviewContextMode: 'intent_aware' | 'basic';
 }> {
   const reviewPolicy = asRecord(payload.policy);
   const reviewFormat = asRecord(payload.format);
@@ -62,8 +63,17 @@ export async function buildDeploymentReportInputs(
       ? requestProvenance.rawSessionPrompts.trim()
       : null;
   const rawSessionPrompts = rawSessionPromptsFromProvenance ?? (intentSessionContext.length > 0 ? intentSessionContext.join('\n') : null);
+  const sessionIds = uniqueStrings(parseStringArray(requestProvenance.sessionIds));
+  const reviewContextMode =
+    requestProvenance.reviewContextMode === 'basic'
+      ? 'basic'
+      : requestProvenance.reviewContextMode === 'intent_aware'
+        ? 'intent_aware'
+        : sessionIds.length > 0 || intentSessionContext.length > 0 || Boolean(rawSessionPrompts)
+          ? 'intent_aware'
+          : 'basic';
   const intentSummaryModel = readOptionalString(requestProvenance.intentSummaryModel);
-  if (!approvedPolicy && !rawSessionPrompts) {
+  if (reviewContextMode === 'intent_aware' && !approvedPolicy && !rawSessionPrompts) {
     throw new ReviewContextAssemblyError(
       'review_context_prompt_history_missing',
       'Review prompt-history context is required for intent summarization. Ensure deployment/review provenance includes rawSessionPrompts.'
@@ -72,12 +82,14 @@ export async function buildDeploymentReportInputs(
 
   const derivedIntentSummary = approvedPolicy
     ? intentSummaryFromApprovedPolicy(approvedPolicy)
-    : await summarizeReviewIntentPolicy(env, {
-        rawSessionPrompts: rawSessionPrompts ?? '',
-        intentSessionContext,
-        openrouterApiKey: readOptionalString(openrouterApiKey),
-        intentSummaryModel,
-      });
+    : rawSessionPrompts
+      ? await summarizeReviewIntentPolicy(env, {
+          rawSessionPrompts: rawSessionPrompts ?? '',
+          intentSessionContext,
+          openrouterApiKey: readOptionalString(openrouterApiKey),
+          intentSummaryModel,
+        })
+      : null;
 
   const provenanceTaskId = typeof resultProvenance.taskId === 'string'
     ? resultProvenance.taskId
@@ -104,7 +116,9 @@ export async function buildDeploymentReportInputs(
         ? requestProvenance.note.trim()
         : reviewBasis === 'environment'
           ? `Assess the current mutable workspace state for session ${review.sessionId ?? 'unknown'} against the anchor deployment ${review.deploymentId}.`
-          : `Assess workspace deployment ${review.deploymentId} for review-first handoff readiness.`;
+          : reviewContextMode === 'basic'
+            ? `Assess workspace deployment ${review.deploymentId} for correctness and regressions using the diff, changed files, and repository conventions only.`
+            : `Assess workspace deployment ${review.deploymentId} for review-first handoff readiness.`;
   const baseConstraints = [
     'Non-mutating review only.',
     `Target limited to ${review.target.type}.`,
@@ -114,6 +128,9 @@ export async function buildDeploymentReportInputs(
     requestValidation.runBuildIfPresent === false
       ? 'Build validation was not required during deployment validation.'
       : 'Build validation was eligible during deployment validation.',
+    reviewContextMode === 'basic'
+      ? 'Entire intent context was unavailable for this review; product intent must not be inferred beyond code and validation evidence.'
+      : 'Entire intent context was available for this review.',
   ];
   const baseDecisions = [
     reviewBasis === 'environment'
@@ -130,6 +147,7 @@ export async function buildDeploymentReportInputs(
       ? `Related Entire sessions: ${parseStringArray(requestProvenance.sessionIds).join(', ')}.`
       : '',
     intentSessionContext.length > 0 ? `Prompt-history context excerpts provided: ${intentSessionContext.length}.` : '',
+    reviewContextMode === 'basic' ? 'Review context mode: basic code-aware review.' : 'Review context mode: Entire intent-aware review.',
   ];
   const promptGoal = approvedPolicy?.goal?.trim() || provenanceTask?.prompt?.trim() || baseGoal;
   const promptConstraints = approvedPolicy ? Array.from(new Set([...approvedPolicy.constraints, ...baseConstraints])) : baseConstraints;
@@ -203,5 +221,6 @@ export async function buildDeploymentReportInputs(
     contextResolutionResolvedCheckpointId,
     contextResolutionResolvedCommitSha,
     contextResolutionResolvedCommitMessage,
+    reviewContextMode,
   };
 }

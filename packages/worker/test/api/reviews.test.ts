@@ -891,6 +891,7 @@ export async function runReviewApiTests(): Promise<void> {
     const createdProvenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
     assert.deepEqual(createdProvenance, {
       trigger: 'api',
+      reviewContextMode: 'intent_aware',
       repo: 'dayhaysoos/nimbus',
       branch: 'main',
       note: 'Use commit intent context from Entire history',
@@ -1754,6 +1755,40 @@ export async function runReviewApiTests(): Promise<void> {
     } finally {
       setReviewAnalysisSandboxResolverForTests(null);
     }
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      sessionExists: true,
+      sessionId: 'session_existing',
+      initialReviewStatus: 'succeeded',
+      storedReviewRequestPayload: {
+        provenance: {
+          reviewContextMode: 'intent_aware',
+          sessionIds: ['ses_old_1'],
+          intentSessionContext: ['Old intent context'],
+          environmentRevision: {
+            source: 'workspace_head',
+            diffSha256: 'a'.repeat(64),
+            changedFileCount: 3,
+            generatedAt: '2026-03-11T00:00:00.000Z',
+          },
+        },
+      },
+    });
+    const response = await handleCreateReviewSessionPass(
+      'session_existing',
+      new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+        method: 'POST',
+        body: JSON.stringify({ reviewBasis: 'checkpoint' }),
+      }),
+      env as never
+    );
+    assert.equal(response.status, 202);
+    const createdProvenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
+    assert.equal(createdProvenance.reviewContextMode, 'intent_aware');
+    assert.deepEqual(createdProvenance.sessionIds, ['ses_old_1']);
+    assert.equal(createdProvenance.environmentRevision, undefined);
   }
 
   {

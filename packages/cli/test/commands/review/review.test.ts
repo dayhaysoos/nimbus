@@ -130,10 +130,7 @@ export async function runReviewCommandTests(): Promise<void> {
         subject: 'feat: working checkpoint commit',
         commitsAgo: 3,
       }));
-      await assert.rejects(
-        () => reviewPreflightCommand('HEAD'),
-        /This commit has no Entire-Checkpoint trailer\. The last commit on this branch with valid checkpoint context was abc1234 \('feat: working checkpoint commit'\) 3 commits ago\./
-      );
+      await assert.doesNotReject(() => reviewPreflightCommand('HEAD'));
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightLastCheckpointResolverForTests(null);
     }
@@ -145,10 +142,7 @@ export async function runReviewCommandTests(): Promise<void> {
         commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
       }));
       setReviewPreflightLastCheckpointResolverForTests(() => null);
-      await assert.rejects(
-        () => reviewPreflightCommand('HEAD'),
-        /This branch has no Entire session history locally\./
-      );
+      await assert.doesNotReject(() => reviewPreflightCommand('HEAD'));
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightLastCheckpointResolverForTests(null);
     }
@@ -236,10 +230,7 @@ export async function runReviewCommandTests(): Promise<void> {
         subject: 'feat: working checkpoint commit',
         commitsAgo: 3,
       }));
-      await assert.rejects(
-        () => reviewPreflightCommand('HEAD'),
-        /Review preflight failed: This commit has no Entire session context\. The last commit on this branch with valid checkpoint context was abc1234 \('feat: working checkpoint commit'\) 3 commits ago\./
-      );
+      await assert.doesNotReject(() => reviewPreflightCommand('HEAD'));
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightLastValidContextResolverForTests(null);
@@ -255,10 +246,7 @@ export async function runReviewCommandTests(): Promise<void> {
         throw new Error('Checkpoint ddfa7c25a183 had no readable session metadata');
       });
       setReviewPreflightLastValidContextResolverForTests(async () => null);
-      await assert.rejects(
-        () => reviewPreflightCommand('HEAD'),
-        /Review preflight failed: This branch has no Entire session history locally\./
-      );
+      await assert.doesNotReject(() => reviewPreflightCommand('HEAD'));
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightLastValidContextResolverForTests(null);
@@ -275,10 +263,7 @@ export async function runReviewCommandTests(): Promise<void> {
           'Entire session context exceeds token budget (1800 > 1200). Increase --intent-token-budget or use --summarize-session auto|always.'
         );
       });
-      await assert.rejects(
-        () => reviewPreflightCommand('HEAD'),
-        /Review preflight failed: Entire session context exceeds token budget \(1800 > 1200\)/
-      );
+      await assert.doesNotReject(() => reviewPreflightCommand('HEAD'));
       setReviewPreflightCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
     }
@@ -312,6 +297,7 @@ export async function runReviewCommandTests(): Promise<void> {
 
     {
       let fetchCount = 0;
+      let capturedProvenance: Record<string, unknown> | null = null;
       try {
         globalThis.fetch = (async (): Promise<Response> => {
           fetchCount += 1;
@@ -323,20 +309,86 @@ export async function runReviewCommandTests(): Promise<void> {
           checkpointId: null,
           commitDiffPatch: 'diff --git a/file b/file\nindex 111..222 100644\n--- a/file\n+++ b/file\n@@ -1 +1 @@\n-a\n+b\n',
         }));
+        setReviewCreateFlowForTests({
+          resolveWorkspaceSource: () => ({
+            commitSha: 'a'.repeat(40),
+            checkpointId: null,
+            sourceRef: null,
+            projectRoot: '.',
+          }),
+          createWorkspace: async () => ({
+            workspace: {
+              id: 'ws_basic_no_checkpoint',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: null,
+              commitSha: 'a'.repeat(40),
+              sourceRef: null,
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'bundle',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 123,
+              sandboxId: 'workspace-ws_basic_no_checkpoint',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_basic_no_checkpoint/events',
+            },
+          }),
+          deployWorkspace: async () => ({
+            id: 'dep_basic_no_checkpoint',
+            workspaceId: 'ws_basic_no_checkpoint',
+            status: 'succeeded',
+            provider: 'simulated',
+            idempotencyKey: 'idem-deploy',
+            maxRetries: 2,
+            attemptCount: 1,
+            sourceSnapshotSha256: null,
+            sourceBundleKey: 'bundle',
+            deployedUrl: 'https://example.dev',
+            providerDeploymentId: null,
+            cancelRequestedAt: null,
+            startedAt: '2026-03-11T00:00:00.000Z',
+            finishedAt: '2026-03-11T00:00:30.000Z',
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:30.000Z',
+            provenance: {},
+            toolchain: null,
+            dependencyCacheKey: null,
+            dependencyCacheHit: false,
+            remediations: [],
+          }),
+          createReview: async (_workerUrl, _idempotencyKey, payload) => {
+            capturedProvenance = payload.provenance as Record<string, unknown>;
+            return {
+              reviewId: 'rev_basic_no_checkpoint',
+              status: 'queued',
+              eventsUrl: '/api/reviews/rev_basic_no_checkpoint/events',
+              resultUrl: '/reviews/rev_basic_no_checkpoint',
+            };
+          },
+          streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+            await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+          },
+          getReview: async () => createReviewResponseBody() as unknown as { review: any },
+        });
 
-        await assert.rejects(
-          () => createReviewFromCommitCommand({ commitish: 'HEAD' }),
-          /Review flow failed at checkpoint resolution/
-        );
+        await assert.doesNotReject(() => createReviewFromCommitCommand({ commitish: 'HEAD' }));
         assert.equal(fetchCount, 0);
+        assert.equal(capturedProvenance?.['reviewContextMode'], 'basic');
       } finally {
         globalThis.fetch = originalFetch;
         setReviewCommitResolverForTests(null);
+        setReviewCreateFlowForTests(null);
       }
     }
 
     {
       const sequence: string[] = [];
+      let capturedProvenance: Record<string, unknown> | null = null;
       setReviewCommitResolverForTests(() => ({
         commitSha: '9'.repeat(40),
         checkpointId: 'ddfa7c25a183',
@@ -351,17 +403,78 @@ export async function runReviewCommandTests(): Promise<void> {
         commitsAgo: 3,
       }));
       setReviewCreateFlowForTests({
+        resolveWorkspaceSource: () => ({
+          commitSha: '9'.repeat(40),
+          checkpointId: 'ddfa7c25a183',
+          sourceRef: null,
+          projectRoot: '.',
+        }),
         createWorkspace: async () => {
           sequence.push('workspace.create');
-          throw new Error('should not be called');
+          return {
+            workspace: {
+              id: 'ws_basic_fallback',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: 'ddfa7c25a183',
+              commitSha: '9'.repeat(40),
+              sourceRef: null,
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'bundle',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 123,
+              sandboxId: 'workspace-ws_basic_fallback',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_basic_fallback/events',
+            },
+          };
         },
+        deployWorkspace: async () => ({
+          id: 'dep_basic_fallback',
+          workspaceId: 'ws_basic_fallback',
+          status: 'succeeded',
+          provider: 'simulated',
+          idempotencyKey: 'idem-deploy',
+          maxRetries: 2,
+          attemptCount: 1,
+          sourceSnapshotSha256: null,
+          sourceBundleKey: 'bundle',
+          deployedUrl: 'https://example.dev',
+          providerDeploymentId: null,
+          cancelRequestedAt: null,
+          startedAt: '2026-03-11T00:00:00.000Z',
+          finishedAt: '2026-03-11T00:00:30.000Z',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          updatedAt: '2026-03-11T00:00:30.000Z',
+          provenance: {},
+          toolchain: null,
+          dependencyCacheKey: null,
+          dependencyCacheHit: false,
+          remediations: [],
+        }),
+        createReview: async (_workerUrl, _idempotencyKey, payload) => {
+          capturedProvenance = payload.provenance as Record<string, unknown>;
+          return {
+            reviewId: 'rev_basic_fallback',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_basic_fallback/events',
+            resultUrl: '/reviews/rev_basic_fallback',
+          };
+        },
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => createReviewResponseBody() as unknown as { review: any },
       });
 
-      await assert.rejects(
-        () => createReviewFromCommitCommand({ commitish: 'HEAD' }),
-        /Review flow failed at checkpoint resolution: This commit has no Entire session context\. The last commit on this branch with valid checkpoint context was abc1234 \('feat: working checkpoint commit'\) 3 commits ago\./
-      );
-      assert.deepEqual(sequence, []);
+      await assert.doesNotReject(() => createReviewFromCommitCommand({ commitish: 'HEAD' }));
+      assert.deepEqual(sequence, ['workspace.create']);
+      assert.equal(capturedProvenance?.['reviewContextMode'], 'basic');
       setReviewCommitResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
       setReviewPreflightLastValidContextResolverForTests(null);
@@ -467,12 +580,16 @@ export async function runReviewCommandTests(): Promise<void> {
     }
 
     {
-      const sequence: string[] = [];
-      setReviewCommitResolverForTests(() => ({
-        commitSha: '2'.repeat(40),
-        checkpointId: null,
-        commitDiffPatch: 'diff --git a/commit.txt b/commit.txt\nindex 111..222 100644\n--- a/commit.txt\n+++ b/commit.txt\n@@ -1 +1 @@\n-a\n+b\n',
-      }));
+      let capturedBaseRef: string | undefined;
+      let capturedProvenance: Record<string, unknown> | null = null;
+      setReviewCommitResolverForTests((_commitish, options) => {
+        capturedBaseRef = options?.baseRef;
+        return {
+          commitSha: '2'.repeat(40),
+          checkpointId: null,
+          commitDiffPatch: 'diff --git a/commit.txt b/commit.txt\nindex 111..222 100644\n--- a/commit.txt\n+++ b/commit.txt\n@@ -1 +1 @@\n-a\n+b\n',
+        };
+      });
       setReviewPreflightLastCheckpointResolverForTests(() => ({
         commitSha: 'abc1234def567890123456789012345678901234',
         subject: 'feat: fallback checkpoint commit',
@@ -486,17 +603,75 @@ export async function runReviewCommandTests(): Promise<void> {
         intentSessionContext: ['Constraint: Keep scope narrow.'],
       }));
       setReviewCreateFlowForTests({
-        createWorkspace: async () => {
-          sequence.push('workspace.create');
-          throw new Error('should not be called');
+        resolveWorkspaceSource: () => ({
+          commitSha: '2'.repeat(40),
+          checkpointId: null,
+          sourceRef: null,
+          projectRoot: '.',
+        }),
+        createWorkspace: async () => ({
+          workspace: {
+            id: 'ws_basic_base_ref',
+            status: 'ready',
+            sourceType: 'checkpoint',
+            checkpointId: null,
+            commitSha: '2'.repeat(40),
+            sourceRef: 'origin/main',
+            sourceProjectRoot: '.',
+            sourceBundleKey: 'bundle',
+            sourceBundleSha256: 'f'.repeat(64),
+            sourceBundleBytes: 123,
+            sandboxId: 'workspace-ws_basic_base_ref',
+            baselineReady: true,
+            errorCode: null,
+            errorMessage: null,
+            createdAt: '2026-03-11T00:00:00.000Z',
+            updatedAt: '2026-03-11T00:00:00.000Z',
+            deletedAt: null,
+            eventsUrl: '/api/workspaces/ws_basic_base_ref/events',
+          },
+        }),
+        deployWorkspace: async () => ({
+          id: 'dep_basic_base_ref',
+          workspaceId: 'ws_basic_base_ref',
+          status: 'succeeded',
+          provider: 'simulated',
+          idempotencyKey: 'idem-deploy',
+          maxRetries: 2,
+          attemptCount: 1,
+          sourceSnapshotSha256: null,
+          sourceBundleKey: 'bundle',
+          deployedUrl: 'https://example.dev',
+          providerDeploymentId: null,
+          cancelRequestedAt: null,
+          startedAt: '2026-03-11T00:00:00.000Z',
+          finishedAt: '2026-03-11T00:00:30.000Z',
+          createdAt: '2026-03-11T00:00:00.000Z',
+          updatedAt: '2026-03-11T00:00:30.000Z',
+          provenance: {},
+          toolchain: null,
+          dependencyCacheKey: null,
+          dependencyCacheHit: false,
+          remediations: [],
+        }),
+        createReview: async (_workerUrl, _idempotencyKey, payload) => {
+          capturedProvenance = payload.provenance as Record<string, unknown>;
+          return {
+            reviewId: 'rev_basic_base_ref',
+            status: 'queued',
+            eventsUrl: '/api/reviews/rev_basic_base_ref/events',
+            resultUrl: '/reviews/rev_basic_base_ref',
+          };
         },
+        streamReviewEvents: async (_workerUrl, _reviewId, onEvent) => {
+          await onEvent({ id: '1', data: { type: 'terminal', status: 'succeeded' } });
+        },
+        getReview: async () => createReviewResponseBody() as unknown as { review: any },
       });
 
-      await assert.rejects(
-        () => createReviewFromCommitCommand({ commitish: 'HEAD', baseRef: 'origin/main' }),
-        /Review flow failed at checkpoint resolution: This commit has no Entire-Checkpoint trailer\./
-      );
-      assert.deepEqual(sequence, []);
+      await assert.doesNotReject(() => createReviewFromCommitCommand({ commitish: 'HEAD', baseRef: 'origin/main' }));
+      assert.equal(capturedBaseRef, 'origin/main');
+      assert.equal(capturedProvenance?.['reviewContextMode'], 'basic');
       setReviewCommitResolverForTests(null);
       setReviewPreflightLastCheckpointResolverForTests(null);
       setReviewPreflightContextResolverForTests(null);
