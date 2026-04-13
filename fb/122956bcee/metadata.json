@@ -43,6 +43,12 @@
       "transcript": "/fb/122956bcee/3/full.jsonl",
       "content_hash": "/fb/122956bcee/3/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/fb/122956bcee/4/metadata.json",
+      "transcript": "/fb/122956bcee/4/full.jsonl",
+      "content_hash": "/fb/122956bcee/4/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
