@@ -1,0 +1,37 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "31520e219f1f",
+  "strategy": "manual-commit",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 4,
+  "files_touched": [
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/reviews/create-from-session.ts",
+    "packages/cli/src/app/reviews/create-shared.ts",
+    "packages/cli/src/app/reviews/session-outcome.ts",
+    "packages/cli/src/commands/review/session.ts",
+    "packages/cli/src/commands/review/show.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/cli/test/commands/review/review.test.ts",
+    "packages/worker/src/lib/db/review-sessions.ts",
+    "packages/worker/src/lib/db/reviews/shared.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/lib/db.review.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/31/520e219f1f/0/metadata.json",
+      "transcript": "/31/520e219f1f/0/full.jsonl",
+      "content_hash": "/31/520e219f1f/0/content_hash.txt",
+      "prompt": "/31/520e219f1f/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 304075195,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 294409728,
+    "output_tokens": 1119317,
+    "api_call_count": 2082
+  }
+}
