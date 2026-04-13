@@ -75,6 +75,12 @@
       "transcript": "/fb/261bbc1741/8/full.jsonl",
       "content_hash": "/fb/261bbc1741/8/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/fb/261bbc1741/9/metadata.json",
+      "transcript": "/fb/261bbc1741/9/full.jsonl",
+      "content_hash": "/fb/261bbc1741/9/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
