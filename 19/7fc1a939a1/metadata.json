@@ -164,6 +164,12 @@
       "transcript": "/19/7fc1a939a1/22/full.jsonl",
       "content_hash": "/19/7fc1a939a1/22/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/19/7fc1a939a1/23/metadata.json",
+      "transcript": "/19/7fc1a939a1/23/full.jsonl",
+      "content_hash": "/19/7fc1a939a1/23/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
