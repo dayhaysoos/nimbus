@@ -1,0 +1,35 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "31520e219f1f",
+  "session_id": "ses_27b8af016ffevraL4AOXJ19Itn",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-13T20:18:40.186574Z",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/app/reviews/create-shared.ts",
+    "packages/worker/src/lib/db/review-sessions.ts",
+    "packages/worker/test/api/reviews.test.ts",
+    "packages/worker/test/lib/db.review.test.ts",
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/reviews/session-outcome.ts",
+    "packages/cli/src/commands/review/session.ts",
+    "packages/cli/src/commands/review/show.ts",
+    "packages/cli/src/lib/types.ts",
+    "packages/cli/test/commands/review/review.test.ts",
+    "packages/worker/src/lib/db/reviews/shared.ts",
+    "packages/worker/src/types.ts",
+    "packages/cli/src/app/reviews/create-from-session.ts"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "80db0dea30b0",
+  "initial_attribution": {
+    "calculated_at": "2026-04-13T20:18:40.183405Z",
+    "agent_lines": 910,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 910,
+    "agent_percentage": 100
+  }
+}
