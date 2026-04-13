@@ -80,6 +80,12 @@
       "transcript": "/19/7fc1a939a1/8/full.jsonl",
       "content_hash": "/19/7fc1a939a1/8/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/19/7fc1a939a1/9/metadata.json",
+      "transcript": "/19/7fc1a939a1/9/full.jsonl",
+      "content_hash": "/19/7fc1a939a1/9/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
