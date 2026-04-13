@@ -200,6 +200,12 @@
       "transcript": "/19/7fc1a939a1/28/full.jsonl",
       "content_hash": "/19/7fc1a939a1/28/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/19/7fc1a939a1/29/metadata.json",
+      "transcript": "/19/7fc1a939a1/29/full.jsonl",
+      "content_hash": "/19/7fc1a939a1/29/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
