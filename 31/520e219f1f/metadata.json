@@ -307,6 +307,12 @@
       "transcript": "/31/520e219f1f/47/full.jsonl",
       "content_hash": "/31/520e219f1f/47/content_hash.txt",
       "prompt": ""
+    },
+    {
+      "metadata": "/31/520e219f1f/48/metadata.json",
+      "transcript": "/31/520e219f1f/48/full.jsonl",
+      "content_hash": "/31/520e219f1f/48/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
