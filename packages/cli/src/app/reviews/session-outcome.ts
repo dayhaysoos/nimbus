@@ -65,10 +65,10 @@ export function printReviewSessionOutcome(
   printIndentedDetail('Changes:', formatChangeSummary(outcome), detailIndent);
   printIndentedDetail('Evidence:', formatEvidenceSummary(outcome), detailIndent);
   printIndentedDetail('Unresolved:', formatUnresolvedSummary(outcome), detailIndent);
-  printIndentedDetail('Materialize:', outcome.materializeReady ? 'ready' : 'not ready', detailIndent);
+  printIndentedDetail('Adopt:', outcome.materializeReady ? 'ready' : 'not ready', detailIndent);
 
   if (outcome.materializeReady) {
-    printIndentedDetail('Next Action:', `nimbus review session materialize ${session.id}`, detailIndent);
+    printIndentedDetail('Next Action:', `nimbus review session adopt ${session.id}`, detailIndent);
   }
 
   if (!options?.detailed) {

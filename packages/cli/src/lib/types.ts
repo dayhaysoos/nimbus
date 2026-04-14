@@ -461,6 +461,10 @@ export interface ReviewRunResponse {
     repo: string;
     branch: string;
     reviewContextMode?: 'basic' | 'intent_aware';
+    reviewContextRef?: {
+      id: string;
+      r2Key: string;
+    } | null;
     sessionIds: string[];
     policyItems: string[];
     environmentRevision?: ReviewEnvironmentRevision;
@@ -559,6 +563,27 @@ export interface ReviewGetResponse {
 
 export interface ReviewSessionGetResponse {
   session: ReviewSessionResponse;
+}
+
+export interface ReviewSessionListResponse {
+  sessions: ReviewSessionResponse[];
+}
+
+export interface ReviewContextSnapshotFile {
+  path: string;
+  content: string;
+  byteSize: number;
+  source: 'changed' | 'related' | 'convention';
+}
+
+export interface ReviewContextSnapshot {
+  retrieval?: {
+    changedFiles?: ReviewContextSnapshotFile[];
+  };
+}
+
+export interface ReviewContextGetResponse {
+  context: ReviewContextSnapshot;
 }
 
 export interface ReviewEventEnvelope {

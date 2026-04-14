@@ -7,14 +7,13 @@ import {
   generateWorkspaceTaskId,
   getReviewSession,
   getWorkspace,
-  getWorkspaceTask,
 } from '../db.js';
 import { loadRuntimeFlags } from '../flags.js';
-import { createReviewSessionPass } from '../review-session-pass.js';
 import { captureWorkspaceEnvironmentSnapshot } from './environment.js';
 import { runWorkspaceTaskInlineWithRetries } from '../workspace-task-runner.js';
 import { readWorkspaceFilesFromSandbox } from '../review-analysis.js';
-import { asRecord, parseLocalCochangeFromProvenance, readOptionalNumber, readOptionalString } from './context-helpers.js';
+import { buildReviewSessionRemediationTaskPayload, continueReviewSessionAfterRemediationTask } from './session-remediation-followup.js';
+import { createWorkspaceTaskQueueMessage } from '../workspace-task-queue.js';
 
 const SAFE_AUTO_FIX_SEVERITIES = new Set<ReviewFinding['severity']>(['low', 'medium', 'high']);
 const SAFE_AUTO_FIX_CATEGORIES = new Set<ReviewFinding['category']>(['style', 'logic']);
@@ -128,82 +127,6 @@ function buildRemediationPrompt(input: {
   return lines.join('\n');
 }
 
-async function deriveFollowupLocalCochange(
-  env: Env,
-  review: ReviewRunResponse,
-  report: ReviewReport
-): Promise<
-  | {
-      source: 'local_git';
-      checkpointsRef: string;
-      lookbackSessions: number;
-      topN: number;
-      sessionsScanned: number;
-      relatedByChangedPath: Record<string, Array<{ path: string; frequency: number; sessionIds: string[] }>>;
-    }
-  | null
-> {
-  const reviewContextRef = report.provenance.reviewContextRef ?? review.provenance.reviewContextRef;
-  if (!reviewContextRef?.r2Key) {
-    return null;
-  }
-  const storageBucketCandidates = [env.REVIEW_CONTEXTS, env.WORKSPACE_ARTIFACTS, env.SOURCE_BUNDLES];
-  const readableBuckets = storageBucketCandidates.filter(
-    (bucket): bucket is R2Bucket => Boolean(bucket && typeof bucket.get === 'function')
-  );
-  if (readableBuckets.length === 0) {
-    return null;
-  }
-
-  let object: R2ObjectBody | null = null;
-  for (const bucket of readableBuckets) {
-    try {
-      const candidate = await bucket.get(reviewContextRef.r2Key);
-      if (candidate) {
-        object = candidate;
-        break;
-      }
-    } catch {
-      continue;
-    }
-  }
-  if (!object) {
-    return null;
-  }
-
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(await object.text());
-  } catch {
-    return null;
-  }
-
-  const context = asRecord(parsed);
-  const checkpoint = asRecord(context.checkpoint);
-  const retrieval = asRecord(context.retrieval);
-  const coChange = asRecord(retrieval.coChange);
-  if (readOptionalString(coChange.source) !== 'local_git') {
-    return null;
-  }
-
-  const checkpointsRef = readOptionalString(checkpoint.branch) ?? 'entire/checkpoints/v1';
-  const lookbackSessions = Math.max(1, Math.floor(readOptionalNumber(coChange.lookbackSessions) ?? 5));
-  const topN = Math.max(1, Math.floor(readOptionalNumber(coChange.topN) ?? 20));
-  const sessionsScanned = Math.max(0, Math.floor(readOptionalNumber(coChange.sessionsScanned) ?? 0));
-  const parsedLocalCochange = parseLocalCochangeFromProvenance({
-    source: 'local_git',
-    checkpointsRef,
-    lookbackSessions,
-    topN,
-    sessionsScanned,
-    relatedByChangedPath: retrieval.relatedByChangedPath,
-  });
-  if (!parsedLocalCochange || Object.keys(parsedLocalCochange.relatedByChangedPath).length === 0) {
-    return null;
-  }
-  return parsedLocalCochange;
-}
-
 async function sha256Hex(input: string): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
   return Array.from(new Uint8Array(digest))
@@ -214,8 +137,31 @@ async function sha256Hex(input: string): Promise<string> {
 function defaultToolPolicy(): Record<string, unknown> {
   return {
     commands: {
-      allow: ['git status', 'git diff', 'git add', 'git restore', 'ls', 'pwd'],
-      deny: ['rm -rf /', 'sudo', 'curl', 'wget', 'ssh', 'dd', 'mkfs'],
+      // Remediation needs a small set of local verification commands in addition to git inspection.
+      allow: [
+        'git status',
+        'git diff',
+        'git add',
+        'git restore',
+        'ls',
+        'pwd',
+        'rg',
+        'node',
+        'npm',
+        'pnpm',
+        'yarn',
+        'bun',
+        'python',
+        'python3',
+        'pytest',
+        'go',
+        'cargo',
+        'make',
+        'just',
+        'uv',
+        'deno',
+      ],
+      deny: ['rm -rf /', 'sudo', 'curl', 'wget', 'ssh', 'dd', 'mkfs', 'pip ', 'pip3 '],
     },
     filePaths: {
       root: '/workspace',
@@ -343,6 +289,16 @@ export async function continueReviewSessionAfterSuccessfulPass(
       return { nextReviewId: null };
     }
 
+    await appendReviewEvent(env.DB, {
+      reviewId: review.id,
+      eventType: 'review_auto_remediation_planned',
+      payload: {
+        sessionId: session.id,
+        safeFindingCount: safeFindings.length,
+        followUpReviewScore,
+      },
+    });
+
     const workspace = await getWorkspace(env.DB, session.workspaceId);
     if (!workspace || workspace.status !== 'ready') {
       terminalStopReasonApplied = (await finalizeIfCurrent('auto_remediation_failed')) || terminalStopReasonApplied;
@@ -392,13 +348,16 @@ export async function continueReviewSessionAfterSuccessfulPass(
     const model = (env.AGENT_MODEL ?? env.REVIEW_MODEL ?? 'claude-3-7-sonnet').trim() || 'claude-3-7-sonnet';
     const maxSteps = Math.max(1, Math.min(120, Number.parseInt(env.WORKSPACE_AGENT_MAX_STEPS ?? '24', 10) || 24));
     const maxRetries = Math.max(0, Math.min(5, Number.parseInt(env.WORKSPACE_AGENT_MAX_RETRIES ?? '1', 10) || 1));
-    const requestPayload = {
+    const requestPayload = buildReviewSessionRemediationTaskPayload({
       prompt,
       provider,
       model,
       maxSteps,
       maxRetries,
-    };
+      sessionId: session.id,
+      sourceReviewId: review.id,
+      preTaskEnvironmentRevision: preTaskWorkspaceSnapshot.revision,
+    });
     const createdTask = await createWorkspaceTask(env.DB, {
       id: generateWorkspaceTaskId(),
       workspaceId: session.workspaceId,
@@ -441,129 +400,43 @@ export async function continueReviewSessionAfterSuccessfulPass(
     });
 
     if (createdTask.task.status === 'queued') {
+      const mode = env.WORKSPACE_TASKS_QUEUE ? 'queue' : 'inline';
       await appendWorkspaceTaskEvent(env.DB, {
         workspaceId: session.workspaceId,
         taskId: createdTask.task.id,
         eventType: 'task_enqueued',
         payload: {
-          mode: 'inline',
+          mode,
           reused: createdTask.reused,
         },
       });
-      await runWorkspaceTaskInlineWithRetries(env, session.workspaceId, createdTask.task.id, Math.max(1, maxRetries + 1));
+      if (env.WORKSPACE_TASKS_QUEUE) {
+        await env.WORKSPACE_TASKS_QUEUE.send(createWorkspaceTaskQueueMessage(session.workspaceId, createdTask.task.id));
+      } else {
+        await runWorkspaceTaskInlineWithRetries(env, session.workspaceId, createdTask.task.id, Math.max(1, maxRetries + 1));
+      }
     }
 
-    const task = await getWorkspaceTask(env.DB, session.workspaceId, createdTask.task.id);
-    if (!task || task.status !== 'succeeded') {
-      terminalStopReasonApplied = (await finalizeIfCurrent('auto_remediation_failed')) || terminalStopReasonApplied;
-      await appendReviewEventBestEffort(env, {
-        reviewId: review.id,
-        eventType: 'review_auto_remediation_failed',
-        payload: {
-          taskId: createdTask.task.id,
-          status: task?.status ?? 'missing',
-          error: task?.error ?? null,
-        },
-      });
-      return { nextReviewId: null };
-    }
-
-    const workspaceSnapshot = await captureWorkspaceEnvironmentSnapshot(env, {
-      id: session.workspaceId,
-      status: workspace.status,
-      sandboxId: workspace.sandboxId,
-      baselineReady: workspace.baselineReady,
-      sourceBundleKey: workspace.sourceBundleKey,
-      sourceBundleSha256: workspace.sourceBundleSha256,
-    });
-    if (workspaceSnapshot.revision.diffSha256 === preTaskWorkspaceSnapshot.revision.diffSha256) {
-      terminalStopReasonApplied = (await finalizeIfCurrent('no_progress')) || terminalStopReasonApplied;
-      await appendReviewEventBestEffort(env, {
-        reviewId: review.id,
-        eventType: 'review_auto_remediation_skipped',
-        payload: {
-          reason: 'no_progress',
-          taskId: task.id,
-          preTaskDiffSha256: preTaskWorkspaceSnapshot.revision.diffSha256,
-          postTaskDiffSha256: workspaceSnapshot.revision.diffSha256,
-        },
-      });
-      return { nextReviewId: null };
-    }
-
-    const latestSession = await getReviewSession(env.DB, session.id);
-    if (!latestSession) {
-      return { nextReviewId: null };
-    }
-    if (latestSession.latestReviewId && latestSession.latestReviewId !== review.id) {
-      await appendReviewEventBestEffort(env, {
-        reviewId: review.id,
-        eventType: 'review_auto_remediation_skipped',
-        payload: {
-          reason: 'session_state_advanced',
-          latestReviewId: latestSession.latestReviewId,
-          activeReviewId: latestSession.activeReviewId,
-        },
-      });
-      return { nextReviewId: null };
-    }
-    if (
-      latestSession.activeReviewId &&
-      latestSession.activeReviewId !== review.id &&
-      isActiveSessionStatus(latestSession.currentReviewStatus)
-    ) {
-      await appendReviewEventBestEffort(env, {
-        reviewId: review.id,
-        eventType: 'review_auto_remediation_skipped',
-        payload: {
-          reason: 'session_active_pass_conflict',
-          latestReviewId: latestSession.latestReviewId,
-          activeReviewId: latestSession.activeReviewId,
-          currentReviewStatus: latestSession.currentReviewStatus,
-        },
-      });
-      return { nextReviewId: null };
-    }
-
-    let followupLocalCochange: Awaited<ReturnType<typeof deriveFollowupLocalCochange>> = null;
-    try {
-      followupLocalCochange = await deriveFollowupLocalCochange(env, review, report);
-    } catch {
-      followupLocalCochange = null;
-    }
-    const followupPass = await createReviewSessionPass(env, {
-      session: latestSession,
-      reviewBasis: 'environment',
-      environmentSnapshot: workspaceSnapshot,
-      provenance: {
-        trigger: 'session_auto_remediation',
-        remediationSourceReviewId: review.id,
-        remediationTaskId: task.id,
-        ...(followupLocalCochange ? { localCochange: followupLocalCochange } : {}),
-        remediationTaskSummary:
-          task.result &&
-          typeof task.result === 'object' &&
-          !Array.isArray(task.result) &&
-          typeof (task.result as { summary?: unknown }).summary === 'string'
-            ? ((task.result as { summary: string }).summary)
-            : null,
-      },
-      idempotencyKey: `review-session-remediation-pass:${session.id}:${review.id}`,
+    const remediationResult = await continueReviewSessionAfterRemediationTask(env, {
+      workspaceId: session.workspaceId,
+      taskId: createdTask.task.id,
+      sourceReview: review,
+      sourceReport: report,
     });
 
-    await appendReviewEventBestEffort(env, {
-      reviewId: review.id,
-      eventType: 'review_auto_remediation_completed',
-      payload: {
-        taskId: task.id,
-        nextReviewId: followupPass.review.id,
-        environmentRevision: followupPass.environmentSnapshot?.revision ?? null,
-      },
-    });
+    if (!remediationResult.nextReviewId && !env.WORKSPACE_TASKS_QUEUE) {
+      const latestSession = await getReviewSession(env.DB, session.id);
+      if (latestSession?.latestReviewId && latestSession.latestReviewId !== review.id) {
+        return {
+          nextReviewId:
+            latestSession.activeReviewId && latestSession.activeReviewId !== review.id
+              ? latestSession.activeReviewId
+              : latestSession.latestReviewId,
+        };
+      }
+    }
 
-    return {
-      nextReviewId: followupPass.review.id,
-    };
+    return remediationResult;
   } catch (error) {
     if (!terminalStopReasonApplied) {
       await finalizeIfCurrent('auto_remediation_failed');

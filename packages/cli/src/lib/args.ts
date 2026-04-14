@@ -35,6 +35,7 @@ const LONG_VALUE_FLAGS = new Set([
   'checkpoint-range',
   'branch',
   'path',
+  'limit',
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',

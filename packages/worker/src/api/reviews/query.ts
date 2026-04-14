@@ -52,6 +52,50 @@ export async function handleGetReview(
   });
 }
 
+export async function handleGetReviewContext(
+  reviewId: string,
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
+  const reviewAccessResponse = await requireReviewAccess(env, reviewId, effectiveAuthContext);
+  if (reviewAccessResponse) {
+    return reviewAccessResponse;
+  }
+
+  const review = await getReviewRun(env.DB, reviewId);
+  if (!review) {
+    return jsonResponse({ error: 'Review not found' }, 404);
+  }
+
+  const reviewContextRef = review.provenance.reviewContextRef;
+  if (!reviewContextRef?.r2Key) {
+    return jsonResponse({ error: 'Review context not found' }, 404);
+  }
+
+  const buckets = [env.REVIEW_CONTEXTS, env.WORKSPACE_ARTIFACTS, env.SOURCE_BUNDLES].filter(
+    (bucket): bucket is R2Bucket => Boolean(bucket && typeof bucket.get === 'function')
+  );
+
+  for (const bucket of buckets) {
+    try {
+      const object = await bucket.get(reviewContextRef.r2Key);
+      if (!object) {
+        continue;
+      }
+      const context = await object.json();
+      return jsonResponse({ context });
+    } catch {
+      continue;
+    }
+  }
+
+  return jsonResponse({ error: 'Review context not found' }, 404);
+}
+
 export async function handleListReviews(
   request: Request,
   env: Env,

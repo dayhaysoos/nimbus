@@ -122,6 +122,7 @@ export {
   getReviewSession,
   getReviewSessionAccountId,
   getReviewSessionByReviewId,
+  listReviewSessions,
 } from './db/review-sessions.js';
 export {
   createReviewContextBlobReference,

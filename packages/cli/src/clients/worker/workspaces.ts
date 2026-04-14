@@ -113,6 +113,27 @@ export async function createWorkspacePatchExport(
   return response.json() as Promise<WorkspaceOperationCreateResponse>;
 }
 
+export async function createWorkspaceZipExport(
+  workerUrl: string,
+  workspaceId: string,
+  options: { idempotencyKey: string }
+): Promise<WorkspaceOperationCreateResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/export/zip`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': options.idempotencyKey,
+    },
+    body: '{}',
+  });
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<WorkspaceOperationCreateResponse>;
+}
+
 export async function getWorkspaceOperation(
   workerUrl: string,
   workspaceId: string,

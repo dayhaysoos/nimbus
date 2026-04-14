@@ -344,7 +344,7 @@ async function waitForSessionFollowup(input: {
   getReviewSession: (workerUrl: string, sessionId: string) => Promise<ReviewSessionGetResponse>;
   pollIntervalMs?: number;
   timeoutMs?: number;
-}): Promise<{ nextReviewId: string | null; session: ReviewSessionResponse | null; warning?: string }> {
+}): Promise<{ nextReviewId: string | null; session: ReviewSessionResponse | null; warning?: string; continuationPending?: boolean }> {
   const intervalMs =
     typeof input.pollIntervalMs === 'number' && Number.isFinite(input.pollIntervalMs)
       ? Math.max(1_000, Math.min(10_000, Math.floor(input.pollIntervalMs)))
@@ -352,7 +352,7 @@ async function waitForSessionFollowup(input: {
   const timeoutMs =
     typeof input.timeoutMs === 'number' && Number.isFinite(input.timeoutMs)
       ? Math.max(10_000, Math.min(30 * 60_000, Math.floor(input.timeoutMs)))
-      : 30_000;
+      : 3 * 60_000;
   const deadline = Date.now() + timeoutMs;
   let minimumPassCount = input.minimumPassCount;
   let latestSession: ReviewSessionResponse | null = null;
@@ -405,12 +405,14 @@ async function waitForSessionFollowup(input: {
         }
       }
       if (Date.now() >= deadline) {
+        const continuationPending = Boolean(latestSession && shouldWaitForSessionSettlement(latestSession, input.currentReviewId));
         return {
           nextReviewId: null,
           session: latestSession,
+          continuationPending,
           ...(readErrorCount > 0 && successfulReads === 0
             ? { warning: lastReadErrorMessage ?? undefined }
-            : latestSession && shouldWaitForSessionSettlement(latestSession, input.currentReviewId)
+            : continuationPending
               ? { warning: settlingTimeoutWarning }
               : {}),
         };
@@ -447,12 +449,14 @@ async function waitForSessionFollowup(input: {
       return { nextReviewId: null, session: latestSession };
     }
     if (Date.now() >= deadline) {
+      const continuationPending = shouldContinueWaiting;
       return {
         nextReviewId: null,
         session: latestSession,
+        continuationPending,
         ...(readErrorCount > 0 && successfulReads === 0
           ? { warning: lastReadErrorMessage ?? 'Failed to read review session state while awaiting follow-up pass.' }
-          : shouldWaitForSessionSettlement(latestSession, input.currentReviewId)
+          : continuationPending
             ? { warning: settlingTimeoutWarning }
             : {}),
       };
@@ -475,12 +479,15 @@ export async function followReviewChain(input: {
 }): Promise<{
   finalReviewId: string;
   finalReview: ReviewGetResponse;
+  finalSession: ReviewSessionResponse | null;
   finalResultUrl: string;
   lastFailureEvent: Record<string, unknown> | null;
+  sessionContinuationPending: boolean;
 }> {
   let currentReviewId = input.initialReviewId;
   let currentResultUrl = input.initialResultUrl;
   let lastFailureEvent: Record<string, unknown> | null = null;
+  let latestObservedSession: ReviewSessionResponse | null = null;
 
   while (true) {
     let terminalStatus: string | null = null;
@@ -515,6 +522,7 @@ export async function followReviewChain(input: {
     }
 
     let finalReview = await input.getReview(input.workerUrl, currentReviewId);
+    latestObservedSession = finalReview.session ?? latestObservedSession;
     const reviewStillInProgress = isInProgressReviewStatus(finalReview.review.status);
     if (reviewStillInProgress && (!terminalStatus || terminalStatus === 'succeeded')) {
       input.onStreamWarning?.('Review status has not settled yet; falling back to status polling.');
@@ -533,8 +541,10 @@ export async function followReviewChain(input: {
       return {
         finalReviewId: currentReviewId,
         finalReview,
+        finalSession: latestObservedSession,
         finalResultUrl: currentResultUrl,
         lastFailureEvent,
+        sessionContinuationPending: false,
       };
     }
 
@@ -560,15 +570,28 @@ export async function followReviewChain(input: {
       if (awaitedSession.warning) {
         input.onStreamWarning?.(awaitedSession.warning);
       }
+      latestObservedSession = awaitedSession.session ?? latestObservedSession;
       nextReviewId = awaitedSession.nextReviewId;
+      if (!nextReviewId && awaitedSession.continuationPending) {
+        return {
+          finalReviewId: currentReviewId,
+          finalReview,
+          finalSession: latestObservedSession,
+          finalResultUrl: currentResultUrl,
+          lastFailureEvent,
+          sessionContinuationPending: true,
+        };
+      }
     }
 
     if (!nextReviewId || nextReviewId === currentReviewId) {
       return {
         finalReviewId: currentReviewId,
         finalReview,
+        finalSession: latestObservedSession,
         finalResultUrl: currentResultUrl,
         lastFailureEvent,
+        sessionContinuationPending: false,
       };
     }
 

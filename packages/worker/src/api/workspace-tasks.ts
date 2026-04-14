@@ -148,8 +148,30 @@ async function ensureWorkspaceAgentRuntimeEnabled(env: Env): Promise<Response | 
 function defaultToolPolicy(): Record<string, unknown> {
   return {
     commands: {
-      allow: ['git status', 'git diff', 'git add', 'git restore', 'ls', 'pwd'],
-      deny: ['rm -rf /', 'sudo', 'curl', 'wget', 'ssh', 'dd', 'mkfs'],
+      allow: [
+        'git status',
+        'git diff',
+        'git add',
+        'git restore',
+        'ls',
+        'pwd',
+        'rg',
+        'node',
+        'npm',
+        'pnpm',
+        'yarn',
+        'bun',
+        'python',
+        'python3',
+        'pytest',
+        'go',
+        'cargo',
+        'make',
+        'just',
+        'uv',
+        'deno',
+      ],
+      deny: ['rm -rf /', 'sudo', 'curl', 'wget', 'ssh', 'dd', 'mkfs', 'pip ', 'pip3 '],
     },
     filePaths: {
       root: '/workspace',

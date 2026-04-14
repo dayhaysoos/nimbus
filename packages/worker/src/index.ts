@@ -21,12 +21,13 @@ import {
   handleCreateReviewPolicy,
   handleDeriveReviewPolicy,
   handleGetReview,
+  handleGetReviewContext,
   handleGetReviewEvents,
   handleFailReview,
   handleRecoverReview,
   handleListReviews,
 } from './api/reviews.js';
-import { handleCreateReviewSessionPass, handleGetReviewSession } from './api/review-sessions.js';
+import { handleCreateReviewSessionPass, handleGetReviewSession, handleListReviewSessions } from './api/review-sessions.js';
 import {
   handleCreateWorkspace,
   handleCreateWorkspaceGithubFork,
@@ -155,6 +156,12 @@ export default {
       return handleGetReviewEvents(reviewEventsMatch[1], request, env, authContext);
     }
 
+    // Route: GET /api/reviews/:id/context - Get persisted review context snapshot
+    const reviewContextMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)\/context$/);
+    if (reviewContextMatch && request.method === 'GET') {
+      return handleGetReviewContext(reviewContextMatch[1], request, env, authContext);
+    }
+
     // Route: POST /api/reviews/:id/policy/approve - Approve policy draft and enqueue review
     const reviewPolicyApproveMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)\/policy\/approve$/);
     if (reviewPolicyApproveMatch && request.method === 'POST') {
@@ -177,6 +184,11 @@ export default {
     const reviewMatch = url.pathname.match(/^\/api\/reviews\/([a-z0-9_]+)$/);
     if (reviewMatch && request.method === 'GET') {
       return handleGetReview(reviewMatch[1], request, env, authContext);
+    }
+
+    // Route: GET /api/review-sessions/:id - Get review session
+    if (url.pathname === '/api/review-sessions' && request.method === 'GET') {
+      return handleListReviewSessions(request, env, authContext);
     }
 
     // Route: GET /api/review-sessions/:id - Get review session

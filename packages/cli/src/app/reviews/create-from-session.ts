@@ -13,6 +13,7 @@ import {
   formatReviewExecutionFailure,
   normalizeResultUrl,
 } from './create-shared.js';
+import { isTerminalReviewSessionPhase, maybeOfferReviewSessionAdoption } from './adoption.js';
 import { startReviewStudioCommand } from './open.js';
 import { printReviewSessionOutcome } from './session-outcome.js';
 
@@ -134,9 +135,19 @@ export async function createReviewSessionCommand(
     throw new Error(formatReviewExecutionFailure(final.finalReview.review.status, final.finalReview.review, final.lastFailureEvent));
   }
 
-  p.log.success(`Review completed: ${final.finalReviewId}`);
-  if (final.finalReview.session) {
-    printReviewSessionOutcome(final.finalReview.session, { detailed: false, heading: 'Session Outcome:' });
+  const finalSession = final.finalSession ?? final.finalReview.session ?? null;
+  if (finalSession && (!isTerminalReviewSessionPhase(finalSession.phase) || final.sessionContinuationPending)) {
+    p.log.message(`Review pass completed: ${final.finalReviewId}`);
+  } else {
+    p.log.success(`Review completed: ${final.finalReviewId}`);
+  }
+  if (finalSession && isTerminalReviewSessionPhase(finalSession.phase) && !final.sessionContinuationPending) {
+    printReviewSessionOutcome(finalSession, { detailed: false, heading: 'Session Outcome:' });
   }
   console.log(`Report URL: ${final.finalResultUrl}`);
+  if (finalSession && (!isTerminalReviewSessionPhase(finalSession.phase) || final.sessionContinuationPending)) {
+    p.log.message(`Review session ${finalSession.id} is still active. Continue watching with \`nimbus review session show ${finalSession.id}\`.`);
+    return;
+  }
+  await maybeOfferReviewSessionAdoption(finalSession);
 }

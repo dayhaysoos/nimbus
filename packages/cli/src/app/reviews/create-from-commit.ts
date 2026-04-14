@@ -21,6 +21,7 @@ import {
   ReviewCreateProvenance,
 } from './create-shared.js';
 import { startReviewStudioCommand } from './open.js';
+import { isTerminalReviewSessionPhase, maybeOfferReviewSessionAdoption } from './adoption.js';
 import { printReviewSessionOutcome } from './session-outcome.js';
 
 let createReviewForCommitFlow: typeof createReview = createReview;
@@ -272,8 +273,14 @@ export async function createReviewFromCommitCommand(
   }
 
   await writeOutputReviewId(final.finalReviewId);
-  if (final.finalReview.session) {
-    printReviewSessionOutcome(final.finalReview.session, { detailed: false, heading: 'Session Outcome:' });
+  const finalSession = final.finalSession ?? final.finalReview.session ?? null;
+  if (finalSession && isTerminalReviewSessionPhase(finalSession.phase) && !final.sessionContinuationPending) {
+    printReviewSessionOutcome(finalSession, { detailed: false, heading: 'Session Outcome:' });
   }
   console.log(`Report URL: ${final.finalResultUrl}`);
+  if (finalSession && (!isTerminalReviewSessionPhase(finalSession.phase) || final.sessionContinuationPending)) {
+    p.log.message(`Review session ${finalSession.id} is still active. Continue watching with \`nimbus review session show ${finalSession.id}\`.`);
+    return;
+  }
+  await maybeOfferReviewSessionAdoption(finalSession);
 }

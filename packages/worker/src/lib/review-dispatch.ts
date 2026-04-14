@@ -1,6 +1,5 @@
 import type { Env } from '../types.js';
 import type { ReviewQueueMessage } from './review-queue.js';
-import { shouldRetryReviewError } from './review-runner.js';
 
 export async function dispatchReviewToRunner(env: Env, payload: ReviewQueueMessage): Promise<void> {
   if (!env.ReviewRunner) {

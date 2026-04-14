@@ -38,6 +38,10 @@ function buildInheritedSessionPassProvenance(value: unknown): Record<string, unk
     typeof provenance.intentSummaryModel === 'string' && provenance.intentSummaryModel.trim().length > 0
       ? provenance.intentSummaryModel
       : undefined;
+  const localCochange =
+    provenance.localCochange && typeof provenance.localCochange === 'object' && !Array.isArray(provenance.localCochange)
+      ? provenance.localCochange
+      : undefined;
 
   return {
     ...(reviewContextMode ? { reviewContextMode } : {}),
@@ -45,6 +49,7 @@ function buildInheritedSessionPassProvenance(value: unknown): Record<string, unk
     ...(intentSessionContext.length > 0 ? { intentSessionContext } : {}),
     ...(rawSessionPrompts ? { rawSessionPrompts } : {}),
     ...(intentSummaryModel ? { intentSummaryModel } : {}),
+    ...(localCochange ? { localCochange } : {}),
   };
 }
 

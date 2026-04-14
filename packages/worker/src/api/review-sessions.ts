@@ -1,6 +1,7 @@
 import type { AuthContext, Env } from '../types.js';
-import { getReviewSession } from '../lib/db.js';
+import { getReviewSession, listReviewSessions } from '../lib/db.js';
 import { CreateReviewSessionPassError, createReviewSessionPass } from '../lib/review-session-pass.js';
+import { normalizeBranchRef, normalizeRepoSlug } from './reviews/request-shared.js';
 import { normalizePolicyMode, normalizeReviewBasis } from './reviews/request-shared.js';
 import { enqueueReviewRunIfNeeded } from './reviews/queue.js';
 import {
@@ -32,6 +33,66 @@ export async function handleGetReviewSession(
   }
 
   return jsonResponse({ session });
+}
+
+export async function handleListReviewSessions(
+  request: Request,
+  env: Env,
+  authContext?: AuthContext
+): Promise<Response> {
+  const effectiveAuthContext =
+    authContext ??
+    ({ accountId: 'self-hosted', isAdmin: false, isAuthenticated: false, isHostedMode: false } as const);
+
+  const url = new URL(request.url);
+  const rawLimit = url.searchParams.get('limit');
+  const parsedLimit = rawLimit ? Number.parseInt(rawLimit, 10) : Number.NaN;
+  const limit = Number.isFinite(parsedLimit) && parsedLimit > 0 ? Math.min(parsedLimit, 200) : 50;
+
+  const rawRepo = url.searchParams.get('repo');
+  const rawBranch = url.searchParams.get('branch');
+  const repo = rawRepo === null ? undefined : normalizeRepoSlug(rawRepo);
+  const branch = rawBranch === null ? undefined : normalizeBranchRef(rawBranch);
+
+  if (rawRepo !== null && !repo) {
+    return jsonResponse(
+      {
+        error: 'Invalid repo query parameter. Expected owner/repo.',
+        code: 'invalid_review_session_query',
+      },
+      400
+    );
+  }
+
+  if (rawBranch !== null && !branch) {
+    return jsonResponse(
+      {
+        error: 'Invalid branch query parameter.',
+        code: 'invalid_review_session_query',
+      },
+      400
+    );
+  }
+
+  const accountId =
+    effectiveAuthContext.isHostedMode && !effectiveAuthContext.isAdmin
+      ? effectiveAuthContext.isAuthenticated && typeof effectiveAuthContext.accountId === 'string'
+        ? effectiveAuthContext.accountId
+        : '__no_account__'
+      : undefined;
+
+  if (accountId === '__no_account__') {
+    return jsonResponse({ sessions: [] });
+  }
+
+  const sessions = await listReviewSessions(env.DB, {
+    limit,
+    accountId,
+    repo,
+    branch,
+  });
+
+  return jsonResponse({ sessions });
 }
 
 export async function handleCreateReviewSessionPass(

@@ -794,6 +794,10 @@ export interface ReviewSessionResponse {
   outcome: ReviewSessionOutcomeSummary | null;
 }
 
+export interface ReviewSessionListResponse {
+  sessions: ReviewSessionResponse[];
+}
+
 export interface ReviewProvenanceSummary {
   repo: string;
   branch: string;

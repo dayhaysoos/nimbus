@@ -49,11 +49,90 @@ function normalizeEnvironmentRevision(value: unknown): ReviewEnvironmentRevision
   };
 }
 
+async function deriveInFlightRemediationPhase(
+  db: D1Database,
+  input: {
+    workspaceId: string;
+    latestReviewId: string | null;
+    activeReviewId: string | null;
+    currentReviewStatus: ReviewRunStatus | null;
+    explicitStopReason: ReviewSessionStopReason | null;
+  }
+): Promise<{ phase: Extract<ReviewSessionPhase, 'fixing' | 'verifying'> | null; failed: boolean }> {
+  if (
+    !input.latestReviewId ||
+    input.activeReviewId !== input.latestReviewId ||
+    input.currentReviewStatus !== 'succeeded' ||
+    input.explicitStopReason
+  ) {
+    return { phase: null, failed: false };
+  }
+
+  const remediationEvent = await db
+    .prepare(
+      `SELECT event_type, payload_json
+       FROM review_events
+       WHERE review_id = ?
+         AND event_type IN (
+           'review_auto_remediation_planned',
+           'review_auto_remediation_started',
+           'review_auto_remediation_completed',
+           'review_auto_remediation_failed',
+           'review_auto_remediation_skipped'
+         )
+       ORDER BY seq DESC
+       LIMIT 1`
+    )
+    .bind(input.latestReviewId)
+    .first<{ event_type: string; payload_json: string | null }>();
+
+  if (!remediationEvent) {
+    return { phase: null, failed: false };
+  }
+
+  if (remediationEvent.event_type === 'review_auto_remediation_planned') {
+    return { phase: 'fixing', failed: false };
+  }
+  if (remediationEvent.event_type !== 'review_auto_remediation_started') {
+    return { phase: null, failed: false };
+  }
+
+  const payload = parseJsonOrFallback<Record<string, unknown>>(remediationEvent.payload_json, {});
+  const taskId = typeof payload.taskId === 'string' && payload.taskId.trim().length > 0 ? payload.taskId.trim() : null;
+  if (!taskId) {
+    return { phase: 'fixing', failed: false };
+  }
+
+  const task = await db
+    .prepare(
+      `SELECT status
+       FROM workspace_tasks
+       WHERE id = ? AND workspace_id = ?`
+    )
+    .bind(taskId, input.workspaceId)
+    .first<{ status: string | null }>();
+
+  if (task?.status === 'queued' || task?.status === 'running') {
+    return { phase: 'fixing', failed: false };
+  }
+  if (task?.status === 'succeeded') {
+    return { phase: 'verifying', failed: false };
+  }
+  if (task?.status === 'failed' || task?.status === 'cancelled') {
+    return { phase: null, failed: true };
+  }
+
+  return { phase: null, failed: false };
+}
+
 function deriveSessionPhase(
   status: ReviewRunStatus | null,
   stopReason: ReviewSessionStopReason | null,
-  options?: { hasActiveCurrentPass?: boolean }
+  options?: { hasActiveCurrentPass?: boolean; remediationPhase?: Extract<ReviewSessionPhase, 'fixing' | 'verifying'> | null }
 ): ReviewSessionPhase {
+  if (options?.remediationPhase) {
+    return options.remediationPhase;
+  }
   if (
     options?.hasActiveCurrentPass &&
     (status === 'queued' || status === 'running' || status === 'policy_approved')
@@ -376,7 +455,11 @@ function deriveOutcome(
   };
 }
 
-function toReviewSessionResponse(record: ReviewSessionRecord, passRecords: ReviewRunRecord[]): ReviewSessionResponse {
+async function toReviewSessionResponse(
+  record: ReviewSessionRecord,
+  passRecords: ReviewRunRecord[],
+  db: D1Database
+): Promise<ReviewSessionResponse> {
   const parsedPasses = passRecords.map((passRecord) => {
     const requestPayload = readRequestPayload(passRecord);
     const review = toReviewRunResponse(passRecord);
@@ -391,6 +474,15 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passRecords: Revie
   const currentReviewStatus = latestPass?.status ?? null;
   const derivedPassCount = typeof record.pass_count === 'number' ? record.pass_count : passSummaries.length;
   const hasActiveCurrentPass = Boolean(record.active_review_id && latestPass?.reviewId === record.active_review_id);
+  const remediationState = await deriveInFlightRemediationPhase(db, {
+    workspaceId: record.workspace_id,
+    latestReviewId: record.latest_review_id,
+    activeReviewId: record.active_review_id,
+    currentReviewStatus,
+    explicitStopReason: record.stop_reason,
+  });
+  const remediationPhase = remediationState.phase;
+  const hasInFlightRemediation = Boolean(remediationPhase);
   const hasActiveNonTerminalPass =
     hasActiveCurrentPass &&
     (currentReviewStatus === 'queued' ||
@@ -400,10 +492,19 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passRecords: Revie
       currentReviewStatus === 'policy_approved');
   const derivedUpdatedAt =
     latestPass?.finishedAt ?? latestPass?.startedAt ?? latestPass?.createdAt ?? record.updated_at;
-  const derivedFinishedAt = record.finished_at ?? (!hasActiveNonTerminalPass ? (latestPass?.finishedAt ?? null) : null);
+  const derivedFinishedAt =
+    record.finished_at ?? (!hasActiveNonTerminalPass && !hasInFlightRemediation ? (latestPass?.finishedAt ?? null) : null);
   const stopReason =
-    record.stop_reason ?? (!hasActiveNonTerminalPass ? deriveStopReason(currentReviewStatus, derivedPassCount) : null);
-  const phase = deriveSessionPhase(currentReviewStatus, stopReason, { hasActiveCurrentPass });
+    record.stop_reason ??
+    (remediationState.failed
+      ? 'auto_remediation_failed'
+      : !hasActiveNonTerminalPass && !hasInFlightRemediation
+        ? deriveStopReason(currentReviewStatus, derivedPassCount)
+        : null);
+  const phase = deriveSessionPhase(currentReviewStatus, stopReason, {
+    hasActiveCurrentPass,
+    remediationPhase,
+  });
   const outcome = deriveOutcome({
     phase,
     stopReason,
@@ -412,7 +513,7 @@ function toReviewSessionResponse(record: ReviewSessionRecord, passRecords: Revie
     latestReview,
     passSummaries,
     passRecords: parsedPasses,
-    hasActiveNonTerminalPass,
+    hasActiveNonTerminalPass: hasActiveNonTerminalPass || hasInFlightRemediation,
   });
 
   return {
@@ -498,7 +599,7 @@ export async function createReviewSession(
     throw new Error('Failed to create review session');
   }
 
-  return toReviewSessionResponse(record, []);
+  return toReviewSessionResponse(record, [], db);
 }
 
 export async function attachReviewPassToSession(
@@ -592,7 +693,78 @@ export async function getReviewSession(db: D1Database, sessionId: string): Promi
     .bind(sessionId)
     .all<ReviewRunRecord>();
 
-  return toReviewSessionResponse(record, passes.results);
+  return toReviewSessionResponse(record, passes.results, db);
+}
+
+function resolveListLimit(limit: number | undefined): number {
+  if (typeof limit !== 'number' || !Number.isFinite(limit)) {
+    return 50;
+  }
+  return Math.max(1, Math.min(200, Math.floor(limit)));
+}
+
+export async function listReviewSessions(
+  db: D1Database,
+  options?: { limit?: number; accountId?: string; repo?: string; branch?: string }
+): Promise<ReviewSessionResponse[]> {
+  const resolvedLimit = resolveListLimit(options?.limit);
+  const whereClauses: string[] = [];
+  const values: Array<string | number> = [];
+
+  if (typeof options?.accountId === 'string' && options.accountId.trim()) {
+    whereClauses.push('account_id = ?');
+    values.push(options.accountId.trim());
+  }
+  if (typeof options?.repo === 'string' && options.repo.trim()) {
+    whereClauses.push('repo = ?');
+    values.push(options.repo.trim());
+  }
+  if (typeof options?.branch === 'string' && options.branch.trim()) {
+    whereClauses.push('branch = ?');
+    values.push(options.branch.trim());
+  }
+
+  const query = [
+    'SELECT * FROM review_sessions',
+    whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : '',
+    'ORDER BY updated_at DESC, created_at DESC, id DESC',
+    'LIMIT ?',
+  ]
+    .filter(Boolean)
+    .join(' ');
+
+  values.push(resolvedLimit);
+
+  const result = await db.prepare(query).bind(...values).all<ReviewSessionRecord>();
+  if (result.results.length === 0) {
+    return [];
+  }
+
+  const sessionIds = result.results.map((record) => record.id);
+  const placeholders = sessionIds.map(() => '?').join(', ');
+  const passRows = await db
+    .prepare(
+      `SELECT *
+       FROM review_runs
+       WHERE session_id IN (${placeholders})
+       ORDER BY session_id ASC, created_at ASC, id ASC`
+    )
+    .bind(...sessionIds)
+    .all<ReviewRunRecord>();
+
+  const passesBySession = new Map<string, ReviewRunRecord[]>();
+  for (const pass of passRows.results) {
+    if (!pass.session_id) {
+      continue;
+    }
+    const existing = passesBySession.get(pass.session_id) ?? [];
+    existing.push(pass);
+    passesBySession.set(pass.session_id, existing);
+  }
+
+  return Promise.all(
+    result.results.map((record) => toReviewSessionResponse(record, passesBySession.get(record.id) ?? [], db))
+  );
 }
 
 export async function getReviewSessionAccountId(

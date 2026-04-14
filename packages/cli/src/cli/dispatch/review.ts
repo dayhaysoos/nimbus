@@ -5,7 +5,17 @@ import { exportReviewCommand } from '../../commands/review/export.js';
 import { openReviewFromCommitCommand, startReviewStudioCommand } from '../../commands/review/open.js';
 import { reviewPolicyCommand } from '../../commands/review/policy.js';
 import { reviewPreflightCommand } from '../../commands/review/preflight.js';
-import { materializeReviewSessionCommand, resetReviewSessionCommand, showReviewSessionCommand } from '../../commands/review/session.js';
+import {
+  diffLocalReviewSessionCommand,
+  enterLocalReviewSessionCommand,
+  listReviewSessionsCommand,
+  listLocalReviewSessionsCommand,
+  materializeReviewSessionCommand,
+  pathLocalReviewSessionCommand,
+  resetReviewSessionCommand,
+  showLatestReviewSessionCommand,
+  showReviewSessionCommand,
+} from '../../commands/review/session.js';
 import { showReviewCommand } from '../../commands/review/show.js';
 import type { ParsedCliArgs } from '../../lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from '../../lib/review-policy.js';
@@ -205,6 +215,17 @@ export async function dispatchReviewCommand(
     const sessionAction = positional[1];
     const sessionId = positional[2];
 
+    if (sessionAction === 'list') {
+      const limit = parsePositiveIntegerFlag(flags.limit);
+      await listReviewSessionsCommand({ all: Boolean(flags.all), ...(typeof limit === 'number' ? { limit } : {}) });
+      return;
+    }
+
+    if (sessionAction === 'latest') {
+      await showLatestReviewSessionCommand({ all: Boolean(flags.all) });
+      return;
+    }
+
     if (sessionAction === 'show') {
       if (!sessionId) {
         exitWithUsage('Usage: nimbus review session show <session-id>');
@@ -221,23 +242,51 @@ export async function dispatchReviewCommand(
       return;
     }
 
-    if (sessionAction === 'materialize') {
+    if (sessionAction === 'materialize' || sessionAction === 'adopt') {
       if (!sessionId) {
-        exitWithUsage('Usage: nimbus review session materialize <session-id>');
+        exitWithUsage(`Usage: nimbus review session ${sessionAction} <session-id>`);
       }
       const branchFlag = flags.branch;
       const branchName = typeof branchFlag === 'string' && branchFlag.trim() ? branchFlag.trim() : undefined;
       const pathFlag = flags.path;
       const path = typeof pathFlag === 'string' && pathFlag.trim() ? pathFlag.trim() : undefined;
+      const branchOnly = Boolean(flags['branch-only']);
+      if (branchOnly && path) {
+        exitWithUsage('Usage error: --branch-only cannot be combined with --path.');
+      }
       await materializeReviewSessionCommand(sessionId, {
         branchName,
         path,
+        mode: branchOnly ? 'branch' : 'worktree',
         pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),
       });
       return;
     }
 
-    exitWithUsage('Unknown review session command. Use: show, reset, materialize');
+    if (sessionAction === 'list-local') {
+      await listLocalReviewSessionsCommand({ all: Boolean(flags.all) });
+      return;
+    }
+
+    if (sessionAction === 'diff-local') {
+      const targetSessionId = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined;
+      await diffLocalReviewSessionCommand(targetSessionId, { baseRef: typeof flags.base === 'string' ? flags.base : undefined });
+      return;
+    }
+
+    if (sessionAction === 'path-local') {
+      const targetSessionId = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined;
+      await pathLocalReviewSessionCommand(targetSessionId);
+      return;
+    }
+
+    if (sessionAction === 'enter-local') {
+      const targetSessionId = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined;
+      await enterLocalReviewSessionCommand(targetSessionId);
+      return;
+    }
+
+    exitWithUsage('Unknown review session command. Use: show, list, latest, reset, adopt, materialize, list-local, diff-local, path-local, enter-local');
   }
 
   if (reviewAction === 'preflight') {

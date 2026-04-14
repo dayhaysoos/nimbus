@@ -1,5 +1,6 @@
 import { strict as assert } from 'assert';
 import { continueReviewSessionAfterSuccessfulPass } from '../../src/lib/review-runner/session-remediation.js';
+import { continueReviewSessionAfterRemediationTask } from '../../src/lib/review-runner/session-remediation-followup.js';
 import { setReviewAnalysisSandboxResolverForTests } from '../../src/lib/review-analysis.js';
 import { setWorkspaceTaskSandboxResolverForTests } from '../../src/lib/workspace-task-runner.js';
 import type { ReviewReport, ReviewRunResponse } from '../../src/types.js';
@@ -20,6 +21,8 @@ interface TestState {
   sessionPassCount: number;
   failReviewEventsFor: Set<string>;
   reviewContextInPrimaryBucket: boolean;
+  queuedWorkspaceTasks: Array<{ workspaceId: string; taskId: string }>;
+  queuedReviewRuns: string[];
 }
 
 function createBaseReport(findings: ReviewReport['findings'], followUpReviewScore: 1 | 2 | 3): ReviewReport {
@@ -119,7 +122,7 @@ function tryHandleWriteFileCommand(
   return true;
 }
 
-function createRemediationEnv(): { env: Record<string, unknown>; state: TestState } {
+function createRemediationEnv(options?: { queue?: boolean }): { env: Record<string, unknown>; state: TestState } {
   const state: TestState = {
     changed: false,
     fileContent: 'export const value = 1;\n',
@@ -176,6 +179,8 @@ function createRemediationEnv(): { env: Record<string, unknown>; state: TestStat
     sessionPassCount: 1,
     failReviewEventsFor: new Set<string>(),
     reviewContextInPrimaryBucket: true,
+    queuedWorkspaceTasks: [],
+    queuedReviewRuns: [],
   };
 
   const reviewContextObject = {
@@ -207,7 +212,7 @@ function createRemediationEnv(): { env: Record<string, unknown>; state: TestStat
         },
       };
 
-  const env = {
+  const env: Record<string, unknown> = {
     AGENT_PROVIDER: 'cloudflare_agents_sdk',
     AGENT_MODEL: 'claude-test',
     AGENT_SDK_URL: 'https://agent.example.com',
@@ -289,6 +294,18 @@ function createRemediationEnv(): { env: Record<string, unknown>; state: TestStat
                         finished_at: record.finished_at,
                       })),
                   } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM review_runs WHERE id = \?/i.test(sql)) {
+          return {
+            bind(reviewId: string) {
+              return {
+                async first<T>() {
+                  return (state.reviewRunRecords.get(reviewId) ?? null) as T;
                 },
               };
             },
@@ -806,9 +823,71 @@ function createRemediationEnv(): { env: Record<string, unknown>; state: TestStat
         };
       },
     },
+    REVIEWS_QUEUE: {
+      async send(message: { reviewId?: string }) {
+        if (typeof message.reviewId === 'string' && message.reviewId.trim()) {
+          state.queuedReviewRuns.push(message.reviewId.trim());
+        }
+      },
+    },
   };
 
+  if (options?.queue) {
+    env.WORKSPACE_TASKS_QUEUE = {
+      async send(message: { workspaceId: string; taskId: string }) {
+        state.queuedWorkspaceTasks.push(message);
+      },
+    };
+  }
+
   return { env, state };
+}
+
+function persistCurrentReviewReport(state: TestState, report: ReviewReport): void {
+  const current = state.reviewRunRecords.get('review_current');
+  if (!current) {
+    throw new Error('Missing current review record');
+  }
+  current.report_json = JSON.stringify(report);
+  current.markdown_summary = report.markdownSummary;
+}
+
+function installRemediationSandbox(state: TestState): void {
+  const sandbox = {
+    async exec(command: string) {
+      if (command.includes('git rev-parse --verify HEAD')) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      if (command.includes('git diff --cached -M HEAD')) {
+        return {
+          stdout: state.changed
+            ? 'diff --git a/src/value.ts b/src/value.ts\n--- a/src/value.ts\n+++ b/src/value.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n'
+            : '',
+          stderr: '',
+          exitCode: 0,
+        };
+      }
+      if (
+        tryHandleWriteFileCommand(command, (contents) => {
+          state.fileContent = contents;
+          state.changed = true;
+        })
+      ) {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      }
+      return { stdout: '', stderr: '', exitCode: 0 };
+    },
+    async writeFile(_path: string, contents: string) {
+      state.fileContent = contents;
+      state.changed = true;
+      return {};
+    },
+    async destroy() {
+      return undefined;
+    },
+  };
+  setWorkspaceTaskSandboxResolverForTests(async () => sandbox as never);
+  setReviewAnalysisSandboxResolverForTests(async () => sandbox as never);
 }
 
 export async function runReviewSessionRemediationTests(): Promise<void> {
@@ -816,41 +895,7 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
 
   {
     const { env, state } = createRemediationEnv();
-    const sandbox = {
-      async exec(command: string) {
-        if (command.includes('git rev-parse --verify HEAD')) {
-          return { stdout: '', stderr: '', exitCode: 0 };
-        }
-        if (command.includes('git diff --cached -M HEAD')) {
-          return {
-            stdout: state.changed
-              ? 'diff --git a/src/value.ts b/src/value.ts\n--- a/src/value.ts\n+++ b/src/value.ts\n@@ -1 +1 @@\n-export const value = 1;\n+export const value = 2;\n'
-              : '',
-            stderr: '',
-            exitCode: 0,
-          };
-        }
-        if (
-          tryHandleWriteFileCommand(command, (contents) => {
-            state.fileContent = contents;
-            state.changed = true;
-          })
-        ) {
-          return { stdout: '', stderr: '', exitCode: 0 };
-        }
-        return { stdout: '', stderr: '', exitCode: 0 };
-      },
-      async writeFile(_path: string, contents: string) {
-        state.fileContent = contents;
-        state.changed = true;
-        return {};
-      },
-      async destroy() {
-        return undefined;
-      },
-    };
-    setWorkspaceTaskSandboxResolverForTests(async () => sandbox as never);
-    setReviewAnalysisSandboxResolverForTests(async () => sandbox as never);
+    installRemediationSandbox(state);
     let fetchCount = 0;
     globalThis.fetch = (async () => {
       fetchCount += 1;
@@ -891,18 +936,187 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
       ],
       3
     );
+    persistCurrentReviewReport(state, report);
 
     const result = await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
     assert.ok(result.nextReviewId);
     assert.equal(state.fileContent, 'export const value = 2;\n');
     assert.equal(state.workspaceTaskEvents.some((event) => event.eventType === 'task_succeeded'), true);
+    assert.equal(state.reviewEvents.some((event) => event.eventType === 'review_auto_remediation_planned'), true);
     assert.equal(state.reviewEvents.some((event) => event.eventType === 'review_auto_remediation_completed'), true);
     assert.equal(state.sessionPassCount, 2);
+    assert.equal(state.queuedReviewRuns.length, 1);
+    assert.equal(state.queuedReviewRuns[0], result.nextReviewId);
     const followup = result.nextReviewId ? state.reviewRunRecords.get(result.nextReviewId) : null;
     assert.ok(followup);
     assert.equal(String(followup?.request_payload_json).includes('"reviewBasis":"environment"'), true);
     assert.equal(String(followup?.request_payload_json).includes('"changedFileCount":1'), true);
     assert.equal(String(followup?.request_payload_json).includes('"localCochange":{"source":"local_git"'), true);
+  }
+
+  {
+    const { env, state } = createRemediationEnv({ queue: true });
+    installRemediationSandbox(state);
+    const review = createReviewResponse();
+    const report = createBaseReport(
+      [
+        {
+          severity: 'medium',
+          category: 'logic',
+          passType: 'single',
+          description: 'value.ts returns the wrong constant.',
+          suggestedFix: 'Update the exported value to 2.',
+          locations: [{ filePath: 'src/value.ts', startLine: 1, endLine: 1 }],
+        },
+      ],
+      3
+    );
+    persistCurrentReviewReport(state, report);
+
+    const result = await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
+    assert.equal(result.nextReviewId, null);
+    assert.equal(state.queuedWorkspaceTasks.length, 1);
+    assert.equal(state.reviewEvents.some((event) => event.eventType === 'review_auto_remediation_planned'), true);
+    const queuedTaskId = state.queuedWorkspaceTasks[0]?.taskId;
+    assert.ok(queuedTaskId);
+    const queuedTask = queuedTaskId ? state.workspaceTasks.get(queuedTaskId) : null;
+    assert.ok(queuedTask);
+    assert.equal(queuedTask?.status, 'queued');
+    const toolPolicy = JSON.parse(String(queuedTask?.tool_policy_json ?? '{}')) as { commands?: { allow?: string[] } };
+    assert.equal(toolPolicy.commands?.allow?.includes('node'), true);
+    assert.equal(toolPolicy.commands?.allow?.includes('npm'), true);
+    assert.equal(toolPolicy.commands?.allow?.includes('pnpm'), true);
+    assert.equal(state.sessionPassCount, 1);
+
+    if (queuedTask && queuedTaskId) {
+      queuedTask.status = 'succeeded';
+      queuedTask.result_json = JSON.stringify({ summary: 'Updated src/value.ts to address the reported logic issue.' });
+      queuedTask.finished_at = '2026-04-12T12:03:00.000Z';
+      queuedTask.updated_at = '2026-04-12T12:03:00.000Z';
+      state.fileContent = 'export const value = 2;\n';
+      state.changed = true;
+      const followup = await continueReviewSessionAfterRemediationTask(env as never, {
+        workspaceId: 'ws_slice4',
+        taskId: queuedTaskId,
+      });
+      assert.ok(followup.nextReviewId);
+      assert.equal(state.sessionPassCount, 2);
+      assert.equal(state.reviewEvents.some((event) => event.eventType === 'review_auto_remediation_completed'), true);
+      assert.equal(state.queuedReviewRuns.includes(followup.nextReviewId), true);
+    }
+  }
+
+  {
+    const { env, state } = createRemediationEnv({ queue: true });
+    installRemediationSandbox(state);
+    const review = createReviewResponse();
+    const report = createBaseReport(
+      [
+        {
+          severity: 'medium',
+          category: 'logic',
+          passType: 'single',
+          description: 'value.ts returns the wrong constant.',
+          suggestedFix: 'Update the exported value to 2.',
+          locations: [{ filePath: 'src/value.ts', startLine: 1, endLine: 1 }],
+        },
+      ],
+      3
+    );
+    persistCurrentReviewReport(state, report);
+
+    await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
+    const queuedTaskId = state.queuedWorkspaceTasks[0]?.taskId;
+    assert.ok(queuedTaskId);
+
+    let queueSendCalls = 0;
+    (env as { REVIEWS_QUEUE: { send: (message: { reviewId?: string }) => Promise<void> } }).REVIEWS_QUEUE = {
+      async send(message: { reviewId?: string }) {
+        queueSendCalls += 1;
+        if (queueSendCalls === 1) {
+          throw new Error('transient queue outage');
+        }
+        if (typeof message.reviewId === 'string' && message.reviewId.trim()) {
+          state.queuedReviewRuns.push(message.reviewId.trim());
+        }
+      },
+    };
+
+    if (queuedTaskId) {
+      const queuedTask = state.workspaceTasks.get(queuedTaskId);
+      assert.ok(queuedTask);
+      if (queuedTask) {
+        queuedTask.status = 'succeeded';
+        queuedTask.result_json = JSON.stringify({ summary: 'Updated src/value.ts to address the reported logic issue.' });
+        queuedTask.finished_at = '2026-04-12T12:03:00.000Z';
+        queuedTask.updated_at = '2026-04-12T12:03:00.000Z';
+      }
+      state.fileContent = 'export const value = 2;\n';
+      state.changed = true;
+
+      await assert.rejects(
+        () =>
+          continueReviewSessionAfterRemediationTask(env as never, {
+            workspaceId: 'ws_slice4',
+            taskId: queuedTaskId,
+          }),
+        /transient queue outage/
+      );
+
+      const pendingReviewId = state.sessionLatestReviewId;
+      assert.ok(pendingReviewId && pendingReviewId !== 'review_current');
+      assert.equal(state.queuedReviewRuns.includes(String(pendingReviewId)), false);
+
+      const retried = await continueReviewSessionAfterRemediationTask(env as never, {
+        workspaceId: 'ws_slice4',
+        taskId: queuedTaskId,
+      });
+      assert.equal(retried.nextReviewId, pendingReviewId);
+      assert.equal(state.queuedReviewRuns.includes(String(pendingReviewId)), true);
+      assert.equal(queueSendCalls >= 2, true);
+    }
+  }
+
+  {
+    const { env, state } = createRemediationEnv({ queue: true });
+    installRemediationSandbox(state);
+    const review = createReviewResponse();
+    const report = createBaseReport(
+      [
+        {
+          severity: 'medium',
+          category: 'logic',
+          passType: 'single',
+          description: 'value.ts returns the wrong constant.',
+          suggestedFix: 'Update the exported value to 2.',
+          locations: [{ filePath: 'src/value.ts', startLine: 1, endLine: 1 }],
+        },
+      ],
+      3
+    );
+    persistCurrentReviewReport(state, report);
+
+    await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
+    const queuedTaskId = state.queuedWorkspaceTasks[0]?.taskId;
+    assert.ok(queuedTaskId);
+    if (queuedTaskId) {
+      const queuedTask = state.workspaceTasks.get(queuedTaskId);
+      assert.ok(queuedTask);
+      if (queuedTask) {
+        queuedTask.status = 'failed';
+        queuedTask.error_code = 'task_execution_failed';
+        queuedTask.error_message = 'simulated failure';
+        queuedTask.finished_at = '2026-04-12T12:03:00.000Z';
+        queuedTask.updated_at = '2026-04-12T12:03:00.000Z';
+      }
+      const followup = await continueReviewSessionAfterRemediationTask(env as never, {
+        workspaceId: 'ws_slice4',
+        taskId: queuedTaskId,
+      });
+      assert.equal(followup.nextReviewId, null);
+      assert.equal(state.sessionStopReason, 'auto_remediation_failed');
+      assert.equal(state.reviewEvents.some((event) => event.eventType === 'review_auto_remediation_failed'), true);
+    }
   }
 
   {
@@ -1357,7 +1571,7 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
     );
 
     const result = await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
-    assert.equal(result.nextReviewId, null);
+    assert.equal(result.nextReviewId, 'review_manual');
     assert.equal(state.sessionLatestReviewId, 'review_manual');
     assert.equal(state.sessionActiveReviewId, 'review_manual');
     assert.equal(state.sessionPassCount, 2);
