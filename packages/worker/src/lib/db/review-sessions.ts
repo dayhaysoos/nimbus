@@ -249,7 +249,8 @@ function summarizeEvidence(reviews: ReviewRunResponse[]): ReviewSessionOutcomeSu
   };
 
   for (const review of reviews) {
-    for (const item of review.evidence) {
+    const evidence = Array.isArray(review.evidence) ? review.evidence : [];
+    for (const item of evidence) {
       latestByKey.set(evidenceKey(item), item);
     }
   }
@@ -279,12 +280,15 @@ function summarizeUnresolved(findings: ReviewFinding[]): ReviewSessionOutcomeSum
   return {
     findingCount: findings.length,
     highestSeverity: sorted[0]?.severity ?? null,
-    highlights: sorted.slice(0, 3).map((finding) => ({
-      severity: finding.severity,
-      category: finding.category,
-      description: finding.description,
-      filePath: finding.locations[0]?.filePath ?? null,
-    })),
+    highlights: sorted.slice(0, 3).map((finding) => {
+      const firstLocation = Array.isArray(finding.locations) && finding.locations.length > 0 ? finding.locations[0] : null;
+      return {
+        severity: finding.severity,
+        category: finding.category,
+        description: finding.description,
+        filePath: firstLocation?.filePath ?? null,
+      };
+    }),
   };
 }
 
@@ -326,6 +330,13 @@ function deriveOutcomeKind(input: {
     return 'clean';
   }
   if (input.currentReviewStatus === 'succeeded') {
+    return 'converged_with_blockers';
+  }
+
+  if (input.hasTerminalState && input.unresolvedFindingCount === 0) {
+    return 'clean';
+  }
+  if (input.hasTerminalState) {
     return 'converged_with_blockers';
   }
 
