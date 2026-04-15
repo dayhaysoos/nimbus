@@ -5,6 +5,8 @@
   "branch": "feat/review-experience-ui",
   "checkpoints_count": 5,
   "files_touched": [
+    "packages/cli/src/app/reviews/create-from-deployment.ts",
+    "packages/cli/src/app/reviews/create-from-session.ts",
     "packages/cli/src/app/reviews/create-shared.ts",
     "packages/report-ui/src/App.tsx",
     "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
@@ -19,6 +21,12 @@
       "transcript": "/98/50dda6facc/0/full.jsonl",
       "content_hash": "/98/50dda6facc/0/content_hash.txt",
       "prompt": "/98/50dda6facc/0/prompt.txt"
+    },
+    {
+      "metadata": "/98/50dda6facc/1/metadata.json",
+      "transcript": "/98/50dda6facc/1/full.jsonl",
+      "content_hash": "/98/50dda6facc/1/content_hash.txt",
+      "prompt": ""
     }
   ],
   "token_usage": {
