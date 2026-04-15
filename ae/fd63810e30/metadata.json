@@ -1,0 +1,40 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "aefd63810e30",
+  "strategy": "manual-commit",
+  "branch": "feat/review-experience-ui",
+  "checkpoints_count": 10,
+  "files_touched": [
+    "packages/cli/src/lib/types.ts",
+    "packages/report-ui/src/components/ReviewSessionPage.test.tsx",
+    "packages/report-ui/src/components/ReviewSessionPage.tsx",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/styles.css",
+    "packages/report-ui/src/types.ts",
+    "packages/worker/src/api/reviews/request-shared.ts",
+    "packages/worker/src/lib/db/review-sessions.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/output.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/provenance.ts",
+    "packages/worker/src/lib/review-runner/session-finding-memory.ts",
+    "packages/worker/src/lib/review-runner/session-remediation-followup.ts",
+    "packages/worker/src/lib/review-runner/session-remediation.ts",
+    "packages/worker/src/lib/review-session-pass.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/test/lib/review-session-remediation.test.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ae/fd63810e30/0/metadata.json",
+      "transcript": "/ae/fd63810e30/0/full.jsonl",
+      "content_hash": "/ae/fd63810e30/0/content_hash.txt",
+      "prompt": "/ae/fd63810e30/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 105922481,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 101684864,
+    "output_tokens": 645157,
+    "api_call_count": 822
+  }
+}
