@@ -1,0 +1,47 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "028831ea6343",
+  "strategy": "manual-commit",
+  "branch": "feat/review-experience-ui",
+  "checkpoints_count": 17,
+  "files_touched": [
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/reviews/create-from-deployment.ts",
+    "packages/cli/src/app/reviews/create-from-session.ts",
+    "packages/cli/src/app/reviews/create-shared.ts",
+    "packages/cli/src/app/reviews/local-environments.ts",
+    "packages/cli/src/app/reviews/studio-create.ts",
+    "packages/cli/src/app/reviews/studio-preflight-cache.ts",
+    "packages/cli/src/app/reviews/ui-proxy.ts",
+    "packages/cli/src/clients/worker/reviews.ts",
+    "packages/cli/test/app/reviews/studio-create.test.ts",
+    "packages/cli/test/app/reviews/studio-preflight-cache.test.ts",
+    "packages/cli/test/app/reviews/ui-proxy.test.ts",
+    "packages/report-ui/src/App.tsx",
+    "packages/report-ui/src/components/BranchReviewsPage.tsx",
+    "packages/report-ui/src/components/ReportPage.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.test.tsx",
+    "packages/report-ui/src/components/ReviewHistoryPage.tsx",
+    "packages/report-ui/src/components/ReviewSessionPage.test.tsx",
+    "packages/report-ui/src/components/ReviewSessionPage.tsx",
+    "packages/report-ui/src/lib/review.test.ts",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/report-ui/src/styles.css",
+    "packages/report-ui/src/types.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/02/8831ea6343/0/metadata.json",
+      "transcript": "/02/8831ea6343/0/full.jsonl",
+      "content_hash": "/02/8831ea6343/0/content_hash.txt",
+      "prompt": "/02/8831ea6343/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 60983506,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 58768768,
+    "output_tokens": 388675,
+    "api_call_count": 446
+  }
+}
