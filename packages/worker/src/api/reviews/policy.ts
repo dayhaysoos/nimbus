@@ -1,8 +1,12 @@
 import type { AuthContext, Env } from '../../types.js';
 import {
+  attachReviewPassToSession,
   appendReviewEvent,
+  createReviewSession,
   createReviewRun,
+  deleteReviewSession,
   generateReviewRunId,
+  generateReviewSessionId,
   getReviewRun,
   getWorkspace,
   getWorkspaceAccountId,
@@ -55,6 +59,7 @@ export async function handleDeriveReviewPolicy(
   }
 
   let createdReviewId: string | null = null;
+  let createdSessionId: string | null = null;
   try {
     const payloadRaw = await request.text();
     const payload = payloadRaw.trim() ? (JSON.parse(payloadRaw) as unknown) : {};
@@ -171,12 +176,26 @@ export async function handleDeriveReviewPolicy(
     };
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(withSortedKeys(requestPayload)));
     const reviewId = generateReviewRunId();
-    createdReviewId = reviewId;
+
+    const reviewSession = await createReviewSession(env.DB, {
+      id: generateReviewSessionId(),
+      workspaceId,
+      anchorDeploymentId: deploymentId,
+      repo: reviewRepo,
+      branch: reviewBranch,
+      initialReviewBasis: reviewBasis ?? 'checkpoint',
+      anchorCommitSha: workspace.commitSha,
+      anchorCheckpointId: workspace.checkpointId,
+      sourceProjectRoot: workspace.sourceProjectRoot,
+      accountId: workspaceAccountId,
+    });
+    createdSessionId = reviewSession.id;
 
     const created = await createReviewRun(env.DB, {
       id: reviewId,
       workspaceId,
       deploymentId,
+      sessionId: reviewSession.id,
       targetType: 'workspace_deployment',
       mode: 'report_only',
       status: 'policy_pending',
@@ -190,6 +209,8 @@ export async function handleDeriveReviewPolicy(
       repo: reviewRepo,
       branch: reviewBranch,
     });
+    createdReviewId = created.review.id;
+    await attachReviewPassToSession(env.DB, reviewSession.id, created.review.id);
 
     await appendReviewEvent(env.DB, {
       reviewId: created.review.id,
@@ -242,12 +263,17 @@ export async function handleDeriveReviewPolicy(
     return jsonResponse(
       {
         reviewId: created.review.id,
+        sessionId: reviewSession.id,
         status: 'policy_ready',
         derivedPolicy,
+        sessionUrl: `/api/review-sessions/${reviewSession.id}`,
       },
       202
     );
   } catch (error) {
+    if (createdSessionId && !createdReviewId) {
+      await deleteReviewSession(env.DB, createdSessionId).catch(() => undefined);
+    }
     if (createdReviewId) {
       const message = error instanceof Error ? error.message : String(error);
       await updateReviewRunStatus(env.DB, createdReviewId, 'failed', {

@@ -112,7 +112,8 @@ export async function createWorkspaceFromCommitish(
 }
 
 export async function createWorkspaceFromResolvedSource(
-  source: WorkspaceSourceSummary
+  source: WorkspaceSourceSummary,
+  options?: { idempotencyKey?: string }
 ): Promise<Awaited<ReturnType<typeof createWorkspace>>> {
   const workerUrl = getWorkerUrl();
   if (!workerUrl) {
@@ -135,7 +136,9 @@ export async function createWorkspaceFromResolvedSource(
     buildSourceBundleFilename(source.commitSha)
   );
 
-  return createWorkspace(workerUrl, formData);
+  return createWorkspace(workerUrl, formData, {
+    idempotencyKey: options?.idempotencyKey,
+  });
 }
 
 export async function createWorkspaceCommand(
@@ -151,8 +154,8 @@ export async function createWorkspaceCommand(
     spinner.message('Uploading source bundle and creating workspace...');
     const created = await createWorkspaceFromResolvedSource(source);
 
-    spinner.stop('Workspace created');
-    p.log.success(`Workspace ready: ${created.workspace.id}`);
+    spinner.stop(created.reused ? 'Workspace reused' : 'Workspace created');
+    p.log.success(`${created.reused ? 'Workspace ready (reused)' : 'Workspace ready'}: ${created.workspace.id}`);
     console.log('');
     console.log(`  Status:        ${created.workspace.status}`);
     console.log(`  Commit SHA:    ${created.workspace.commitSha}`);

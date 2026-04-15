@@ -4,6 +4,8 @@ import { parseCommitTrailers, parseDeployInput, resolveCheckpointFromHistory } f
 import { resolveCochangeFromLocalGit, resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 import type { EntireIntentContext } from '../../lib/entire/context.js';
 
+export type ReviewContextMode = 'intent_aware' | 'basic';
+
 interface CommitResolution {
   commitSha: string;
   checkpointId: string | null;
@@ -29,6 +31,14 @@ export interface ReviewCommitValidationResult {
   checkpointId: string;
   commitDiffPatch: string;
   checkpointResolution?: 'direct';
+  includedCheckpoints?: IncludedCheckpointSummary[];
+  checkpointSelectionMode?: 'latest' | 'last_n' | 'range';
+}
+
+export interface ReviewCommitResolution {
+  commitSha: string;
+  checkpointId: string | null;
+  commitDiffPatch: string;
   includedCheckpoints?: IncludedCheckpointSummary[];
   checkpointSelectionMode?: 'latest' | 'last_n' | 'range';
 }
@@ -549,16 +559,10 @@ export function validateReviewCommitCheckpoint(
   cwd = process.cwd(),
   options?: ResolveCommitContextOptions
 ): ReviewCommitValidationResult {
-  const normalizedCommitish = commitish.trim() || 'HEAD';
-  const resolved = resolveCommitContext(normalizedCommitish, cwd, options);
+  const resolved = resolveReviewCommitTarget(commitish, cwd, options);
   const checkpointId = resolved.checkpointId ?? '';
   if (!checkpointId) {
     throw new Error(buildMissingCheckpointTrailerMessage(resolved.commitSha, cwd));
-  }
-  if (!resolved.commitDiffPatch.trim()) {
-    throw new Error(
-      `Commit ${resolved.commitSha.slice(0, 12)} has no diff patch content. Review creation requires meaningful diff context.`
-    );
   }
   return {
     commitSha: resolved.commitSha,
@@ -568,6 +572,21 @@ export function validateReviewCommitCheckpoint(
     includedCheckpoints: resolved.includedCheckpoints,
     checkpointSelectionMode: resolved.checkpointSelectionMode,
   };
+}
+
+export function resolveReviewCommitTarget(
+  commitish: string,
+  cwd = process.cwd(),
+  options?: ResolveCommitContextOptions
+): ReviewCommitResolution {
+  const normalizedCommitish = commitish.trim() || 'HEAD';
+  const resolved = resolveCommitContext(normalizedCommitish, cwd, options);
+  if (!resolved.commitDiffPatch.trim()) {
+    throw new Error(
+      `Commit ${resolved.commitSha.slice(0, 12)} has no diff patch content. Review creation requires meaningful diff context.`
+    );
+  }
+  return resolved;
 }
 
 export async function validateReviewEntireIntentContext(
@@ -665,74 +684,103 @@ export async function reviewPreflightCommand(
   }
 ): Promise<void> {
   const spinner = p.spinner();
-  let resolved: ReviewCommitValidationResult;
-  let contextResolution: ReviewEntireContextResolution;
+  let resolved: ReviewCommitResolution;
+  let contextResolution: ReviewEntireContextResolution | null = null;
+  let contextMode: ReviewContextMode = 'intent_aware';
 
-  spinner.start('Resolving commit and checkpoint...');
+  spinner.start('Resolving review target...');
   try {
-    resolved = validateReviewCommitCheckpoint(commitish, process.cwd(), {
+    resolved = resolveReviewCommitTarget(commitish, process.cwd(), {
       baseRef: options?.baseRef,
       lastCheckpoints: options?.lastCheckpoints,
       checkpointRange: options?.checkpointRange,
     });
-    spinner.stop(`Resolved checkpoint ${resolved.checkpointId} from ${resolved.commitSha.slice(0, 12)}`);
+    spinner.stop(
+      resolved.checkpointId
+        ? `Resolved checkpoint ${resolved.checkpointId} from ${resolved.commitSha.slice(0, 12)}`
+        : `Resolved commit ${resolved.commitSha.slice(0, 12)} (basic review mode available)`
+    );
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Commit/checkpoint validation failed');
     throw new Error(`Review preflight failed: ${message}`);
   }
 
-  spinner.start('Validating Entire session metadata...');
-  try {
-    contextResolution = await validateReviewEntireIntentContext(
-      {
-        commitSha: resolved.commitSha,
-        checkpointId: resolved.checkpointId,
-      },
-      {
-        summarizeSession: options?.summarizeSession ?? 'auto',
-        intentTokenBudget: options?.intentTokenBudget,
-        allowBranchFallback: !options?.strictEntireContext,
-      },
-      process.cwd()
+  if (!resolved.checkpointId) {
+    if (options?.strictEntireContext) {
+      throw new Error(`Review preflight failed: ${buildMissingCheckpointTrailerMessage(resolved.commitSha, process.cwd())}`);
+    }
+    contextMode = 'basic';
+    p.log.warning(
+      `Commit ${resolved.commitSha.slice(0, 12)} has no Entire-Checkpoint trailer. Nimbus can still run a basic review against the diff, changed files, and repo conventions.`
     );
-    spinner.stop(
-      contextResolution.contextResolution === 'branch_fallback'
-        ? `Entire session metadata resolved via branch fallback (${contextResolution.resolvedCheckpointId})`
-        : 'Entire session metadata is readable'
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    spinner.stop('Entire session metadata validation failed');
-    throw new Error(`Review preflight failed: ${message}`);
+  } else {
+    spinner.start('Validating Entire session metadata...');
+    try {
+      contextResolution = await validateReviewEntireIntentContext(
+        {
+          commitSha: resolved.commitSha,
+          checkpointId: resolved.checkpointId,
+        },
+        {
+          summarizeSession: options?.summarizeSession ?? 'auto',
+          intentTokenBudget: options?.intentTokenBudget,
+          allowBranchFallback: !options?.strictEntireContext,
+        },
+        process.cwd()
+      );
+      spinner.stop(
+        contextResolution.contextResolution === 'branch_fallback'
+          ? `Entire session metadata resolved via branch fallback (${contextResolution.resolvedCheckpointId})`
+          : 'Entire session metadata is readable'
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      spinner.stop('Entire session metadata validation failed');
+      if (options?.strictEntireContext) {
+        throw new Error(`Review preflight failed: ${message}`);
+      }
+      contextMode = 'basic';
+      p.log.warning(
+        `Entire session context was not available for checkpoint ${resolved.checkpointId}. Nimbus will fall back to a basic diff/code-aware review.`
+      );
+      p.log.warning(message);
+    }
   }
 
   spinner.start('Checking co-change token readiness...');
   try {
-    const changedPaths = parseChangedPathsFromDiff(resolved.commitDiffPatch);
-    let hasLocalCochange = false;
-    try {
-      if (resolveLocalCochangeAvailabilityForTests) {
-        hasLocalCochange = resolveLocalCochangeAvailabilityForTests(changedPaths, process.cwd());
-      } else {
-        hasLocalCochange = Boolean(
-          resolveCochangeFromLocalGit(changedPaths, process.cwd(), {
-            lookbackSessions: 5,
-            topN: 20,
-          })
-        );
+    if (contextMode === 'basic') {
+      spinner.stop('Co-change skipped (basic review mode)');
+    } else {
+      const changedPaths = parseChangedPathsFromDiff(resolved.commitDiffPatch);
+      let hasLocalCochange = false;
+      try {
+        if (resolveLocalCochangeAvailabilityForTests) {
+          hasLocalCochange = resolveLocalCochangeAvailabilityForTests(changedPaths, process.cwd());
+        } else {
+          hasLocalCochange = Boolean(
+            resolveCochangeFromLocalGit(changedPaths, process.cwd(), {
+              lookbackSessions: 5,
+              topN: 20,
+            })
+          );
+        }
+      } catch {
+        hasLocalCochange = false;
       }
-    } catch {
-      hasLocalCochange = false;
-    }
 
-    await validateReviewCochangeTokenReadiness({
-      localCochangeAvailable: hasLocalCochange,
-    });
-    spinner.stop(hasLocalCochange ? 'Co-change token check skipped (using local co-change context)' : 'Co-change token readiness confirmed');
+      await validateReviewCochangeTokenReadiness({
+        localCochangeAvailable: hasLocalCochange,
+      });
+      spinner.stop(
+        hasLocalCochange ? 'Co-change token check skipped (using local co-change context)' : 'Co-change token readiness confirmed'
+      );
+    }
     p.log.success('Review preflight passed');
+    p.log.message(`Context mode: ${contextMode === 'basic' ? 'basic' : 'intent-aware'}`);
     p.log.message(`Commit: ${resolved.commitSha}`);
-    p.log.message(`Checkpoint: ${contextResolution.resolvedCheckpointId}`);
+    p.log.message(`Checkpoint: ${contextResolution?.resolvedCheckpointId ?? resolved.checkpointId ?? '(none)'}`);
     if (resolved.includedCheckpoints && resolved.includedCheckpoints.length > 1) {
       p.log.message(
         `Included checkpoints (${resolved.checkpointSelectionMode ?? 'range'}): ${resolved.includedCheckpoints
@@ -740,7 +788,7 @@ export async function reviewPreflightCommand(
           .join(', ')}`
       );
     }
-    if (contextResolution.contextResolution === 'branch_fallback') {
+    if (contextResolution?.contextResolution === 'branch_fallback') {
       p.log.warning(
         `Using fallback Entire context from commit ${contextResolution.resolvedCommitSha.slice(0, 7)} ('${contextResolution.resolvedCommitSubject}') ${contextResolution.commitsAgo} commits ago.`
       );
@@ -748,10 +796,14 @@ export async function reviewPreflightCommand(
         p.log.warning(`Direct checkpoint context issue: ${contextResolution.fallbackReason}`);
       }
     }
-    p.log.message(
-      `Session IDs: ${contextResolution.context.sessionIds.length > 0 ? contextResolution.context.sessionIds.join(', ') : '(none)'}`
-    );
-    p.log.message(`Intent context lines: ${contextResolution.context.intentSessionContext.length}`);
+    if (contextMode === 'basic') {
+      p.log.warning('Entire intent context unavailable; Nimbus will review the diff, changed files, and repository conventions only.');
+    } else {
+      p.log.message(
+        `Session IDs: ${contextResolution?.context.sessionIds.length ? contextResolution.context.sessionIds.join(', ') : '(none)'}`
+      );
+      p.log.message(`Intent context lines: ${contextResolution?.context.intentSessionContext.length ?? 0}`);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Co-change token readiness check failed');

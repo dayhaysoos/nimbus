@@ -7,6 +7,8 @@ import {
   generateWorkspaceId,
   getWorkspace,
   markWorkspaceFailed,
+  WorkspaceCreateIdempotencyConflictError,
+  WorkspaceCreateInProgressError,
 } from '../../lib/db.js';
 import { hydrateWorkspaceToReady, WorkspaceReadyTransitionError } from './ready.js';
 import { jsonResponse } from './shared.js';
@@ -15,6 +17,28 @@ import {
   sourceBundleR2Key,
   uploadWorkspaceSourceBundle,
 } from './source-bundle.js';
+
+async function sha256Hex(input: string): Promise<string> {
+  const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(input));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+function buildWorkspaceCreateIdempotencyPayload(input: {
+  checkpointId: string | null;
+  commitSha: string;
+  projectRoot: string | null | undefined;
+  sourceBundleSha256: string;
+}): Record<string, unknown> {
+  return {
+    sourceType: 'checkpoint',
+    checkpointId: input.checkpointId,
+    commitSha: input.commitSha,
+    projectRoot: input.projectRoot ?? '.',
+    sourceBundleSha256: input.sourceBundleSha256,
+  };
+}
 
 export async function handleCreateWorkspace(request: Request, env: Env, authContext?: AuthContext): Promise<Response> {
   if (!env.SOURCE_BUNDLES) {
@@ -32,16 +56,27 @@ export async function handleCreateWorkspace(request: Request, env: Env, authCont
   const workspaceId = generateWorkspaceId();
   const sandboxId = `workspace-${workspaceId}`;
   const sourceBundleKey = sourceBundleR2Key(workspaceId, parsed.metadata.source.commitSha);
+  const idempotencyKey = (request.headers.get('Idempotency-Key') ?? '').trim();
+  const accountScope = authContext?.isHostedMode ? `account:${authContext.accountId}` : 'self-hosted';
+  const requestPayloadSha256 = idempotencyKey
+    ? await sha256Hex(
+        JSON.stringify(
+          buildWorkspaceCreateIdempotencyPayload({
+            checkpointId: parsed.metadata.source.checkpointId,
+            commitSha: parsed.metadata.source.commitSha,
+            projectRoot: parsed.metadata.source.projectRoot,
+            sourceBundleSha256: parsed.bundleSha256,
+          })
+        )
+      )
+    : null;
   let bundleUploaded = false;
   let workspaceCreated = false;
   let workspaceReadyPersisted = false;
   let baselineReady = true;
 
   try {
-    await uploadWorkspaceSourceBundle(env, sourceBundleKey, parsed);
-    bundleUploaded = true;
-
-    await createWorkspace(env.DB, {
+    const createdWorkspace = await createWorkspace(env.DB, {
       id: workspaceId,
       sourceType: parsed.metadata.source.type,
       checkpointId: parsed.metadata.source.checkpointId,
@@ -53,8 +88,21 @@ export async function handleCreateWorkspace(request: Request, env: Env, authCont
       sourceBundleBytes: parsed.bundleBytes,
       sandboxId,
       accountId: authContext?.isHostedMode ? authContext.accountId : null,
+      idempotency: idempotencyKey && requestPayloadSha256
+        ? {
+            key: idempotencyKey,
+            accountScope,
+            requestPayloadSha256,
+          }
+        : undefined,
     });
+    if (createdWorkspace.reused) {
+      return jsonResponse({ workspace: createdWorkspace.workspace, reused: true }, 200);
+    }
     workspaceCreated = true;
+
+    await uploadWorkspaceSourceBundle(env, sourceBundleKey, parsed);
+    bundleUploaded = true;
 
     await appendWorkspaceEvent(env.DB, {
       workspaceId,
@@ -82,9 +130,25 @@ export async function handleCreateWorkspace(request: Request, env: Env, authCont
       return jsonResponse({ error: 'Workspace created but could not be loaded' }, 500);
     }
 
-    return jsonResponse({ workspace }, 201);
+    return jsonResponse({ workspace, reused: false }, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+
+    if (error instanceof WorkspaceCreateIdempotencyConflictError) {
+      return jsonResponse({ error: error.message }, 409);
+    }
+
+    if (error instanceof WorkspaceCreateInProgressError) {
+      return jsonResponse(
+        {
+          error: error.message,
+          code: 'workspace_create_in_progress',
+          workspaceId: error.workspaceId,
+          retryable: true,
+        },
+        409
+      );
+    }
 
     if (error instanceof WorkspaceReadyTransitionError) {
       return jsonResponse({ error: error.message }, 409);
@@ -117,6 +181,7 @@ export async function handleCreateWorkspace(request: Request, env: Env, authCont
       return jsonResponse(
         {
           workspace,
+          reused: false,
           warning: `Workspace became ready but post-ready bookkeeping failed: ${message}`,
         },
         201

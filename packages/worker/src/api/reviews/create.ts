@@ -1,10 +1,15 @@
 import type { AuthContext, Env } from '../../types.js';
 import {
+  attachReviewPassToSession,
   ReviewIdempotencyConflictError,
   appendReviewEvent,
+  createReviewSession,
   createReviewRun,
+  deleteReviewSession,
   generateReviewRunId,
+  generateReviewSessionId,
   getReviewRunByIdempotency,
+  getReviewSession,
   getWorkspace,
   getWorkspaceAccountId,
   getWorkspaceDeployment,
@@ -181,6 +186,7 @@ export async function handleCreateReview(
       requestPayloadSha256
     );
     if (existingReview) {
+      const existingSession = existingReview.sessionId ? await getReviewSession(env.DB, existingReview.sessionId) : null;
       const created = { review: existingReview, reused: true };
       const enqueueError = await enqueueReviewRunIfNeeded(env, created.review, {
         reused: created.reused,
@@ -194,9 +200,11 @@ export async function handleCreateReview(
       return jsonResponse(
         {
           reviewId: created.review.id,
+          sessionId: existingSession?.id ?? created.review.sessionId,
           status: created.review.status,
           eventsUrl: `/api/reviews/${created.review.id}/events`,
           resultUrl: `/api/reviews/${created.review.id}`,
+          ...(existingSession ? { sessionUrl: `/api/review-sessions/${existingSession.id}` } : {}),
         },
         200
       );
@@ -226,22 +234,50 @@ export async function handleCreateReview(
       );
     }
 
-    const created = await createReviewRun(env.DB, {
-      id: generateReviewRunId(),
+    const reviewSession = await createReviewSession(env.DB, {
+      id: generateReviewSessionId(),
       workspaceId,
-      deploymentId,
-      targetType: 'workspace_deployment',
-      mode: 'report_only',
-      idempotencyKey,
-      requestPayload: sanitizedRequestPayload,
-      requestPayloadSha256,
-      accountId: workspaceAccountId,
-      provenance: {
-        promptSummary: `Review deployment ${deploymentId} for workspace ${workspaceId}`,
-      },
+      anchorDeploymentId: deploymentId,
       repo: reviewRepo,
       branch: reviewBranch,
+      initialReviewBasis: reviewBasis ?? 'checkpoint',
+      anchorCommitSha: workspace.commitSha,
+      anchorCheckpointId: workspace.checkpointId,
+      sourceProjectRoot: workspace.sourceProjectRoot,
+      accountId: workspaceAccountId,
     });
+
+    let created: Awaited<ReturnType<typeof createReviewRun>>;
+    try {
+      created = await createReviewRun(env.DB, {
+        id: generateReviewRunId(),
+        workspaceId,
+        deploymentId,
+        sessionId: reviewSession.id,
+        targetType: 'workspace_deployment',
+        mode: 'report_only',
+        idempotencyKey,
+        requestPayload: sanitizedRequestPayload,
+        requestPayloadSha256,
+        accountId: workspaceAccountId,
+        provenance: {
+          promptSummary: `Review deployment ${deploymentId} for workspace ${workspaceId}`,
+        },
+        repo: reviewRepo,
+        branch: reviewBranch,
+      });
+    } catch (error) {
+      await deleteReviewSession(env.DB, reviewSession.id).catch(() => undefined);
+      throw error;
+    }
+
+    let responseSessionId: string | null = reviewSession.id;
+    if (created.reused) {
+      await deleteReviewSession(env.DB, reviewSession.id).catch(() => undefined);
+      responseSessionId = created.review.sessionId;
+    } else {
+      await attachReviewPassToSession(env.DB, reviewSession.id, created.review.id);
+    }
 
     if (!created.reused) {
       await appendReviewEvent(env.DB, {
@@ -269,9 +305,11 @@ export async function handleCreateReview(
     return jsonResponse(
       {
         reviewId: created.review.id,
+        sessionId: responseSessionId,
         status: created.review.status,
         eventsUrl: `/api/reviews/${created.review.id}/events`,
         resultUrl: `/api/reviews/${created.review.id}`,
+        ...(responseSessionId ? { sessionUrl: `/api/review-sessions/${encodeURIComponent(responseSessionId)}` } : {}),
       },
       created.reused ? 200 : 202
     );

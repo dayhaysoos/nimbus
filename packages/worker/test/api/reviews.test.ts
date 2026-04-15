@@ -1,5 +1,10 @@
 import { strict as assert } from 'assert';
 import { handleCreateReview, handleFailReview, handleGetReview, handleGetReviewEvents, handleListReviews, handleRecoverReview } from '../../src/api/reviews.js';
+import { handleCreateReviewSessionPass, handleListReviewSessions } from '../../src/api/review-sessions.js';
+import { setWorkspaceSandboxResolverForTests } from '../../src/api/workspaces/sandbox.js';
+import { setReviewAnalysisSandboxResolverForTests } from '../../src/lib/review-analysis.js';
+
+const TEST_SOURCE_BUNDLE_SHA256 = '6189e319ec3a587c508e6aa679e149462bcff5c4c1f64dc8b50a57e82937e7d4';
 
 function withRequiredProvenance(payload: Record<string, unknown>): Record<string, unknown> {
   const provenance =
@@ -39,6 +44,10 @@ function createReviewApiEnv(options?: {
   workspaceAccountId?: string | null;
   storedReviewRequestPayload?: Record<string, unknown>;
   reviewListRows?: Array<Record<string, unknown>>;
+  sessionExists?: boolean;
+  sessionId?: string;
+  reviewSessionListRows?: Array<Record<string, unknown>>;
+  reviewSessionPassRowsBySessionId?: Record<string, Array<Record<string, unknown>>>;
 }): {
   env: Record<string, unknown>;
   state: {
@@ -56,6 +65,8 @@ function createReviewApiEnv(options?: {
 } {
   const state = {
     reviewExists: options?.reviewExists ?? false,
+    reviewSessionExists: options?.sessionExists ?? false,
+    reviewSessionId: options?.sessionId ?? (options?.reused ? 'session_existing' : null as string | null),
     queueSendCount: 0,
     eventTypes: new Set<string>(options?.existingEventTypes ?? []),
     reviewStatus: (options?.initialReviewStatus ?? 'queued') as 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled',
@@ -89,6 +100,18 @@ function createReviewApiEnv(options?: {
         };
       },
     },
+    SOURCE_BUNDLES: {
+      async get(key: string) {
+        if (key !== 'key') {
+          return null;
+        }
+        return {
+          async arrayBuffer() {
+            return new TextEncoder().encode('artifact bundle bytes').buffer;
+          },
+        };
+      },
+    },
     DB: {
       prepare(sql: string) {
         if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
@@ -105,7 +128,7 @@ function createReviewApiEnv(options?: {
                     source_ref: 'main',
                     source_project_root: '.',
                     source_bundle_key: 'key',
-                    source_bundle_sha256: 'f'.repeat(64),
+                    source_bundle_sha256: TEST_SOURCE_BUNDLE_SHA256,
                     source_bundle_bytes: 1,
                     sandbox_id: 'workspace-ws_abc12345',
                     baseline_ready: 1,
@@ -216,6 +239,187 @@ function createReviewApiEnv(options?: {
           };
         }
 
+        if (/INSERT INTO review_sessions/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  state.reviewSessionExists = true;
+                  state.reviewSessionId = typeof values[0] === 'string' ? values[0] : null;
+                  return {
+                    id: values[0],
+                    workspace_id: values[1],
+                    anchor_deployment_id: values[2],
+                    repo: values[3],
+                    branch: values[4],
+                    initial_review_basis: values[5],
+                    anchor_commit_sha: values[6],
+                    anchor_checkpoint_id: values[7],
+                    source_project_root: values[8],
+                    active_review_id: null,
+                    latest_review_id: null,
+                    pass_count: 0,
+                    stop_reason: null,
+                    account_id: values[9],
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/DELETE FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async run() {
+                  if (state.reviewSessionId === sessionId) {
+                    state.reviewSessionExists = false;
+                    state.reviewSessionId = null;
+                  }
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE review_sessions\s+SET active_review_id = \?/i.test(sql)) {
+          return {
+            bind(reviewId: string, _latestReviewId: string, _reviewIdForCount: string) {
+              return {
+                async run() {
+                  state.reviewSessionExists = true;
+                  state.reviewSessionId = state.reviewSessionId ?? 'session_created';
+                  state.reviewExists = true;
+                  state.createdReviewAccountId = state.createdReviewAccountId ?? 'acct_123';
+                  state.eventTypes.add(`session:${reviewId}`);
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  const listedSession = options?.reviewSessionListRows?.find((row) => row.id === sessionId);
+                  if (listedSession) {
+                    return listedSession as T;
+                  }
+                  const resolvedSessionId = state.reviewSessionExists ? state.reviewSessionId : null;
+                  if (!resolvedSessionId || sessionId !== resolvedSessionId) {
+                    return null as T;
+                  }
+                  return {
+                    id: resolvedSessionId,
+                    workspace_id: 'ws_abc12345',
+                    anchor_deployment_id: 'dep_abcd1234',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'a'.repeat(40),
+                    anchor_checkpoint_id: null,
+                    source_project_root: '.',
+                    active_review_id: state.reviewExists ? 'rev_abcd1234' : 'rev_existing',
+                    latest_review_id: state.reviewExists ? 'rev_abcd1234' : 'rev_existing',
+                    pass_count: 1,
+                    stop_reason: null,
+                    account_id:
+                      options && 'workspaceAccountId' in options ? (options.workspaceAccountId ?? null) : 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT account_id FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  const listedSession = options?.reviewSessionListRows?.find((row) => row.id === sessionId);
+                  if (listedSession) {
+                    return {
+                      account_id:
+                        typeof listedSession.account_id === 'string' || listedSession.account_id === null
+                          ? listedSession.account_id
+                          : 'acct_123',
+                    } as T;
+                  }
+                  const resolvedSessionId = state.reviewSessionExists ? state.reviewSessionId : null;
+                  if (!resolvedSessionId || sessionId !== resolvedSessionId) {
+                    return null as T;
+                  }
+                  return {
+                    account_id:
+                      options && 'workspaceAccountId' in options ? (options.workspaceAccountId ?? null) : 'acct_123',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM review_sessions(?:\s+WHERE .+)?\s+ORDER BY updated_at DESC, created_at DESC, id DESC\s+LIMIT \?/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async all<T>() {
+                  const limitValue = values[values.length - 1];
+                  const limit = typeof limitValue === 'number' ? limitValue : Number(limitValue ?? 50);
+                  const rows = (options?.reviewSessionListRows ?? []).slice(0, Number.isFinite(limit) ? limit : 50);
+                  return { results: rows } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  const listedPasses = options?.reviewSessionPassRowsBySessionId?.[sessionId];
+                  if (listedPasses) {
+                    return {
+                      results: listedPasses,
+                    } as unknown as T;
+                  }
+                  const resolvedSessionId = state.reviewSessionExists ? state.reviewSessionId : null;
+                  if (!resolvedSessionId || sessionId !== resolvedSessionId) {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: state.reviewExists ? 'rev_abcd1234' : 'rev_existing',
+                        session_id: resolvedSessionId,
+                        status: state.reviewStatus,
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: null,
+                        finished_at: null,
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
         if (/INSERT INTO review_runs/i.test(sql)) {
           return {
             bind(...values: unknown[]) {
@@ -223,26 +427,31 @@ function createReviewApiEnv(options?: {
                 async first<T>() {
                   state.reviewExists = true;
                   try {
-                    state.createdRequestPayload = JSON.parse(String(values[7])) as Record<string, unknown>;
+                    state.createdRequestPayload = JSON.parse(String(values[8])) as Record<string, unknown>;
                   } catch {
                     state.createdRequestPayload = null;
                   }
-                  state.createdReviewAccountId = typeof values[9] === 'string' ? values[9] : null;
+                  state.createdReviewAccountId = typeof values[10] === 'string' ? values[10] : null;
+                  state.reviewSessionExists = typeof values[3] === 'string' && values[3].trim().length > 0;
+                  state.reviewSessionId = typeof values[3] === 'string' ? values[3] : state.reviewSessionId;
                   return {
                     id: values[0],
                     workspace_id: values[1],
                     deployment_id: values[2],
-                    target_type: values[3],
-                    mode: values[4],
-                    status: values[5],
-                    idempotency_key: values[6],
-                    request_payload_json: values[7],
-                    request_payload_sha256: values[8],
-                    account_id: values[9],
-                    provenance_json: values[10],
-                    derived_policy_json: values[11],
-                    approved_policy_json: values[12],
-                    approved_policy_sha256: values[13],
+                    session_id: values[3],
+                    target_type: values[4],
+                    mode: values[5],
+                    status: values[6],
+                    idempotency_key: values[7],
+                    request_payload_json: values[8],
+                    request_payload_sha256: values[9],
+                    account_id: values[10],
+                    provenance_json: values[11],
+                    repo: values[12],
+                    branch: values[13],
+                    derived_policy_json: values[14],
+                    approved_policy_json: values[15],
+                    approved_policy_sha256: values[16],
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,
@@ -368,6 +577,7 @@ function createReviewApiEnv(options?: {
                     id: reviewId,
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: state.reviewSessionId,
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: statusFromSequence,
@@ -375,6 +585,8 @@ function createReviewApiEnv(options?: {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: '{}',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 1,
                     attempt_count: options?.reviewAttemptCount ?? 0,
                     started_at: null,
@@ -405,6 +617,7 @@ function createReviewApiEnv(options?: {
                           id: 'rev_list_1',
                           workspace_id: 'ws_abc12345',
                           deployment_id: 'dep_abcd1234',
+                          session_id: 'session_list_1',
                           target_type: 'workspace_deployment',
                           mode: 'report_only',
                           status: 'queued',
@@ -714,6 +927,7 @@ export async function runReviewApiTests(): Promise<void> {
     const createdProvenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
     assert.deepEqual(createdProvenance, {
       trigger: 'api',
+      reviewContextMode: 'intent_aware',
       repo: 'dayhaysoos/nimbus',
       branch: 'main',
       note: 'Use commit intent context from Entire history',
@@ -1535,6 +1749,217 @@ export async function runReviewApiTests(): Promise<void> {
   }
 
   {
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec() {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+    }) as never);
+    try {
+      const { env, state } = createReviewApiEnv({
+        sessionExists: true,
+        sessionId: 'session_existing',
+        initialReviewStatus: 'succeeded',
+      });
+      const response = await handleCreateReviewSessionPass(
+        'session_existing',
+        new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+          method: 'POST',
+          body: JSON.stringify({
+            reviewBasis: 'environment',
+            policy: {
+              severityThreshold: 'medium',
+              maxFindings: 12,
+            },
+          }),
+        }),
+        env as never
+      );
+      assert.equal(response.status, 202);
+      const body = (await response.json()) as Record<string, unknown>;
+      assert.equal(body.sessionId, 'session_existing');
+      assert.equal(body.status, 'queued');
+      assert.equal(state.queueSendCount, 1);
+      assert.equal(state.createdRequestPayload?.reviewBasis, 'environment');
+      const provenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
+      const environmentRevision = (provenance.environmentRevision ?? {}) as Record<string, unknown>;
+      assert.equal(environmentRevision.source, 'workspace_head');
+      assert.equal(typeof environmentRevision.diffSha256, 'string');
+      assert.equal(environmentRevision.changedFileCount, 0);
+    } finally {
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      sessionExists: true,
+      sessionId: 'session_existing',
+      initialReviewStatus: 'succeeded',
+      storedReviewRequestPayload: {
+        provenance: {
+          reviewContextMode: 'intent_aware',
+          sessionIds: ['ses_old_1'],
+          intentSessionContext: ['Old intent context'],
+          localCochange: {
+            source: 'local_git',
+            checkpointsRef: 'entire/checkpoints/v1',
+            lookbackSessions: 5,
+            topN: 20,
+            sessionsScanned: 3,
+            relatedByChangedPath: {
+              'src/app.ts': [
+                {
+                  path: 'src/helper.ts',
+                  frequency: 2,
+                  sessionIds: ['ses_old_1'],
+                },
+              ],
+            },
+          },
+          environmentRevision: {
+            source: 'workspace_head',
+            diffSha256: 'a'.repeat(64),
+            changedFileCount: 3,
+            generatedAt: '2026-03-11T00:00:00.000Z',
+          },
+        },
+      },
+    });
+    const response = await handleCreateReviewSessionPass(
+      'session_existing',
+      new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+        method: 'POST',
+        body: JSON.stringify({ reviewBasis: 'checkpoint' }),
+      }),
+      env as never
+    );
+    assert.equal(response.status, 202);
+    const createdProvenance = (state.createdRequestPayload?.provenance ?? {}) as Record<string, unknown>;
+    assert.equal(createdProvenance.reviewContextMode, 'intent_aware');
+    assert.deepEqual(createdProvenance.sessionIds, ['ses_old_1']);
+    const localCochange = (createdProvenance.localCochange ?? {}) as Record<string, unknown>;
+    assert.equal(localCochange.source, 'local_git');
+    assert.equal(localCochange.lookbackSessions, 5);
+    assert.equal(createdProvenance.environmentRevision, undefined);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      sessionExists: true,
+      sessionId: 'session_existing',
+      initialReviewStatus: 'succeeded',
+      deploymentStatus: 'failed',
+    });
+    const response = await handleCreateReviewSessionPass(
+      'session_existing',
+      new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+        method: 'POST',
+        body: JSON.stringify({ reviewBasis: 'checkpoint' }),
+      }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'deployment_not_reviewable');
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
+    const { env, state } = createReviewApiEnv({
+      sessionExists: true,
+      sessionId: 'session_existing',
+      initialReviewStatus: 'succeeded',
+    });
+    const response = await handleCreateReviewSessionPass(
+      'session_existing',
+      new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': '   ',
+        },
+        body: JSON.stringify({ reviewBasis: 'checkpoint' }),
+      }),
+      env as never
+    );
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'missing_idempotency_key');
+    assert.equal(state.queueSendCount, 0);
+  }
+
+  {
+    let hasHead = false;
+    const sandboxResolver = async () => ({
+      async exec(command: string) {
+        if (command.includes('git rev-parse --verify HEAD')) {
+          return { stdout: '', stderr: '', exitCode: hasHead ? 0 : 2 };
+        }
+        if (command.includes('git init -q')) {
+          hasHead = true;
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('git read-tree HEAD')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+    });
+    setReviewAnalysisSandboxResolverForTests(sandboxResolver as never);
+    setWorkspaceSandboxResolverForTests(sandboxResolver as never);
+    try {
+      const { env, state } = createReviewApiEnv({
+        sessionExists: true,
+        sessionId: 'session_existing',
+        initialReviewStatus: 'succeeded',
+      });
+      const response = await handleCreateReviewSessionPass(
+        'session_existing',
+        new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+          method: 'POST',
+          body: JSON.stringify({ reviewBasis: 'environment' }),
+        }),
+        env as never
+      );
+      assert.equal(response.status, 202);
+      const body = (await response.json()) as Record<string, unknown>;
+      assert.equal(typeof body.reviewId, 'string');
+      assert.equal(body.sessionId, 'session_existing');
+      assert.equal(state.queueSendCount, 1);
+      assert.equal(hasHead, true);
+    } finally {
+      setReviewAnalysisSandboxResolverForTests(null);
+      setWorkspaceSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const { env } = createReviewApiEnv({
+      sessionExists: true,
+      sessionId: 'session_existing',
+      initialReviewStatus: 'running',
+    });
+    const response = await handleCreateReviewSessionPass(
+      'session_existing',
+      new Request('https://example.com/api/review-sessions/session_existing/reviews', {
+        method: 'POST',
+        body: JSON.stringify({ reviewBasis: 'environment' }),
+      }),
+      env as never
+    );
+    assert.equal(response.status, 409);
+  }
+
+  {
     const { env } = createReviewApiEnv();
     const response = await handleListReviews(new Request('https://example.com/api/reviews?limit=10'), env as never);
     assert.equal(response.status, 200);
@@ -1550,6 +1975,95 @@ export async function runReviewApiTests(): Promise<void> {
     assert.equal(response.status, 400);
     const body = (await response.json()) as Record<string, unknown>;
     assert.equal(body.code, 'invalid_review_query');
+  }
+
+  {
+    const { env } = createReviewApiEnv({
+      reviewSessionListRows: [
+        {
+          id: 'session_list_1',
+          workspace_id: 'ws_abc12345',
+          anchor_deployment_id: 'dep_abcd1234',
+          repo: 'dayhaysoos/nimbus',
+          branch: 'review-session-redesign',
+          initial_review_basis: 'checkpoint',
+          anchor_commit_sha: 'a'.repeat(40),
+          anchor_checkpoint_id: '31520e219f1f',
+          source_project_root: '.',
+          active_review_id: null,
+          latest_review_id: 'rev_session_1',
+          pass_count: 1,
+          stop_reason: 'initial_pass_completed',
+          account_id: 'acct_123',
+          created_at: '2026-03-11T00:00:00.000Z',
+          updated_at: '2026-03-11T00:05:00.000Z',
+          finished_at: '2026-03-11T00:05:00.000Z',
+        },
+      ],
+      reviewSessionPassRowsBySessionId: {
+        session_list_1: [
+          {
+            id: 'rev_session_1',
+            session_id: 'session_list_1',
+            workspace_id: 'ws_abc12345',
+            deployment_id: 'dep_abcd1234',
+            target_type: 'workspace_deployment',
+            mode: 'report_only',
+            status: 'succeeded',
+            idempotency_key: 'idem-review',
+            request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint', provenance: { reviewContextMode: 'intent_aware' } }),
+            request_payload_sha256: 'hash',
+            account_id: 'acct_123',
+            provenance_json: '{}',
+            repo: 'dayhaysoos/nimbus',
+            branch: 'review-session-redesign',
+            derived_policy_json: null,
+            approved_policy_json: null,
+            approved_policy_sha256: null,
+            last_event_seq: 0,
+            attempt_count: 1,
+            started_at: '2026-03-11T00:00:10.000Z',
+            finished_at: '2026-03-11T00:05:00.000Z',
+            duration_ms: 290000,
+            report_json: JSON.stringify({
+              summary: {
+                riskLevel: 'low',
+                recommendation: 'approve',
+                findingCounts: { info: 0, critical: 0, high: 0, medium: 0, low: 0 },
+              },
+              findings: [],
+              evidence: [],
+              summaryText: 'clean',
+              provenance: { reviewContextMode: 'intent_aware' },
+            }),
+            error_code: null,
+            error_message: null,
+            created_at: '2026-03-11T00:00:00.000Z',
+            updated_at: '2026-03-11T00:05:00.000Z',
+          },
+        ],
+      },
+    });
+    const response = await handleListReviewSessions(
+      new Request('https://example.com/api/review-sessions?limit=10&repo=dayhaysoos/nimbus&branch=review-session-redesign'),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as Record<string, unknown>;
+    const sessions = Array.isArray(body.sessions) ? body.sessions : [];
+    assert.equal(sessions.length, 1);
+    assert.equal((sessions[0] as Record<string, unknown>).id, 'session_list_1');
+  }
+
+  {
+    const { env } = createReviewApiEnv();
+    const response = await handleListReviewSessions(
+      new Request('https://example.com/api/review-sessions?repo=invalid_repo'),
+      env as never
+    );
+    assert.equal(response.status, 400);
+    const body = (await response.json()) as Record<string, unknown>;
+    assert.equal(body.code, 'invalid_review_session_query');
   }
 
   {

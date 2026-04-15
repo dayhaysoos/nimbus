@@ -1,4 +1,4 @@
-import type { Env, ReviewContext, ReviewRunResponse } from '../../types.js';
+import type { Env, ReviewContext, ReviewContextMode, ReviewRunResponse } from '../../types.js';
 import {
   appendReviewEvent,
   createReviewContextBlobReference,
@@ -9,22 +9,26 @@ import {
   getWorkspaceDeploymentRequestPayload,
   upsertReviewCochangeCacheBatch,
 } from '../db.js';
-import { readWorkspaceFilesFromSourceBundle } from '../review-analysis.js';
+import {
+  prepareWorkspaceSourceBundleSandbox,
+  readWorkspaceFilesFromSandbox,
+} from '../review-analysis.js';
+import { resolveReviewSandbox } from '../review-analysis/sandbox.js';
 import {
   asRecord,
   discoverConventionCandidates,
   estimateTokenCount,
   mergeProvenance,
-    parseChangedPathsFromDiff,
-    parseDiffHunks,
-    parseLocalCochangeFromProvenance,
-    parseStringArray,
-    rankAggregatedRelatedPaths,
-    readOptionalNumber,
-    readOptionalString,
-    stripSensitiveTokenFields,
-    uniqueStrings,
-  } from './context-helpers.js';
+  parseChangedPathsFromDiff,
+  parseDiffHunks,
+  parseLocalCochangeFromProvenance,
+  parseStringArray,
+  rankAggregatedRelatedPaths,
+  readOptionalNumber,
+  readOptionalString,
+  stripSensitiveTokenFields,
+  uniqueStrings,
+} from './context-helpers.js';
 import {
   classifyCochangeSkipReason,
   fetchCochangeFromCheckpointBranch,
@@ -32,6 +36,7 @@ import {
   ReviewContextAssemblyError,
 } from './cochange.js';
 import { loadAuthoritativeDeploymentDiff } from './context-diff.js';
+import { captureWorkspaceEnvironmentSnapshot } from './environment.js';
 import type { ReviewRunExecutionOptions } from './shared.js';
 
 /**
@@ -47,23 +52,22 @@ export async function assembleReviewContextBootstrap(
   const COCHANGE_LOOKBACK_SESSIONS = 5;
   const COCHANGE_TOP_N = 20;
   const CONVENTION_FILE_MAX_COUNT = 10;
+  const reviewBasis = review.reviewBasis ?? 'checkpoint';
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
     eventType: 'review_context_assembly_started',
     payload: {
-      source: 'entire/checkpoints/v1',
+      source: 'review_context_bootstrap',
+      reviewBasis,
     },
   });
 
   const workspace = await getWorkspace(env.DB, review.workspaceId);
-  const checkpointId = workspace?.checkpointId?.trim() ?? '';
-  if (!checkpointId) {
-    throw new ReviewContextAssemblyError(
-      'unsupported_without_entire_checkpoint_context',
-      'Review context assembly requires an Entire checkpoint-backed workspace with a checkpointId.'
-    );
+  if (!workspace) {
+    throw new ReviewContextAssemblyError('review_context_workspace_not_found', `Workspace ${review.workspaceId} was not found.`);
   }
+  const checkpointId = workspace.checkpointId?.trim() || null;
 
   const deployment = await getWorkspaceDeployment(env.DB, review.workspaceId, review.deploymentId);
   if (!deployment) {
@@ -75,18 +79,28 @@ export async function assembleReviewContextBootstrap(
   const reviewRequestProvenance = asRecord(reviewPayload.provenance);
   const requestProvenance = mergeProvenance(deploymentRequestProvenance, reviewRequestProvenance);
   const sessionIds = uniqueStrings(parseStringArray(requestProvenance.sessionIds));
-  if (sessionIds.length === 0) {
+  const sessionIntentCandidates = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext));
+  const hasRawSessionPrompts = typeof requestProvenance.rawSessionPrompts === 'string' && requestProvenance.rawSessionPrompts.trim().length > 0;
+  const requestedReviewContextMode = readOptionalString(requestProvenance.reviewContextMode);
+  const reviewContextMode: ReviewContextMode =
+    requestedReviewContextMode === 'basic'
+      ? 'basic'
+      : requestedReviewContextMode === 'intent_aware'
+        ? 'intent_aware'
+        : sessionIds.length > 0 || sessionIntentCandidates.length > 0 || hasRawSessionPrompts
+          ? 'intent_aware'
+          : 'basic';
+  if (reviewContextMode === 'intent_aware' && sessionIds.length === 0) {
     throw new ReviewContextAssemblyError(
       'unsupported_without_entire_checkpoint_context',
       'Review context assembly requires at least one Entire sessionId in deployment provenance.'
     );
   }
 
-  const sessionId = sessionIds[0] ?? '';
-  const sessionIntentCandidates = uniqueStrings(parseStringArray(requestProvenance.intentSessionContext));
-  const sessionIntent = sessionIntentCandidates[0] ?? null;
+  const sessionId = reviewContextMode === 'intent_aware' ? (sessionIds[0] ?? null) : null;
+  const sessionIntent = reviewContextMode === 'intent_aware' ? (sessionIntentCandidates[0] ?? null) : null;
   const attributionTrailer = readOptionalString(requestProvenance.attributionTrailer);
-  const agentType = readOptionalString(requestProvenance.agentType);
+  const agentType = reviewContextMode === 'intent_aware' ? readOptionalString(requestProvenance.agentType) : null;
   const requestedTokenBudget =
     readOptionalNumber(requestProvenance.reviewContextTokenBudget) ??
     readOptionalNumber(requestProvenance.contextTokenBudget) ??
@@ -102,52 +116,92 @@ export async function assembleReviewContextBootstrap(
       sessionId,
       sessionCount: sessionIds.length,
       hasSessionIntent: Boolean(sessionIntent),
+      reviewContextMode,
     },
   });
 
   const result = asRecord(deployment.result);
   const resultProvenance = asRecord(result.provenance);
   const resultArtifact = asRecord(result.artifact);
-  const provenanceOperationId = typeof resultProvenance.operationId === 'string'
-    ? resultProvenance.operationId
-    : typeof requestProvenance.operationId === 'string'
-      ? requestProvenance.operationId
-      : null;
-  const reviewDiffArtifactId = typeof resultArtifact.reviewDiffArtifactId === 'string'
-    ? resultArtifact.reviewDiffArtifactId
-    : typeof resultProvenance.reviewDiffArtifactId === 'string'
-      ? resultProvenance.reviewDiffArtifactId
-      : typeof requestProvenance.reviewDiffArtifactId === 'string'
-        ? requestProvenance.reviewDiffArtifactId
-        : null;
+  const environmentRevision = asRecord(requestProvenance.environmentRevision);
+  const expectedEnvironmentDiffSha256 = readOptionalString(environmentRevision.diffSha256);
+  const deploymentSourceBundleKey =
+    typeof resultArtifact.sourceBundleKey === 'string' && resultArtifact.sourceBundleKey.trim()
+      ? resultArtifact.sourceBundleKey.trim()
+      : deployment.sourceBundleKey ?? null;
 
-  const authoritativeDiff = await loadAuthoritativeDeploymentDiff(
-    env,
-    review.workspaceId,
-    provenanceOperationId,
-    reviewDiffArtifactId
-  );
-  const commitDiffPatch = readOptionalString(requestProvenance.commitDiffPatch);
-  const authoritativeDiffPatch = readOptionalString(authoritativeDiff?.patch);
-  const diffPatch = authoritativeDiffPatch ?? commitDiffPatch ?? null;
-  if (!diffPatch) {
-    throw new ReviewContextAssemblyError(
-      'review_context_diff_missing',
-      'Review context assembly requires non-empty diff patch context. Ensure deployment provenance includes review diff artifact or commit diff patch.'
+  let diffPatch: string | null = null;
+  let changedPaths: string[] = [];
+  let diffHunks: ReviewContext['retrieval']['diffHunks'] = [];
+  let diffSource: string | null = null;
+  let diffArtifactId: string | null = null;
+  let diffFallbackUsed = false;
+
+  if (reviewBasis === 'environment') {
+    const environmentSnapshot = await captureWorkspaceEnvironmentSnapshot(env, {
+      id: review.workspaceId,
+      status: workspace?.status ?? 'ready',
+      sandboxId: workspace?.sandboxId ?? '',
+      baselineReady: workspace?.baselineReady ?? false,
+      sourceBundleKey: workspace?.sourceBundleKey ?? '',
+      sourceBundleSha256: workspace?.sourceBundleSha256 ?? '',
+    });
+    if (expectedEnvironmentDiffSha256 && expectedEnvironmentDiffSha256 !== environmentSnapshot.revision.diffSha256) {
+      throw new ReviewContextAssemblyError(
+        'review_context_environment_drift',
+        'Workspace environment changed after this review pass was requested. Start a new environment review pass.'
+      );
+    }
+    diffPatch = environmentSnapshot.patch;
+    changedPaths = environmentSnapshot.changedPaths;
+    diffHunks = environmentSnapshot.diffHunks;
+    diffSource = environmentSnapshot.revision.source;
+  } else {
+    const provenanceOperationId = typeof resultProvenance.operationId === 'string'
+      ? resultProvenance.operationId
+      : typeof requestProvenance.operationId === 'string'
+        ? requestProvenance.operationId
+        : null;
+    const reviewDiffArtifactId = typeof resultArtifact.reviewDiffArtifactId === 'string'
+      ? resultArtifact.reviewDiffArtifactId
+      : typeof resultProvenance.reviewDiffArtifactId === 'string'
+        ? resultProvenance.reviewDiffArtifactId
+        : typeof requestProvenance.reviewDiffArtifactId === 'string'
+          ? requestProvenance.reviewDiffArtifactId
+          : null;
+
+    const authoritativeDiff = await loadAuthoritativeDeploymentDiff(
+      env,
+      review.workspaceId,
+      provenanceOperationId,
+      reviewDiffArtifactId
     );
+    const commitDiffPatch = readOptionalString(requestProvenance.commitDiffPatch);
+    const authoritativeDiffPatch = readOptionalString(authoritativeDiff?.patch);
+    diffPatch = authoritativeDiffPatch ?? commitDiffPatch ?? null;
+    if (!diffPatch) {
+      throw new ReviewContextAssemblyError(
+        'review_context_diff_missing',
+        'Review context assembly requires non-empty diff patch context. Ensure deployment provenance includes review diff artifact or commit diff patch.'
+      );
+    }
+    changedPaths = parseChangedPathsFromDiff(diffPatch);
+    diffHunks = parseDiffHunks(diffPatch);
+    diffSource = authoritativeDiffPatch ? authoritativeDiff?.source ?? null : commitDiffPatch ? 'commit_patch' : null;
+    diffArtifactId = authoritativeDiffPatch ? authoritativeDiff?.artifactId ?? null : null;
+    diffFallbackUsed = !authoritativeDiffPatch && Boolean(commitDiffPatch);
   }
-  const changedPaths = diffPatch ? parseChangedPathsFromDiff(diffPatch) : [];
-  const diffHunks = diffPatch ? parseDiffHunks(diffPatch) : [];
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
     eventType: 'review_context_diff_collected',
     payload: {
-      source: authoritativeDiffPatch ? authoritativeDiff?.source ?? null : commitDiffPatch ? 'commit_patch' : null,
-      artifactId: authoritativeDiffPatch ? authoritativeDiff?.artifactId ?? null : null,
+      source: diffSource,
+      artifactId: diffArtifactId,
       hasDiff: Boolean(diffPatch),
       patchBytes: diffPatch ? new TextEncoder().encode(diffPatch).byteLength : 0,
-      fallbackUsed: !authoritativeDiffPatch && Boolean(commitDiffPatch),
+      fallbackUsed: diffFallbackUsed,
+      reviewBasis,
     },
   });
 
@@ -159,50 +213,69 @@ export async function assembleReviewContextBootstrap(
     },
   });
 
-  const deploymentSourceBundleKey =
-    typeof resultArtifact.sourceBundleKey === 'string' && resultArtifact.sourceBundleKey.trim()
-      ? resultArtifact.sourceBundleKey.trim()
-      : deployment.sourceBundleKey ?? null;
-  if (!deploymentSourceBundleKey) {
+  if (!deploymentSourceBundleKey && reviewBasis !== 'environment') {
     throw new ReviewContextAssemblyError(
       'review_context_source_bundle_missing',
       'Review context assembly requires deployment source bundle key.'
     );
   }
 
-  const changedFileReads = changedPaths.length
-    ? await readWorkspaceFilesFromSourceBundle(env, {
-        sourceBundleKey: deploymentSourceBundleKey,
-        sandboxId: `review-context-${review.id}-changed`,
-        paths: changedPaths,
-      })
-    : [];
-  const changedFiles = changedFileReads
-    .filter((item) => item.content !== null && !item.error)
-    .map((item) => ({
-      path: item.path,
-      content: item.content ?? '',
-      byteSize: item.bytes,
-      source: 'changed' as const,
-    }));
+  const checkpointSnapshotSandboxId = reviewBasis === 'checkpoint' ? `review-context-${review.id}` : null;
+  if (checkpointSnapshotSandboxId && deploymentSourceBundleKey && changedPaths.length > 0) {
+    // Reuse one hydrated snapshot sandbox across all checkpoint context reads. Immediate destroy on
+    // per-read temp sandboxes has proven flaky against @cloudflare/sandbox in live execution.
+    await prepareWorkspaceSourceBundleSandbox(env, {
+      sourceBundleKey: deploymentSourceBundleKey,
+      sandboxId: checkpointSnapshotSandboxId,
+    });
+  }
 
-  const conventionCandidates = discoverConventionCandidates(changedPaths, CONVENTION_FILE_MAX_COUNT);
-  const conventionReads = conventionCandidates.length
-    ? await readWorkspaceFilesFromSourceBundle(env, {
-        sourceBundleKey: deploymentSourceBundleKey,
-        sandboxId: `review-context-${review.id}-conventions`,
-        paths: conventionCandidates,
-      })
-    : [];
-  const conventionFiles = conventionReads
-    .filter((item) => item.content !== null && !item.error)
-    .slice(0, CONVENTION_FILE_MAX_COUNT)
-    .map((item) => ({
-      path: item.path,
-      content: item.content ?? '',
-      byteSize: item.bytes,
-      source: 'convention' as const,
-    }));
+  const shouldDestroyCheckpointSnapshotSandbox = Boolean(
+    checkpointSnapshotSandboxId && deploymentSourceBundleKey && changedPaths.length > 0
+  );
+
+  try {
+    const changedFileReads = changedPaths.length
+      ? reviewBasis === 'environment'
+        ? await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: workspace?.sandboxId ?? '',
+            paths: changedPaths,
+          })
+        : await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: checkpointSnapshotSandboxId ?? '',
+            paths: changedPaths,
+          })
+      : [];
+    const changedFiles = changedFileReads
+      .filter((item) => item.content !== null && !item.error)
+      .map((item) => ({
+        path: item.path,
+        content: item.content ?? '',
+        byteSize: item.bytes,
+        source: 'changed' as const,
+      }));
+
+    const conventionCandidates = discoverConventionCandidates(changedPaths, CONVENTION_FILE_MAX_COUNT);
+    const conventionReads = conventionCandidates.length
+      ? reviewBasis === 'environment'
+        ? await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: workspace?.sandboxId ?? '',
+            paths: conventionCandidates,
+          })
+        : await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: checkpointSnapshotSandboxId ?? '',
+            paths: conventionCandidates,
+          })
+      : [];
+    const conventionFiles = conventionReads
+      .filter((item) => item.content !== null && !item.error)
+      .slice(0, CONVENTION_FILE_MAX_COUNT)
+      .map((item) => ({
+        path: item.path,
+        content: item.content ?? '',
+        byteSize: item.bytes,
+        source: 'convention' as const,
+      }));
 
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
@@ -219,10 +292,12 @@ export async function assembleReviewContextBootstrap(
     readOptionalString(requestProvenance.repository) ??
     readOptionalString(env.REVIEW_CONTEXT_REPO);
   if (!repoSlug) {
-    throw new ReviewContextAssemblyError(
-      'unsupported_without_entire_checkpoint_context',
-      'Review context assembly requires repository slug in deployment provenance (provenance.repo).'
-    );
+    if (reviewContextMode === 'intent_aware') {
+      throw new ReviewContextAssemblyError(
+        'unsupported_without_entire_checkpoint_context',
+        'Review context assembly requires repository slug in deployment provenance (provenance.repo).'
+      );
+    }
   }
 
   let relatedFiles: Array<{
@@ -238,13 +313,17 @@ export async function assembleReviewContextBootstrap(
   let coChangeSkipped = false;
   let coChangeSkipReason: string | null = null;
   let coChangeAvailable = false;
-  let coChangeSource: 'entire/checkpoints/v1' | 'local_git' = 'entire/checkpoints/v1';
+  let coChangeSource: 'entire/checkpoints/v1' | 'local_git' | 'none' =
+    reviewContextMode === 'basic' ? 'none' : 'entire/checkpoints/v1';
   let coChangeLookbackSessions = COCHANGE_LOOKBACK_SESSIONS;
   let coChangeTopN = COCHANGE_TOP_N;
   const localCochange = parseLocalCochangeFromProvenance(requestProvenance.localCochange);
   const githubToken = readOptionalString(options?.cochangeGithubToken);
 
-  try {
+  if (reviewContextMode === 'basic') {
+    coChangeSkipped = true;
+    coChangeSkipReason = 'basic_review_mode';
+  } else try {
     const effectiveLookback = localCochange?.lookbackSessions ?? COCHANGE_LOOKBACK_SESSIONS;
     const effectiveTopN = localCochange?.topN ?? COCHANGE_TOP_N;
     coChangeLookbackSessions = effectiveLookback;
@@ -282,7 +361,7 @@ export async function assembleReviewContextBootstrap(
         lastUpdated: string;
         lookbackSessions: number;
       }> = await getReviewCochangeCacheBatch(env.DB, {
-        repo: repoSlug,
+        repo: repoSlug ?? '',
         filePaths: changedPaths,
       });
       const cacheByPath = new Map(cachedRows.map((row) => [row.filePath, row]));
@@ -299,7 +378,12 @@ export async function assembleReviewContextBootstrap(
       }
 
       if (changedPathsMissingCache.length > 0) {
-        const fetched = await fetchCochangeFromCheckpointBranch(repoSlug, changedPathsMissingCache, COCHANGE_LOOKBACK_SESSIONS, githubToken);
+        const fetched = await fetchCochangeFromCheckpointBranch(
+          repoSlug ?? '',
+          changedPathsMissingCache,
+          COCHANGE_LOOKBACK_SESSIONS,
+          githubToken
+        );
         sessionsScanned += fetched.sessionsScanned;
         const cacheUpserts: Array<{
           filePath: string;
@@ -313,7 +397,7 @@ export async function assembleReviewContextBootstrap(
           entriesByChangedPath.set(changedPath, entries);
           cacheUpserts.push({
             filePath: changedPath,
-            repo: repoSlug,
+            repo: repoSlug ?? '',
             branch: 'entire/checkpoints/v1',
             cochange: entries,
             lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
@@ -326,11 +410,15 @@ export async function assembleReviewContextBootstrap(
     const rankedRelated = rankAggregatedRelatedPaths(changedPaths, entriesByChangedPath, effectiveTopN);
 
     const relatedReads = rankedRelated.length
-      ? await readWorkspaceFilesFromSourceBundle(env, {
-          sourceBundleKey: deploymentSourceBundleKey,
-          sandboxId: `review-context-${review.id}-related`,
-          paths: rankedRelated.map((item) => item.path),
-        })
+      ? reviewBasis === 'environment'
+        ? await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: workspace?.sandboxId ?? '',
+            paths: rankedRelated.map((item) => item.path),
+          })
+        : await readWorkspaceFilesFromSandbox(env, {
+            sandboxId: checkpointSnapshotSandboxId ?? '',
+            paths: rankedRelated.map((item) => item.path),
+          })
       : [];
     const readByPath = new Map(relatedReads.map((item) => [item.path, item]));
     relatedFiles = rankedRelated
@@ -403,9 +491,10 @@ export async function assembleReviewContextBootstrap(
     deploymentId: review.deploymentId,
     commitSha: workspace?.commitSha ?? '',
     assembledAt,
+    contextMode: reviewContextMode,
     checkpoint: {
       checkpointId,
-      branch: 'entire/checkpoints/v1',
+      branch: reviewContextMode === 'intent_aware' ? 'entire/checkpoints/v1' : null,
       attributionTrailer,
       session: {
         sessionId,
@@ -516,8 +605,22 @@ export async function assembleReviewContextBootstrap(
       sessionId,
       changedFileCount: changedPaths.length,
       contextId: ref.id,
+      reviewBasis,
+      reviewContextMode,
     },
   });
 
-  return contextPayload;
+    return contextPayload;
+  } finally {
+    if (shouldDestroyCheckpointSnapshotSandbox && checkpointSnapshotSandboxId) {
+      try {
+        const checkpointSandbox = await resolveReviewSandbox(env, checkpointSnapshotSandboxId);
+        if (typeof checkpointSandbox.destroy === 'function') {
+          await checkpointSandbox.destroy();
+        }
+      } catch {
+        // Best-effort cleanup only.
+      }
+    }
+  }
 }

@@ -439,6 +439,21 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
     const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
     assert.equal(response.status, 202);
     assert.equal(state.deploymentExists, true);
+    assert.equal(state.createdProvenance?.deployProvider, 'simulated');
+    assert.equal(state.createdProvenance?.deployOutputDir ?? null, null);
+  }
+
+  {
+    const { env, state } = createWorkspaceDeploymentApiEnv();
+    const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy', {
+      method: 'POST',
+      body: JSON.stringify({ provider: 'simulated', deploy: { outputDir: 'dist' } }),
+      headers: { 'Content-Type': 'application/json', 'Idempotency-Key': 'idem-provenance-deploy-metadata' },
+    });
+    const response = await handleCreateWorkspaceDeployment('ws_abc12345', request, env as never, ctx);
+    assert.equal(response.status, 202);
+    assert.equal(state.createdProvenance?.deployProvider, 'simulated');
+    assert.equal(state.createdProvenance?.deployOutputDir, 'dist');
   }
 
   {

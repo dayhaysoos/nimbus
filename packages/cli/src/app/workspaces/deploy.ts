@@ -107,6 +107,103 @@ interface DeployIntentContext {
   rawSessionPrompts?: string | null;
 }
 
+interface DeployRequestPayload {
+  provider?: 'simulated' | 'cloudflare_workers_assets';
+  validation: {
+    runBuildIfPresent: boolean;
+    runTestsIfPresent: boolean;
+  };
+  autoFix: {
+    rehydrateBaseline: boolean;
+    bootstrapToolchain: boolean;
+  };
+  cache: {
+    dependencyCache: boolean;
+  };
+  deploy: {
+    outputDir: string | null;
+  };
+  retry: {
+    maxRetries: number;
+  };
+  rollbackOnFailure: boolean;
+  provenance: {
+    trigger: string;
+    taskId: string | null;
+    operationId: string | null;
+    note: string | null;
+      repo: string;
+      deployProvider?: 'simulated' | 'cloudflare_workers_assets' | null;
+      deployOutputDir?: string | null;
+      sessionIds?: string[];
+      transcriptUrl?: string | null;
+    intentSessionContext?: string[];
+    rawSessionPrompts?: string | null;
+    contextResolution?: 'direct' | 'branch_fallback';
+    contextResolutionOriginalCheckpointId?: string;
+    contextResolutionResolvedCheckpointId?: string;
+    contextResolutionResolvedCommitSha?: string;
+    contextResolutionResolvedCommitMessage?: string;
+  };
+}
+
+function readProvenanceString(record: Record<string, unknown>, key: string): string | null {
+  const value = record[key];
+  return typeof value === 'string' ? value : null;
+}
+
+function isFallbackReusableDeploymentCompatible(
+  deployment: WorkspaceDeploymentResponse,
+  request: { provider?: 'simulated' | 'cloudflare_workers_assets'; outputDir: string | null }
+): { ok: boolean; reason?: string } {
+  if (request.provider && deployment.provider !== request.provider) {
+    return {
+      ok: false,
+      reason: `provider mismatch (requested ${request.provider}, existing ${deployment.provider})`,
+    };
+  }
+
+  if (request.outputDir !== null) {
+    const deployOutputDir = readProvenanceString(deployment.provenance, 'deployOutputDir');
+    if (deployOutputDir === null || deployOutputDir !== request.outputDir) {
+      return {
+        ok: false,
+        reason: 'outputDir mismatch or unavailable on existing deployment provenance',
+      };
+    }
+  }
+
+  return { ok: true };
+}
+
+function buildRetryIdempotencyKey(baseIdempotencyKey: string): string {
+  const seed = `${baseIdempotencyKey}:retry:${Date.now()}:${Math.random()}`;
+  return `deploy-${createHash('sha256').update(seed).digest('hex').slice(0, 20)}`;
+}
+
+function isFailedReusableDeploymentStatus(status: string | null | undefined): boolean {
+  return status === 'failed' || status === 'cancelled';
+}
+
+async function createWorkspaceDeploymentWithFreshRetryOnFailedReuse(
+  workerUrl: string,
+  workspaceId: string,
+  idempotencyKey: string,
+  payload: DeployRequestPayload,
+  reporter: WorkspaceDeployReporter
+) {
+  const created = await createWorkspaceDeployment(workerUrl, workspaceId, idempotencyKey, payload);
+  if (!created.reused || !isFailedReusableDeploymentStatus(created.deployment.status)) {
+    return created;
+  }
+
+  reporter.warning(
+    `Reused deployment ${created.deployment.id} is ${created.deployment.status}; creating a fresh deployment attempt.`
+  );
+  const retryIdempotencyKey = buildRetryIdempotencyKey(idempotencyKey);
+  return createWorkspaceDeployment(workerUrl, workspaceId, retryIdempotencyKey, payload);
+}
+
 const DEFAULT_REPORTER: WorkspaceDeployReporter = {
   message: (text) => p.log.message(text),
   success: (text) => p.log.success(text),
@@ -121,6 +218,54 @@ function buildEmptyDeployIntentContext(): DeployIntentContext {
     transcriptUrl: null,
     intentSessionContext: [],
     rawSessionPrompts: null,
+  };
+}
+
+function buildWorkspaceDeployCreatePayload(input: {
+  provider?: 'simulated' | 'cloudflare_workers_assets';
+  validation: {
+    runBuildIfPresent: boolean;
+    runTestsIfPresent: boolean;
+  };
+  autoFixEnabled: boolean;
+  outputDir: string | null;
+  repositorySlug: string;
+  entireIntentContext: DeployIntentContext;
+  contextOverride?: ReviewEntireContextResolution | null;
+}): DeployRequestPayload {
+  return {
+    provider: input.provider,
+    validation: input.validation,
+    autoFix: {
+      rehydrateBaseline: input.autoFixEnabled,
+      bootstrapToolchain: input.autoFixEnabled,
+    },
+    cache: {
+      dependencyCache: true,
+    },
+    deploy: {
+      outputDir: input.outputDir,
+    },
+    retry: { maxRetries: 2 },
+    rollbackOnFailure: true,
+      provenance: {
+      trigger: 'manual_cli',
+      taskId: null,
+      operationId: null,
+      note: input.entireIntentContext?.note ?? null,
+      sessionIds: input.entireIntentContext?.sessionIds ?? [],
+      transcriptUrl: input.entireIntentContext?.transcriptUrl ?? null,
+      intentSessionContext: input.entireIntentContext?.intentSessionContext ?? [],
+        rawSessionPrompts: input.entireIntentContext?.rawSessionPrompts ?? null,
+        repo: input.repositorySlug,
+        deployProvider: input.provider ?? null,
+        deployOutputDir: input.outputDir,
+        contextResolution: input.contextOverride?.contextResolution,
+        contextResolutionOriginalCheckpointId: input.contextOverride?.originalCheckpointId,
+        contextResolutionResolvedCheckpointId: input.contextOverride?.resolvedCheckpointId,
+      contextResolutionResolvedCommitSha: input.contextOverride?.resolvedCommitSha,
+      contextResolutionResolvedCommitMessage: input.contextOverride?.resolvedCommitSubject,
+    },
   };
 }
 
@@ -143,10 +288,13 @@ async function resolveDeployIntentContext(
   options?: {
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
-    entireIntentContextOverride?: ReviewEntireContextResolution;
+    entireIntentContextOverride?: ReviewEntireContextResolution | null;
   }
 ): Promise<DeployIntentContext> {
   const contextOverride = options?.entireIntentContextOverride;
+  if (contextOverride === null) {
+    return buildEmptyDeployIntentContext();
+  }
   if (contextOverride) {
     return contextOverride.context;
   }
@@ -186,7 +334,7 @@ export async function workspaceDeployCommand(
     summarizeSession?: 'auto' | 'always' | 'never';
     intentTokenBudget?: number;
     reporter?: WorkspaceDeployReporter;
-    entireIntentContextOverride?: ReviewEntireContextResolution;
+    entireIntentContextOverride?: ReviewEntireContextResolution | null;
   }
 ): Promise<WorkspaceDeploymentResponse | null> {
   const reporter = options?.reporter ?? DEFAULT_REPORTER;
@@ -203,6 +351,7 @@ export async function workspaceDeployCommand(
   const autoFixEnabled = Boolean(options?.autoFix);
   const provider = options?.provider;
   const outputDir = options?.outputDir?.trim() || null;
+  const idempotencyKey = options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId);
 
   let preflight;
   try {
@@ -259,6 +408,39 @@ export async function workspaceDeployCommand(
     if (preflight.nextAction) {
       reporter.warning(`Next action: ${preflight.nextAction}`);
     }
+    if (!options?.preflightOnly && failedCheck?.code === 'git_baseline') {
+      reporter.message('Attempting to reuse an existing deployment for this review base...');
+      const workspace = await getWorkspace(workerUrl, workspaceId);
+      if (workspace.lastDeploymentId) {
+        const existing = await getWorkspaceDeployment(workerUrl, workspaceId, workspace.lastDeploymentId);
+        const compatibility = isFallbackReusableDeploymentCompatible(existing.deployment, {
+          provider,
+          outputDir,
+        });
+        if (existing.deployment.status === 'succeeded' && compatibility.ok) {
+          reporter.success(`Reused existing deployment: ${existing.deployment.id}`);
+          reporter.success(
+            `${existing.deployment.provider === 'simulated' ? 'Deployed URL' : 'Live URL'}: ${existing.deployment.deployedUrl ?? '(none)'}`
+          );
+          if (existing.deployment.provider === 'simulated') {
+            reporter.message('Note: simulated provider returns a synthetic URL; no live site is published yet.');
+          }
+          return existing.deployment;
+        }
+
+        if (existing.deployment.status !== 'succeeded') {
+          reporter.warning(
+            `Latest deployment ${existing.deployment.id} is ${existing.deployment.status}; cannot reuse it for preflight fallback.`
+          );
+        } else {
+          reporter.warning(
+            `Latest deployment ${existing.deployment.id} is incompatible with current request (${compatibility.reason ?? 'unknown'}).`
+          );
+        }
+      } else {
+        reporter.warning('No existing deployment found to reuse for preflight fallback.');
+      }
+    }
     throw new Error('Workspace deploy preflight failed');
   }
 
@@ -282,42 +464,24 @@ export async function workspaceDeployCommand(
       'Unable to resolve GitHub repository slug for deployment provenance. Set NIMBUS_REPO_SLUG=<owner>/<repo> or configure origin remote to github.com.'
     );
   }
-  const idempotencyKey = options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId);
-  const created = await createWorkspaceDeployment(workerUrl, workspaceId, idempotencyKey, {
-    provider,
-    validation,
-    autoFix: {
-      rehydrateBaseline: autoFixEnabled,
-      bootstrapToolchain: autoFixEnabled,
-    },
-    cache: {
-      dependencyCache: true,
-    },
-    deploy: {
+  const created = await createWorkspaceDeploymentWithFreshRetryOnFailedReuse(
+    workerUrl,
+    workspaceId,
+    idempotencyKey,
+    buildWorkspaceDeployCreatePayload({
+      provider,
+      validation,
+      autoFixEnabled,
       outputDir,
-    },
-    retry: { maxRetries: 2 },
-    rollbackOnFailure: true,
-    provenance: {
-      trigger: 'manual_cli',
-      taskId: null,
-      operationId: null,
-      note: entireIntentContext?.note ?? null,
-      sessionIds: entireIntentContext?.sessionIds ?? [],
-      transcriptUrl: entireIntentContext?.transcriptUrl ?? null,
-      intentSessionContext: entireIntentContext?.intentSessionContext ?? [],
-      rawSessionPrompts: entireIntentContext?.rawSessionPrompts ?? null,
-      repo: repositorySlug,
-      contextResolution: contextOverride?.contextResolution,
-      contextResolutionOriginalCheckpointId: contextOverride?.originalCheckpointId,
-      contextResolutionResolvedCheckpointId: contextOverride?.resolvedCheckpointId,
-      contextResolutionResolvedCommitSha: contextOverride?.resolvedCommitSha,
-      contextResolutionResolvedCommitMessage: contextOverride?.resolvedCommitSubject,
-    },
-  });
+      repositorySlug,
+      entireIntentContext,
+      contextOverride,
+    }),
+    reporter
+  );
 
   const deploymentId = created.deployment.id;
-  reporter.message(`Deployment queued: ${deploymentId}`);
+  reporter.message(`${created.reused ? 'Reusing deployment' : 'Deployment queued'}: ${deploymentId}`);
 
   while (true) {
     await sleep(pollIntervalMs);

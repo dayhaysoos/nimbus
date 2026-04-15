@@ -202,6 +202,12 @@ export async function handleCreateWorkspaceDeployment(
       },
     };
 
+    const deploymentProvenance = {
+      ...requestPayload.provenance,
+      deployProvider: provider,
+      deployOutputDir: outputDir,
+    };
+
     const requestPayloadSha256 = await sha256Hex(JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload)));
     const legacyRequestPayloadSha256 = await sha256Hex(
       JSON.stringify(buildDeploymentIdempotencyPayload(requestPayload, { includeRepo: false }))
@@ -216,7 +222,7 @@ export async function handleCreateWorkspaceDeployment(
       requestPayloadSha256,
       requestPayloadSha256Aliases: legacyRequestPayloadSha256 === requestPayloadSha256 ? [] : [legacyRequestPayloadSha256],
       maxRetries,
-      provenance: requestPayload.provenance,
+      provenance: deploymentProvenance,
     });
 
     if (!created.reused) {
@@ -227,7 +233,7 @@ export async function handleCreateWorkspaceDeployment(
         payload: {
           provider,
           maxRetries,
-          provenance: requestPayload.provenance,
+          provenance: deploymentProvenance,
         },
       });
     }
@@ -286,7 +292,7 @@ export async function handleCreateWorkspaceDeployment(
         if ((claimed.meta?.changes ?? 0) === 0) {
           const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
           if (concurrent) {
-            return jsonResponse({ deployment: concurrent }, deploymentCreateResponseStatus(true));
+            return jsonResponse({ deployment: concurrent, reused: true }, deploymentCreateResponseStatus(true));
           }
         }
 
@@ -334,7 +340,7 @@ export async function handleCreateWorkspaceDeployment(
 
           const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
           if (concurrent) {
-            return jsonResponse({ deployment: concurrent }, deploymentCreateResponseStatus(true));
+            return jsonResponse({ deployment: concurrent, reused: true }, deploymentCreateResponseStatus(true));
           }
 
           throw error;
@@ -382,7 +388,7 @@ export async function handleCreateWorkspaceDeployment(
 
           const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
           if (concurrent) {
-            return jsonResponse({ deployment: concurrent }, deploymentCreateResponseStatus(true));
+            return jsonResponse({ deployment: concurrent, reused: true }, deploymentCreateResponseStatus(true));
           }
 
           throw new Error('Provider precheck failed but deployment record was not available for response');
@@ -406,7 +412,7 @@ export async function handleCreateWorkspaceDeployment(
         if ((clearClaim.meta?.changes ?? 0) === 0) {
           const concurrent = await getWorkspaceDeployment(env.DB, workspaceId, created.deployment.id);
           if (concurrent) {
-            return jsonResponse({ deployment: concurrent }, deploymentCreateResponseStatus(true));
+            return jsonResponse({ deployment: concurrent, reused: true }, deploymentCreateResponseStatus(true));
           }
         }
 
@@ -471,7 +477,7 @@ export async function handleCreateWorkspaceDeployment(
     }
 
     const responseStatus = deploymentCreateResponseStatus(created.reused);
-    return jsonResponse({ deployment: deploymentForQueue }, responseStatus);
+    return jsonResponse({ deployment: deploymentForQueue, reused: created.reused }, responseStatus);
   } catch (error) {
     if (error instanceof WorkspaceDeploymentIdempotencyConflictError) {
       return jsonResponse(

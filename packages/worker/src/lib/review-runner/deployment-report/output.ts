@@ -1,5 +1,6 @@
 import type {
   ReviewContext,
+  ReviewEnvironmentRevision,
   ReviewEvidenceItem,
   ReviewFinding,
   ReviewReport,
@@ -40,10 +41,30 @@ export function buildDeploymentReportOutput(input: {
   contextResolutionResolvedCheckpointId: string | null;
   contextResolutionResolvedCommitSha: string | null;
   contextResolutionResolvedCommitMessage: string | null;
+  reviewContextMode: 'intent_aware' | 'basic';
   advisories: string[];
     agentAnalysis: ReviewAgentAnalysisResult | null;
     deploymentEvents: Array<{ eventType: string; payload: unknown; seq: number }>;
 }): ReviewReport {
+  const environmentRevisionRecord =
+    input.requestProvenance.environmentRevision &&
+    typeof input.requestProvenance.environmentRevision === 'object' &&
+    !Array.isArray(input.requestProvenance.environmentRevision)
+      ? (input.requestProvenance.environmentRevision as Record<string, unknown>)
+      : null;
+  const environmentRevision =
+    environmentRevisionRecord &&
+    environmentRevisionRecord.source === 'workspace_head' &&
+    typeof environmentRevisionRecord.diffSha256 === 'string' &&
+    typeof environmentRevisionRecord.changedFileCount === 'number' &&
+    typeof environmentRevisionRecord.generatedAt === 'string'
+      ? ({
+          source: 'workspace_head',
+          diffSha256: environmentRevisionRecord.diffSha256,
+          changedFileCount: Math.max(0, Math.floor(environmentRevisionRecord.changedFileCount)),
+          generatedAt: environmentRevisionRecord.generatedAt,
+        } satisfies ReviewEnvironmentRevision)
+      : undefined;
   const severityFloor = REVIEW_SEVERITY_RANK[input.severityThreshold as ReviewSeverity] ?? REVIEW_SEVERITY_RANK.low;
   const mergedFindings = mergeFindings(input.findingsFromAnalysis, input.heuristicFindings)
     .filter((finding) => REVIEW_SEVERITY_RANK[finding.severity] >= severityFloor)
@@ -104,8 +125,10 @@ export function buildDeploymentReportOutput(input: {
       ? {
           repo: input.provenanceRepo,
           branch: input.provenanceBranch,
+          reviewContextMode: input.reviewContextMode,
           sessionIds: parseStringArray(input.requestProvenance.sessionIds),
           policyItems: input.policyItems,
+          ...(environmentRevision ? { environmentRevision } : {}),
           ...(input.rawSessionPrompts ? { rawSessionPrompts: input.rawSessionPrompts } : {}),
           ...(input.derivedIntentSummary ? { intentSummary: input.derivedIntentSummary } : {}),
           promptSummary: input.promptSummary,
@@ -192,8 +215,10 @@ export function buildDeploymentReportOutput(input: {
       : {
           repo: input.provenanceRepo,
           branch: input.provenanceBranch,
+          reviewContextMode: input.reviewContextMode,
           sessionIds: [],
           policyItems: [],
+          ...(environmentRevision ? { environmentRevision } : {}),
           promptSummary: null,
           transcriptUrl: null,
         },

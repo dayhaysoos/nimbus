@@ -1,19 +1,57 @@
 import type {
+  WorkspaceArtifactListResponse,
   WorkspaceCreateResponse,
   WorkspaceDiffResponse,
   WorkspaceFileListResponse,
   WorkspaceFileResponse,
+  WorkspaceOperationCreateResponse,
+  WorkspaceOperationResponse,
+  WorkspaceResetResponse,
   WorkspaceResponse,
 } from '../../lib/types.js';
-import { throwWorkerError, workerFetch } from './shared.js';
+import { throwWorkerError, workerFetch, workerFetchWithoutAuth } from './shared.js';
 
-export async function createWorkspace(workerUrl: string, formData: FormData): Promise<WorkspaceCreateResponse> {
+export class WorkspaceCreateInProgressError extends Error {
+  constructor(public readonly workspaceId: string, public readonly retryable = true) {
+    super(`Workspace create is still in progress: ${workspaceId}`);
+    this.name = 'WorkspaceCreateInProgressError';
+  }
+}
+
+export async function createWorkspace(
+  workerUrl: string,
+  formData: FormData,
+  options?: { idempotencyKey?: string }
+): Promise<WorkspaceCreateResponse> {
   const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces`, {
     method: 'POST',
+    headers: options?.idempotencyKey?.trim()
+      ? {
+          'Idempotency-Key': options.idempotencyKey.trim(),
+        }
+      : undefined,
     body: formData,
   });
 
   if (!response.ok) {
+    if (response.status === 409) {
+      const clone = response.clone();
+      try {
+        const body = (await response.json()) as {
+          code?: string;
+          workspaceId?: string;
+          retryable?: boolean;
+        };
+        if (body.code === 'workspace_create_in_progress' && typeof body.workspaceId === 'string' && body.workspaceId) {
+          throw new WorkspaceCreateInProgressError(body.workspaceId, body.retryable !== false);
+        }
+      } catch (error) {
+        if (error instanceof WorkspaceCreateInProgressError) {
+          throw error;
+        }
+      }
+      await throwWorkerError(clone);
+    }
     await throwWorkerError(response);
   }
 
@@ -40,6 +78,108 @@ export async function deleteWorkspace(workerUrl: string, workspaceId: string): P
   }
 
   return response.json() as Promise<{ status: string }>;
+}
+
+export async function resetWorkspace(workerUrl: string, workspaceId: string): Promise<WorkspaceResetResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/reset`, {
+    method: 'POST',
+  });
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<WorkspaceResetResponse>;
+}
+
+export async function createWorkspacePatchExport(
+  workerUrl: string,
+  workspaceId: string,
+  options: { idempotencyKey: string }
+): Promise<WorkspaceOperationCreateResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/export/patch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': options.idempotencyKey,
+    },
+    body: '{}',
+  });
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<WorkspaceOperationCreateResponse>;
+}
+
+export async function createWorkspaceZipExport(
+  workerUrl: string,
+  workspaceId: string,
+  options: { idempotencyKey: string }
+): Promise<WorkspaceOperationCreateResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/export/zip`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Idempotency-Key': options.idempotencyKey,
+    },
+    body: '{}',
+  });
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<WorkspaceOperationCreateResponse>;
+}
+
+export async function getWorkspaceOperation(
+  workerUrl: string,
+  workspaceId: string,
+  operationId: string
+): Promise<{ operation: WorkspaceOperationResponse }> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/operations/${operationId}`);
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<{ operation: WorkspaceOperationResponse }>;
+}
+
+export async function listWorkspaceArtifacts(
+  workerUrl: string,
+  workspaceId: string
+): Promise<WorkspaceArtifactListResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/workspaces/${workspaceId}/artifacts`);
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<WorkspaceArtifactListResponse>;
+}
+
+export async function downloadWorkspaceArtifact(
+  workerUrl: string,
+  workspaceId: string,
+  artifactId: string,
+  downloadUrl?: string | null
+): Promise<Uint8Array<ArrayBuffer>> {
+  const resolvedUrl = downloadUrl
+    ? new URL(downloadUrl, workerUrl).toString()
+    : `${workerUrl}/api/workspaces/${workspaceId}/artifacts/${artifactId}/download`;
+  const response =
+    new URL(resolvedUrl).origin === new URL(workerUrl).origin
+      ? await workerFetch(workerUrl, resolvedUrl)
+      : await workerFetchWithoutAuth(resolvedUrl);
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return new Uint8Array(await response.arrayBuffer());
 }
 
 export async function listWorkspaceFiles(

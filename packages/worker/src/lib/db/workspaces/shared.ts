@@ -14,6 +14,20 @@ export interface WorkspaceEventItem {
   createdAt: string;
 }
 
+export class WorkspaceCreateIdempotencyConflictError extends Error {
+  constructor(public readonly key: string) {
+    super(`Idempotency key conflict for workspace create: ${key}`);
+    this.name = 'WorkspaceCreateIdempotencyConflictError';
+  }
+}
+
+export class WorkspaceCreateInProgressError extends Error {
+  constructor(public readonly key: string, public readonly workspaceId: string) {
+    super(`Workspace create is still in progress for idempotency key: ${key}`);
+    this.name = 'WorkspaceCreateInProgressError';
+  }
+}
+
 export function generatePrefixedId(prefix: string, length = 8): string {
   const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
   let id = '';

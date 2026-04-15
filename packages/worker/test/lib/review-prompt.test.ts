@@ -26,6 +26,7 @@ export function runReviewPromptTests(): void {
         deploymentId: 'dep_test',
         commitSha: 'a'.repeat(40),
         assembledAt: '2026-04-06T00:00:00.000Z',
+        contextMode: 'intent_aware',
         checkpoint: {
           checkpointId: 'chk_test',
           branch: 'entire/checkpoints/v1',

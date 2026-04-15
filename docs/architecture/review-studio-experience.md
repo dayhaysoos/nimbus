@@ -1,8 +1,26 @@
 # Review Studio Experience Spec (v0.3)
 
-Status: Draft approved for implementation handoff
+Status: Locked product spec, implementation in progress
 Owner: Product + UX direction (captured via interactive interview)
 Scope: End-to-end user experience and locked technical decisions needed to avoid implementation drift
+
+## Implementation status
+
+This file is the stable product spec for Review Studio.
+
+Use `review-studio-implementation-plan.md` for current rollout status and slice-by-slice delivery tracking.
+
+Current snapshot as of 2026-04-11:
+
+- Slice 0 foundation: partial
+- Slice 1 Home: shipped
+- Slice 2 New Review slide-over: shipped
+- Slice 3 Review Run pre-run policy states: shipped with caveats
+- Slice 4 Review Run active states: partial
+- Slice 5 terminal actions and fix loop: not started
+- Slice 6 hardening: not started
+
+This file should change only when product intent changes. It should not be used as a status board.
 
 ## Why this document exists
 

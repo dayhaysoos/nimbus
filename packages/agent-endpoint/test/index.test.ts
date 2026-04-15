@@ -26,23 +26,54 @@ export async function runIndexTests(): Promise<void> {
   }
 
   {
-    const response = await handler.fetch(
-      new Request('https://example.workers.dev', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer expected-token',
-        },
-        body: JSON.stringify({ mode: 'workspace_task', prompt: 'General coding task prompt', history: [] }),
-      }),
-      {
-        AGENT_SDK_AUTH_TOKEN: 'expected-token',
-        OPENROUTER_API_KEY: 'test-key',
-      }
-    );
-    assert.equal(response.status, 200);
-    const body = (await response.json()) as Record<string, unknown>;
-    assert.equal(typeof body.action, 'object');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async (): Promise<Response> => {
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  type: 'tool',
+                  tool: 'write_file',
+                  args: {
+                    path: 'src/normalize-port.js',
+                    content: 'export function normalizePort(raw) { return raw; }\n',
+                    command: null,
+                    maxBytes: null,
+                    timeoutMs: null,
+                  },
+                  summary: null,
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const response = await handler.fetch(
+        new Request('https://example.workers.dev', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer expected-token',
+          },
+          body: JSON.stringify({ mode: 'workspace_task', prompt: 'General coding task prompt', history: [] }),
+        }),
+        {
+          AGENT_SDK_AUTH_TOKEN: 'expected-token',
+          OPENROUTER_API_KEY: 'test-key',
+        }
+      );
+      assert.equal(response.status, 200);
+      const body = (await response.json()) as { action?: { type?: string; tool?: string } };
+      assert.equal(body.action?.type, 'tool');
+      assert.equal(body.action?.tool, 'write_file');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   }
 
   {

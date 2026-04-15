@@ -1,11 +1,12 @@
 import { strict as assert } from 'assert';
 import {
   processWorkspaceTask,
+  setWorkspaceTaskContinuationRunnerForTests,
   setWorkspaceTaskSandboxResolverForTests,
   shouldRetryWorkspaceTaskError,
 } from '../../src/lib/workspace-task-runner.js';
 
-function createRunnerEnv(): {
+function createRunnerEnv(options?: { taskPayload?: Record<string, unknown>; toolPolicy?: Record<string, unknown> }): {
   env: Record<string, unknown>;
   state: {
     status: string;
@@ -21,7 +22,7 @@ function createRunnerEnv(): {
     fileContent: '',
   };
 
-  const taskPayload = {
+  const taskPayload: Record<string, unknown> = options?.taskPayload ?? {
     prompt: 'Update README',
     provider: 'scripted',
     model: 'test-model',
@@ -82,7 +83,7 @@ function createRunnerEnv(): {
                     max_retries: 1,
                     attempt_count: state.attemptCount,
                     actor_id: null,
-                    tool_policy_json: '{}',
+                    tool_policy_json: JSON.stringify(options?.toolPolicy ?? {}),
                     started_at: null,
                     finished_at: null,
                     cancel_requested_at: null,
@@ -105,6 +106,20 @@ function createRunnerEnv(): {
                 async first<T>() {
                   return {
                     request_payload_json: JSON.stringify(taskPayload),
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT tool_policy_json FROM workspace_tasks WHERE id = \? AND workspace_id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    tool_policy_json: JSON.stringify(options?.toolPolicy ?? {}),
                   } as T;
                 },
               };
@@ -210,9 +225,58 @@ function createRunnerEnv(): {
 
 export async function runWorkspaceTaskRunnerTests(): Promise<void> {
   {
+    const { env, state } = createRunnerEnv({
+      taskPayload: {
+        prompt: 'Verify the fix',
+        provider: 'scripted',
+        model: 'test-model',
+        maxSteps: 5,
+        maxRetries: 1,
+        scriptedActions: [
+          { type: 'tool', tool: 'run_command', args: { command: 'node math.test.js', timeoutMs: 2_000 } },
+          { type: 'final', summary: 'verified' },
+        ],
+      },
+      toolPolicy: {
+        commands: {
+          allow: ['node'],
+          deny: [],
+        },
+      },
+    });
+    let executedCommand: string | null = null;
+    setWorkspaceTaskSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        executedCommand = command;
+        return { stdout: 'ok\n', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return {};
+      },
+    }));
+
+    await processWorkspaceTask(env as never, 'ws_abc12345', 'task_abcd1234');
+    assert.equal(state.status, 'succeeded');
+    assert.match(executedCommand ?? '', /cd '\/workspace' && node math\.test\.js/);
+    const started = state.events.find((event) => event.eventType === 'tool_call_started');
+    assert.deepEqual(started?.payload, {
+      step: 1,
+      tool: 'run_command',
+      command: 'node math.test.js',
+      timeoutMs: 2000,
+    });
+  }
+
+  {
     const { env, state } = createRunnerEnv();
     setWorkspaceTaskSandboxResolverForTests(async () => ({
-      async exec() {
+      async exec(command: string) {
+        if (command.includes("with open(path, 'w', encoding='utf-8')")) {
+          const match = command.match(/content = (".*?")\nos\.makedirs/s);
+          if (match) {
+            state.fileContent = JSON.parse(match[1]);
+          }
+        }
         return { stdout: '', stderr: '', exitCode: 0 };
       },
       async writeFile(_path: string, contents: string) {
@@ -228,9 +292,133 @@ export async function runWorkspaceTaskRunnerTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createRunnerEnv();
+    let continuationCalls = 0;
+    setWorkspaceTaskContinuationRunnerForTests(async () => {
+      continuationCalls += 1;
+      throw new Error('follow-up continuation exploded');
+    });
+    setWorkspaceTaskSandboxResolverForTests(async () => ({
+      async exec() {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return {};
+      },
+    }));
+
+    await processWorkspaceTask(env as never, 'ws_abc12345', 'task_abcd1234');
+    assert.equal(continuationCalls, 1);
+    assert.equal(state.status, 'succeeded');
+    assert.equal(state.events.some((event) => event.eventType === 'task_followup_failed'), true);
+    setWorkspaceTaskContinuationRunnerForTests(null);
+  }
+
+  {
+    const { env, state } = createRunnerEnv({
+      taskPayload: {
+        prompt: 'Update README',
+        provider: 'scripted',
+        model: 'test-model',
+        maxSteps: 5,
+        maxRetries: 1,
+        scriptedActions: [
+          { type: 'tool', tool: 'write_file', args: { path: 'README.md', content: 'hello world\n' } },
+          { type: 'final', summary: 'done' },
+        ],
+        reviewSessionRemediation: { type: 'review_session' },
+      },
+    });
+    let continuationCalls = 0;
+    setWorkspaceTaskContinuationRunnerForTests(async () => {
+      continuationCalls += 1;
+      throw new Error('remediation continuation exploded');
+    });
+    setWorkspaceTaskSandboxResolverForTests(async () => ({
+      async exec() {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return {};
+      },
+    }));
+
+    await processWorkspaceTask(env as never, 'ws_abc12345', 'task_abcd1234');
+    assert.equal(continuationCalls, 3);
+    assert.equal(state.status, 'failed');
+    assert.equal(state.events.some((event) => event.eventType === 'task_followup_failed'), true);
+    assert.equal(state.events.some((event) => event.eventType === 'task_failed'), true);
+    setWorkspaceTaskContinuationRunnerForTests(null);
+  }
+
+  {
+    const { env, state } = createRunnerEnv({
+      taskPayload: {
+        prompt: 'Update README',
+        provider: 'scripted',
+        model: 'test-model',
+        maxSteps: 5,
+        maxRetries: 1,
+        scriptedActions: [
+          { type: 'tool', tool: 'write_file', args: { path: 'README.md', content: 'hello world\n' } },
+          { type: 'final', summary: 'done' },
+        ],
+        reviewSessionRemediation: { type: 'review_session' },
+      },
+    });
+    let continuationCalls = 0;
+    setWorkspaceTaskContinuationRunnerForTests(async () => {
+      continuationCalls += 1;
+      if (continuationCalls === 1) {
+        throw new Error('first continuation attempt failed');
+      }
+      return { nextReviewId: 'rev_followup_1234' };
+    });
+    setWorkspaceTaskSandboxResolverForTests(async () => ({
+      async exec() {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return {};
+      },
+    }));
+
+    await processWorkspaceTask(env as never, 'ws_abc12345', 'task_abcd1234');
+    assert.equal(continuationCalls, 2);
+    assert.equal(state.status, 'succeeded');
+    assert.equal(state.events.some((event) => event.eventType === 'task_followup_failed'), true);
+    assert.equal(state.events.some((event) => event.eventType === 'task_failed'), false);
+    setWorkspaceTaskContinuationRunnerForTests(null);
+  }
+
+  {
+    const { env, state } = createRunnerEnv();
+    let continuationCalls = 0;
+    (env as { WORKSPACE_AGENT_RUNTIME_ENABLED: string }).WORKSPACE_AGENT_RUNTIME_ENABLED = 'false';
+    setWorkspaceTaskContinuationRunnerForTests(async () => {
+      continuationCalls += 1;
+      return { nextReviewId: null };
+    });
+    setWorkspaceTaskSandboxResolverForTests(async () => ({
+      async exec() {
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return {};
+      },
+    }));
+
+    await processWorkspaceTask(env as never, 'ws_abc12345', 'task_abcd1234');
+    assert.equal(state.status, 'failed');
+    assert.equal(continuationCalls, 1);
+    setWorkspaceTaskContinuationRunnerForTests(null);
+  }
+
+  {
     const retry = shouldRetryWorkspaceTaskError(new Error('x'));
     assert.equal(retry, false);
   }
 
   setWorkspaceTaskSandboxResolverForTests(null);
+  setWorkspaceTaskContinuationRunnerForTests(null);
 }

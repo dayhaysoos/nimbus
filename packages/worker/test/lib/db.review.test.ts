@@ -1,11 +1,14 @@
 import { strict as assert } from 'assert';
 import {
   ReviewIdempotencyConflictError,
+  attachReviewPassToSession,
   appendReviewEvent,
   claimReviewRunForExecution,
+  createReviewSession,
   createReviewRun,
   getReviewCochangeCacheBatch,
   getReviewRun,
+  getReviewSession,
   listReviewEvents,
   upsertReviewCochangeCacheBatch,
 } from '../../src/lib/db.js';
@@ -49,17 +52,20 @@ export async function runReviewDbTests(): Promise<void> {
                     id: values[0],
                     workspace_id: values[1],
                     deployment_id: values[2],
-                    target_type: values[3],
-                    mode: values[4],
-                    status: values[5],
-                    idempotency_key: values[6],
-                    request_payload_json: values[7],
-                    request_payload_sha256: values[8],
-                    account_id: values[9],
-                    provenance_json: values[10],
-                    derived_policy_json: values[11],
-                    approved_policy_json: values[12],
-                    approved_policy_sha256: values[13],
+                    session_id: values[3],
+                    target_type: values[4],
+                    mode: values[5],
+                    status: values[6],
+                    idempotency_key: values[7],
+                    request_payload_json: values[8],
+                    request_payload_sha256: values[9],
+                    account_id: values[10],
+                    provenance_json: values[11],
+                    repo: values[12],
+                    branch: values[13],
+                    derived_policy_json: values[14],
+                    approved_policy_json: values[15],
+                    approved_policy_sha256: values[16],
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,
@@ -98,6 +104,7 @@ export async function runReviewDbTests(): Promise<void> {
                     id: reviewId,
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: 'session_abc12345',
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: 'queued',
@@ -105,6 +112,8 @@ export async function runReviewDbTests(): Promise<void> {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: '{}',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 1,
                     attempt_count: 0,
                     started_at: null,
@@ -197,7 +206,7 @@ export async function runReviewDbTests(): Promise<void> {
     });
     assert.equal(created.reused, false);
     assert.equal(created.review.id, 'rev_abcd1234');
-    assert.equal(insertValues[9], 'acct_workspace_owner');
+    assert.equal(insertValues[10], 'acct_workspace_owner');
 
     const review = await getReviewRun(db, 'rev_abcd1234');
     assert.ok(review);
@@ -212,6 +221,1031 @@ export async function runReviewDbTests(): Promise<void> {
     const events = await listReviewEvents(db, 'rev_abcd1234');
     assert.equal(events.length, 1);
     assert.equal(events[0].eventType, 'review_created');
+  }
+
+  {
+    const state = {
+      sessionId: 'session_abcd1234',
+      activeReviewId: null as string | null,
+      latestReviewId: null as string | null,
+      passCount: 0,
+    };
+    const db = {
+      prepare(sql: string) {
+        if (/INSERT INTO review_sessions/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async first<T>() {
+                  state.sessionId = String(values[0]);
+                  return {
+                    id: values[0],
+                    workspace_id: values[1],
+                    anchor_deployment_id: values[2],
+                    repo: values[3],
+                    branch: values[4],
+                    initial_review_basis: values[5],
+                    anchor_commit_sha: values[6],
+                    anchor_checkpoint_id: values[7],
+                    source_project_root: values[8],
+                    active_review_id: null,
+                    latest_review_id: null,
+                    pass_count: 0,
+                    stop_reason: null,
+                    account_id: values[9],
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/UPDATE review_sessions\s+SET active_review_id = \?/i.test(sql)) {
+          return {
+            bind(activeReviewId: string, latestReviewId: string) {
+              return {
+                async run() {
+                  state.activeReviewId = activeReviewId;
+                  state.latestReviewId = latestReviewId;
+                  state.passCount = 1;
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== state.sessionId) {
+                    return null as T;
+                  }
+                  return {
+                    id: state.sessionId,
+                    workspace_id: 'ws_abc12345',
+                    anchor_deployment_id: 'dep_abcd1234',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'a'.repeat(40),
+                    anchor_checkpoint_id: null,
+                    source_project_root: '.',
+                    active_review_id: state.activeReviewId,
+                    latest_review_id: state.latestReviewId,
+                    pass_count: state.passCount,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:00:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== state.sessionId || !state.latestReviewId) {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: state.latestReviewId,
+                        session_id: state.sessionId,
+                        status: 'running',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:01.000Z',
+                        finished_at: null,
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await createReviewSession(db, {
+      id: 'session_abcd1234',
+      workspaceId: 'ws_abc12345',
+      anchorDeploymentId: 'dep_abcd1234',
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
+      initialReviewBasis: 'checkpoint',
+      anchorCommitSha: 'a'.repeat(40),
+      sourceProjectRoot: '.',
+      accountId: 'acct_123',
+    });
+    assert.equal(session.id, 'session_abcd1234');
+    assert.equal(session.phase, 'preparing');
+    assert.equal(session.passCount, 0);
+
+    await attachReviewPassToSession(db, session.id, 'rev_abcd1234');
+    const hydrated = await getReviewSession(db, session.id);
+    assert.ok(hydrated);
+    assert.equal(hydrated?.passCount, 1);
+    assert.equal(hydrated?.phase, 'reviewing');
+    assert.equal(hydrated?.latestReviewId, 'rev_abcd1234');
+    assert.equal(hydrated?.stopReason, null);
+    assert.equal(hydrated?.finishedAt, null);
+    assert.equal(hydrated?.passes[0]?.reviewBasis, 'checkpoint');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_fixing_planned') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_fixing_planned',
+                    workspace_id: 'ws_fixing_planned',
+                    anchor_deployment_id: 'dep_fixing_planned',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'e'.repeat(40),
+                    anchor_checkpoint_id: 'chk_fixing_planned',
+                    source_project_root: '.',
+                    active_review_id: 'review_fixing_planned',
+                    latest_review_id: 'review_fixing_planned',
+                    pass_count: 1,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:02:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_fixing_planned') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'review_fixing_planned',
+                        workspace_id: 'ws_fixing_planned',
+                        deployment_id: 'dep_fixing_planned',
+                        session_id: 'session_fixing_planned',
+                        target_type: 'workspace_deployment',
+                        mode: 'report_only',
+                        status: 'succeeded',
+                        idempotency_key: 'idem-review-fixing-planned',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        request_payload_sha256: 'hash-fixing-planned',
+                        provenance_json: JSON.stringify({ promptSummary: 'Initial review awaiting remediation planning.' }),
+                        repo: 'dayhaysoos/nimbus',
+                        branch: 'main',
+                        derived_policy_json: null,
+                        approved_policy_json: null,
+                        approved_policy_sha256: null,
+                        last_event_seq: 2,
+                        attempt_count: 1,
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:02.000Z',
+                        finished_at: '2026-03-11T00:02:00.000Z',
+                        report_json: JSON.stringify({
+                          summary: {
+                            riskLevel: 'medium',
+                            findingCounts: { critical: 0, high: 0, medium: 1, low: 0, info: 0 },
+                            recommendation: 'comment',
+                          },
+                          summaryText: 'Nimbus found one issue and is planning remediation.',
+                          findings: [
+                            {
+                              severity: 'medium',
+                              category: 'logic',
+                              passType: 'single',
+                              locations: [{ filePath: 'src/math.ts', startLine: 1, endLine: 1 }],
+                              description: 'add() subtracts instead of adds.',
+                              suggestedFix: 'Return a + b.',
+                            },
+                          ],
+                          evidence: [],
+                          provenance: {
+                            reviewContextMode: 'intent_aware',
+                            sessionIds: ['sess_fixing_planned'],
+                            policyItems: [],
+                            promptSummary: 'Initial review awaiting remediation planning.',
+                          },
+                        }),
+                        markdown_summary: null,
+                        error_code: null,
+                        error_message: null,
+                        updated_at: '2026-03-11T00:02:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_events\s+WHERE review_id = \?/i.test(sql)) {
+          return {
+            bind(reviewId: string) {
+              return {
+                async first<T>() {
+                  if (reviewId !== 'review_fixing_planned') {
+                    return null as T;
+                  }
+                  return {
+                    event_type: 'review_auto_remediation_planned',
+                    payload_json: JSON.stringify({ safeFindingCount: 1 }),
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_fixing_planned');
+    assert.ok(session);
+    assert.equal(session?.phase, 'fixing');
+    assert.equal(session?.stopReason, null);
+    assert.equal(session?.finishedAt, null);
+    assert.equal(session?.outcome, null);
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_active_failed') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_active_failed',
+                    workspace_id: 'ws_active_failed',
+                    anchor_deployment_id: 'dep_active_failed',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'a'.repeat(40),
+                    anchor_checkpoint_id: null,
+                    source_project_root: '.',
+                    active_review_id: 'rev_failed_active',
+                    latest_review_id: 'rev_failed_active',
+                    pass_count: 1,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:02:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_active_failed') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'rev_failed_active',
+                        session_id: 'session_active_failed',
+                        status: 'failed',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:05.000Z',
+                        finished_at: '2026-03-11T00:01:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_active_failed');
+    assert.ok(session);
+    assert.equal(session?.phase, 'failed');
+    assert.equal(session?.stopReason, 'initial_pass_failed');
+    assert.equal(session?.finishedAt, '2026-03-11T00:01:00.000Z');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_envtrace') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_envtrace',
+                    workspace_id: 'ws_envtrace',
+                    anchor_deployment_id: 'dep_envtrace',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'b'.repeat(40),
+                    anchor_checkpoint_id: '8a513f56ed70',
+                    source_project_root: '.',
+                    active_review_id: 'review_envtrace',
+                    latest_review_id: 'review_envtrace',
+                    pass_count: 2,
+                    stop_reason: 'followup_pass_completed',
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:04:00.000Z',
+                    finished_at: '2026-03-11T00:04:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_envtrace') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'review_checkpoint',
+                        workspace_id: 'ws_envtrace',
+                        deployment_id: 'dep_envtrace',
+                        session_id: 'session_envtrace',
+                        target_type: 'workspace_deployment',
+                        mode: 'report_only',
+                        status: 'succeeded',
+                        idempotency_key: 'idem-review-checkpoint',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        request_payload_sha256: 'hash-checkpoint',
+                        provenance_json: JSON.stringify({ promptSummary: 'Initial checkpoint review.' }),
+                        repo: 'dayhaysoos/nimbus',
+                        branch: 'main',
+                        derived_policy_json: null,
+                        approved_policy_json: null,
+                        approved_policy_sha256: null,
+                        last_event_seq: 1,
+                        attempt_count: 1,
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:01.000Z',
+                        finished_at: '2026-03-11T00:01:00.000Z',
+                        report_json: JSON.stringify({
+                          summary: {
+                            riskLevel: 'medium',
+                            findingCounts: { critical: 0, high: 0, medium: 1, low: 0 },
+                            recommendation: 'comment',
+                          },
+                          findings: [
+                            {
+                              severity: 'medium',
+                              category: 'logic',
+                              passType: 'single',
+                              locations: [{ filePath: 'src/math.ts', startLine: 1, endLine: 1 }],
+                              description: 'add() subtracts instead of adds.',
+                              suggestedFix: 'Return a + b.',
+                            },
+                          ],
+                          evidence: [
+                            {
+                              id: 'ev_test_passed',
+                              type: 'test',
+                              label: 'Unit tests passed',
+                              status: 'failed',
+                            },
+                          ],
+                          provenance: {
+                            reviewContextMode: 'intent_aware',
+                            sessionIds: ['sess_checkpoint'],
+                            policyItems: [],
+                            promptSummary: 'Initial checkpoint review.',
+                          },
+                        }),
+                        markdown_summary: null,
+                        error_code: null,
+                        error_message: null,
+                        updated_at: '2026-03-11T00:01:00.000Z',
+                      },
+                      {
+                        id: 'review_envtrace',
+                        workspace_id: 'ws_envtrace',
+                        deployment_id: 'dep_envtrace',
+                        session_id: 'session_envtrace',
+                        target_type: 'workspace_deployment',
+                        mode: 'report_only',
+                        status: 'succeeded',
+                        idempotency_key: 'idem-review-envtrace',
+                        request_payload_json: JSON.stringify({
+                          reviewBasis: 'environment',
+                          provenance: {
+                            trigger: 'session_auto_remediation',
+                            remediationTaskSummary: 'Updated add() to return the sum.',
+                            reviewContextMode: 'basic',
+                            environmentRevision: {
+                              source: 'workspace_head',
+                              diffSha256: 'c'.repeat(64),
+                              changedFileCount: 3,
+                              generatedAt: '2026-03-11T00:03:00.000Z',
+                            },
+                          },
+                        }),
+                        request_payload_sha256: 'hash-envtrace',
+                        provenance_json: JSON.stringify({ promptSummary: 'Follow-up environment review.' }),
+                        repo: 'dayhaysoos/nimbus',
+                        branch: 'main',
+                        derived_policy_json: null,
+                        approved_policy_json: null,
+                        approved_policy_sha256: null,
+                        last_event_seq: 2,
+                        attempt_count: 1,
+                        created_at: '2026-03-11T00:03:00.000Z',
+                        started_at: '2026-03-11T00:03:02.000Z',
+                        finished_at: '2026-03-11T00:04:00.000Z',
+                        report_json: JSON.stringify({
+                          summary: {
+                            riskLevel: 'low',
+                            findingCounts: { critical: 0, high: 0, medium: 0, low: 0 },
+                            recommendation: 'approve',
+                          },
+                          summaryText: 'Nimbus completed review and no actionable findings remain.',
+                          findings: [],
+                          evidence: [
+                            {
+                              id: 'ev_test_passed',
+                              type: 'test',
+                              label: 'Unit tests passed',
+                              status: 'passed',
+                            },
+                          ],
+                          provenance: {
+                            reviewContextMode: 'basic',
+                            sessionIds: [],
+                            policyItems: [],
+                            promptSummary: 'Follow-up environment review.',
+                            validation: {
+                              followUpReviewScore: 1,
+                              followUpReviewRationale: 'No additional meaningful issues remain.',
+                            },
+                          },
+                        }),
+                        markdown_summary: null,
+                        error_code: null,
+                        error_message: null,
+                        updated_at: '2026-03-11T00:04:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_envtrace');
+    assert.ok(session);
+    assert.equal(session?.passes[1]?.reviewBasis, 'environment');
+    assert.equal(session?.passes[1]?.environmentRevision?.diffSha256, 'c'.repeat(64));
+    assert.equal(session?.passes[1]?.environmentRevision?.changedFileCount, 3);
+    assert.equal(session?.outcome?.kind, 'clean');
+    assert.equal(session?.outcome?.reviewed.contextMode, 'basic');
+    assert.equal(session?.outcome?.changes.applied, true);
+    assert.equal(session?.outcome?.changes.remediationCount, 1);
+    assert.equal(session?.outcome?.changes.changedFileCount, 3);
+    assert.equal(session?.outcome?.materializeReady, true);
+    assert.equal(session?.outcome?.unresolved.findingCount, 0);
+    assert.equal(session?.outcome?.evidence.passed, 1);
+    assert.equal(session?.outcome?.evidence.failed, 0);
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_policy_wait') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_policy_wait',
+                    workspace_id: 'ws_policy_wait',
+                    anchor_deployment_id: 'dep_policy_wait',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'd'.repeat(40),
+                    anchor_checkpoint_id: null,
+                    source_project_root: '.',
+                    active_review_id: 'review_policy_wait',
+                    latest_review_id: 'review_policy_wait',
+                    pass_count: 1,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:01:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_policy_wait') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'review_policy_wait',
+                        session_id: 'session_policy_wait',
+                        status: 'policy_pending',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: null,
+                        finished_at: null,
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_policy_wait');
+    assert.ok(session);
+    assert.equal(session?.phase, 'waiting_on_human');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_fixing') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_fixing',
+                    workspace_id: 'ws_fixing',
+                    anchor_deployment_id: 'dep_fixing',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'e'.repeat(40),
+                    anchor_checkpoint_id: 'chk_fixing',
+                    source_project_root: '.',
+                    active_review_id: 'review_fixing',
+                    latest_review_id: 'review_fixing',
+                    pass_count: 1,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:02:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_fixing') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'review_fixing',
+                        workspace_id: 'ws_fixing',
+                        deployment_id: 'dep_fixing',
+                        session_id: 'session_fixing',
+                        target_type: 'workspace_deployment',
+                        mode: 'report_only',
+                        status: 'succeeded',
+                        idempotency_key: 'idem-review-fixing',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        request_payload_sha256: 'hash-fixing',
+                        provenance_json: JSON.stringify({ promptSummary: 'Initial review awaiting remediation.' }),
+                        repo: 'dayhaysoos/nimbus',
+                        branch: 'main',
+                        derived_policy_json: null,
+                        approved_policy_json: null,
+                        approved_policy_sha256: null,
+                        last_event_seq: 2,
+                        attempt_count: 1,
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:02.000Z',
+                        finished_at: '2026-03-11T00:02:00.000Z',
+                        report_json: JSON.stringify({
+                          summary: {
+                            riskLevel: 'medium',
+                            findingCounts: { critical: 0, high: 0, medium: 1, low: 0, info: 0 },
+                            recommendation: 'comment',
+                          },
+                          summaryText: 'Nimbus found one issue and is attempting remediation.',
+                          findings: [
+                            {
+                              severity: 'medium',
+                              category: 'logic',
+                              passType: 'single',
+                              locations: [{ filePath: 'src/math.ts', startLine: 1, endLine: 1 }],
+                              description: 'add() subtracts instead of adds.',
+                              suggestedFix: 'Return a + b.',
+                            },
+                          ],
+                          evidence: [],
+                          provenance: {
+                            reviewContextMode: 'intent_aware',
+                            sessionIds: ['sess_fixing'],
+                            policyItems: [],
+                            promptSummary: 'Initial review awaiting remediation.',
+                          },
+                        }),
+                        markdown_summary: null,
+                        error_code: null,
+                        error_message: null,
+                        updated_at: '2026-03-11T00:02:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_events\s+WHERE review_id = \?/i.test(sql)) {
+          return {
+            bind(reviewId: string) {
+              return {
+                async first<T>() {
+                  if (reviewId !== 'review_fixing') {
+                    return null as T;
+                  }
+                  return {
+                    event_type: 'review_auto_remediation_started',
+                    payload_json: JSON.stringify({ taskId: 'task_fixing' }),
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT status\s+FROM workspace_tasks\s+WHERE id = \? AND workspace_id = \?/i.test(sql)) {
+          return {
+            bind(taskId: string, workspaceId: string) {
+              return {
+                async first<T>() {
+                  if (taskId !== 'task_fixing' || workspaceId !== 'ws_fixing') {
+                    return null as T;
+                  }
+                  return { status: 'running' } as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_fixing');
+    assert.ok(session);
+    assert.equal(session?.phase, 'fixing');
+    assert.equal(session?.stopReason, null);
+    assert.equal(session?.finishedAt, null);
+    assert.equal(session?.outcome, null);
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/SELECT \* FROM review_sessions WHERE id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async first<T>() {
+                  if (sessionId !== 'session_remediation_failed') {
+                    return null as T;
+                  }
+                  return {
+                    id: 'session_remediation_failed',
+                    workspace_id: 'ws_remediation_failed',
+                    anchor_deployment_id: 'dep_remediation_failed',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
+                    initial_review_basis: 'checkpoint',
+                    anchor_commit_sha: 'a'.repeat(40),
+                    anchor_checkpoint_id: null,
+                    source_project_root: '.',
+                    active_review_id: 'review_remediation_failed',
+                    latest_review_id: 'review_remediation_failed',
+                    pass_count: 1,
+                    stop_reason: null,
+                    account_id: 'acct_123',
+                    created_at: '2026-03-11T00:00:00.000Z',
+                    updated_at: '2026-03-11T00:01:00.000Z',
+                    finished_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_runs\s+WHERE session_id = \?/i.test(sql)) {
+          return {
+            bind(sessionId: string) {
+              return {
+                async all<T>() {
+                  if (sessionId !== 'session_remediation_failed') {
+                    return { results: [] } as unknown as T;
+                  }
+                  return {
+                    results: [
+                      {
+                        id: 'review_remediation_failed',
+                        workspace_id: 'ws_remediation_failed',
+                        deployment_id: 'dep_remediation_failed',
+                        session_id: 'session_remediation_failed',
+                        target_type: 'workspace_deployment',
+                        mode: 'report_only',
+                        status: 'succeeded',
+                        idempotency_key: 'idem-review-remediation-failed',
+                        request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
+                        request_payload_sha256: 'hash-remediation-failed',
+                        provenance_json: JSON.stringify({ promptSummary: 'Initial review awaiting remediation.' }),
+                        repo: 'dayhaysoos/nimbus',
+                        branch: 'main',
+                        derived_policy_json: null,
+                        approved_policy_json: null,
+                        approved_policy_sha256: null,
+                        last_event_seq: 1,
+                        attempt_count: 1,
+                        created_at: '2026-03-11T00:00:00.000Z',
+                        started_at: '2026-03-11T00:00:01.000Z',
+                        finished_at: '2026-03-11T00:02:00.000Z',
+                        report_json: JSON.stringify({
+                          summary: {
+                            riskLevel: 'medium',
+                            findingCounts: { critical: 0, high: 0, medium: 1, low: 0, info: 0 },
+                            recommendation: 'comment',
+                          },
+                          summaryText: 'Nimbus found one issue and is attempting remediation.',
+                          findings: [
+                            {
+                              severity: 'medium',
+                              category: 'logic',
+                              passType: 'single',
+                              locations: [{ filePath: 'src/math.ts', startLine: 1, endLine: 1 }],
+                              description: 'add() subtracts instead of adds.',
+                              suggestedFix: 'Return a + b.',
+                            },
+                          ],
+                          evidence: [],
+                          provenance: {
+                            reviewContextMode: 'intent_aware',
+                            sessionIds: ['sess_remediation_failed'],
+                            policyItems: [],
+                            promptSummary: 'Initial review awaiting remediation.',
+                          },
+                        }),
+                        markdown_summary: null,
+                        error_code: null,
+                        error_message: null,
+                        updated_at: '2026-03-11T00:02:00.000Z',
+                      },
+                    ],
+                  } as unknown as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM review_events\s+WHERE review_id = \?/i.test(sql)) {
+          return {
+            bind(reviewId: string) {
+              return {
+                async first<T>() {
+                  if (reviewId !== 'review_remediation_failed') {
+                    return null as T;
+                  }
+                  return {
+                    event_type: 'review_auto_remediation_started',
+                    payload_json: JSON.stringify({ taskId: 'task_remediation_failed' }),
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT status\s+FROM workspace_tasks\s+WHERE id = \? AND workspace_id = \?/i.test(sql)) {
+          return {
+            bind(taskId: string, workspaceId: string) {
+              return {
+                async first<T>() {
+                  if (taskId !== 'task_remediation_failed' || workspaceId !== 'ws_remediation_failed') {
+                    return null as T;
+                  }
+                  return { status: 'failed' } as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async first() {
+                return null;
+              },
+              async all() {
+                return { results: [] };
+              },
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    const session = await getReviewSession(db, 'session_remediation_failed');
+    assert.ok(session);
+    assert.equal(session?.phase, 'failed');
+    assert.equal(session?.stopReason, 'auto_remediation_failed');
+    assert.equal(session?.outcome?.kind, 'blocked');
   }
 
   {
@@ -286,6 +1320,7 @@ export async function runReviewDbTests(): Promise<void> {
                     id: 'rev_existing',
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: 'session_existing',
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: 'queued',
@@ -293,6 +1328,8 @@ export async function runReviewDbTests(): Promise<void> {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: '{}',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 0,
                     attempt_count: 0,
                     started_at: null,
@@ -365,6 +1402,7 @@ export async function runReviewDbTests(): Promise<void> {
                     id: 'rev_hiddenprov',
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: 'session_hiddenprov',
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: 'succeeded',
@@ -372,6 +1410,8 @@ export async function runReviewDbTests(): Promise<void> {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: JSON.stringify({ promptSummary: 'create-time prompt summary' }),
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 0,
                     attempt_count: 1,
                     started_at: '2026-03-11T00:00:00.000Z',
@@ -455,6 +1495,7 @@ export async function runReviewDbTests(): Promise<void> {
                     id: 'rev_phase2_contract',
                     workspace_id: 'ws_abc12345',
                     deployment_id: 'dep_abcd1234',
+                    session_id: 'session_phase2_contract',
                     target_type: 'workspace_deployment',
                     mode: 'report_only',
                     status: 'succeeded',
@@ -462,6 +1503,8 @@ export async function runReviewDbTests(): Promise<void> {
                     request_payload_json: '{}',
                     request_payload_sha256: 'hash',
                     provenance_json: '{}',
+                    repo: 'dayhaysoos/nimbus',
+                    branch: 'main',
                     last_event_seq: 0,
                     attempt_count: 1,
                     started_at: '2026-03-11T00:00:00.000Z',

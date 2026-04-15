@@ -1,29 +1,45 @@
 # Architecture Docs
 
-This directory tracks the architecture of Nimbus as it exists today and as it evolves through the refactor program.
+This directory now keeps a small, intentional set of architecture and product-planning documents.
 
-## Documents
+## Read Order
 
-- `overview.md`: system boundaries, package responsibilities, and cross-package relationships
-- `review-flow.md`: end-to-end review lifecycle
-- `workspace-flow.md`: workspace creation, inspection, reset, and deletion lifecycle
-- `deployment-flow.md`: workspace deployment preflight, execution, polling, and cancellation
-- `auth-flow.md`: hosted auth and GitHub OIDC exchange model
-- `report-ui-flow.md`: report UI data loading, polling, routing, and user-visible states
-- `review-studio-experience.md`: locked UX and product decisions for Review Studio
-- `review-studio-experience-build-plan.md`: phased build plan and owner guardrails for Review Studio
-- `review-studio-implementation-plan.md`: repo-specific implementation plan with file-level targets and rollout order
-- `adr/`: architecture decision records for major structural changes
+1. `architecture.md`
+   - Current source of truth for how Nimbus is structured today.
+2. `review-session-pivot.md`
+   - Active product-direction and implementation handoff for the session-based review redesign, including the local-first branch/worktree return path.
+3. `review-session-implementation-handoff.md`
+   - Current implementation-state handoff for the session-based review redesign, including validated CLI flows, adoption/merge-back behavior, and the next UI focus.
+4. `review-studio-experience.md`
+   - Locked product and UX decisions for the current Review Studio model.
+5. `review-studio-implementation-plan.md`
+   - Current shipped-state snapshot for the existing Review Studio implementation.
+6. `review-studio-experience-build-plan.md`
+   - Historical pre-slice build sequencing and guardrails.
+7. `adr/`
+   - Architecture decision records for major structural changes.
 
-## Current Coverage
+## Related Docs Outside This Directory
 
-- The overview, review-flow, workspace-flow, deployment-flow, auth-flow, and report-ui-flow documents are filled in for the current pre-refactor implementation.
-- Module-level docs for key subsystems live under `docs/modules/`.
+- `docs/modules/*`
+  - Focused subsystem deep dives.
+- `docs/refactor-baseline.md`
+  - Historical pre-refactor verification snapshot.
+- `docs/refactor-audit.md`
+  - Original refactor rationale and target package direction.
+- `docs/refactor-audit-phase-5.md`
+  - Current refactor handoff for readability cleanup.
+- `docs/jsdoc-guidelines.md`
+  - JSDoc rules used during readability and refactor work.
 
-## Writing Rules
+## Why The Older Flow Docs Were Removed
 
-- Document current behavior first.
-- Record target-state changes only when they are approved or implemented.
-- Keep flow docs focused on triggers, steps, state transitions, and failure modes.
-- Link to concrete source files when documenting implementation details.
-- Update these docs as part of major refactors, not as an afterthought.
+The previous per-flow baseline docs had drifted behind the current CLI and worker structure.
+
+Nimbus is easier to understand now with:
+
+- one current-state architecture document for the broad mental model
+- one active review-session pivot document for the redesign direction
+- one implementation-state handoff for what the review-session work actually shipped and validated
+- one stable Review Studio spec and one living Review Studio status doc
+- targeted module docs only where a subsystem still needs a deeper explanation

@@ -7,6 +7,9 @@ import type {
   ReviewPolicyDeriveResponse,
   ReviewPolicyMode,
   ReviewPolicyResponse,
+  ReviewContextGetResponse,
+  ReviewSessionGetResponse,
+  ReviewSessionListResponse,
 } from '../../lib/types.js';
 import { throwWorkerError, withReviewHeaders, workerFetch } from './shared.js';
 
@@ -31,6 +34,7 @@ export async function createReview(
     model?: string;
     provenance: {
       note?: string | null;
+      reviewContextMode?: 'basic' | 'intent_aware';
       repo: string;
       branch: string;
       intentSummaryModel?: string;
@@ -71,6 +75,47 @@ export async function createReview(
       'Content-Type': 'application/json',
       'Idempotency-Key': idempotencyKey,
     }),
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<ReviewCreateResponse>;
+}
+
+export async function createReviewSessionPass(
+  workerUrl: string,
+  sessionId: string,
+  payload: {
+    reviewBasis?: ReviewBasis;
+    policy?: {
+      severityThreshold?: 'low' | 'medium' | 'high' | 'critical';
+      maxFindings?: number;
+      includeProvenance?: boolean;
+      includeValidationEvidence?: boolean;
+    };
+    model?: string;
+    provenance?: {
+      note?: string | null;
+      transcriptUrl?: string | null;
+    };
+  },
+  options?: {
+    idempotencyKey?: string;
+  }
+): Promise<ReviewCreateResponse> {
+  const headers = withReviewHeaders({
+    'Content-Type': 'application/json',
+  });
+  if (options?.idempotencyKey?.trim()) {
+    headers['Idempotency-Key'] = options.idempotencyKey.trim();
+  }
+
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/review-sessions/${encodeURIComponent(sessionId)}/reviews`, {
+    method: 'POST',
+    headers,
     body: JSON.stringify(payload),
   });
 
@@ -164,6 +209,53 @@ export async function getReview(workerUrl: string, reviewId: string): Promise<Re
   }
 
   return response.json() as Promise<ReviewGetResponse>;
+}
+
+export async function getReviewContext(workerUrl: string, reviewId: string): Promise<ReviewContextGetResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/${encodeURIComponent(reviewId)}/context`, {
+    headers: withReviewHeaders(),
+  });
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<ReviewContextGetResponse>;
+}
+
+export async function getReviewSession(workerUrl: string, sessionId: string): Promise<ReviewSessionGetResponse> {
+  const response = await workerFetch(workerUrl, `${workerUrl}/api/review-sessions/${encodeURIComponent(sessionId)}`, {
+    headers: withReviewHeaders(),
+  });
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<ReviewSessionGetResponse>;
+}
+
+export async function listReviewSessions(
+  workerUrl: string,
+  options?: { limit?: number; repo?: string; branch?: string }
+): Promise<ReviewSessionListResponse> {
+  const url = new URL(`${workerUrl}/api/review-sessions`);
+  if (typeof options?.limit === 'number' && Number.isFinite(options.limit) && options.limit > 0) {
+    url.searchParams.set('limit', String(Math.floor(options.limit)));
+  }
+  if (typeof options?.repo === 'string' && options.repo.trim()) {
+    url.searchParams.set('repo', options.repo.trim());
+  }
+  if (typeof options?.branch === 'string' && options.branch.trim()) {
+    url.searchParams.set('branch', options.branch.trim());
+  }
+
+  const response = await workerFetch(workerUrl, url.toString(), {
+    headers: withReviewHeaders(),
+  });
+  if (!response.ok) {
+    await throwWorkerError(response);
+  }
+
+  return response.json() as Promise<ReviewSessionListResponse>;
 }
 
 function parseSseChunk(chunk: string): ReviewEventEnvelope[] {

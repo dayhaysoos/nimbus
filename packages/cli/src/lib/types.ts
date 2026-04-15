@@ -79,6 +79,12 @@ export interface WorkspaceResponse {
   baselineReady: boolean;
   errorCode: string | null;
   errorMessage: string | null;
+  lastDeploymentId?: string | null;
+  lastDeploymentStatus?: WorkspaceDeploymentStatus | null;
+  lastDeployedUrl?: string | null;
+  lastDeployedAt?: string | null;
+  lastDeploymentErrorCode?: string | null;
+  lastDeploymentErrorMessage?: string | null;
   createdAt: string;
   updatedAt: string;
   deletedAt: string | null;
@@ -87,6 +93,12 @@ export interface WorkspaceResponse {
 
 export interface WorkspaceCreateResponse {
   workspace: WorkspaceResponse;
+  reused?: boolean;
+}
+
+export interface WorkspaceResetResponse {
+  workspace: WorkspaceResponse;
+  warning?: string;
 }
 
 export interface WorkspaceFileListEntry {
@@ -140,6 +152,59 @@ export interface WorkspaceDiffResponse {
   patchTotalBytes?: number;
 }
 
+export type WorkspaceOperationType = 'export_zip' | 'export_patch' | 'fork_github';
+export type WorkspaceOperationStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+export interface WorkspaceOperationResponse {
+  id: string;
+  type: WorkspaceOperationType;
+  status: WorkspaceOperationStatus;
+  workspaceId: string;
+  idempotencyKey: string;
+  createdAt: string;
+  updatedAt: string;
+  result?: unknown;
+  warnings?: unknown[];
+  error?: {
+    code: string;
+    message: string;
+    details?: unknown;
+  };
+}
+
+export interface WorkspaceOperationCreateResponse {
+  operation: WorkspaceOperationResponse;
+}
+
+export interface WorkspaceArtifactDownload {
+  url: string;
+  expiresAt: string;
+}
+
+export type WorkspaceArtifactType = 'zip' | 'patch';
+export type WorkspaceArtifactStatus = 'available' | 'expired';
+
+export interface WorkspaceArtifactResponse {
+  id: string;
+  type: WorkspaceArtifactType;
+  status: WorkspaceArtifactStatus;
+  bytes: number;
+  contentType: string;
+  sha256: string;
+  workspaceId: string;
+  sourceBaselineSha: string;
+  creatorId: string | null;
+  createdAt: string;
+  expiresAt: string;
+  warnings: unknown[];
+  metadata: Record<string, unknown>;
+  download?: WorkspaceArtifactDownload | null;
+}
+
+export interface WorkspaceArtifactListResponse {
+  artifacts: WorkspaceArtifactResponse[];
+}
+
 export type WorkspaceDeploymentStatus = 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
 
 export interface WorkspaceToolchainProfile {
@@ -190,6 +255,7 @@ export interface WorkspaceDeploymentResponse {
 
 export interface WorkspaceDeploymentCreateResponse {
   deployment: WorkspaceDeploymentResponse;
+  reused?: boolean;
 }
 
 export interface WorkspaceDeploymentGetResponse {
@@ -243,6 +309,80 @@ export type ReviewBasis = 'checkpoint' | 'environment';
 export type ReviewSeverity = 'critical' | 'high' | 'medium' | 'low';
 export type ReviewConfidence = 'high' | 'medium' | 'low';
 export type ReviewRecommendation = 'approve' | 'comment' | 'request_changes';
+export type ReviewSessionPhase =
+  | 'preparing'
+  | 'reviewing'
+  | 'fixing'
+  | 'verifying'
+  | 'waiting_on_human'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+export type ReviewSessionStopReason =
+  | 'initial_pass_completed'
+  | 'initial_pass_failed'
+  | 'followup_pass_completed'
+  | 'followup_pass_failed'
+  | 'diminishing_returns'
+  | 'risky_fix_requires_approval'
+  | 'no_safe_fixes'
+  | 'no_progress'
+  | 'max_repair_cycles_reached'
+  | 'auto_remediation_failed'
+  | 'cancelled';
+
+export type ReviewSessionOutcomeKind =
+  | 'clean'
+  | 'converged_with_blockers'
+  | 'blocked'
+  | 'exhausted'
+  | 'cancelled';
+
+export interface ReviewSessionOutcomeFindingSummary {
+  severity: 'info' | 'low' | 'medium' | 'high' | 'critical';
+  category: 'security' | 'logic' | 'style' | 'breaking-change';
+  description: string;
+  filePath: string | null;
+}
+
+export interface ReviewSessionOutcomeSummary {
+  kind: ReviewSessionOutcomeKind;
+  summary: string | null;
+  residualRisk: ReviewSeverity | null;
+  recommendation: ReviewRecommendation | null;
+  materializeReady: boolean;
+  reviewed: {
+    contextMode: 'basic' | 'intent_aware' | null;
+    latestReviewBasis: ReviewBasis | null;
+    passCount: number;
+  };
+  changes: {
+    applied: boolean;
+    remediationCount: number;
+    changedFileCount: number;
+    summaries: string[];
+    environmentRevision: ReviewEnvironmentRevision | null;
+  };
+  evidence: {
+    passed: number;
+    failed: number;
+    warning: number;
+    info: number;
+    highlights: ReviewEvidenceItem[];
+  };
+  unresolved: {
+    findingCount: number;
+    highestSeverity: 'info' | 'low' | 'medium' | 'high' | 'critical' | null;
+    highlights: ReviewSessionOutcomeFindingSummary[];
+  };
+}
+
+export interface ReviewEnvironmentRevision {
+  source: 'workspace_head';
+  diffSha256: string;
+  changedFileCount: number;
+  generatedAt: string;
+}
 
 export interface ReviewSummary {
   riskLevel: ReviewSeverity;
@@ -282,6 +422,7 @@ export interface ReviewRunResponse {
   id: string;
   workspaceId: string;
   deploymentId: string;
+  sessionId: string | null;
   target: {
     type: 'workspace_deployment';
     workspaceId: string;
@@ -319,8 +460,14 @@ export interface ReviewRunResponse {
   provenance: {
     repo: string;
     branch: string;
+    reviewContextMode?: 'basic' | 'intent_aware';
+    reviewContextRef?: {
+      id: string;
+      r2Key: string;
+    } | null;
     sessionIds: string[];
     policyItems: string[];
+    environmentRevision?: ReviewEnvironmentRevision;
     rawSessionPrompts?: string | null;
     intentSummary?: {
       goal: string | null;
@@ -343,21 +490,56 @@ export interface ReviewRunResponse {
   };
 }
 
+export interface ReviewSessionResponse {
+  id: string;
+  workspaceId: string;
+  anchorDeploymentId: string;
+  repo: string;
+  branch: string;
+  initialReviewBasis: ReviewBasis;
+  anchorCommitSha: string | null;
+  anchorCheckpointId: string | null;
+  sourceProjectRoot: string | null;
+  phase: ReviewSessionPhase;
+  passCount: number;
+  activeReviewId: string | null;
+  latestReviewId: string | null;
+  currentReviewStatus: ReviewRunStatus | null;
+  stopReason: ReviewSessionStopReason | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  passes: Array<{
+    reviewId: string;
+    status: ReviewRunStatus;
+    reviewBasis: ReviewBasis;
+    environmentRevision?: ReviewEnvironmentRevision;
+    createdAt: string;
+    startedAt: string | null;
+    finishedAt: string | null;
+  }>;
+  outcome: ReviewSessionOutcomeSummary | null;
+}
+
 export interface ReviewCreateResponse {
   reviewId: string;
+  sessionId?: string | null;
   status: ReviewRunStatus;
   eventsUrl: string;
   resultUrl: string;
+  sessionUrl?: string;
 }
 
 export interface ReviewPolicyDeriveResponse {
   reviewId: string;
+  sessionId?: string | null;
   status: ReviewRunStatus;
   derivedPolicy: {
     goal: string | null;
     prohibitions: string[];
     constraints: string[];
   };
+  sessionUrl?: string;
 }
 
 export interface ReviewPolicyApproveResponse {
@@ -376,6 +558,32 @@ export interface ReviewPolicyResponse {
 
 export interface ReviewGetResponse {
   review: ReviewRunResponse;
+  session?: ReviewSessionResponse;
+}
+
+export interface ReviewSessionGetResponse {
+  session: ReviewSessionResponse;
+}
+
+export interface ReviewSessionListResponse {
+  sessions: ReviewSessionResponse[];
+}
+
+export interface ReviewContextSnapshotFile {
+  path: string;
+  content: string;
+  byteSize: number;
+  source: 'changed' | 'related' | 'convention';
+}
+
+export interface ReviewContextSnapshot {
+  retrieval?: {
+    changedFiles?: ReviewContextSnapshotFile[];
+  };
+}
+
+export interface ReviewContextGetResponse {
+  context: ReviewContextSnapshot;
 }
 
 export interface ReviewEventEnvelope {

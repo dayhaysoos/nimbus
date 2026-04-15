@@ -2,7 +2,7 @@ export const VERSION = '0.1.0';
 
 export function showHelp(): void {
   console.log(`
-nimbus - Entire checkpoint deployment CLI
+nimbus - code review and deployment CLI
 
 Usage:
   nimbus <command> [options]
@@ -26,15 +26,37 @@ Commands:
   workspace deploy <workspace-id>
                        Run deploy preflight, queue deploy, and poll status
   review create --commit [commit-ish]
-                        Create workspace+deployment+review (default policy mode: none)
+                        Create workspace+deployment+review (Entire context optional)
   review create --workspace <id> --deployment <id>
                        Create a report-only review run for an existing deployment
+  review create --session <id>
+                       Create an environment-backed re-review pass in an existing session
   review preflight [commit-ish]
-                       Validate Entire checkpoint/session metadata for review create
+                       Validate review readiness; Entire context upgrades review quality when available
   review policy --commit [commit-ish]
                        Generate review policy from Entire prompt history only
   review show <review-id>
                        Show review status and summary
+  review session show <session-id>
+                       Show review session state and pass history
+  review session list
+                       List recent remote review sessions for the current repo/branch
+  review session latest
+                       Show the most recent remote review session for the current repo/branch
+  review session reset <session-id>
+                       Reset a review session workspace back to baseline
+  review session adopt <session-id>
+                       Create an isolated local branch/worktree from converged session changes
+  review session list-local
+                       List recent local Nimbus materializations for this repo
+  review session diff-local [session-id]
+                       Show the diff between HEAD and a materialized local review branch
+  review session path-local [session-id]
+                       Print the local worktree path for a materialized session
+  review session enter-local [session-id]
+                       Emit a shell command to enter the local worktree or switch the branch
+  review session merge-back [session-id]
+                       Cherry-pick an adopted Nimbus session commit onto the current branch
   review events <review-id>
                        Stream review lifecycle events
   review studio
@@ -68,6 +90,11 @@ Options:
                      Stable idempotency key for workspace deploy retries
   --poll-interval-ms <n>
                       Poll interval for workspace deploy status checks
+  --branch <name>     Managed branch name for review session adoption
+  --path <path>       Destination path for review session local adoption
+  --branch-only       Adopt review session changes into a local branch only
+  --all               For session list/latest: all repos/branches; for list-local: all repos
+  --limit <n>         Limit number of sessions returned by review session list
   --provider <name>   Deploy provider (simulated|cloudflare_workers_assets)
   --output-dir <path> Static build output directory (required for real provider)
   --summarize-session <mode>
@@ -77,9 +104,10 @@ Options:
   --intent-summary-model <name>
                        Intent summary model override for this run
   --strict-entire-context
-                      Require direct Entire checkpoint context (disable branch fallback)
+                      Require direct Entire checkpoint context for intent-aware review mode
   --workspace <id>    Workspace ID for review create
   --deployment <id>   Deployment ID for review create
+  --session <id>      Review session ID for environment-backed re-review
   --commit [value]    Commit-ish for one-command review flow (default: HEAD)
   --policy-mode <mode>
                      Review policy mode (none|auto|review)
@@ -138,6 +166,7 @@ Examples:
   nimbus review create --commit HEAD --project-root apps/web
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234
   nimbus review create --workspace ws_abc12345 --deployment dep_abcd1234 --severity-threshold medium --max-findings 20
+  nimbus review create --session session_abcd1234
   nimbus review create --commit HEAD --model gpt-5.1
   nimbus review create --commit HEAD --last-checkpoints 2
   nimbus review create --checkpoint-range checkpoint:8a513f56ed70..checkpoint:9b624a67fe81
@@ -147,6 +176,21 @@ Examples:
   nimbus review policy --commit HEAD
   nimbus review policy --commit HEAD --base origin/main --model gpt-5.1 --json
   nimbus review show rev_abcd1234
+  nimbus review session show session_abcd1234
+  nimbus review session list
+  nimbus review session list --all --limit 20
+  nimbus review session latest
+  nimbus review session reset session_abcd1234
+  nimbus review session adopt session_abcd1234
+  nimbus review session adopt session_abcd1234 --branch nimbus/fix-math --path .nimbus/studio/worktrees/fix-math
+  nimbus review session adopt session_abcd1234 --branch-only --branch nimbus/fix-math
+  nimbus review session list-local
+  nimbus review session list-local --all
+  nimbus review session diff-local
+  nimbus review session diff-local session_abcd1234 --base main
+  nimbus review session path-local session_abcd1234
+  eval "$(nimbus review session enter-local session_abcd1234)"
+  nimbus review session merge-back session_abcd1234
    nimbus review events rev_abcd1234
    nimbus review studio
    nimbus review studio --detach

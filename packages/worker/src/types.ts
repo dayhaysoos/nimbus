@@ -582,6 +582,8 @@ export interface ReviewContextRelatedFile extends ReviewContextFile {
   supportingSessionIds: string[];
 }
 
+export type ReviewContextMode = 'intent_aware' | 'basic';
+
 export interface ReviewContext {
   id: string;
   reviewId: string;
@@ -589,12 +591,13 @@ export interface ReviewContext {
   deploymentId: string;
   commitSha: string;
   assembledAt: string;
+  contextMode: ReviewContextMode;
   checkpoint: {
-    checkpointId: string;
-    branch: 'entire/checkpoints/v1';
+    checkpointId: string | null;
+    branch: 'entire/checkpoints/v1' | null;
     attributionTrailer: string | null;
     session: {
-      sessionId: string;
+      sessionId: string | null;
       agentType: string | null;
       sessionIntent: string | null;
     };
@@ -605,7 +608,7 @@ export interface ReviewContext {
     relatedFiles: ReviewContextRelatedFile[];
     conventionFiles: ReviewContextFile[];
     coChange: {
-      source: 'entire/checkpoints/v1' | 'local_git';
+      source: 'entire/checkpoints/v1' | 'local_git' | 'none';
       lookbackSessions: number;
       sessionsScanned: number;
       filesConsidered: number;
@@ -652,11 +655,156 @@ export interface ReviewApprovedPolicy {
   constraints: string[];
 }
 
+export type ReviewSessionPhase =
+  | 'preparing'
+  | 'reviewing'
+  | 'fixing'
+  | 'verifying'
+  | 'waiting_on_human'
+  | 'completed'
+  | 'failed'
+  | 'cancelled';
+
+export type ReviewSessionStopReason =
+  | 'initial_pass_completed'
+  | 'initial_pass_failed'
+  | 'followup_pass_completed'
+  | 'followup_pass_failed'
+  | 'diminishing_returns'
+  | 'risky_fix_requires_approval'
+  | 'no_safe_fixes'
+  | 'no_progress'
+  | 'max_repair_cycles_reached'
+  | 'auto_remediation_failed'
+  | 'cancelled';
+
+export type ReviewSessionOutcomeKind =
+  | 'clean'
+  | 'converged_with_blockers'
+  | 'blocked'
+  | 'exhausted'
+  | 'cancelled';
+
+export interface ReviewSessionOutcomeFindingSummary {
+  severity: ReviewFindingSeverityV2;
+  category: ReviewFindingCategory;
+  description: string;
+  filePath: string | null;
+}
+
+export interface ReviewSessionOutcomeSummary {
+  kind: ReviewSessionOutcomeKind;
+  summary: string | null;
+  residualRisk: ReviewSeverity | null;
+  recommendation: ReviewRecommendation | null;
+  materializeReady: boolean;
+  reviewed: {
+    contextMode: ReviewContextMode | null;
+    latestReviewBasis: ReviewBasis | null;
+    passCount: number;
+  };
+  changes: {
+    applied: boolean;
+    remediationCount: number;
+    changedFileCount: number;
+    summaries: string[];
+    environmentRevision: ReviewEnvironmentRevision | null;
+  };
+  evidence: {
+    passed: number;
+    failed: number;
+    warning: number;
+    info: number;
+    highlights: ReviewEvidenceItem[];
+  };
+  unresolved: {
+    findingCount: number;
+    highestSeverity: ReviewFindingSeverityV2 | null;
+    highlights: ReviewSessionOutcomeFindingSummary[];
+  };
+}
+
+export interface ReviewEnvironmentRevision {
+  source: 'workspace_head';
+  diffSha256: string;
+  changedFileCount: number;
+  generatedAt: string;
+}
+
+export interface ReviewSessionPassRecord {
+  id: string;
+  session_id: string | null;
+  status: ReviewRunStatus;
+  request_payload_json: string;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+export interface ReviewSessionPassSummary {
+  reviewId: string;
+  status: ReviewRunStatus;
+  reviewBasis: ReviewBasis;
+  environmentRevision?: ReviewEnvironmentRevision;
+  createdAt: string;
+  startedAt: string | null;
+  finishedAt: string | null;
+}
+
+export interface ReviewSessionRecord {
+  id: string;
+  workspace_id: string;
+  anchor_deployment_id: string;
+  repo: string;
+  branch: string;
+  initial_review_basis: ReviewBasis;
+  anchor_commit_sha: string | null;
+  anchor_checkpoint_id: string | null;
+  source_project_root: string | null;
+  active_review_id: string | null;
+  latest_review_id: string | null;
+  pass_count: number;
+  stop_reason: ReviewSessionStopReason | null;
+  account_id: string | null;
+  created_at: string;
+  updated_at: string;
+  finished_at: string | null;
+}
+
+export interface ReviewSessionResponse {
+  id: string;
+  workspaceId: string;
+  anchorDeploymentId: string;
+  repo: string;
+  branch: string;
+  initialReviewBasis: ReviewBasis;
+  anchorCommitSha: string | null;
+  anchorCheckpointId: string | null;
+  sourceProjectRoot: string | null;
+  phase: ReviewSessionPhase;
+  passCount: number;
+  activeReviewId: string | null;
+  latestReviewId: string | null;
+  currentReviewStatus: ReviewRunStatus | null;
+  stopReason: ReviewSessionStopReason | null;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string | null;
+  passes: ReviewSessionPassSummary[];
+  outcome: ReviewSessionOutcomeSummary | null;
+}
+
+export interface ReviewSessionListResponse {
+  sessions: ReviewSessionResponse[];
+}
+
 export interface ReviewProvenanceSummary {
   repo: string;
   branch: string;
+  reviewContextMode?: ReviewContextMode;
   sessionIds: string[];
   policyItems: string[];
+  environmentRevision?: ReviewEnvironmentRevision;
   rawSessionPrompts?: string | null;
   intentSummary?: ReviewSessionIntentSummary;
   promptSummary: string | null;
@@ -729,6 +877,7 @@ export interface ReviewRunRecord {
   id: string;
   workspace_id: string;
   deployment_id: string;
+  session_id: string | null;
   target_type: ReviewTargetType;
   mode: ReviewMode;
   status: ReviewRunStatus;
@@ -757,6 +906,7 @@ export interface ReviewRunResponse {
   id: string;
   workspaceId: string;
   deploymentId: string;
+  sessionId: string | null;
   target: {
     type: ReviewTargetType;
     workspaceId: string;

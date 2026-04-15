@@ -459,6 +459,11 @@ function createReviewRunnerEnv(options?: {
             bind(status: string, _updatedAt: string, ...values: unknown[]) {
               return {
                 async run() {
+                  const requiredStatusMatch = sql.match(/WHERE\s+id = \?\s+AND status = '([a-z]+)'/i);
+                  const requiredStatus = requiredStatusMatch?.[1] ?? null;
+                  if (requiredStatus && state.status !== requiredStatus) {
+                    return { success: true, meta: { changes: 0 } };
+                  }
                   state.status = status;
                   state.updatedAt = _updatedAt;
                   if (status === 'queued') {
@@ -470,6 +475,7 @@ function createReviewRunnerEnv(options?: {
                       (value === 'retry_scheduled' ||
                         value === 'review_execution_failed' ||
                         value === 'unsupported_without_entire_checkpoint_context' ||
+                        value === 'review_context_workspace_not_found' ||
                         value === 'review_context_deployment_not_found' ||
                         value === 'review_context_storage_unavailable' ||
                         value === 'review_context_budget_exceeded' ||
@@ -612,7 +618,7 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const { env, state } = createReviewRunnerEnv();
     await processReviewRun(env as never, 'rev_abcd1234', { cochangeGithubToken: 'ghp_test_token' });
-    assert.equal(state.status, 'succeeded');
+    assert.equal(state.status, 'succeeded', `${state.errorCode ?? 'no_error_code'} :: ${JSON.stringify(state.events.at(-1) ?? null)}`);
     assert.equal(state.events.some((event) => event.eventType === 'review_preflight_started'), true);
     assert.equal(state.events.some((event) => event.eventType === 'review_finalize_started'), true);
     assert.equal(state.events.some((event) => event.eventType === 'review_succeeded'), true);
@@ -621,6 +627,43 @@ export async function runReviewRunnerTests(): Promise<void> {
     const report = JSON.parse(state.reportJson ?? '{}') as { evidence: Array<{ type: string; status: string }> };
     const validationStarted = report.evidence.find((item) => item.type === 'validation_started');
     assert.equal(validationStarted?.status, 'info');
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv({
+      payload: {
+        reviewBasis: 'environment',
+        provenance: {
+          trigger: 'manual_cli',
+          repo: 'dayhaysoos/nimbus',
+          branch: 'main',
+          environmentRevision: {
+            source: 'workspace_head',
+            diffSha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
+            changedFileCount: 0,
+            generatedAt: '2026-03-11T00:00:00.000Z',
+          },
+        },
+      },
+      deploymentSourceBundleKey: null,
+    });
+    await processReviewRun(env as never, 'rev_abcd1234', { cochangeGithubToken: 'ghp_test_token' });
+    assert.equal(state.status, 'succeeded');
+    const report = JSON.parse(state.reportJson ?? '{}') as {
+      provenance: {
+        environmentRevision?: {
+          source: string;
+          diffSha256: string;
+          changedFileCount: number;
+        };
+        reviewedFiles?: {
+          changed: string[];
+        };
+      };
+    };
+    assert.equal(report.provenance.environmentRevision?.source, 'workspace_head');
+    assert.equal(report.provenance.environmentRevision?.changedFileCount, 0);
+    assert.deepEqual(report.provenance.reviewedFiles?.changed ?? [], []);
   }
 
   {
@@ -674,8 +717,10 @@ export async function runReviewRunnerTests(): Promise<void> {
   {
     const { env, state } = createReviewRunnerEnv({
       deploymentRequestProvenance: {
+        reviewContextMode: 'intent_aware',
         rawSessionPrompts: null,
         intentSessionContext: [],
+        sessionIds: ['ses_1'],
       },
     });
     await processReviewRun(env as never, 'rev_abcd1234');
@@ -684,6 +729,18 @@ export async function runReviewRunnerTests(): Promise<void> {
       | { eventType: string; payload: { code?: string } }
       | undefined;
     assert.equal(failedEvent?.payload?.code, 'review_context_prompt_history_missing');
+  }
+
+  {
+    const { env, state } = createReviewRunnerEnv({
+      deploymentRequestProvenance: {
+        rawSessionPrompts: null,
+        intentSessionContext: [],
+        sessionIds: [],
+      },
+    });
+    await processReviewRun(env as never, 'rev_abcd1234');
+    assert.equal(state.status, 'succeeded');
   }
 
   {
@@ -1129,6 +1186,21 @@ export async function runReviewRunnerTests(): Promise<void> {
                   } as T;
                 }
                 return row as T;
+              },
+            };
+          },
+        };
+      }
+      if (/UPDATE review_runs SET status =/i.test(sql)) {
+        return {
+          bind(...args: unknown[]) {
+            const bound = statement.bind(...args);
+            if (!manuallyFailed) {
+              return bound;
+            }
+            return {
+              async run() {
+                return { success: true, meta: { changes: 0 } };
               },
             };
           },
@@ -1850,6 +1922,95 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
+    let bundleReads = 0;
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes("print(json.dumps({'content': text, 'truncated': truncated, 'bytes': len(data)}))")) {
+          return {
+            stdout: JSON.stringify({ content: 'export const value = 1;\n', truncated: false, bytes: 24 }),
+            stderr: '',
+            exitCode: 0,
+          };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = originalFetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        payload: {
+          provenance: {
+            repo: 'dayhaysoos/nimbus',
+            branch: 'main',
+            sessionIds: ['ses_123'],
+            commitDiffPatch: [
+              'diff --git a/src/example.ts b/src/example.ts',
+              'index 1111111..2222222 100644',
+              '--- a/src/example.ts',
+              '+++ b/src/example.ts',
+              '@@ -1 +1 @@',
+              '-export const value = 0;',
+              '+export const value = 1;',
+            ].join('\n'),
+            localCochange: {
+              source: 'local_git',
+              lookbackSessions: 5,
+              topN: 5,
+              sessionsScanned: 3,
+              relatedByChangedPath: {
+                'src/example.ts': [
+                  {
+                    path: 'src/related.ts',
+                    frequency: 2,
+                    sessionIds: ['ses_prev_1', 'ses_prev_2'],
+                  },
+                ],
+              },
+            },
+          },
+        },
+        envOverrides: {
+          AGENT_SDK_URL: '',
+          OPENROUTER_API_KEY: '',
+          WORKSPACE_ARTIFACTS: undefined,
+          SOURCE_BUNDLES: {
+            async get(key: string) {
+              if (key === 'bundle') {
+                bundleReads += 1;
+                return {
+                  async arrayBuffer() {
+                    return new TextEncoder().encode('artifact bundle bytes').buffer;
+                  },
+                };
+              }
+              return null;
+            },
+            async put() {
+              return;
+            },
+          },
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      assert.equal(bundleReads, 1);
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
     globalThis.fetch = (async (): Promise<Response> => {
       throw new Error('review agent should not be called when deployment snapshot is unavailable');
     }) as typeof fetch;
@@ -2038,7 +2199,7 @@ export async function runReviewRunnerTests(): Promise<void> {
     });
     await processReviewRun(env as never, 'rev_abcd1234', { cochangeGithubToken: null });
     assert.equal(state.status, 'failed');
-    assert.equal(state.errorCode, 'unsupported_without_entire_checkpoint_context');
+    assert.equal(state.errorCode, 'review_context_workspace_not_found');
     assert.equal(state.events.some((event) => event.eventType === 'review_context_assembly_failed'), true);
   }
 

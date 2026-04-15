@@ -2,6 +2,8 @@ import { execFileSync } from 'child_process';
 import type { CommitHistoryEntry, TreeFileEntry } from './resolver.js';
 
 const LARGE_GIT_OUTPUT_MAX_BUFFER_BYTES = 64 * 1024 * 1024;
+const GIT_EAGAIN_RETRIES = 10;
+const GIT_EAGAIN_SLEEP_MS = 100;
 
 export function parseGitLogOutput(output: string): CommitHistoryEntry[] {
   const records = output.split('\u001e').map((record) => record.trim()).filter(Boolean);
@@ -64,6 +66,58 @@ function normalizeGitError(error: unknown): string {
   return String(error);
 }
 
+function isGitEagainError(error: unknown): boolean {
+  if (error && typeof error === 'object') {
+    const maybeError = error as { code?: string; message?: string };
+    if (maybeError.code === 'EAGAIN') {
+      return true;
+    }
+    if (typeof maybeError.message === 'string' && (maybeError.message.includes('EAGAIN') || maybeError.message.includes('Resource temporarily unavailable') || maybeError.message.includes('cannot fork()'))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function sleepSync(ms: number): void {
+  const end = Date.now() + ms;
+  while (Date.now() < end) {
+    // short synchronous retry backoff for spawnSync git EAGAIN
+  }
+}
+
+function execGitSync(
+  cwd: string,
+  args: string[],
+  options?: { encoding?: 'utf8'; maxBuffer?: number; stdio?: ['ignore', 'pipe', 'pipe'] }
+): string {
+  for (let attempt = 0; attempt < GIT_EAGAIN_RETRIES; attempt += 1) {
+    try {
+      const output = execFileSync('git', args, {
+        cwd,
+        encoding: options?.encoding ?? 'utf8',
+        maxBuffer: options?.maxBuffer,
+        stdio: options?.stdio ?? ['ignore', 'pipe', 'pipe'],
+      }) as string | Buffer | null;
+      if (output == null) {
+        return '';
+      }
+      if (typeof output === 'string') {
+        return output;
+      }
+      return output.toString('utf8');
+    } catch (error) {
+      if (isGitEagainError(error) && attempt < GIT_EAGAIN_RETRIES - 1) {
+        sleepSync(GIT_EAGAIN_SLEEP_MS * (attempt + 1));
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error(`git ${args.join(' ')} failed: exhausted retry attempts`);
+}
+
 export class GitRepo {
   private readonly cwd: string;
 
@@ -73,13 +127,10 @@ export class GitRepo {
 
   private resolveRepoRoot(cwd: string): string {
     try {
-      return execFileSync('git', ['rev-parse', '--show-toplevel'], {
-        cwd,
+      return execGitSync(cwd, ['rev-parse', '--show-toplevel'], {
         encoding: 'utf8',
         stdio: ['ignore', 'pipe', 'pipe'],
-      })
-        .toString()
-        .trim();
+      }).trim();
     } catch (error) {
       throw new Error(`Unable to locate git repository root from ${cwd}: ${normalizeGitError(error)}`);
     }
@@ -91,12 +142,11 @@ export class GitRepo {
 
   run(args: string[], options?: { maxBuffer?: number }): string {
     try {
-      return execFileSync('git', args, {
-        cwd: this.cwd,
+      return execGitSync(this.cwd, args, {
         encoding: 'utf8',
         maxBuffer: options?.maxBuffer,
         stdio: ['ignore', 'pipe', 'pipe'],
-      }).toString();
+      });
     } catch (error) {
       throw new Error(`git ${args.join(' ')} failed: ${normalizeGitError(error)}`);
     }

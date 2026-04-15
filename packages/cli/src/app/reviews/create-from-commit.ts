@@ -1,7 +1,7 @@
 import * as p from '@clack/prompts';
 import { mkdir, writeFile } from 'fs/promises';
 import { dirname, isAbsolute, resolve } from 'path';
-import { approveReviewPolicy, createReview, deriveReviewPolicy, getReview, streamReviewEvents } from '../../clients/worker/reviews.js';
+import { approveReviewPolicy, createReview, deriveReviewPolicy, getReview, getReviewSession, streamReviewEvents } from '../../clients/worker/reviews.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { formatEvent } from '../../commands/review/events.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
@@ -15,18 +15,21 @@ import {
   buildStudioReviewRoutePath,
   buildIdempotencyKey,
   deriveIdempotencyKey,
+  followReviewChain,
   formatReviewExecutionFailure,
   normalizeResultUrl,
   ReviewCreateProvenance,
-  sleep,
 } from './create-shared.js';
 import { startReviewStudioCommand } from './open.js';
+import { isTerminalReviewSessionPhase, maybeOfferReviewSessionAdoption } from './adoption.js';
+import { printReviewSessionOutcome } from './session-outcome.js';
 
 let createReviewForCommitFlow: typeof createReview = createReview;
 let deriveReviewPolicyForCommitFlow: typeof deriveReviewPolicy = deriveReviewPolicy;
 let approveReviewPolicyForCommitFlow: typeof approveReviewPolicy = approveReviewPolicy;
 let streamReviewEventsForCommitFlow: typeof streamReviewEvents = streamReviewEvents;
 let getReviewForCommitFlow: typeof getReview = getReview;
+let getReviewSessionForCommitFlow: typeof getReviewSession = getReviewSession;
 
 export { setReviewCommitResolverForTests };
 
@@ -39,6 +42,7 @@ export function setReviewCreateFlowForTests(
         createReview?: typeof createReviewForCommitFlow;
         streamReviewEvents?: typeof streamReviewEventsForCommitFlow;
         getReview?: typeof getReviewForCommitFlow;
+        getReviewSession?: typeof getReviewSessionForCommitFlow;
         resolveLocalCochange?: ReviewContextFlowOverrides['resolveLocalCochange'];
         deriveReviewPolicy?: typeof deriveReviewPolicyForCommitFlow;
         approveReviewPolicy?: typeof approveReviewPolicyForCommitFlow;
@@ -60,33 +64,7 @@ export function setReviewCreateFlowForTests(
   approveReviewPolicyForCommitFlow = overrides?.approveReviewPolicy ?? approveReviewPolicy;
   streamReviewEventsForCommitFlow = overrides?.streamReviewEvents ?? streamReviewEvents;
   getReviewForCommitFlow = overrides?.getReview ?? getReview;
-}
-
-async function pollReviewUntilTerminalStatus(
-  workerUrl: string,
-  reviewId: string,
-  options?: { intervalMs?: number; timeoutMs?: number }
-): Promise<Awaited<ReturnType<typeof getReviewForCommitFlow>>> {
-  const intervalMs =
-    typeof options?.intervalMs === 'number' && Number.isFinite(options.intervalMs)
-      ? Math.max(1_000, Math.min(10_000, Math.floor(options.intervalMs)))
-      : 2_000;
-  const timeoutMs =
-    typeof options?.timeoutMs === 'number' && Number.isFinite(options.timeoutMs)
-      ? Math.max(10_000, Math.min(30 * 60_000, Math.floor(options.timeoutMs)))
-      : 10 * 60_000;
-  const deadline = Date.now() + timeoutMs;
-
-  while (true) {
-    const latest = await getReviewForCommitFlow(workerUrl, reviewId);
-    if (latest.review.status !== 'queued' && latest.review.status !== 'running') {
-      return latest;
-    }
-    if (Date.now() >= deadline) {
-      return latest;
-    }
-    await sleep(intervalMs);
-  }
+  getReviewSessionForCommitFlow = overrides?.getReviewSession ?? getReviewSession;
 }
 
 export async function createReviewFromCommitCommand(
@@ -109,6 +87,7 @@ export async function createReviewFromCommitCommand(
     includeProvenance?: boolean;
     includeValidationEvidence?: boolean;
     pollIntervalMs?: number;
+    workspaceReadyTimeoutMs?: number;
   }
 ): Promise<void> {
   const workerUrl = getWorkerUrl();
@@ -119,8 +98,46 @@ export async function createReviewFromCommitCommand(
   let workspaceId = '';
   let deploymentId = '';
   let reviewId = '';
+  let reviewSessionId: string | null = null;
   let reviewResultUrl = '';
   let resolvedProvenance: ReviewCreateProvenance | null = null;
+  const outputReviewIdRaw = options?.outputReviewIdPath;
+  const outputReviewIdPath = outputReviewIdRaw?.trim();
+  if (outputReviewIdRaw !== undefined && !outputReviewIdPath) {
+    p.log.warning('Ignoring --output-review-id because the provided path is empty.');
+  }
+  const writeOutputReviewId = async (resolvedReviewId: string): Promise<void> => {
+    if (!outputReviewIdPath) {
+      return;
+    }
+    try {
+      const repoRoot = new GitRepo(process.cwd()).getRepoRoot();
+      const workspaceDir =
+        typeof process.env.GITHUB_WORKSPACE === 'string' && process.env.GITHUB_WORKSPACE.trim()
+          ? process.env.GITHUB_WORKSPACE.trim()
+          : null;
+      let baseDir = repoRoot;
+      if (workspaceDir) {
+        const resolvedWorkspaceDir = resolve(workspaceDir);
+        const resolvedRepoRoot = resolve(repoRoot);
+        if (resolvedWorkspaceDir === resolvedRepoRoot || resolvedWorkspaceDir.startsWith(`${resolvedRepoRoot}/`)) {
+          baseDir = resolvedWorkspaceDir;
+        } else {
+          p.log.warning(
+            `Ignoring GITHUB_WORKSPACE=${workspaceDir} because it is outside the repository root; resolving --output-review-id from repo root instead.`
+          );
+        }
+      }
+      const absolutePath = isAbsolute(outputReviewIdPath) ? outputReviewIdPath : resolve(baseDir, outputReviewIdPath);
+      await mkdir(dirname(absolutePath), { recursive: true });
+      await writeFile(absolutePath, `${resolvedReviewId}\n`, 'utf8');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      throw new Error(
+        `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review creation failed because downstream automation expects this file.`
+      );
+    }
+  };
   const policyMode = options?.policyMode ?? 'none';
   const reviewBasis = options?.reviewBasis ?? 'checkpoint';
   const spinner = p.spinner();
@@ -133,15 +150,20 @@ export async function createReviewFromCommitCommand(
     projectRoot: options?.projectRoot,
     idempotencyKey: options?.idempotencyKey,
     pollIntervalMs: options?.pollIntervalMs,
+    workspaceReadyTimeoutMs: options?.workspaceReadyTimeoutMs,
     intentSummaryModel: options?.intentSummaryModel,
   });
   workspaceId = resolved.workspaceId;
   deploymentId = resolved.deploymentId;
   resolvedProvenance = resolved.resolvedProvenance;
+  const effectivePolicyMode =
+    resolvedProvenance?.reviewContextMode === 'basic' && policyMode !== 'none'
+      ? (p.log.warning('Entire intent context is unavailable for this target; skipping policy derivation and continuing with a basic review.'), 'none' as const)
+      : policyMode;
 
   spinner.start('Creating review...');
   try {
-    if (policyMode === 'none') {
+    if (effectivePolicyMode === 'none') {
       const reviewIdempotencyKey = options?.idempotencyKey?.trim()
         ? deriveIdempotencyKey(options.idempotencyKey, 'review')
         : buildIdempotencyKey(workspaceId, deploymentId);
@@ -152,7 +174,7 @@ export async function createReviewFromCommitCommand(
           deploymentId,
         },
         mode: 'report_only',
-        policyMode,
+        policyMode: effectivePolicyMode,
         reviewBasis,
         policy: {
           severityThreshold: options?.severityThreshold ?? 'low',
@@ -164,17 +186,19 @@ export async function createReviewFromCommitCommand(
         provenance: resolvedProvenance ?? undefined,
       });
       reviewId = response.reviewId;
+      reviewSessionId = response.sessionId ?? null;
       reviewResultUrl = normalizeResultUrl(workerUrl, response.resultUrl);
       spinner.stop(`Review queued: ${reviewId}`);
     } else {
       const derived = await deriveReviewPolicyForCommitFlow(workerUrl, {
         workspaceId,
         deploymentId,
-        policyMode,
+        policyMode: effectivePolicyMode,
         reviewBasis,
         provenance: resolvedProvenance ?? undefined,
       });
       reviewId = derived.reviewId;
+      reviewSessionId = derived.sessionId ?? null;
       reviewResultUrl = normalizeResultUrl(workerUrl, `/api/reviews/${encodeURIComponent(reviewId)}`);
       if (policyMode === 'auto') {
         await approveReviewPolicyForCommitFlow(workerUrl, reviewId, { approvedPolicy: derived.derivedPolicy });
@@ -184,48 +208,14 @@ export async function createReviewFromCommitCommand(
       }
     }
 
-    const outputReviewIdRaw = options?.outputReviewIdPath;
-    const outputReviewIdPath = outputReviewIdRaw?.trim();
-    if (outputReviewIdRaw !== undefined && !outputReviewIdPath) {
-      p.log.warning('Ignoring --output-review-id because the provided path is empty.');
-    }
-    if (outputReviewIdPath) {
-      try {
-        const repoRoot = new GitRepo(process.cwd()).getRepoRoot();
-        const workspaceDir = typeof process.env.GITHUB_WORKSPACE === 'string' && process.env.GITHUB_WORKSPACE.trim()
-          ? process.env.GITHUB_WORKSPACE.trim()
-          : null;
-        let baseDir = repoRoot;
-        if (workspaceDir) {
-          const resolvedWorkspaceDir = resolve(workspaceDir);
-          const resolvedRepoRoot = resolve(repoRoot);
-          if (
-            resolvedWorkspaceDir === resolvedRepoRoot ||
-            resolvedWorkspaceDir.startsWith(`${resolvedRepoRoot}/`)
-          ) {
-            baseDir = resolvedWorkspaceDir;
-          } else {
-            p.log.warning(
-              `Ignoring GITHUB_WORKSPACE=${workspaceDir} because it is outside the repository root; resolving --output-review-id from repo root instead.`
-            );
-          }
-        }
-        const absolutePath = isAbsolute(outputReviewIdPath)
-          ? outputReviewIdPath
-          : resolve(baseDir, outputReviewIdPath);
-        await mkdir(dirname(absolutePath), { recursive: true });
-        await writeFile(absolutePath, `${reviewId}\n`, 'utf8');
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        throw new Error(
-          `Could not write review ID file at ${outputReviewIdPath}: ${message}. Review creation failed because downstream automation expects this file.`
-        );
-      }
-    }
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     spinner.stop('Review creation failed');
     throw new Error(`Review flow failed at review creation: ${message}`);
+  }
+
+  if (reviewSessionId) {
+    p.log.message(`Review session: ${reviewSessionId}`);
   }
 
   if (options?.openStudio) {
@@ -241,53 +231,56 @@ export async function createReviewFromCommitCommand(
     });
   }
 
-  if (policyMode === 'review') {
+  if (effectivePolicyMode === 'review') {
+    await writeOutputReviewId(reviewId);
     p.log.message('Policy review is required before execution. Open the Review Run page and approve policy to start the run.');
     console.log(`Report URL: ${reviewResultUrl}`);
     return;
   }
 
   p.log.info(`Streaming review events for ${reviewId}`);
-  let terminalStatus: string | null = null;
-  let lastFailureEvent: Record<string, unknown> | null = null;
-  let streamErrorMessage: string | null = null;
-  try {
-    await streamReviewEventsForCommitFlow(workerUrl, reviewId, async (event) => {
-      const line = formatEvent(event);
-      if (line) {
-        console.log(line);
-      }
-      if (
-        event.data.type === 'review_context_cochange_failed' ||
-        event.data.type === 'review_context_assembly_failed' ||
-        event.data.type === 'review_failed'
-      ) {
-        lastFailureEvent = event.data;
-      }
-      if (event.data.type === 'terminal' && typeof event.data.status === 'string') {
-        terminalStatus = event.data.status;
-      }
-    });
-  } catch (error) {
-    streamErrorMessage = error instanceof Error ? error.message : String(error);
-    p.log.warning(`Event stream interrupted before terminal status: ${streamErrorMessage}`);
-  }
+  const final = await followReviewChain({
+    workerUrl,
+    initialReviewId: reviewId,
+    initialResultUrl: reviewResultUrl,
+    streamReviewEvents: streamReviewEventsForCommitFlow,
+    getReview: getReviewForCommitFlow,
+    getReviewSession: getReviewSessionForCommitFlow,
+    formatEvent,
+    onStreamWarning: (message) => p.log.warning(message),
+    onFollowupReview: (nextReviewId) => p.log.info(`Continuing review session with follow-up pass ${nextReviewId}`),
+    pollIntervalMs: options?.pollIntervalMs,
+  });
 
-  let final = await getReviewForCommitFlow(workerUrl, reviewId);
-  if (!terminalStatus && (final.review.status === 'queued' || final.review.status === 'running')) {
-    p.log.warning('Review still in progress after event stream ended; falling back to status polling.');
-    final = await pollReviewUntilTerminalStatus(workerUrl, reviewId, {
-      intervalMs: options?.pollIntervalMs,
-    });
-  }
-
-  const status = typeof terminalStatus === 'string' ? terminalStatus : final.review.status;
-  if (status !== 'succeeded') {
-    if (streamErrorMessage) {
-      p.log.warning(`Latest stream interruption detail: ${streamErrorMessage}`);
+  if (final.finalReview.review.status !== 'succeeded') {
+    if (
+      final.finalReview.review.status === 'policy_pending' ||
+      final.finalReview.review.status === 'policy_ready'
+    ) {
+      await writeOutputReviewId(final.finalReviewId);
+      p.log.message('Review is waiting on policy approval before execution can continue.');
+      console.log(`Report URL: ${final.finalResultUrl}`);
+      return;
     }
-    throw new Error(formatReviewExecutionFailure(status, final.review, lastFailureEvent));
+    if (final.finalReview.review.status === 'policy_approved') {
+      await writeOutputReviewId(final.finalReviewId);
+      p.log.message('Policy is approved; execution is starting. Continue watching review events for completion.');
+      console.log(`Report URL: ${final.finalResultUrl}`);
+      return;
+    }
+    await writeOutputReviewId(final.finalReviewId);
+    throw new Error(formatReviewExecutionFailure(final.finalReview.review.status, final.finalReview.review, final.lastFailureEvent));
   }
 
-  console.log(`Report URL: ${reviewResultUrl}`);
+  await writeOutputReviewId(final.finalReviewId);
+  const finalSession = final.finalSession ?? final.finalReview.session ?? null;
+  if (finalSession && isTerminalReviewSessionPhase(finalSession.phase) && !final.sessionContinuationPending) {
+    printReviewSessionOutcome(finalSession, { detailed: false, heading: 'Session Outcome:' });
+  }
+  console.log(`Report URL: ${final.finalResultUrl}`);
+  if (finalSession && (!isTerminalReviewSessionPhase(finalSession.phase) || final.sessionContinuationPending)) {
+    p.log.message(`Review session ${finalSession.id} is still active. Continue watching with \`nimbus review session show ${finalSession.id}\`.`);
+    return;
+  }
+  await maybeOfferReviewSessionAdoption(finalSession);
 }

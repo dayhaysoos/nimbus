@@ -72,6 +72,7 @@ export async function buildWorkspaceDeploymentReport(
     contextResolutionResolvedCheckpointId: inputs.contextResolutionResolvedCheckpointId,
     contextResolutionResolvedCommitSha: inputs.contextResolutionResolvedCommitSha,
     contextResolutionResolvedCommitMessage: inputs.contextResolutionResolvedCommitMessage,
+    reviewContextMode: inputs.reviewContextMode,
     advisories: inputs.advisories,
     agentAnalysis,
     deploymentEvents,

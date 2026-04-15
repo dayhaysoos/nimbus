@@ -16,6 +16,7 @@ const LONG_VALUE_FLAGS = new Set([
   'output-dir',
   'workspace',
   'deployment',
+  'session',
   'format',
   'out',
   'severity-threshold',
@@ -32,6 +33,9 @@ const LONG_VALUE_FLAGS = new Set([
   'policy-mode',
   'last-checkpoints',
   'checkpoint-range',
+  'branch',
+  'path',
+  'limit',
 ]);
 const OPTIONAL_VALUE_FLAGS = new Set([
   'commit',

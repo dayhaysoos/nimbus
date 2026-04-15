@@ -1,6 +1,7 @@
 import * as p from '@clack/prompts';
 import { getReview } from '../../clients/worker/reviews.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
+import { printReviewSessionOutcome } from '../../app/reviews/session-outcome.js';
 
 export async function showReviewCommand(reviewId: string): Promise<void> {
   const workerUrl = getWorkerUrl();
@@ -8,15 +9,17 @@ export async function showReviewCommand(reviewId: string): Promise<void> {
     throw new Error('NIMBUS_WORKER_URL environment variable is required');
   }
 
-  const { review } = await getReview(workerUrl, reviewId);
+  const { review, session } = await getReview(workerUrl, reviewId);
 
   p.log.info(`Review ${review.id}`);
   console.log('');
   console.log(`  Status:          ${review.status}`);
   console.log(`  Workspace ID:    ${review.workspaceId}`);
   console.log(`  Deployment ID:   ${review.deploymentId}`);
+  console.log(`  Session ID:      ${review.sessionId ?? 'none'}`);
   console.log(`  Target:          ${review.target.type}`);
   console.log(`  Mode:            ${review.mode}`);
+  console.log(`  Basis:           ${review.reviewBasis ?? 'checkpoint'}`);
   console.log(`  Recommendation:  ${review.summary?.recommendation ?? 'pending'}`);
   console.log(`  Risk Level:      ${review.summary?.riskLevel ?? 'pending'}`);
   console.log(`  Findings:        ${review.findings.length}`);
@@ -24,6 +27,15 @@ export async function showReviewCommand(reviewId: string): Promise<void> {
   console.log(`  Updated At:      ${review.updatedAt}`);
   if (review.error) {
     console.log(`  Error:           ${review.error.code}: ${review.error.message}`);
+  }
+  if (session) {
+    console.log(`  Session Phase:   ${session.phase}`);
+    console.log(`  Session Passes:  ${session.passCount}`);
+    console.log(`  Session Stop:    ${session.stopReason ?? 'active'}`);
+    printReviewSessionOutcome(session, { detailed: false });
+  }
+  if (review.provenance.environmentRevision) {
+    console.log(`  Env Revision:    ${review.provenance.environmentRevision.diffSha256.slice(0, 12)} (${review.provenance.environmentRevision.changedFileCount} changed files)`);
   }
 
   if (review.intent?.goal) {

@@ -1,16 +1,22 @@
 import * as p from '@clack/prompts';
 import { workspaceDeployCommand } from '../../commands/workspace/deploy.js';
 import { createWorkspaceFromResolvedSource, resolveWorkspaceSource } from '../../commands/workspace/create.js';
+import {
+  getWorkspace as getWorkspaceFromWorker,
+  WorkspaceCreateInProgressError,
+} from '../../clients/worker/workspaces.js';
+import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { resolveCochangeFromLocalGit } from '../../lib/entire/context.js';
 import {
   type IncludedCheckpointSummary,
   setReviewPreflightCommitResolverForTests,
   type ReviewEntireContextResolution,
+  type ReviewContextMode,
+  resolveReviewCommitTarget,
   validateReviewCochangeTokenReadiness,
-  validateReviewCommitCheckpoint,
   validateReviewEntireIntentContext,
 } from '../../commands/review/preflight.js';
-import type { WorkspaceDeploymentResponse, WorkspaceResponse } from '../../lib/types.js';
+import type { WorkspaceDeploymentResponse } from '../../lib/types.js';
 import {
   COCHANGE_LOOKBACK_SESSIONS,
   COCHANGE_TOP_N,
@@ -21,6 +27,7 @@ import {
   normalizeCommitDiffPatch,
   parseChangedPathsFromDiff,
   resolveReviewGitProvenance,
+  sleep,
 } from './create-shared.js';
 
 interface CommitResolution {
@@ -43,9 +50,43 @@ export interface ResolveReviewContextOptions {
   projectRoot?: string;
   idempotencyKey?: string;
   pollIntervalMs?: number;
+  workspaceReadyTimeoutMs?: number;
   intentSummaryModel?: string;
   signal?: AbortSignal;
   onProgress?: (event: ResolveReviewContextProgressEvent) => void | Promise<void>;
+}
+
+const DEFAULT_WORKSPACE_READY_TIMEOUT_MS = 10 * 60_000;
+
+function createAbortError(): Error {
+  const error = new Error('The operation was aborted.');
+  error.name = 'AbortError';
+  return error;
+}
+
+async function sleepWithAbort(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) {
+    await sleep(ms);
+    return;
+  }
+  if (signal.aborted) {
+    throw createAbortError();
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort);
+      resolve();
+    }, ms);
+
+    const onAbort = () => {
+      clearTimeout(timeout);
+      signal.removeEventListener('abort', onAbort);
+      reject(createAbortError());
+    };
+
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
 }
 
 function mergeCheckpointContexts(input: {
@@ -157,7 +198,8 @@ let createWorkspaceForCommitFlow: (source: {
   checkpointId: string | null;
   sourceRef: string | null;
   projectRoot: string;
-}) => Promise<{ workspace: WorkspaceResponse }> = createWorkspaceFromResolvedSource;
+}, options?: { idempotencyKey?: string }) => Promise<Awaited<ReturnType<typeof createWorkspaceFromResolvedSource>>> =
+  createWorkspaceFromResolvedSource;
 let resolveWorkspaceSourceForCommitFlow: typeof resolveWorkspaceSource = resolveWorkspaceSource;
 let deployWorkspaceForCommitFlow: (
   workspaceId: string,
@@ -187,6 +229,41 @@ export function setReviewContextFlowForTests(overrides: ReviewContextFlowOverrid
   resolveLocalCochangeForCommitFlow = overrides?.resolveLocalCochange ?? resolveCochangeFromLocalGit;
 }
 
+async function waitForWorkspaceReadyFromIdempotentInProgress(
+  workspaceId: string,
+  options?: { pollIntervalMs?: number; timeoutMs?: number; signal?: AbortSignal }
+): Promise<Awaited<ReturnType<typeof createWorkspaceFromResolvedSource>>> {
+  const workerUrl = getWorkerUrl();
+  if (!workerUrl) {
+    throw new Error('NIMBUS_WORKER_URL environment variable is required for workspace creation.');
+  }
+
+  const pollIntervalMs = Math.max(250, options?.pollIntervalMs ?? 1500);
+  const timeoutMs =
+    typeof options?.timeoutMs === 'number' && Number.isFinite(options.timeoutMs) && options.timeoutMs > 0
+      ? Math.floor(options.timeoutMs)
+      : DEFAULT_WORKSPACE_READY_TIMEOUT_MS;
+  const deadline = Date.now() + timeoutMs;
+
+  while (true) {
+    if (options?.signal?.aborted) {
+      throw createAbortError();
+    }
+    if (Date.now() >= deadline) {
+      throw new Error(`Timed out waiting for workspace ${workspaceId} to become ready`);
+    }
+
+    const workspace = await getWorkspaceFromWorker(workerUrl, workspaceId);
+    if (workspace.status === 'ready') {
+      return { workspace, reused: true };
+    }
+    if (workspace.status === 'failed' || workspace.status === 'deleted') {
+      throw new Error(`Workspace ${workspaceId} ended in non-ready state: ${workspace.status}`);
+    }
+    await sleepWithAbort(pollIntervalMs, options?.signal);
+  }
+}
+
 /**
  * Orchestrates review context setup from a commit by validating Entire metadata,
  * creating a workspace, deploying it, then assembling provenance for review creation.
@@ -207,7 +284,7 @@ export async function resolveReviewContext(
         };
 
   let commitSha = '';
-  let checkpointId = '';
+  let checkpointId: string | null = null;
   let commitDiffPatch = '';
   let includedCheckpoints: IncludedCheckpointSummary[] = [];
   let checkpointSelectionMode: 'latest' | 'last_n' | 'range' = 'latest';
@@ -217,6 +294,7 @@ export async function resolveReviewContext(
   let commitDiffPatchTruncated = false;
   let commitDiffPatchOriginalChars = 0;
   let entireContextResolution: ReviewEntireContextResolution | null = null;
+  let reviewContextMode: ReviewContextMode = 'intent_aware';
   let localCochange:
     | {
         source: 'local_git';
@@ -240,7 +318,7 @@ export async function resolveReviewContext(
       detail: 'Matching the latest checkpoint to the Home branch target.',
     });
     gitProvenance = resolveReviewGitProvenance();
-    const resolvedCommit = validateReviewCommitCheckpoint(commitish, process.cwd(), {
+    const resolvedCommit = resolveReviewCommitTarget(commitish, process.cwd(), {
       baseRef: options?.baseRef,
       lastCheckpoints: options?.lastCheckpoints,
       checkpointRange: options?.checkpointRange,
@@ -255,34 +333,62 @@ export async function resolveReviewContext(
     commitDiffPatchSha256 = normalizedPatch.sha256;
     commitDiffPatchTruncated = normalizedPatch.truncated;
     commitDiffPatchOriginalChars = normalizedPatch.originalChars;
-    spinner.stop(`Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`);
+    if (!checkpointId) {
+      reviewContextMode = 'basic';
+    }
+    spinner.stop(
+      checkpointId
+        ? `Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}`
+        : `Resolved commit ${commitSha.slice(0, 12)} (basic review mode)`
+    );
     await emitResolveReviewProgress(options, {
       stage: 'checkpoint',
       state: 'completed',
-      label: 'Checkpoint resolved',
-      detail: `Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}.`,
+      label: checkpointId ? 'Checkpoint resolved' : 'Commit resolved',
+      detail: checkpointId
+        ? `Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}.`
+        : `Resolved commit ${commitSha.slice(0, 12)} without Entire checkpoint metadata; continuing in basic review mode.`,
     });
   } catch (error) {
     spinner.stop('Checkpoint resolution failed');
     throw buildReviewFlowStageError('checkpoint resolution', error);
   }
 
-  spinner.start('Validating Entire session metadata...');
-  try {
-    throwIfResolveReviewAborted(options);
-    await emitResolveReviewProgress(options, {
-      stage: 'entire_context',
-      state: 'active',
-      label: 'Reading session context',
-      detail: 'Checking that Entire session metadata is readable for this review target.',
-    });
-    if (includedCheckpoints.length > 1) {
-      const contexts: ReviewEntireContextResolution[] = [];
-      for (const checkpoint of includedCheckpoints) {
-        const context = await validateReviewEntireIntentContext(
+  if (checkpointId) {
+    spinner.start('Validating Entire session metadata...');
+    try {
+      throwIfResolveReviewAborted(options);
+      await emitResolveReviewProgress(options, {
+        stage: 'entire_context',
+        state: 'active',
+        label: 'Reading session context',
+        detail: 'Checking that Entire session metadata is readable for this review target.',
+      });
+      if (includedCheckpoints.length > 1) {
+        const contexts: ReviewEntireContextResolution[] = [];
+        for (const checkpoint of includedCheckpoints) {
+          const context = await validateReviewEntireIntentContext(
+            {
+              commitSha: checkpoint.commitSha,
+              checkpointId: checkpoint.checkpointId,
+            },
+            {
+              summarizeSession: 'auto',
+              allowBranchFallback: true,
+            },
+            process.cwd()
+          );
+          contexts.push(context);
+        }
+        entireContextResolution = mergeCheckpointContexts({
+          contexts,
+          includedCheckpoints,
+        });
+      } else {
+        entireContextResolution = await validateReviewEntireIntentContext(
           {
-            commitSha: checkpoint.commitSha,
-            checkpointId: checkpoint.checkpointId,
+            commitSha,
+            checkpointId,
           },
           {
             summarizeSession: 'auto',
@@ -290,104 +396,117 @@ export async function resolveReviewContext(
           },
           process.cwd()
         );
-        contexts.push(context);
       }
-      entireContextResolution = mergeCheckpointContexts({
-        contexts,
-        includedCheckpoints,
-      });
-    } else {
-      entireContextResolution = await validateReviewEntireIntentContext(
-        {
-          commitSha,
-          checkpointId,
-        },
-        {
-          summarizeSession: 'auto',
-          allowBranchFallback: true,
-        },
-        process.cwd()
-      );
-    }
 
-    spinner.stop(
-      entireContextResolution.contextResolution === 'branch_fallback'
-        ? `Entire session metadata resolved via branch fallback (${entireContextResolution.resolvedCheckpointId})`
-        : 'Entire session metadata is readable'
-    );
+      spinner.stop(
+        entireContextResolution.contextResolution === 'branch_fallback'
+          ? `Entire session metadata resolved via branch fallback (${entireContextResolution.resolvedCheckpointId})`
+          : 'Entire session metadata is readable'
+      );
+      await emitResolveReviewProgress(options, {
+        stage: 'entire_context',
+        state: 'completed',
+        label: 'Session context ready',
+        detail:
+          entireContextResolution.contextResolution === 'branch_fallback'
+            ? `Using fallback checkpoint ${entireContextResolution.resolvedCheckpointId} from ${entireContextResolution.commitsAgo} commit(s) ago.`
+            : 'Readable Entire session metadata found for the current checkpoint.',
+      });
+      if (entireContextResolution.contextResolution === 'branch_fallback') {
+        p.log.warning(
+          `Using fallback Entire context from commit ${entireContextResolution.resolvedCommitSha.slice(0, 7)} ('${entireContextResolution.resolvedCommitSubject}') ${entireContextResolution.commitsAgo} commits ago.`
+        );
+      }
+    } catch (error) {
+      throwIfResolveReviewAbortError(error);
+      reviewContextMode = 'basic';
+      entireContextResolution = null;
+      spinner.stop('Entire session metadata unavailable; continuing in basic review mode');
+      p.log.warning(
+        `Entire session context was not available for checkpoint ${checkpointId}. Nimbus will continue with a basic diff/code-aware review.`
+      );
+      p.log.warning(toErrorMessage(error));
+      await emitResolveReviewProgress(options, {
+        stage: 'entire_context',
+        state: 'completed',
+        label: 'Session context unavailable',
+        detail: `Entire session metadata could not be read for checkpoint ${checkpointId}; continuing in basic review mode.`,
+      });
+    }
+  } else {
     await emitResolveReviewProgress(options, {
       stage: 'entire_context',
       state: 'completed',
-      label: 'Session context ready',
-      detail:
-        entireContextResolution.contextResolution === 'branch_fallback'
-          ? `Using fallback checkpoint ${entireContextResolution.resolvedCheckpointId} from ${entireContextResolution.commitsAgo} commit(s) ago.`
-          : 'Readable Entire session metadata found for the current checkpoint.',
+      label: 'Session context skipped',
+      detail: 'No Entire checkpoint metadata is available for this commit; continuing in basic review mode.',
     });
-    if (entireContextResolution.contextResolution === 'branch_fallback') {
-      p.log.warning(
-        `Using fallback Entire context from commit ${entireContextResolution.resolvedCommitSha.slice(0, 7)} ('${entireContextResolution.resolvedCommitSubject}') ${entireContextResolution.commitsAgo} commits ago.`
-      );
-    }
-  } catch (error) {
-    spinner.stop('Entire session metadata validation failed');
-    throw buildReviewFlowStageError('checkpoint resolution', error);
   }
 
-  spinner.start('Resolving local co-change context...');
-  try {
-    throwIfResolveReviewAborted(options);
-    await emitResolveReviewProgress(options, {
-      stage: 'cochange',
-      state: 'active',
-      label: 'Loading related context',
-      detail: 'Collecting local co-change context and validating fallback readiness.',
-    });
-    localCochange = resolveLocalCochangeForCommitFlow(changedPaths, process.cwd(), {
-      lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
-      topN: COCHANGE_TOP_N,
-    });
-    if (localCochange) {
-      spinner.stop(
-        `Resolved local co-change context from ${localCochange.checkpointsRef} (${localCochange.sessionsScanned} sessions scanned)`
-      );
-    } else {
+  if (reviewContextMode === 'intent_aware') {
+    spinner.start('Resolving local co-change context...');
+    try {
+      throwIfResolveReviewAborted(options);
+      await emitResolveReviewProgress(options, {
+        stage: 'cochange',
+        state: 'active',
+        label: 'Loading related context',
+        detail: 'Collecting local co-change context and validating fallback readiness.',
+      });
+      localCochange = resolveLocalCochangeForCommitFlow(changedPaths, process.cwd(), {
+        lookbackSessions: COCHANGE_LOOKBACK_SESSIONS,
+        topN: COCHANGE_TOP_N,
+      });
+      if (localCochange) {
+        spinner.stop(
+          `Resolved local co-change context from ${localCochange.checkpointsRef} (${localCochange.sessionsScanned} sessions scanned)`
+        );
+      } else {
+        spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
+      }
+    } catch (error) {
+      localCochange = null;
+      const message = toErrorMessage(error);
+      if (!isExpectedLocalCochangeResolutionError(message)) {
+        p.log.warning(`Local co-change resolution error: ${message}`);
+      }
       spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
     }
-  } catch (error) {
-    localCochange = null;
-    const message = toErrorMessage(error);
-    if (!isExpectedLocalCochangeResolutionError(message)) {
-      p.log.warning(`Local co-change resolution error: ${message}`);
-    }
-    spinner.stop('Local co-change context unavailable (worker will use GitHub fallback)');
-  }
 
-  spinner.start('Checking co-change token readiness...');
-  try {
-    throwIfResolveReviewAborted(options);
-    if (localCochange) {
-      spinner.stop('Co-change token check skipped (using local co-change context)');
-      await emitResolveReviewProgress(options, {
-        stage: 'cochange',
-        state: 'completed',
-        label: 'Related context ready',
-        detail: `Loaded local co-change context from ${localCochange.checkpointsRef} across ${localCochange.sessionsScanned} session(s).`,
-      });
-    } else {
-      await validateReviewCochangeTokenReadiness();
-      spinner.stop('Co-change token readiness confirmed');
-      await emitResolveReviewProgress(options, {
-        stage: 'cochange',
-        state: 'completed',
-        label: 'Related context ready',
-        detail: 'Local co-change context was unavailable, so worker fallback is ready to use GitHub context.',
-      });
+    spinner.start('Checking co-change token readiness...');
+    try {
+      throwIfResolveReviewAborted(options);
+      if (localCochange) {
+        spinner.stop('Co-change token check skipped (using local co-change context)');
+        await emitResolveReviewProgress(options, {
+          stage: 'cochange',
+          state: 'completed',
+          label: 'Related context ready',
+          detail: `Loaded local co-change context from ${localCochange.checkpointsRef} across ${localCochange.sessionsScanned} session(s).`,
+        });
+      } else {
+        await validateReviewCochangeTokenReadiness();
+        spinner.stop('Co-change token readiness confirmed');
+        await emitResolveReviewProgress(options, {
+          stage: 'cochange',
+          state: 'completed',
+          label: 'Related context ready',
+          detail: 'Local co-change context was unavailable, so worker fallback is ready to use GitHub context.',
+        });
+      }
+    } catch (error) {
+      spinner.stop('Co-change token readiness check failed');
+      throwIfResolveReviewAbortError(error);
+      throw buildReviewFlowStageError('checkpoint resolution', error);
     }
-  } catch (error) {
-    spinner.stop('Co-change token readiness check failed');
-    throwIfResolveReviewAbortError(error);
-    throw buildReviewFlowStageError('checkpoint resolution', error);
+  } else {
+    spinner.start('Skipping co-change context...');
+    spinner.stop('Co-change skipped (basic review mode)');
+    await emitResolveReviewProgress(options, {
+      stage: 'cochange',
+      state: 'completed',
+      label: 'Related context skipped',
+      detail: 'Basic review mode skips Entire co-change context and uses diff/code context only.',
+    });
   }
 
   spinner.start('Creating workspace...');
@@ -405,14 +524,40 @@ export async function resolveReviewContext(
       ...sourceResolved,
       checkpointId,
     };
-    const created = await createWorkspaceForCommitFlow(source);
+    const workspaceIdempotencyKey = options?.idempotencyKey?.trim()
+      ? deriveIdempotencyKey(options.idempotencyKey, 'workspace')
+      : buildWorkspaceIdempotencyKey({
+          repo: gitProvenance.repo,
+          commitSha,
+          checkpointId,
+          projectRoot,
+        });
+    let created: Awaited<ReturnType<typeof createWorkspaceFromResolvedSource>>;
+    try {
+      created = await createWorkspaceForCommitFlow(source, {
+        idempotencyKey: workspaceIdempotencyKey,
+      });
+    } catch (error) {
+      if (!(error instanceof WorkspaceCreateInProgressError)) {
+        throw error;
+      }
+      if (!error.retryable) {
+        throw error;
+      }
+      spinner.message(`Workspace ${error.workspaceId} is still creating; waiting for readiness...`);
+      created = await waitForWorkspaceReadyFromIdempotentInProgress(error.workspaceId, {
+        pollIntervalMs: options?.pollIntervalMs,
+        timeoutMs: options?.workspaceReadyTimeoutMs,
+        signal: options?.signal,
+      });
+    }
     workspaceId = created.workspace.id;
-    spinner.stop(`Workspace created: ${workspaceId}`);
+    spinner.stop(`${created.reused ? 'Reusing workspace' : 'Workspace created'}: ${workspaceId}`);
     await emitResolveReviewProgress(options, {
       stage: 'workspace',
       state: 'completed',
       label: 'Workspace ready',
-      detail: `Workspace ${workspaceId} created for the review target.`,
+      detail: `Workspace ${workspaceId} ${created.reused ? 'reused' : 'created'} for the review target.`,
     });
   } catch (error) {
     spinner.stop('Workspace creation failed');
@@ -432,7 +577,15 @@ export async function resolveReviewContext(
     throwIfResolveReviewAborted(options);
     const deploymentIdempotencyKey = options?.idempotencyKey?.trim()
       ? deriveIdempotencyKey(options.idempotencyKey, 'deploy')
-      : buildWorkspaceIdempotencyKey(commitSha);
+      : deriveIdempotencyKey(
+          buildWorkspaceIdempotencyKey({
+            repo: gitProvenance.repo,
+            commitSha,
+            checkpointId,
+            projectRoot,
+          }),
+          'deploy'
+        );
     const deployment = await deployWorkspaceForCommitFlow(workspaceId, {
       idempotencyKey: deploymentIdempotencyKey,
       runTestsIfPresent: false,
@@ -445,7 +598,7 @@ export async function resolveReviewContext(
         warning: (text) => spinner.message(text),
         error: (text) => spinner.message(text),
       },
-      entireIntentContextOverride: entireContextResolution ?? undefined,
+      entireIntentContextOverride: reviewContextMode === 'intent_aware' ? (entireContextResolution ?? undefined) : null,
     });
     // Once deployment exists, finish attaching it to the review instead of aborting
     // and leaving unattached startup artifacts behind.
@@ -467,26 +620,37 @@ export async function resolveReviewContext(
   }
 
   const resolvedProvenance: ReviewCreateProvenance = {
-    note: `Review with Entire checkpoint intent context (${entireContextResolution?.resolvedCheckpointId ?? checkpointId}).`,
-    sessionIds: entireContextResolution?.context.sessionIds ?? [],
-    intentSessionContext: entireContextResolution?.context.intentSessionContext ?? [],
-    rawSessionPrompts: entireContextResolution?.context.rawSessionPrompts ?? null,
+    note:
+      reviewContextMode === 'intent_aware'
+        ? `Review with Entire checkpoint intent context (${entireContextResolution?.resolvedCheckpointId ?? checkpointId ?? 'unknown'}).`
+        : checkpointId
+          ? `Basic code-aware review for checkpoint ${checkpointId} without Entire session context.`
+          : 'Basic code-aware review without Entire checkpoint/session context.',
+    reviewContextMode,
+    sessionIds: reviewContextMode === 'intent_aware' ? (entireContextResolution?.context.sessionIds ?? []) : [],
+    intentSessionContext:
+      reviewContextMode === 'intent_aware' ? (entireContextResolution?.context.intentSessionContext ?? []) : [],
+    rawSessionPrompts: reviewContextMode === 'intent_aware' ? (entireContextResolution?.context.rawSessionPrompts ?? null) : null,
     commitSha,
     commitDiffPatch,
     commitDiffPatchSha256,
     commitDiffPatchTruncated,
     commitDiffPatchOriginalChars,
-    contextResolution: entireContextResolution?.contextResolution ?? 'direct',
-    contextResolutionOriginalCheckpointId: entireContextResolution?.originalCheckpointId ?? checkpointId,
-    contextResolutionResolvedCheckpointId: entireContextResolution?.resolvedCheckpointId ?? checkpointId,
-    contextResolutionResolvedCommitSha: entireContextResolution?.resolvedCommitSha ?? commitSha,
-    contextResolutionResolvedCommitMessage: entireContextResolution?.resolvedCommitSubject,
+    ...(reviewContextMode === 'intent_aware'
+      ? {
+          contextResolution: entireContextResolution?.contextResolution ?? 'direct',
+          contextResolutionOriginalCheckpointId: entireContextResolution?.originalCheckpointId ?? checkpointId ?? undefined,
+          contextResolutionResolvedCheckpointId: entireContextResolution?.resolvedCheckpointId ?? checkpointId ?? undefined,
+          contextResolutionResolvedCommitSha: entireContextResolution?.resolvedCommitSha ?? commitSha,
+          contextResolutionResolvedCommitMessage: entireContextResolution?.resolvedCommitSubject,
+        }
+      : {}),
     checkpointSelectionMode,
     includedCheckpoints,
     repo: gitProvenance.repo,
     branch: gitProvenance.branch,
     ...(options?.intentSummaryModel?.trim() ? { intentSummaryModel: options.intentSummaryModel.trim() } : {}),
-    localCochange: localCochange
+    localCochange: reviewContextMode === 'intent_aware' && localCochange
       ? {
           source: localCochange.source,
           checkpointsRef: localCochange.checkpointsRef,

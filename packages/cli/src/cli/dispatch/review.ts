@@ -1,10 +1,22 @@
 import * as p from '@clack/prompts';
-import { createReviewCommand, createReviewFromCommitCommand } from '../../commands/review/create.js';
+import { createReviewCommand, createReviewFromCommitCommand, createReviewSessionCommand } from '../../commands/review/create.js';
 import { reviewEventsCommand } from '../../commands/review/events.js';
 import { exportReviewCommand } from '../../commands/review/export.js';
 import { openReviewFromCommitCommand, startReviewStudioCommand } from '../../commands/review/open.js';
 import { reviewPolicyCommand } from '../../commands/review/policy.js';
 import { reviewPreflightCommand } from '../../commands/review/preflight.js';
+import {
+  diffLocalReviewSessionCommand,
+  enterLocalReviewSessionCommand,
+  listReviewSessionsCommand,
+  listLocalReviewSessionsCommand,
+  materializeReviewSessionCommand,
+  mergeBackLocalReviewSessionCommand,
+  pathLocalReviewSessionCommand,
+  resetReviewSessionCommand,
+  showLatestReviewSessionCommand,
+  showReviewSessionCommand,
+} from '../../commands/review/session.js';
 import { showReviewCommand } from '../../commands/review/show.js';
 import type { ParsedCliArgs } from '../../lib/args.js';
 import { parseReviewMaxFindings, parseReviewSeverityThreshold } from '../../lib/review-policy.js';
@@ -67,6 +79,8 @@ export async function dispatchReviewCommand(
     const commitFlag = flags.commit;
     const workspaceId = typeof workspaceFlag === 'string' ? workspaceFlag : undefined;
     const deploymentId = typeof deploymentFlag === 'string' ? deploymentFlag : undefined;
+    const sessionFlag = flags.session;
+    const sessionId = typeof sessionFlag === 'string' ? sessionFlag : undefined;
     const idempotencyKeyFlag = flags['idempotency-key'];
     const idempotencyKey = typeof idempotencyKeyFlag === 'string' ? idempotencyKeyFlag : undefined;
     const modelFlag = flags.model;
@@ -98,29 +112,52 @@ export async function dispatchReviewCommand(
     const openStudioPort = parsePositiveIntegerFlag(flags.port);
     const commitModeRequested = typeof commitFlag === 'string' || commitFlag === true;
     const hasWorkspaceInputs = Boolean(workspaceId || deploymentId);
+    const hasSessionInput = Boolean(sessionId);
     const unexpectedPositional = positional[1];
 
     if (typeof unexpectedPositional === 'string' && unexpectedPositional.trim()) {
       exitWithUsage('Usage error: review create does not accept positional arguments. Use --commit or --workspace/--deployment flags.');
     }
 
-    if (commitModeRequested && hasWorkspaceInputs) {
-      exitWithUsage('Usage error: --commit cannot be combined with --workspace/--deployment. Choose one review create mode.');
+    if (commitModeRequested && (hasWorkspaceInputs || hasSessionInput)) {
+      exitWithUsage('Usage error: --commit cannot be combined with --workspace/--deployment or --session. Choose one review create mode.');
     }
 
-    if (hasWorkspaceInputs && (checkpointRange || lastCheckpoints)) {
+    if ((hasWorkspaceInputs || hasSessionInput) && (checkpointRange || lastCheckpoints)) {
       exitWithUsage('Usage error: --last-checkpoints/--checkpoint-range can only be used with commit-based review create.');
     }
 
-    if (baseRef && (checkpointRange || lastCheckpoints)) {
+    if (baseRef && (checkpointRange || lastCheckpoints || hasSessionInput)) {
       exitWithUsage('Usage error: --base cannot be combined with --last-checkpoints or --checkpoint-range.');
+    }
+
+    if (hasSessionInput && hasWorkspaceInputs) {
+      exitWithUsage('Usage error: --session cannot be combined with --workspace/--deployment.');
+    }
+
+    if (hasSessionInput && policyMode !== 'none') {
+      exitWithUsage('Usage error: session re-review currently supports --policy-mode none only.');
     }
 
     if (checkpointRange && lastCheckpoints) {
       exitWithUsage('Usage error: --last-checkpoints and --checkpoint-range cannot be used together.');
     }
 
-    if (commitModeRequested || (!workspaceId && !deploymentId)) {
+    if (sessionId) {
+      await createReviewSessionCommand(sessionId, {
+        idempotencyKey,
+        severityThreshold,
+        maxFindings,
+        openStudio,
+        openStudioPort,
+        model,
+        includeProvenance: !Boolean(flags['no-provenance']),
+        includeValidationEvidence: !Boolean(flags['no-validation-evidence']),
+      });
+      return;
+    }
+
+    if (commitModeRequested || (!workspaceId && !deploymentId && !sessionId)) {
       if (!commitModeRequested && !workspaceId && !deploymentId) {
         p.log.message('No review target flags provided; defaulting to `nimbus review create --commit HEAD`.');
       }
@@ -147,7 +184,7 @@ export async function dispatchReviewCommand(
     }
 
     if (!workspaceId || !deploymentId) {
-      exitWithUsage('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id>');
+      exitWithUsage('Usage: nimbus review create --commit [commit-ish] OR --workspace <workspace-id> --deployment <deployment-id> OR --session <session-id>');
     }
 
     await createReviewCommand(workspaceId, deploymentId, {
@@ -173,6 +210,90 @@ export async function dispatchReviewCommand(
 
     await showReviewCommand(reviewId);
     return;
+  }
+
+  if (reviewAction === 'session') {
+    const sessionAction = positional[1];
+    const sessionId = positional[2];
+
+    if (sessionAction === 'list') {
+      const limit = parsePositiveIntegerFlag(flags.limit);
+      await listReviewSessionsCommand({ all: Boolean(flags.all), ...(typeof limit === 'number' ? { limit } : {}) });
+      return;
+    }
+
+    if (sessionAction === 'latest') {
+      await showLatestReviewSessionCommand({ all: Boolean(flags.all) });
+      return;
+    }
+
+    if (sessionAction === 'show') {
+      if (!sessionId) {
+        exitWithUsage('Usage: nimbus review session show <session-id>');
+      }
+      await showReviewSessionCommand(sessionId);
+      return;
+    }
+
+    if (sessionAction === 'reset') {
+      if (!sessionId) {
+        exitWithUsage('Usage: nimbus review session reset <session-id>');
+      }
+      await resetReviewSessionCommand(sessionId);
+      return;
+    }
+
+    if (sessionAction === 'materialize' || sessionAction === 'adopt') {
+      if (!sessionId) {
+        exitWithUsage(`Usage: nimbus review session ${sessionAction} <session-id>`);
+      }
+      const branchFlag = flags.branch;
+      const branchName = typeof branchFlag === 'string' && branchFlag.trim() ? branchFlag.trim() : undefined;
+      const pathFlag = flags.path;
+      const path = typeof pathFlag === 'string' && pathFlag.trim() ? pathFlag.trim() : undefined;
+      const branchOnly = Boolean(flags['branch-only']);
+      if (branchOnly && path) {
+        exitWithUsage('Usage error: --branch-only cannot be combined with --path.');
+      }
+      await materializeReviewSessionCommand(sessionId, {
+        branchName,
+        path,
+        mode: branchOnly ? 'branch' : 'worktree',
+        pollIntervalMs: parsePositiveIntegerFlag(flags['poll-interval-ms']),
+      });
+      return;
+    }
+
+    if (sessionAction === 'list-local') {
+      await listLocalReviewSessionsCommand({ all: Boolean(flags.all) });
+      return;
+    }
+
+    if (sessionAction === 'diff-local') {
+      const targetSessionId = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined;
+      await diffLocalReviewSessionCommand(targetSessionId, { baseRef: typeof flags.base === 'string' ? flags.base : undefined });
+      return;
+    }
+
+    if (sessionAction === 'path-local') {
+      const targetSessionId = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined;
+      await pathLocalReviewSessionCommand(targetSessionId);
+      return;
+    }
+
+    if (sessionAction === 'enter-local') {
+      const targetSessionId = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined;
+      await enterLocalReviewSessionCommand(targetSessionId);
+      return;
+    }
+
+    if (sessionAction === 'merge-back') {
+      const targetSessionId = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined;
+      await mergeBackLocalReviewSessionCommand(targetSessionId);
+      return;
+    }
+
+    exitWithUsage('Unknown review session command. Use: show, list, latest, reset, adopt, materialize, list-local, diff-local, path-local, enter-local, merge-back');
   }
 
   if (reviewAction === 'preflight') {
@@ -313,5 +434,5 @@ export async function dispatchReviewCommand(
     return;
   }
 
-  exitWithUsage('Unknown review command. Use: create, preflight, policy, show, events, studio, open, export');
+  exitWithUsage('Unknown review command. Use: create, preflight, policy, show, events, session, studio, open, export');
 }

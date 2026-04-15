@@ -10,6 +10,7 @@ import {
   updateWorkspaceTaskStatus,
 } from './db.js';
 import { loadRuntimeFlags } from './flags.js';
+import { continueReviewSessionAfterRemediationTask } from './review-runner/session-remediation-followup.js';
 
 const WORKSPACE_ROOT = '/workspace';
 const DEFAULT_COMMAND_TIMEOUT_MS = 60_000;
@@ -132,6 +133,16 @@ function sanitizeErrorMessage(input: string): string {
   return input
     .replace(/(authorization:\s*bearer\s+)[a-z0-9._-]+/gi, '$1[REDACTED]')
     .replace(/ghs_[a-z0-9_]+/gi, '[REDACTED_TOKEN]');
+}
+
+function isReviewSessionRemediationPayload(value: Record<string, unknown> | null): boolean {
+  const remediation =
+    value?.reviewSessionRemediation &&
+    typeof value.reviewSessionRemediation === 'object' &&
+    !Array.isArray(value.reviewSessionRemediation)
+      ? (value.reviewSessionRemediation as Record<string, unknown>)
+      : null;
+  return remediation?.type === 'review_session';
 }
 
 function isTransientFailure(error: unknown): boolean {
@@ -407,11 +418,20 @@ async function getWorkspaceSandbox(env: Env, sandboxId: string): Promise<Sandbox
 }
 
 let sandboxResolver: (env: Env, sandboxId: string) => Promise<SandboxClient> = getWorkspaceSandbox;
+let continuationRunner:
+  | ((env: Env, input: { workspaceId: string; taskId: string }) => Promise<{ nextReviewId: string | null }>)
+  | null = null;
 
 export function setWorkspaceTaskSandboxResolverForTests(
   resolver: ((env: Env, sandboxId: string) => Promise<SandboxClient>) | null
 ): void {
   sandboxResolver = resolver ?? getWorkspaceSandbox;
+}
+
+export function setWorkspaceTaskContinuationRunnerForTests(
+  runnerForTests: ((env: Env, input: { workspaceId: string; taskId: string }) => Promise<{ nextReviewId: string | null }>) | null
+): void {
+  continuationRunner = runnerForTests;
 }
 
 function enforceCommandPolicy(command: string, policy: TaskToolPolicy): void {
@@ -422,6 +442,20 @@ function enforceCommandPolicy(command: string, policy: TaskToolPolicy): void {
 
   const normalizedCommand = trimmed.toLowerCase();
   if (policy.commandDeny.some((entry) => normalizedCommand.includes(entry.toLowerCase()))) {
+    throw new PolicyError('command_denied', 'Command denied by policy');
+  }
+
+  if (
+    /(^|\s)(node|bun)\s+(-e|--eval|--print|-p)\b/.test(normalizedCommand) ||
+    /(^|\s)python3?\s+-c\b/.test(normalizedCommand) ||
+    /(^|\s)deno\s+eval\b/.test(normalizedCommand) ||
+    /\bnpx\b/.test(normalizedCommand) ||
+    /\bbunx\b/.test(normalizedCommand) ||
+    /\bnpm\s+(exec|create|publish|install|i|add|update|up)\b/.test(normalizedCommand) ||
+    /\bpnpm\s+(exec|dlx|create|install|i|add|update|up)\b/.test(normalizedCommand) ||
+    /\byarn\s+(dlx|create|add|upgrade|up)\b/.test(normalizedCommand) ||
+    /\b(pip|pip3)\s+/.test(normalizedCommand)
+  ) {
     throw new PolicyError('command_denied', 'Command denied by policy');
   }
 
@@ -439,6 +473,36 @@ function enforceCommandPolicy(command: string, policy: TaskToolPolicy): void {
   });
   if (!allowed) {
     throw new PolicyError('command_not_allowed', 'Command is not in allowlist');
+  }
+}
+
+function summarizeToolCall(action: Extract<AgentAction, { type: 'tool' }>): Record<string, unknown> {
+  switch (action.tool) {
+    case 'run_command':
+      return {
+        command: action.args.command,
+        timeoutMs: action.args.timeoutMs ?? null,
+      };
+    case 'read_file':
+      return {
+        path: action.args.path,
+        maxBytes: action.args.maxBytes ?? null,
+      };
+    case 'write_file':
+      return {
+        path: action.args.path,
+        bytes: new TextEncoder().encode(action.args.content).length,
+      };
+    case 'list_files':
+      return {
+        path: action.args.path ?? '.',
+      };
+    case 'diff_summary':
+      return {
+        maxBytes: action.args.maxBytes ?? null,
+      };
+    default:
+      return {};
   }
 }
 
@@ -646,6 +710,7 @@ async function executeWorkspaceTask(
       payload: {
         step,
         tool: action.tool,
+        ...summarizeToolCall(action),
       },
     });
 
@@ -668,7 +733,12 @@ async function executeWorkspaceTask(
   throw new PolicyError('max_steps_exceeded', `Task exceeded maximum step count (${task.maxSteps})`);
 }
 
-export async function processWorkspaceTask(env: Env, workspaceId: string, taskId: string): Promise<void> {
+export async function processWorkspaceTask(
+  env: Env,
+  workspaceId: string,
+  taskId: string,
+  options?: { skipSessionContinuation?: boolean }
+): Promise<void> {
   const claimed = await claimWorkspaceTaskForExecution(env.DB, workspaceId, taskId);
   if (!claimed) {
     const existing = await getWorkspaceTask(env.DB, workspaceId, taskId);
@@ -787,6 +857,98 @@ export async function processWorkspaceTask(env: Env, workspaceId: string, taskId
         message,
       },
     });
+  } finally {
+    if (options?.skipSessionContinuation) {
+      return;
+    }
+    const runContinuation = continuationRunner ?? continueReviewSessionAfterRemediationTask;
+    try {
+      await runContinuation(env, { workspaceId, taskId });
+    } catch (error) {
+      const message = sanitizeErrorMessage(error instanceof Error ? error.message : String(error));
+      try {
+        await appendWorkspaceTaskEvent(env.DB, {
+          workspaceId,
+          taskId,
+          eventType: 'task_followup_failed',
+          payload: {
+            code: 'review_session_followup_failed',
+            message,
+          },
+        });
+      } catch {
+        // Best-effort follow-up failure telemetry only.
+      }
+
+      try {
+        const payload = await getWorkspaceTaskRequestPayload(env.DB, taskId);
+        const latestTask = await getWorkspaceTask(env.DB, workspaceId, taskId);
+        if (isReviewSessionRemediationPayload(payload) && latestTask?.status === 'succeeded') {
+          let continuationRecovered = false;
+          try {
+            await runContinuation(env, { workspaceId, taskId });
+            continuationRecovered = true;
+          } catch {
+            continuationRecovered = false;
+          }
+          if (continuationRecovered) {
+            return;
+          }
+
+          await updateWorkspaceTaskStatus(env.DB, taskId, 'failed', {
+            workspaceId,
+            errorCode: 'review_session_followup_failed',
+            errorMessage: message,
+          });
+          try {
+            await appendWorkspaceTaskEvent(env.DB, {
+              workspaceId,
+              taskId,
+              eventType: 'task_failed',
+              payload: {
+                code: 'review_session_followup_failed',
+                message,
+              },
+            });
+          } catch {
+            // Best-effort failure event append.
+          }
+          try {
+            await runContinuation(env, { workspaceId, taskId });
+          } catch {
+            // Finalization fallback already attempted; keep terminal task failure.
+          }
+        }
+      } catch {
+        // Best-effort terminal fallback when follow-up fails.
+      }
+    }
+  }
+}
+
+export async function runWorkspaceTaskInlineWithRetries(
+  env: Env,
+  workspaceId: string,
+  taskId: string,
+  maxCycles = 8
+): Promise<void> {
+  for (let cycle = 0; cycle < maxCycles; cycle += 1) {
+    try {
+      await processWorkspaceTask(env, workspaceId, taskId, { skipSessionContinuation: true });
+    } catch {
+      // Retry scheduling is inferred from persisted task status.
+    }
+
+    const latest = await getWorkspaceTask(env.DB, workspaceId, taskId);
+    if (!latest) {
+      return;
+    }
+    if (latest.status !== 'queued') {
+      return;
+    }
+    if (latest.error?.code !== 'retry_scheduled') {
+      return;
+    }
   }
 }
 

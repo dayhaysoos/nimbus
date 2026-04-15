@@ -20,6 +20,8 @@ import {
   requestWorkspaceDeploymentCancel,
   requestWorkspaceTaskCancel,
   updateWorkspaceDeploymentSummary,
+  WorkspaceCreateIdempotencyConflictError,
+  WorkspaceCreateInProgressError,
   WorkspaceDeploymentIdempotencyConflictError,
   WorkspaceIdempotencyConflictError,
 } from '../../src/lib/db.js';
@@ -76,12 +78,13 @@ export async function runWorkspaceDbTests(): Promise<void> {
       sandboxId: 'workspace-ws_abc12345',
     });
 
-    assert.equal(created.id, 'ws_abc12345');
-    assert.equal(created.status, 'creating');
-    assert.equal(created.checkpointId, '8a513f56ed70');
-    assert.equal(created.sandboxId, 'workspace-ws_abc12345');
-    assert.equal(created.baselineReady, false);
-    assert.equal(created.eventsUrl, '/api/workspaces/ws_abc12345/events');
+    assert.equal(created.reused, false);
+    assert.equal(created.workspace.id, 'ws_abc12345');
+    assert.equal(created.workspace.status, 'creating');
+    assert.equal(created.workspace.checkpointId, '8a513f56ed70');
+    assert.equal(created.workspace.sandboxId, 'workspace-ws_abc12345');
+    assert.equal(created.workspace.baselineReady, false);
+    assert.equal(created.workspace.eventsUrl, '/api/workspaces/ws_abc12345/events');
     assert.ok(sqlStatements.some((sql) => /INSERT INTO workspaces/i.test(sql)));
     assert.equal(boundValues[10], null);
   }
@@ -122,7 +125,7 @@ export async function runWorkspaceDbTests(): Promise<void> {
       },
     } as unknown as D1Database;
 
-    await createWorkspace(db, {
+    const created = await createWorkspace(db, {
       id: 'ws_hosted123',
       sourceType: 'checkpoint',
       checkpointId: '8a513f56ed70',
@@ -136,7 +139,354 @@ export async function runWorkspaceDbTests(): Promise<void> {
       accountId: 'acct_hosted_123',
     });
 
+    assert.equal(created.reused, false);
     assert.equal(boundValues[10], 'acct_hosted_123');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/FROM workspace_create_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    workspace_id: 'ws_existing',
+                    request_payload_sha256: 'hash-a',
+                    expires_at: '2999-01-01T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'ws_existing',
+                    status: 'ready',
+                    source_type: 'checkpoint',
+                    checkpoint_id: '8a513f56ed70',
+                    commit_sha: 'a'.repeat(40),
+                    source_ref: 'main',
+                    source_project_root: '.',
+                    source_bundle_key: 'workspaces/ws_existing/source/a.tar.gz',
+                    source_bundle_sha256: 'f'.repeat(64),
+                    source_bundle_bytes: 1024,
+                    sandbox_id: 'workspace-ws_existing',
+                    baseline_ready: 1,
+                    error_code: null,
+                    error_message: null,
+                    last_event_seq: 0,
+                    created_at: '2026-03-07T00:00:00.000Z',
+                    updated_at: '2026-03-07T00:00:00.000Z',
+                    deleted_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        throw new Error(`Unexpected SQL: ${sql}`);
+      },
+    } as unknown as D1Database;
+
+    const created = await createWorkspace(db, {
+      id: 'ws_unused',
+      sourceType: 'checkpoint',
+      checkpointId: '8a513f56ed70',
+      commitSha: 'a'.repeat(40),
+      sourceRef: 'main',
+      sourceProjectRoot: '.',
+      sourceBundleKey: 'workspaces/ws_unused/source/a.tar.gz',
+      sourceBundleSha256: 'f'.repeat(64),
+      sourceBundleBytes: 1024,
+      sandboxId: 'workspace-ws_unused',
+      idempotency: {
+        key: 'idem-workspace',
+        accountScope: 'self-hosted',
+        requestPayloadSha256: 'hash-a',
+      },
+    });
+
+    assert.equal(created.reused, true);
+    assert.equal(created.workspace.id, 'ws_existing');
+    assert.equal(created.workspace.status, 'ready');
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/FROM workspace_create_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    workspace_id: 'ws_creating',
+                    request_payload_sha256: 'hash-a',
+                    expires_at: '2999-01-01T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'ws_creating',
+                    status: 'creating',
+                    source_type: 'checkpoint',
+                    checkpoint_id: '8a513f56ed70',
+                    commit_sha: 'a'.repeat(40),
+                    source_ref: 'main',
+                    source_project_root: '.',
+                    source_bundle_key: 'workspaces/ws_creating/source/a.tar.gz',
+                    source_bundle_sha256: 'f'.repeat(64),
+                    source_bundle_bytes: 1024,
+                    sandbox_id: 'workspace-ws_creating',
+                    baseline_ready: 0,
+                    error_code: null,
+                    error_message: null,
+                    last_event_seq: 0,
+                    created_at: '2026-03-07T00:00:00.000Z',
+                    updated_at: '2026-03-07T00:00:00.000Z',
+                    deleted_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        throw new Error(`Unexpected SQL: ${sql}`);
+      },
+    } as unknown as D1Database;
+
+    await assert.rejects(
+      createWorkspace(db, {
+        id: 'ws_conflict_pending',
+        sourceType: 'checkpoint',
+        checkpointId: '8a513f56ed70',
+        commitSha: 'a'.repeat(40),
+        sourceRef: 'main',
+        sourceProjectRoot: '.',
+        sourceBundleKey: 'workspaces/ws_conflict_pending/source/a.tar.gz',
+        sourceBundleSha256: 'f'.repeat(64),
+        sourceBundleBytes: 1024,
+        sandboxId: 'workspace-ws_conflict_pending',
+        idempotency: {
+          key: 'idem-workspace',
+          accountScope: 'self-hosted',
+          requestPayloadSha256: 'hash-a',
+        },
+      }),
+      (error: unknown) => error instanceof WorkspaceCreateInProgressError
+    );
+  }
+
+  {
+    const deletedWorkspaceIds: string[] = [];
+    let idempotencyLookupCount = 0;
+    const db = {
+      prepare(sql: string) {
+        if (/INSERT INTO workspaces/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'ws_loser',
+                    status: 'creating',
+                    source_type: 'checkpoint',
+                    checkpoint_id: '8a513f56ed70',
+                    commit_sha: 'a'.repeat(40),
+                    source_ref: 'main',
+                    source_project_root: '.',
+                    source_bundle_key: 'workspaces/ws_loser/source/a.tar.gz',
+                    source_bundle_sha256: 'f'.repeat(64),
+                    source_bundle_bytes: 1024,
+                    sandbox_id: 'workspace-ws_loser',
+                    baseline_ready: 0,
+                    error_code: null,
+                    error_message: null,
+                    last_event_seq: 0,
+                    created_at: '2026-03-07T00:00:00.000Z',
+                    updated_at: '2026-03-07T00:00:00.000Z',
+                    deleted_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/INSERT INTO workspace_create_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async run() {
+                  throw new Error('UNIQUE constraint failed: workspace_create_idempotency.account_scope, workspace_create_idempotency.idempotency_key');
+                },
+              };
+            },
+          };
+        }
+
+        if (/FROM workspace_create_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  idempotencyLookupCount += 1;
+                  if (idempotencyLookupCount === 1) {
+                    return null;
+                  }
+                  return {
+                    workspace_id: 'ws_winner',
+                    request_payload_sha256: 'hash-a',
+                    expires_at: '2999-01-01T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT \* FROM workspaces WHERE id = \?/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    id: 'ws_winner',
+                    status: 'creating',
+                    source_type: 'checkpoint',
+                    checkpoint_id: '8a513f56ed70',
+                    commit_sha: 'a'.repeat(40),
+                    source_ref: 'main',
+                    source_project_root: '.',
+                    source_bundle_key: 'workspaces/ws_winner/source/a.tar.gz',
+                    source_bundle_sha256: 'f'.repeat(64),
+                    source_bundle_bytes: 1024,
+                    sandbox_id: 'workspace-ws_winner',
+                    baseline_ready: 0,
+                    error_code: null,
+                    error_message: null,
+                    last_event_seq: 0,
+                    created_at: '2026-03-07T00:00:00.000Z',
+                    updated_at: '2026-03-07T00:00:00.000Z',
+                    deleted_at: null,
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/DELETE FROM workspaces WHERE id = \?/i.test(sql)) {
+          return {
+            bind(...values: unknown[]) {
+              return {
+                async run() {
+                  deletedWorkspaceIds.push(String(values[0]));
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        throw new Error(`Unexpected SQL: ${sql}`);
+      },
+    } as unknown as D1Database;
+
+    await assert.rejects(
+      createWorkspace(db, {
+        id: 'ws_loser',
+        sourceType: 'checkpoint',
+        checkpointId: '8a513f56ed70',
+        commitSha: 'a'.repeat(40),
+        sourceRef: 'main',
+        sourceProjectRoot: '.',
+        sourceBundleKey: 'workspaces/ws_loser/source/a.tar.gz',
+        sourceBundleSha256: 'f'.repeat(64),
+        sourceBundleBytes: 1024,
+        sandboxId: 'workspace-ws_loser',
+        idempotency: {
+          key: 'idem-workspace',
+          accountScope: 'self-hosted',
+          requestPayloadSha256: 'hash-a',
+        },
+      }),
+      (error: unknown) => error instanceof WorkspaceCreateInProgressError
+    );
+
+    assert.deepEqual(deletedWorkspaceIds, ['ws_loser']);
+  }
+
+  {
+    const db = {
+      prepare(sql: string) {
+        if (/FROM workspace_create_idempotency/i.test(sql)) {
+          return {
+            bind() {
+              return {
+                async first<T>() {
+                  return {
+                    workspace_id: 'ws_existing',
+                    request_payload_sha256: 'hash-b',
+                    expires_at: '2999-01-01T00:00:00.000Z',
+                  } as T;
+                },
+              };
+            },
+          };
+        }
+
+        return {
+          bind() {
+            return {
+              async run() {
+                return { success: true, meta: { changes: 1 } };
+              },
+            };
+          },
+        };
+      },
+    } as unknown as D1Database;
+
+    await assert.rejects(
+      createWorkspace(db, {
+        id: 'ws_conflict',
+        sourceType: 'checkpoint',
+        checkpointId: '8a513f56ed70',
+        commitSha: 'a'.repeat(40),
+        sourceRef: 'main',
+        sourceProjectRoot: '.',
+        sourceBundleKey: 'workspaces/ws_conflict/source/a.tar.gz',
+        sourceBundleSha256: 'f'.repeat(64),
+        sourceBundleBytes: 1024,
+        sandboxId: 'workspace-ws_conflict',
+        idempotency: {
+          key: 'idem-workspace',
+          accountScope: 'self-hosted',
+          requestPayloadSha256: 'hash-a',
+        },
+      }),
+      (error: unknown) => error instanceof WorkspaceCreateIdempotencyConflictError
+    );
   }
 
   {

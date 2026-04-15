@@ -7,6 +7,7 @@ export {
 export {
   handleFailReview,
   handleGetReview,
+  handleGetReviewContext,
   handleRecoverReview,
   handleGetReviewEvents,
   handleListReviews,

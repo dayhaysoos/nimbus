@@ -1,638 +1,312 @@
-# Review Studio Implementation Plan
+# Review Studio Status and Delivery Plan
 
 ## Status
 
-- State: implementation-ready plan
-- Depends on:
-  - `docs/architecture/review-studio-experience.md`
-  - `docs/architecture/review-studio-experience-build-plan.md`
+- State: living rollout status
+- Last updated: 2026-04-12
+- Current completion snapshot:
+  - Slice 0 foundation: partial
+  - Slice 1 Home: shipped
+  - Slice 2 New Review slide-over: shipped
+  - Slice 3 Review Run pre-run policy states: functionally shipped, not yet hardened
+  - Slice 4 Review Run active states: partial
+  - Slice 5 terminal actions and fix loop: not started
+  - Slice 6 hardening: not started
 
-## Goal
+## Purpose
 
-Translate the locked Review Studio UX and lifecycle decisions into concrete repo work across CLI, local Studio runtime, worker APIs, and UI.
+This is the current source of truth for Review Studio rollout status.
 
-This plan is intentionally implementation-oriented:
+This file tracks the current shipped state of the existing Review Studio implementation.
 
-- it names likely file targets in this repo
-- it preserves the locked command taxonomy and state model
-- it sequences work to keep the critical path moving
-- it avoids introducing a parallel architecture next to the current CLI/report-ui stack
+For the active product-direction pivot toward session-based review convergence, read `review-session-pivot.md` alongside this file.
 
-## Locked decisions this plan assumes
+Use this file to answer:
+
+- what has shipped already
+- what is only partially implemented
+- what the next recommended slice is
+- which older planning docs are historical context rather than current status
+
+Use the other Review Studio docs as follows:
+
+- `review-studio-experience.md`: locked product spec and north star
+- `review-studio-experience-build-plan.md`: historical planning snapshot from before slices started landing
+
+## Locked decisions still in force
+
+These remain the active contract unless explicitly re-approved:
 
 1. `nimbus review studio` is the canonical Studio launch command.
 2. `nimbus review create` remains the canonical review-start command.
 3. `--policy-mode none|auto|review` is canonical; `--auto-policy` and `--policy` are sugar.
-4. `nimbus review open` becomes compatibility-only.
+4. `nimbus review open` is compatibility-only.
 5. Bare CLI `review create` defaults to `policy-mode none`.
 6. Studio uses saved repo preference when available; first-run Studio default is `policy-mode auto`.
-7. The checkpoint/commit is the immutable provenance anchor.
-8. Agent remediation happens in mutable environment state.
-9. Follow-up validation reviews run against current environment state.
-10. Export/apply back to the local repo is always explicit.
+7. Worker remains the source of truth for review state and event history.
+8. The checkpoint/commit remains the immutable provenance anchor for fresh reviews.
+9. Agent remediation and current-environment validation are still planned product directions, not completed product surfaces.
 
-## Non-goals for this implementation pass
+## What has shipped
 
-1. No framework migration for the report UI.
-2. No attempt to complete the full Phase 9 conversational editing product in one pass.
-3. No change to the current Cloudflare worker as source of truth for review state/events.
-4. No requirement to expose “worktree” as product vocabulary.
+## Slice 0: Foundation
 
-## Delivery strategy
+State: partial
 
-Use the existing split:
+What is implemented:
 
-- `packages/cli` owns command surface and local Studio runtime
-- `packages/worker` owns review state, event truth, policy lifecycle, and environment/review contracts
-- `packages/report-ui` owns Studio browser UX on top of the existing app shell
+- canonical CLI taxonomy for `review studio`, `review create`, policy mode parsing, and `review open` compatibility routing
+- detached Studio runtime startup, reuse, stop, and status handling
+- repo-local Studio preference/runtime metadata under `.nimbus/`
+- worker contract support for canonical `policyMode` and `reviewBasis`
+- local Studio endpoints for:
+  - branch context
+  - new-review preflight
+  - new-review start
+  - new-review start event streaming
+- local review-event fanout with in-memory replay and dedupe scaffolding
 
-Do not invent a new top-level package for Studio in this phase.
+Primary implementation files:
 
-## Workstream 1: Canonical CLI surface
-
-### Outcome
-
-The CLI surface matches the Studio docs and stops teaching `review open` as the primary model.
-
-### Primary file targets
-
-- `packages/cli/src/cli/help.ts`
-- `packages/cli/src/lib/args.ts`
-- `packages/cli/src/cli/dispatch/review.ts`
-- `packages/cli/src/commands/review/create.ts`
-- `packages/cli/src/commands/review/open.ts`
-- `packages/cli/src/app/reviews/create-from-commit.ts`
-- `packages/cli/src/app/reviews/create-from-deployment.ts`
 - `packages/cli/src/app/reviews/open.ts`
-
-### Required changes
-
-1. Add `review studio` dispatch path as the canonical Studio command.
-2. Keep `review start` only if needed as a compatibility alias to Studio startup; otherwise deprecate it in help text.
-3. Add `--policy-mode` parsing with allowed values `none|auto|review`.
-4. Add sugar flags:
-   - `--auto-policy`
-   - `--policy`
-   - `--open-studio`
-5. Reject conflicting policy flags at CLI parse/dispatch time.
-6. Make `review create` default to `policy-mode none` when no policy flag is present.
-7. Convert `review open` into compatibility routing:
-   - preferred target: `review studio`
-   - alternative target when invoked with create intent: `review create --policy-mode review --open-studio`
-8. Update help/examples so new users learn `review studio` and `review create`, not `review open`.
-
-### Tests
-
-- `packages/cli/test/lib/args.test.ts`
-- `packages/cli/test/commands/review/review.test.ts`
-
-Add coverage for:
-
-- canonical policy mode parsing
-- sugar flag normalization
-- defaulting behavior
-- compatibility handling for `review open`
-
-## Workstream 2: Local Studio runtime and repo-local state
-
-### Outcome
-
-Studio becomes a reusable local service with explicit runtime metadata, instead of a terminal-bound process that dies with the session.
-
-### Primary file targets
-
+  - compatibility routing from `review open` to the canonical Studio flow
 - `packages/cli/src/app/reviews/session.ts`
-- `packages/cli/src/app/reviews/ui-server.ts`
-- `packages/cli/src/app/reviews/ui-static-server.ts`
-- `packages/cli/src/app/reviews/ui-dev-server.ts`
-- `packages/cli/src/app/reviews/ui-static.ts`
-- `packages/cli/src/app/reviews/open.ts`
+  - detached Studio runtime metadata and repo-local preference storage under `.nimbus/`
 - `packages/cli/src/app/reviews/ui-proxy.ts`
+  - local Studio HTTP endpoints for branch context, preflight, create, and event bridging
 - `packages/cli/src/app/reviews/ui-events-fanout.ts`
-
-### New local artifacts
-
-- `.nimbus/studio.json`
-- `.nimbus/studio/runtime.json`
-- `.nimbus/studio/worktrees/` (or equivalent metadata directory)
-
-### Required changes
-
-1. Replace terminal-managed lifetime with detached Studio service lifetime.
-2. Add Studio runtime metadata:
-   - pid/process identity or equivalent
-   - port
-   - launch time
-   - repo root
-   - active review routing hints
-3. Reuse an existing healthy Studio service instead of launching duplicates.
-4. Detect stale runtime metadata and recover safely.
-5. Keep Studio alive after terminal exit by default.
-6. Support browser relaunch/reopen without creating a second service.
-7. Separate repo preference storage from runtime metadata.
-8. Persist replay cursor metadata for active reviews if needed by the local fanout layer.
-
-### Tests
-
-- `packages/cli/test/app/reviews/session.test.ts`
-- `packages/cli/test/app/reviews/ui-static.test.ts`
-
-Add coverage for:
-
-- startup vs reuse behavior
-- stale runtime replacement
-- terminal-independent lifecycle
-- runtime metadata read/write behavior
-
-## Workstream 3: Worker review contract updates
-
-### Outcome
-
-The worker can distinguish fresh checkpoint reviews from current-environment validation reviews while preserving existing review lifecycle and event truth.
-
-### Primary file targets
-
-- `packages/worker/src/index.ts`
-- `packages/worker/src/api/reviews.ts`
+  - in-memory replay, dedupe, and local fanout for review events
 - `packages/worker/src/api/reviews/create.ts`
-- `packages/worker/src/api/reviews/request-shared.ts`
-- `packages/worker/src/api/reviews/shared.ts`
+  - canonical review creation contract, including `policyMode` and `reviewBasis`
 - `packages/worker/src/api/reviews/policy.ts`
-- `packages/worker/src/api/reviews/policy-shared.ts`
-- `packages/worker/src/api/reviews/events-stream.ts`
-- `packages/worker/src/lib/review-runner.ts`
-- `packages/worker/src/lib/review-runner/shared.ts`
-- `packages/worker/src/lib/db/reviews/create.ts`
-- `packages/worker/src/lib/db/reviews/query.ts`
-- `packages/worker/src/lib/db/reviews/shared.ts`
-- `packages/worker/src/types.ts`
+  - policy-first review creation and approval lifecycle entrypoints
 
-### Required changes
+Concrete gap evidence:
 
-1. Accept canonical `policyMode` values `none|auto|review`.
-2. Accept and validate `reviewBasis = checkpoint|environment`.
-3. Preserve current policy states:
-   - `policy_pending`
-   - `policy_ready`
-   - `policy_approved`
-4. Ensure event/status serialization includes policy states everywhere Studio consumes them.
-5. Support fresh rerun vs validation rerun semantics:
-   - fresh rerun resolves latest checkpoint again
-   - validation rerun reviews current environment state
-6. Preserve idempotency guarantees while keeping retry and rerun as new review ids.
-7. Return enough environment/provenance metadata for the UI to label basis and anchor correctly.
-
-Use `docs/architecture/review-studio-experience.md` section `L) Worker API delta notes (implementation-facing)` as the minimum contract target for request/response shape.
-
-### Tests
-
-- `packages/worker/test/api/reviews.test.ts`
-- `packages/worker/test/lib/db.review.test.ts`
-- `packages/worker/test/lib/review-runner.test.ts`
-- `packages/worker/test/lib/db.events.test.ts`
-
-Add coverage for:
-
-- new policy mode enum handling
-- review basis validation
-- event status coverage for policy states
-- retry vs rerun id semantics
-
-## Workstream 4: Studio event transport, replay, and proxying
-
-### Outcome
-
-Studio route state survives browser refresh and Studio restart without losing worker-truth ordering.
-
-### Primary file targets
-
-- `packages/cli/src/app/reviews/ui-events-fanout.ts`
-- `packages/cli/src/app/reviews/ui-proxy.ts`
-- `packages/cli/src/clients/worker/reviews.ts`
-- `packages/report-ui/src/lib/review.ts`
-
-### Required changes
-
-1. Freeze `seq` as the canonical replay cursor per `reviewId`.
-2. Teach the CLI-side SSE fanout to resume from the last known cursor when possible.
-3. Dedupe events by `(reviewId, seq)`.
-4. On browser load:
-   - fetch current review snapshot first
-   - then attach live stream
-5. On browser refresh:
-   - reload snapshot
-   - resume/replay from last known `seq`
-6. On Studio restart:
-   - reconnect to worker
-   - catch up from persisted cursor or full snapshot fallback
-7. Do not synthesize terminal outcomes locally.
-
-### Tests
-
-- `packages/cli/test/app/reviews/ui-static.test.ts`
-- `packages/report-ui/src/lib/review.test.ts`
-
-Add coverage for:
-
-- replay buffer behavior
-- duplicate suppression
-- snapshot + stream merge behavior
-- cursor fallback to full refresh on gaps
-
-## Workstream 5: Review Run UI state model
-
-### Outcome
-
-The React UI renders every locked review state on one route with the correct panels and actions.
-
-### Primary file targets
-
-- `packages/report-ui/src/App.tsx`
-- `packages/report-ui/src/components/ReviewHistoryPage.tsx`
-- `packages/report-ui/src/components/BranchReviewsPage.tsx`
-- `packages/report-ui/src/components/PolicyPage.tsx`
-- `packages/report-ui/src/components/ReportPage.tsx`
-- `packages/report-ui/src/lib/review.ts`
-- `packages/report-ui/src/types.ts`
-
-### Required changes
-
-1. Align the UI with the full state map:
-   - `policy_pending`
-   - `policy_ready`
-   - `policy_approved`
-   - `queued`
-   - `running`
-   - `succeeded`
-   - `failed`
-   - `cancelled`
-2. Keep everything on one Review Run route even as state changes.
-3. Keep policy visible as reference through run and result states.
-4. Expose recovery-first actions in failed states.
-5. Distinguish fresh rerun from environment validation review.
-6. Keep branch/target context visible on all run surfaces.
-7. Reflect environment/anchor provenance without leaking too much implementation jargon.
-
-### Tests
-
-- `packages/report-ui/src/components/ReportPage.test.tsx`
-- `packages/report-ui/src/components/ReviewHistoryPage.test.tsx`
-- `packages/report-ui/src/lib/review.test.ts`
-
-Add coverage for:
-
-- policy states
-- cancelled state
-- route stability across transitions
-- replay-driven status refresh
-
-## Workstream 6: Agent remediation loop and environment validation
-
-### Outcome
-
-The completed review page can transition into a mutable agent-remediation environment and then validate that environment with a new review run.
-
-### Primary file targets
-
-- `packages/report-ui/src/components/ReportPage.tsx`
-- `packages/cli/src/app/reviews/open.ts`
-- `packages/cli/src/app/workspaces/create.ts`
-- `packages/worker/src/api/workspace-tasks.ts`
-- `packages/worker/src/lib/workspace-task-runner.ts`
-- `packages/worker/src/api/workspaces/query.ts`
-- `packages/worker/src/api/workspaces/query-diff.ts`
-- `packages/worker/src/types.ts`
-
-### Required changes
-
-1. Replace vague “Act on findings” behavior with `Fix with agent`.
-2. Create or reuse an edit-mode mutable environment derived from the original review anchor.
-3. Keep the checkpoint as immutable provenance anchor.
-4. Add `Review current environment` as a separate action from `Run another review`.
-5. Ensure validation review targets current environment state, not the original checkpoint snapshot.
-6. Keep local apply/export explicit and separate from remediation.
-
-### Scope note
-
-This workstream does not require the full conversational editing product to land before Studio can ship. A narrower “run bounded agent task against current environment” slice is enough for the first implementation pass, as long as the provenance and validation-review model match the locked docs.
-
-### Tests
-
-- `packages/worker/test/api/workspace-tasks.test.ts`
-- `packages/worker/test/lib/workspace-task-runner.test.ts`
-- UI tests added near `ReportPage`
-
-Add coverage for:
-
-- mutable environment creation/reuse
-- validation review basis
-- no implicit local apply
-
-## Workstream 7: Explicit export/apply path
-
-### Outcome
-
-Users can explicitly bring environment changes back locally without collapsing the distinction between mutable environment state and local repo state.
-
-### Primary file targets
-
-- `packages/cli/src/app/reviews/open.ts`
 - `packages/cli/src/app/reviews/session.ts`
-- `packages/worker/src/api/workspaces/operations-export.ts`
-- `packages/worker/src/api/workspaces/artifacts.ts`
-- `packages/worker/src/api/workspaces/github-branch.ts`
-- `packages/worker/src/api/workspaces/github-push.ts`
+  - runtime metadata initializes `replayCursors`, but they are not yet carrying durable replay state across Studio restarts
+- `packages/cli/src/app/reviews/ui-events-fanout.ts`
+  - replay state is held in memory and cleaned up on a short TTL, which is useful for local continuity but is not full restart persistence
 
-### Required changes
+What is still missing for this slice to be truly complete:
 
-1. Make export/apply an explicit user action.
-2. Support at least one safe return path for v1:
-   - local patch/apply
-   - artifact export
-   - GitHub branch push
-3. Track exported/applied state in environment metadata so cleanup rules stay safe.
+- replay cursor persistence that survives Studio restart in a durable way
+- the broader worktree/edit-environment model assumed by the original planning docs
+- stronger end-to-end proof that restart/recovery behavior is stable beyond the current in-memory fanout model
 
-### Scope note
+## Slice 1: Home
 
-Choose one primary local-return path for the first pass and document the others as deferred if needed. Do not block Studio on perfect parity across every export surface.
+State: shipped
 
-## Critical path order
+What shipped:
 
-1. Workstream 1: canonical CLI surface
-2. Workstream 3: worker review contract updates
-3. Workstream 2: local Studio runtime
-4. Workstream 4: event transport and replay
-5. Workstream 5: Review Run UI state model
-6. Workstream 6: agent remediation loop
-7. Workstream 7: explicit export/apply path
+- Studio opens to Home
+- current branch context is visible
+- `New Review` is prominent
+- `Resume active review` appears when applicable
+- recent reviews render for the current branch
+- branch change requires explicit user confirmation rather than auto-switching
 
-Rationale:
+Primary implementation files:
 
-- command and worker contracts must stabilize before UI behavior is reliable
-- detached Studio lifecycle and replay are prerequisites for the “terminal optional” promise
-- remediation and apply/export can layer on top once the run lifecycle is stable
+- `packages/report-ui/src/components/ReviewHistoryPage.tsx`
+  - Home surface, branch-aware CTA flow, and branch-switch confirmation banner
+- `packages/cli/src/app/reviews/ui-proxy.ts`
+  - branch-context and review-history data source for the Home page
 
-## Suggested PR sequence
+Primary evidence in code/tests:
 
-1. PR 1: CLI taxonomy and help updates
-2. PR 2: worker policy mode + review basis contracts
-3. PR 3: detached Studio runtime and metadata
-4. PR 4: event replay/resume plumbing
-5. PR 5: UI state-model alignment
-6. PR 6: agent remediation and current-environment validation review
-7. PR 7: explicit local export/apply path
+- branch-switch banner and explicit switch action in `packages/report-ui/src/components/ReviewHistoryPage.tsx`
+- Home render and resume scenarios in `packages/report-ui/src/components/ReviewHistoryPage.test.tsx`
 
-## Verification matrix
+## Slice 2: New Review slide-over
 
-### CLI
+State: shipped
 
-- `review studio` launches or reuses Studio
-- `review create` defaults to `policy-mode none`
-- `--policy-mode`, `--auto-policy`, `--policy`, and `--open-studio` behave consistently
-- `review open` routes through compatibility behavior only
+What shipped:
 
-### Lifecycle
+- New Review opens without route change
+- default checkpoint resolution is driven from current branch context
+- policy mode is selected in the Home flow and persisted per repo
+- preflight returns branch, checkpoint, readiness, and checkpoint-count context
+- start path creates the review and routes into the Review Run page
+- start-progress streaming exists for the initial handoff
 
-- Studio survives terminal exit
-- browser refresh restores active run state
-- Studio restart reconnects to in-flight runs
-- event replay preserves ordering and avoids duplicates
+Primary implementation files:
 
-### Review UX
+- `packages/cli/src/app/reviews/studio-create.ts`
+  - checkpoint resolution, preflight shaping, repo policy preference persistence, and create flow
+- `packages/cli/src/app/reviews/ui-proxy.ts`
+  - Studio preflight and create endpoints used by the UI
+- `packages/report-ui/src/components/ReviewHistoryPage.tsx`
+  - slide-over UI, policy-mode selection, and start-review interaction
 
-- policy states render correctly on one route
-- success/failure/cancelled states render correct actions
-- `Run another review` starts a fresh checkpoint-based flow
-- `Review current environment` validates mutable environment state
+Primary evidence in code/tests:
 
-### Remediation/apply
+- preflight + start flow in `packages/cli/test/app/reviews/studio-create.test.ts`
+- proxy endpoint coverage in `packages/cli/test/app/reviews/ui-proxy.test.ts`
+- ReviewHistoryPage start-flow coverage in `packages/report-ui/src/components/ReviewHistoryPage.test.tsx`
 
-- `Fix with agent` does not create a new review run
-- mutable environment remains separate from local repo
-- local apply/export is explicit
-- cleanup does not remove environments with unexported edits
+Current caveat:
 
-## Deferred follow-ons after initial Studio ship
+- this flow is still checkpoint-centric and does not yet expose the planned mutable-environment review loop
 
-1. Full conversational editing loop from `specs/phases/09-checkpoint-conversation-and-edit-loop.md`
-2. Richer “Discuss finding” interactions
-3. Stronger per-review diff comparison modes such as “since last review”
-4. Power-user exposure of implementation details when useful
+## Slice 3: Review Run, pre-run policy states
 
-## Exit criteria
+State: functionally shipped, not yet hardened
 
-This implementation plan is complete when:
+What shipped:
 
-1. The locked Studio docs and build plan are reflected in code-level behavior.
-2. The current `review open` ambiguity is removed from the primary user-facing flow.
-3. Studio can launch, survive terminal exit, resume runs, and render all review states on one route.
-4. The fix loop works as:
-   - review checkpoint-derived environment
-   - fix with agent in mutable environment
-   - review current environment
-   - export/apply locally by explicit action
+- `policy_pending`, `policy_ready`, and `policy_approved` are first-class states
+- those states render on the same Review Run route rather than forcing route changes
+- policy approval happens on the same route
+- the old policy page is now effectively a legacy alias over the shared Review Run surface
 
-## Delivery plan (experience-first)
+Current progress:
 
-Use this section to ship Review Studio as vertical slices that correspond to actual user-visible surfaces.
+- the user-visible policy flow now matches the intended route model
+- policy-stage reviews no longer require a separate dedicated page to make forward progress
+- approval transitions cleanly into queue handoff on the same route
+- the behavior is covered well enough to treat the slice as landed from a product-flow perspective
 
-This is the recommended delivery model:
+Primary implementation files:
 
-1. ship one foundation slice first
-2. then ship page-by-page vertical slices
-3. then run one hardening pass across the full loop
+- `packages/report-ui/src/components/ReportPage.tsx`
+  - unified Review Run route for policy states and later run states
+- `packages/report-ui/src/components/PolicyPage.tsx`
+  - compatibility wrapper onto the shared Review Run surface
+- `packages/worker/src/api/reviews/policy.ts`
+  - policy request, approval, and state transition API contract
 
-This keeps engineering work aligned with the actual product experience rather than marking technical subsystems complete while the UI loop is still broken.
+Primary evidence in code/tests:
 
-### Slice 0: Foundation
+- policy-state rendering and approval coverage in `packages/report-ui/src/components/ReportPage.test.tsx`
+- `PolicyPage.tsx` delegates to the shared route surface
 
-#### Scope
+Standing problems:
 
-- canonical CLI taxonomy
-- detached Studio runtime startup/reuse
-- worker contract support for `policyMode` and `reviewBasis`
-- replay/resume scaffolding
+- refresh/restart behavior during the policy flow is acceptable today, but the stronger persisted replay/recovery guarantees from the original foundation plan are still not fully finished
+- local replay state is still primarily transient CLI memory rather than durable per-review recovery state
+- policy-stage behavior is implemented inside the still-large `ReportPage.tsx`, so the product flow is ahead of the UI structure/maintainability story
+- the current implementation relies on shared polling/live-stream behavior rather than a more explicit, hardened policy-stage recovery model
 
-#### Entry criteria
+Concrete gap evidence:
 
-- locked Studio docs are accepted
-- command taxonomy is frozen
-- policy/default semantics are frozen
+- `packages/cli/src/app/reviews/session.ts`
+  - runtime metadata still initializes `replayCursors` as empty state rather than persisting a stronger recovery position
+- `packages/cli/src/app/reviews/ui-events-fanout.ts`
+  - replay buffering remains TTL-based in local memory
+- `packages/report-ui/src/components/ReportPage.tsx`
+  - policy timers, stream handling, recovery actions, and later run/terminal states still live in one large route component
 
-#### Definition of done
+## What is only partial
 
-1. `nimbus review studio` launches or reuses Studio.
-2. `nimbus review create --policy-mode none|auto|review` works.
-3. `nimbus review open` is compatibility-only.
-4. Studio runtime metadata exists and can be reused after relaunch.
-5. Worker accepts canonical `policyMode` and `reviewBasis`.
-6. Browser refresh and Studio restart can reconnect to active reviews from worker truth plus replay.
+## Slice 4: Review Run, active states
 
-#### Exit artifact
+State: partial
 
-- Studio can boot reliably enough for page work to proceed without reworking process lifecycle later.
+Already present:
 
-### Slice 1: Home
+- `queued` and `running` render on the Review Run route
+- live activity/event streaming exists
+- manual recover/fail actions exist for stalled queued/running reviews
+- worker event sequencing and client-side dedupe scaffolding exist
 
-#### Scope
+Primary implementation files:
 
-- current branch context
-- `New Review`
-- `Resume active review`
-- recent reviews
-- branch switch banner
+- `packages/report-ui/src/components/ReportPage.tsx`
+  - queued/running UI, activity panel, and recovery controls
+- `packages/cli/src/app/reviews/ui-events-fanout.ts`
+  - local stream dedupe and replay buffer behavior
+- `packages/worker/src/api/reviews/events-stream.ts`
+  - backend event stream consumed by local Studio fanout
 
-#### Definition of done
+Missing versus target:
 
-1. Opening Studio lands on Home.
-2. Current branch context is visible and accurate.
-3. `New Review` is prominent and reachable in one click.
-4. `Resume active review` appears only when applicable and routes correctly.
-5. Recent reviews render for the current branch.
-6. Branch change banner appears without silently switching context.
-7. Empty states are clear and actionable.
+- the spec's first-class `Agent Thinking` experience is not yet truly productized
+- replay and restart handling still rely too heavily on transient local state
+- the active-state UI still reads more like a report activity panel than the finished Studio run surface
+- the delivery doc should treat this as the next main slice rather than pretending the active run experience is done
 
-#### Tests / checks
+Concrete gap evidence:
 
-- UI test for Home render states
-- manual branch-switch scenario
-- resume-active-review scenario
+- `packages/report-ui/src/components/ReportPage.tsx`
+  - one component still owns policy, active-run, failure, and findings surfaces, which makes the active-run experience feel like a mode inside the report page rather than a finished Studio run surface
+- `packages/cli/src/app/reviews/ui-events-fanout.ts`
+  - replay cleanup remains TTL-based local memory rather than durable recovery state
 
-### Slice 2: New Review slide-over
+## What has not shipped yet
 
-#### Scope
+## Slice 5: terminal states and fix loop
 
-- checkpoint resolution
-- policy mode picker
-- preflight summary
-- review-start CTA
+State: not started
 
-#### Definition of done
+Not shipped yet:
 
-1. New Review opens without route change.
-2. Default target resolves latest checkpoint from current branch using the locked fallback behavior.
-3. Studio defaults policy mode from repo preference, falling back to `auto` on first run.
-4. Policy mode selection is persisted to `.nimbus/studio.json`.
-5. Preflight summary shows branch, checkpoint, policy mode, and readiness.
-6. Hard-fail no-checkpoint state is explicit and understandable.
-7. `Start Review` creates the correct review flow and routes into the Review Run page.
+- `Fix with agent` as a real product action
+- `Review current environment` as a real validation-review path
+- explicit mutable-environment lifecycle and safety rules
+- the full terminal action model from the spec
 
-#### Tests / checks
+Current reality:
 
-- CLI/Studio preference persistence coverage
-- no-checkpoint UX check
-- review-start path for all three policy modes
+- terminal review pages show findings, summaries, and failure guidance
+- they do not yet implement the planned fix loop from the product spec
 
-### Slice 3: Review Run, pre-run policy states
+Primary current-state files:
 
-#### Scope
+- `packages/report-ui/src/components/ReportPage.tsx`
+  - terminal review surface today
+- `docs/architecture/review-studio-experience.md`
+  - product spec for the not-yet-built fix loop
 
-- `policy_pending`
-- `policy_ready`
-- `policy_approved`
+## Slice 6: hardening pass
 
-#### Definition of done
+State: not started
 
-1. Policy states are rendered as distinct user-visible route states.
-2. `policy_pending` shows progress without forcing a route change.
-3. `policy_ready` allows user review/edit/approval on the same route.
-4. `policy_approved` transitions cleanly into queue/execution state on the same route.
-5. Refresh/restart preserves policy-stage route recovery.
-6. Cancellation or abandonment behavior is explicit and does not create hidden duplicate runs.
+Not shipped yet:
 
-#### Tests / checks
+- full end-to-end Studio hardening across launch, refresh, restart, retry, and fix-loop transitions
+- the stronger cleanup and retention behavior expected once mutable environments exist
+- the final "terminal optional" proof across the whole intended product loop
 
-- worker policy-state API coverage
-- UI state mapping coverage for all policy states
-- refresh/restart recovery during policy flow
+## Recommended next slice
 
-### Slice 4: Review Run, active states
+Focus next on Slice 4: Review Run active states.
 
-#### Scope
+Why this is the right next move:
 
-- `queued`
-- `running`
-- quiet progress
-- `Agent Thinking`
-- live event updates
+1. Slices 1-3 already make the front half of Studio coherent.
+2. The largest remaining product gap before the fix loop is the quality and durability of queued/running states.
+3. Finishing active-state polish reduces the chance of building the fix loop on top of weak replay/recovery behavior.
+4. It avoids prematurely building edit-environment and worktree machinery before the main run surface is solid.
 
-#### Definition of done
+## Proposed definition of done for the next slice
 
-1. The route stays stable while the review moves through `queued` and `running`.
-2. Quiet progress is understandable at a glance.
-3. `Agent Thinking` supports curated summaries and raw stream toggle.
-4. Event replay/dedupe preserves ordering by `reviewId + seq`.
-5. Browser refresh restores current state and continues live updates.
-6. Studio restart reconnects and catches up correctly.
-7. No synthetic terminal states are invented locally.
+1. Queued and running remain on one stable route with no navigation churn.
+2. The active-state surface clearly distinguishes:
+   - quiet progress summary
+   - deeper review activity
+   - retry/recovery controls
+3. Replay and dedupe behavior are documented and reliable enough for browser refresh and Studio restart.
+4. Local clients do not invent synthetic terminal outcomes.
+5. The UI language matches the product spec more closely than the current generic live-activity presentation.
 
-#### Tests / checks
+## Explicitly deferred until after Slice 4
 
-- replay/dedupe coverage
-- UI state merge coverage for snapshot + stream
-- restart/refresh manual scenario
+Do not mix these into the active-state slice unless required by a discovered blocker:
 
-### Slice 5: Review Run, terminal states and fix loop
-
-#### Scope
-
-- `succeeded`
-- `failed`
-- `cancelled`
+- worktree-backed `review`/`edit` environment lifecycle
 - `Fix with agent`
 - `Review current environment`
-- `Run another review`
-- explicit export/apply
+- export/apply back to the local repo
+- `Discuss finding`
+- broader parallel-environment retention and cleanup rules
 
-#### Definition of done
+## Historical note
 
-1. Success, failure, and cancelled states render distinctly.
-2. Failure state prioritizes `Retry same inputs` and `Retry with policy review`.
-3. `Run another review` starts a fresh checkpoint-based review flow.
-4. `Fix with agent` creates or reuses mutable environment state without creating a new review run.
-5. `Review current environment` creates a new validation review against current environment state.
-6. Validation review does not silently downgrade to the original checkpoint snapshot.
-7. Export/apply back to the local repo is explicit only.
-8. Cleanup rules do not delete mutable environments with unexported edits.
+The older `review-studio-experience-build-plan.md` remains in the repo as planning context from before slices 1-3 landed.
 
-#### Tests / checks
+It should not be used as the current rollout status document.
 
-- terminal-state UI coverage
-- remediation-loop coverage
-- validation-review basis coverage
-- explicit export/apply safety checks
-
-### Slice 6: Hardening pass
-
-#### Scope
-
-- end-to-end polish
-- recovery reliability
-- cleanup safety
-- compatibility cleanup
-
-#### Definition of done
-
-1. All page slices work together without terminal prompts mid-loop.
-2. Full flow works:
-   - Home
-   - New Review
-   - Policy or direct run
-   - Active review
-   - Terminal review
-   - Fix with agent
-   - Review current environment
-   - Export/apply explicitly
-3. Studio survives terminal exit, browser refresh, and local service restart.
-4. Compatibility commands still work but are no longer the primary documented path.
-5. QA checklist from the Studio build plan passes end-to-end.
-
-## Experience-based release gate
-
-Do not mark Review Studio “implemented” just because the APIs and command handlers exist.
-
-Mark it implemented only when:
-
-1. Slice 0 through Slice 6 are complete.
-2. Each slice satisfies its own definition of done.
-3. The end-to-end user loop works page-by-page without needing undocumented operator intervention.
+This file is now the current delivery/status view.

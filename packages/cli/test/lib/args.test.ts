@@ -115,9 +115,68 @@ export function runArgsParsingTests(): void {
   }
 
   {
+    const parsed = parseArgs(['review', 'create', '--session', 'session_abcd1234']);
+    assert.equal(parsed.flags.session, 'session_abcd1234');
+    assert.deepEqual(parsed.positional, ['create']);
+  }
+
+  {
     const parsed = parseArgs(['review', 'open', '--port', '2001']);
     assert.equal(parsed.flags.port, '2001');
     assert.deepEqual(parsed.positional, ['open']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'adopt', '--branch', 'main', '--path', 'tmp/report.md']);
+    assert.equal(parsed.flags.branch, 'main');
+    assert.equal(parsed.flags.path, 'tmp/report.md');
+    assert.deepEqual(parsed.positional, ['session', 'adopt']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'adopt', '--branch-only', '--branch', 'nimbus/fix-math']);
+    assert.equal(parsed.flags['branch-only'], true);
+    assert.equal(parsed.flags.branch, 'nimbus/fix-math');
+    assert.deepEqual(parsed.positional, ['session', 'adopt']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'list', '--all', '--limit', '20']);
+    assert.equal(parsed.flags.all, true);
+    assert.equal(parsed.flags.limit, '20');
+    assert.deepEqual(parsed.positional, ['session', 'list']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'latest']);
+    assert.deepEqual(parsed.positional, ['session', 'latest']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'list-local', '--all']);
+    assert.equal(parsed.flags.all, true);
+    assert.deepEqual(parsed.positional, ['session', 'list-local']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'diff-local', 'session_abcd1234', '--base', 'main']);
+    assert.equal(parsed.flags.base, 'main');
+    assert.deepEqual(parsed.positional, ['session', 'diff-local', 'session_abcd1234']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'path-local', 'session_abcd1234']);
+    assert.deepEqual(parsed.positional, ['session', 'path-local', 'session_abcd1234']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'enter-local', 'session_abcd1234']);
+    assert.deepEqual(parsed.positional, ['session', 'enter-local', 'session_abcd1234']);
+  }
+
+  {
+    const parsed = parseArgs(['review', 'session', 'merge-back', 'session_abcd1234']);
+    assert.deepEqual(parsed.positional, ['session', 'merge-back', 'session_abcd1234']);
   }
 
   {

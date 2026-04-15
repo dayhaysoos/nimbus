@@ -1,5 +1,5 @@
 import { strict as assert } from 'assert';
-import { AgentEndpointError, callOpenRouter, nextAgentActionWithInference } from '../../src/lib/agent.js';
+import { AgentEndpointError, callOpenRouter, nextAgentAction, nextAgentActionWithInference } from '../../src/lib/agent.js';
 import worker from '../../src/index.js';
 
 type WorkerModule = {
@@ -382,11 +382,66 @@ export async function runAgentTests(): Promise<void> {
   }
 
   {
-    const action = await nextAgentActionWithInference({
+    const originalFetch = globalThis.fetch;
+    let capturedBody = '';
+    globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      capturedBody = typeof init?.body === 'string' ? init.body : '';
+      return new Response(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                content: JSON.stringify({
+                  type: 'tool',
+                  tool: 'write_file',
+                  args: {
+                    path: 'src/normalize-port.js',
+                    content: 'export function normalizePort(raw) { return raw; }\n',
+                    command: null,
+                    maxBytes: null,
+                    timeoutMs: null,
+                  },
+                  summary: null,
+                }),
+              },
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const action = await nextAgentActionWithInference(
+        {
+          mode: 'workspace_task',
+          prompt: 'General coding task prompt',
+          step: 1,
+          maxSteps: 6,
+          history: [],
+        },
+        { OPENROUTER_API_KEY: 'test-key', DEFAULT_MODEL: 'anthropic/claude-sonnet-4-5' }
+      );
+      assert.equal(action.type, 'tool');
+      assert.equal(action.tool, 'write_file');
+      assert.equal(action.args.path, 'src/normalize-port.js');
+
+      const requestBody = JSON.parse(capturedBody) as Record<string, unknown>;
+      const responseFormat = requestBody.response_format as { json_schema?: { name?: string } };
+      assert.equal(responseFormat?.json_schema?.name, 'WorkspaceTaskAction');
+      const messages = requestBody.messages as Array<{ content?: string }>;
+      assert.equal(typeof messages?.[0]?.content, 'string');
+      assert.equal((messages?.[0]?.content ?? '').includes('Task loop instructions:'), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const action = nextAgentAction({
       mode: 'workspace_task',
       prompt: 'General coding task prompt',
       history: [],
-    }, { OPENROUTER_API_KEY: 'test-key' });
+    });
     assert.equal(action.type, 'tool');
     assert.equal(action.tool, 'list_files');
   }
