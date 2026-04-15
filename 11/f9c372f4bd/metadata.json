@@ -1,0 +1,28 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "11f9c372f4bd",
+  "strategy": "manual-commit",
+  "branch": "feat/review-experience-ui",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/app/reviews/create-from-commit.ts",
+    "packages/cli/src/app/reviews/create-from-deployment.ts",
+    "packages/cli/src/app/reviews/create-from-session.ts",
+    "packages/cli/src/app/reviews/local-environments.ts"
+  ],
+  "sessions": [
+    {
+      "metadata": "/11/f9c372f4bd/0/metadata.json",
+      "transcript": "/11/f9c372f4bd/0/full.jsonl",
+      "content_hash": "/11/f9c372f4bd/0/content_hash.txt",
+      "prompt": "/11/f9c372f4bd/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 2471014,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 2209536,
+    "output_tokens": 31934,
+    "api_call_count": 28
+  }
+}
