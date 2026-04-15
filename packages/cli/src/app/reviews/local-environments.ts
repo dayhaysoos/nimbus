@@ -116,6 +116,37 @@ function branchExists(repoRoot: string, branchName: string): boolean {
   }
 }
 
+function isAncestorCommit(repoRoot: string, ancestorRef: string, descendantRef: string): boolean {
+  try {
+    execFileSync('git', ['merge-base', '--is-ancestor', ancestorRef, descendantRef], {
+      cwd: repoRoot,
+      stdio: 'ignore',
+    });
+    return true;
+  } catch (error) {
+    if (error && typeof error === 'object' && 'status' in error) {
+      const status = (error as { status?: number | null }).status;
+      if (status === 1) {
+        return false;
+      }
+    }
+    throw new Error(`git merge-base --is-ancestor ${ancestorRef} ${descendantRef} failed: ${normalizeGitError(error)}`);
+  }
+}
+
+function currentBranchRef(repoRoot: string): string | null {
+  try {
+    const output = runGit(repoRoot, ['symbolic-ref', '--quiet', '--short', 'HEAD']).trim();
+    return output || null;
+  } catch {
+    return null;
+  }
+}
+
+function workingTreeIsClean(repoRoot: string): boolean {
+  return runGit(repoRoot, ['status', '--short']).trim() === '';
+}
+
 async function readRegistry(): Promise<LocalReviewEnvironmentRegistry> {
   const path = registryPath();
   if (!existsSync(path)) {
@@ -405,4 +436,96 @@ export async function printEnterLocalReviewEnvironmentCommand(sessionId?: string
     ? `cd -- ${quoteForShell(selected.worktreePath)}`
     : `git switch -- ${quoteForShell(selected.branchName)}`;
   process.stdout.write(`${command}\n`);
+}
+
+export async function mergeBackLocalReviewEnvironmentCommand(sessionId?: string): Promise<void> {
+  const repoRoot = resolveRepoRoot();
+  const selected = await resolveLocalReviewEnvironmentEntry(sessionId, {
+    repoRoot,
+    selectionMessage: 'Select a local review environment to merge back',
+  });
+
+  if (!selected.commitSha) {
+    throw new Error(
+      `Session ${selected.sessionId} does not have a committed adopted snapshot yet. Commit the adopted changes before merging back.`
+    );
+  }
+  if (!branchExists(repoRoot, selected.branchName)) {
+    throw new Error(
+      `Local review branch ${selected.branchName} no longer exists in this repository. Re-adopt the session before merging back.`
+    );
+  }
+
+  const currentBranch = currentBranchRef(repoRoot);
+  if (!currentBranch) {
+    throw new Error('Current checkout is detached. Switch to the target branch before merging back a Nimbus session.');
+  }
+  if (currentBranch === selected.branchName) {
+    throw new Error(
+      `You are already on ${selected.branchName}. Switch to the branch you want to update before merging back this session.`
+    );
+  }
+  if (!workingTreeIsClean(repoRoot)) {
+    throw new Error(
+      'Current working tree is not clean. Commit or stash local changes before merging back a Nimbus session.'
+    );
+  }
+
+  if (isAncestorCommit(repoRoot, selected.commitSha, currentBranch)) {
+    p.log.info(`Nimbus session ${selected.sessionId} is already applied on ${currentBranch}.`);
+    return;
+  }
+
+  const cherryStatus = runGit(repoRoot, ['cherry', currentBranch, selected.branchName]);
+  const cherryLine = cherryStatus
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.endsWith(selected.commitSha!));
+  if (cherryLine?.startsWith('-')) {
+    p.log.info(`Nimbus session ${selected.sessionId} is already applied on ${currentBranch}.`);
+    return;
+  }
+
+  p.log.info(`Merging back Nimbus session ${selected.sessionId}`);
+  console.log('');
+  console.log(`  Current Branch:  ${currentBranch}`);
+  console.log(`  Source Branch:   ${selected.branchName}`);
+  console.log(`  Source Commit:   ${selected.commitSha}`);
+  console.log(`  Changed Files:   ${selected.environmentRevision.changedFileCount}`);
+
+  try {
+    runGit(repoRoot, ['cherry-pick', '-x', selected.commitSha]);
+  } catch (error) {
+    const message = normalizeGitError(error);
+    if (
+      message.includes('after resolving the conflicts') ||
+      message.includes('could not apply') ||
+      message.includes('fix conflicts')
+    ) {
+      throw new Error(
+        `Merge-back hit conflicts while applying ${selected.commitSha}. Resolve them, then run \`git cherry-pick --continue\` or \`git cherry-pick --abort\`.`
+      );
+    }
+    if (message.includes('previous cherry-pick is now empty') || message.includes('nothing to commit')) {
+      try {
+        runGit(repoRoot, ['cherry-pick', '--abort']);
+      } catch {
+        // best effort; avoid masking the no-op condition
+      }
+      p.log.info(`Nimbus session ${selected.sessionId} is already applied on ${currentBranch}.`);
+      return;
+    }
+    throw error;
+  }
+
+  const headCommit = runGit(repoRoot, ['rev-parse', 'HEAD']).trim();
+  p.log.success(`Applied Nimbus session ${selected.sessionId} onto ${currentBranch}`);
+  console.log('');
+  console.log(`  Current Branch:  ${currentBranch}`);
+  console.log(`  Source Branch:   ${selected.branchName}`);
+  console.log(`  Source Commit:   ${selected.commitSha}`);
+  console.log(`  New HEAD:        ${headCommit}`);
+  if (selected.worktreePath) {
+    console.log(`  Worktree Path:   ${selected.worktreePath}`);
+  }
 }

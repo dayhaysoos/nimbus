@@ -11,6 +11,7 @@ import {
   listReviewSessionsCommand,
   listLocalReviewSessionsCommand,
   materializeReviewSessionCommand,
+  mergeBackLocalReviewSessionCommand,
   pathLocalReviewSessionCommand,
   resetReviewSessionCommand,
   showLatestReviewSessionCommand,
@@ -286,7 +287,13 @@ export async function dispatchReviewCommand(
       return;
     }
 
-    exitWithUsage('Unknown review session command. Use: show, list, latest, reset, adopt, materialize, list-local, diff-local, path-local, enter-local');
+    if (sessionAction === 'merge-back') {
+      const targetSessionId = typeof sessionId === 'string' && sessionId.trim() ? sessionId.trim() : undefined;
+      await mergeBackLocalReviewSessionCommand(targetSessionId);
+      return;
+    }
+
+    exitWithUsage('Unknown review session command. Use: show, list, latest, reset, adopt, materialize, list-local, diff-local, path-local, enter-local, merge-back');
   }
 
   if (reviewAction === 'preflight') {

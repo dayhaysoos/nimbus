@@ -4,6 +4,7 @@ import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { resetWorkspace } from '../../clients/worker/workspaces.js';
 import {
   diffLocalReviewEnvironmentCommand,
+  mergeBackLocalReviewEnvironmentCommand,
   listLocalReviewEnvironmentsCommand,
   printEnterLocalReviewEnvironmentCommand,
   printLocalReviewEnvironmentPathCommand,
@@ -261,6 +262,10 @@ export async function pathLocalReviewSessionCommand(sessionId?: string): Promise
 
 export async function enterLocalReviewSessionCommand(sessionId?: string): Promise<void> {
   await printEnterLocalReviewEnvironmentCommand(sessionId);
+}
+
+export async function mergeBackLocalReviewSessionCommand(sessionId?: string): Promise<void> {
+  await mergeBackLocalReviewEnvironmentCommand(sessionId);
 }
 
 export { materializeReviewSessionCommand } from '../../app/reviews/materialize.js';

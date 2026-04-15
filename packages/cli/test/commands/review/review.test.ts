@@ -23,6 +23,7 @@ import {
   listReviewSessionsCommand,
   listLocalReviewSessionsCommand,
   materializeReviewSessionCommand,
+  mergeBackLocalReviewSessionCommand,
   pathLocalReviewSessionCommand,
   resetReviewSessionCommand,
   setLocalReviewEnvironmentFlowForTests,
@@ -3107,6 +3108,107 @@ export async function runReviewCommandTests(): Promise<void> {
     {
       const originalCwd = process.cwd();
       const { repoRoot, anchorCommitSha, patch, patchSha256 } = await createMaterializeTestRepo();
+      const registryDir = await mkdtemp(join(tmpdir(), 'nimbus-local-envs-'));
+      const registryPath = join(registryDir, 'materializations.json');
+      try {
+        process.chdir(repoRoot);
+        setLocalReviewEnvironmentFlowForTests({ registryPath });
+        setReviewSessionMaterializeFlowForTests({
+          getReviewSession: async () => ({
+            session: {
+              ...createReviewResponseBody().session,
+              repo: 'dayhaysoos/nimbus',
+              branch: 'main',
+              anchorCommitSha,
+              anchorCheckpointId: null,
+              activeReviewId: 'rev_env1234',
+              currentReviewStatus: 'succeeded',
+              latestReviewId: 'rev_env1234',
+              stopReason: 'followup_pass_completed',
+              passCount: 2,
+              passes: [
+                ...createReviewResponseBody().session.passes,
+                {
+                  reviewId: 'rev_env1234',
+                  status: 'succeeded',
+                  reviewBasis: 'environment',
+                  environmentRevision: {
+                    source: 'workspace_head',
+                    diffSha256: patchSha256,
+                    changedFileCount: 1,
+                    generatedAt: '2026-03-11T00:02:00.000Z',
+                  },
+                  createdAt: '2026-03-11T00:02:00.000Z',
+                  startedAt: '2026-03-11T00:02:10.000Z',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                },
+              ],
+            },
+          }) as any,
+          createWorkspacePatchExport: async () => ({
+            operation: {
+              id: 'op_patch_export',
+              type: 'export_patch',
+              status: 'queued',
+              workspaceId: 'ws_abc12345',
+              idempotencyKey: 'idem-export',
+              createdAt: '2026-03-11T00:03:10.000Z',
+              updatedAt: '2026-03-11T00:03:10.000Z',
+            },
+          }),
+          getWorkspaceOperation: async () => ({
+            operation: {
+              id: 'op_patch_export',
+              type: 'export_patch',
+              status: 'succeeded',
+              workspaceId: 'ws_abc12345',
+              idempotencyKey: 'idem-export',
+              createdAt: '2026-03-11T00:03:10.000Z',
+              updatedAt: '2026-03-11T00:03:11.000Z',
+              result: { artifactId: 'artifact_patch_1' },
+            },
+          }),
+          listWorkspaceArtifacts: async () => ({
+            artifacts: [
+              {
+                id: 'artifact_patch_1',
+                type: 'patch',
+                status: 'available',
+                bytes: Buffer.byteLength(patch, 'utf8'),
+                contentType: 'text/x-diff',
+                sha256: patchSha256,
+                workspaceId: 'ws_abc12345',
+                sourceBaselineSha: anchorCommitSha,
+                creatorId: null,
+                createdAt: '2026-03-11T00:03:11.000Z',
+                expiresAt: '2026-03-18T00:03:11.000Z',
+                warnings: [],
+                metadata: {},
+                download: null,
+              },
+            ],
+          }),
+          downloadWorkspaceArtifact: async () => new TextEncoder().encode(patch),
+        });
+
+        const materialized = await materializeReviewSessionCommand('session_abcd1234', { mode: 'branch' });
+        assert.equal(materialized.mode, 'branch');
+        runGitForTest(repoRoot, ['merge', '--ff-only', materialized.branchName]);
+        await mergeBackLocalReviewSessionCommand('session_abcd1234');
+        assert.equal(runGitForTest(repoRoot, ['status', '--short']).trim(), '');
+        assert.equal(existsSync(join(repoRoot, '.git', 'CHERRY_PICK_HEAD')), false);
+      } finally {
+        restoreLocalEnvironmentFlow();
+        restoreMaterializeFlow();
+        process.chdir(originalCwd);
+        await rm(repoRoot, { recursive: true, force: true });
+        await rm(registryDir, { recursive: true, force: true });
+      }
+    }
+
+    {
+      const originalCwd = process.cwd();
+      const { repoRoot, anchorCommitSha, patch, patchSha256 } = await createMaterializeTestRepo();
       try {
         process.chdir(repoRoot);
         setReviewSessionMaterializeFlowForTests({
@@ -3197,6 +3299,134 @@ export async function runReviewCommandTests(): Promise<void> {
         restoreMaterializeFlow();
         process.chdir(originalCwd);
         await rm(repoRoot, { recursive: true, force: true });
+      }
+    }
+
+    {
+      const originalCwd = process.cwd();
+      const { repoRoot, anchorCommitSha, patch, patchSha256 } = await createMaterializeTestRepo();
+      const registryDir = await mkdtemp(join(tmpdir(), 'nimbus-local-envs-'));
+      const registryPath = join(registryDir, 'materializations.json');
+      try {
+        process.chdir(repoRoot);
+        setLocalReviewEnvironmentFlowForTests({ registryPath });
+        setReviewSessionMaterializeFlowForTests({
+          getReviewSession: async () => ({
+            session: {
+              ...createReviewResponseBody().session,
+              repo: 'dayhaysoos/nimbus',
+              branch: 'main',
+              anchorCommitSha,
+              anchorCheckpointId: null,
+              activeReviewId: 'rev_env1234',
+              currentReviewStatus: 'succeeded',
+              latestReviewId: 'rev_env1234',
+              stopReason: 'followup_pass_completed',
+              passCount: 2,
+              passes: [
+                ...createReviewResponseBody().session.passes,
+                {
+                  reviewId: 'rev_env1234',
+                  status: 'succeeded',
+                  reviewBasis: 'environment',
+                  environmentRevision: {
+                    source: 'workspace_head',
+                    diffSha256: patchSha256,
+                    changedFileCount: 1,
+                    generatedAt: '2026-03-11T00:02:00.000Z',
+                  },
+                  createdAt: '2026-03-11T00:02:00.000Z',
+                  startedAt: '2026-03-11T00:02:10.000Z',
+                  finishedAt: '2026-03-11T00:03:00.000Z',
+                },
+              ],
+              outcome: {
+                ...createReviewResponseBody().session.outcome!,
+                reviewed: {
+                  ...createReviewResponseBody().session.outcome!.reviewed,
+                  contextMode: 'basic',
+                },
+                changes: {
+                  ...createReviewResponseBody().session.outcome!.changes,
+                  applied: true,
+                  changedFileCount: 1,
+                  environmentRevision: {
+                    source: 'workspace_head',
+                    diffSha256: patchSha256,
+                    changedFileCount: 1,
+                    generatedAt: '2026-03-11T00:02:00.000Z',
+                  },
+                },
+                materializeReady: true,
+              },
+            },
+          }) as any,
+          createWorkspacePatchExport: async () => ({
+            operation: {
+              id: 'op_patch_export',
+              type: 'export_patch',
+              status: 'queued',
+              workspaceId: 'ws_abc12345',
+              idempotencyKey: 'idem-export',
+              createdAt: '2026-03-11T00:03:10.000Z',
+              updatedAt: '2026-03-11T00:03:10.000Z',
+            },
+          }),
+          getWorkspaceOperation: async () => ({
+            operation: {
+              id: 'op_patch_export',
+              type: 'export_patch',
+              status: 'succeeded',
+              workspaceId: 'ws_abc12345',
+              idempotencyKey: 'idem-export',
+              createdAt: '2026-03-11T00:03:10.000Z',
+              updatedAt: '2026-03-11T00:03:11.000Z',
+              result: { artifactId: 'artifact_patch_1' },
+            },
+          }),
+          listWorkspaceArtifacts: async () => ({
+            artifacts: [
+              {
+                id: 'artifact_patch_1',
+                type: 'patch',
+                status: 'available',
+                bytes: Buffer.byteLength(patch, 'utf8'),
+                contentType: 'text/x-diff',
+                sha256: patchSha256,
+                workspaceId: 'ws_abc12345',
+                sourceBaselineSha: anchorCommitSha,
+                creatorId: null,
+                createdAt: '2026-03-11T00:03:11.000Z',
+                expiresAt: '2026-03-18T00:03:11.000Z',
+                warnings: [],
+                metadata: {},
+                download: null,
+              },
+            ],
+          }),
+          downloadWorkspaceArtifact: async () => new TextEncoder().encode(patch),
+        });
+
+        const materialized = await materializeReviewSessionCommand('session_abcd1234', { mode: 'branch' });
+        assert.equal(materialized.mode, 'branch');
+        assert.equal(runGitForTest(repoRoot, ['branch', '--show-current']).trim(), 'main');
+        assert.equal((await readFile(join(repoRoot, 'math.js'), 'utf8')).includes('return a - b;'), true);
+
+        await mergeBackLocalReviewSessionCommand('session_abcd1234');
+        const firstMergeHead = runGitForTest(repoRoot, ['rev-parse', 'HEAD']).trim();
+        assert.equal(runGitForTest(repoRoot, ['branch', '--show-current']).trim(), 'main');
+        assert.equal((await readFile(join(repoRoot, 'math.js'), 'utf8')).includes('return a + b;'), true);
+        assert.equal(runGitForTest(repoRoot, ['show', '-s', '--format=%s', 'HEAD']).trim(), 'Apply Nimbus session session_abcd1234');
+        assert.equal(runGitForTest(repoRoot, ['status', '--short']).trim(), '');
+
+        await mergeBackLocalReviewSessionCommand('session_abcd1234');
+        assert.equal(runGitForTest(repoRoot, ['rev-parse', 'HEAD']).trim(), firstMergeHead);
+      } finally {
+        restoreLocalEnvironmentFlow();
+        restoreMaterializeFlow();
+        process.chdir(originalCwd);
+        await rm(repoRoot, { recursive: true, force: true });
+        await rm(registryDir, { recursive: true, force: true });
       }
     }
 

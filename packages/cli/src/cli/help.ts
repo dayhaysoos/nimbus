@@ -55,6 +55,8 @@ Commands:
                        Print the local worktree path for a materialized session
   review session enter-local [session-id]
                        Emit a shell command to enter the local worktree or switch the branch
+  review session merge-back [session-id]
+                       Cherry-pick an adopted Nimbus session commit onto the current branch
   review events <review-id>
                        Stream review lifecycle events
   review studio
@@ -188,6 +190,7 @@ Examples:
   nimbus review session diff-local session_abcd1234 --base main
   nimbus review session path-local session_abcd1234
   eval "$(nimbus review session enter-local session_abcd1234)"
+  nimbus review session merge-back session_abcd1234
    nimbus review events rev_abcd1234
    nimbus review studio
    nimbus review studio --detach

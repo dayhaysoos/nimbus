@@ -175,6 +175,11 @@ export function runArgsParsingTests(): void {
   }
 
   {
+    const parsed = parseArgs(['review', 'session', 'merge-back', 'session_abcd1234']);
+    assert.deepEqual(parsed.positional, ['session', 'merge-back', 'session_abcd1234']);
+  }
+
+  {
     const parsed = parseArgs(['review', 'studio', '--detach', '--dev-ui']);
     assert.equal(parsed.flags.detach, true);
     assert.equal(parsed.flags['dev-ui'], true);
