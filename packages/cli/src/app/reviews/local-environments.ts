@@ -393,7 +393,7 @@ export async function diffLocalReviewEnvironmentCommand(
 
   const baseRef = options?.baseRef?.trim() || 'HEAD';
   printDiffHeader(selected, baseRef);
-  const diff = runGit(repoRoot, ['diff', `${baseRef}...${selected.branchName}`]);
+  const diff = runGit(repoRoot, ['diff', baseRef, selected.branchName]);
   if (!diff.trim()) {
     p.log.success(`No diff between ${baseRef} and ${selected.branchName}.`);
     return;

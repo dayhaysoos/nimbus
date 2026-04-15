@@ -446,7 +446,7 @@ async function waitForSessionFollowup(input: {
       (isInitialPassCompletionWithoutAdvance && !latestSession?.finishedAt) ||
       shouldProbeSettledInitialPass;
     if (!shouldContinueWaiting) {
-      const returnWarning = readErrorCount > 0 ? lastReadErrorMessage : undefined;
+      const returnWarning = readErrorCount > 0 ? (lastReadErrorMessage ?? undefined) : undefined;
       return { nextReviewId: null, session: latestSession, warning: returnWarning };
     }
     if (Date.now() >= deadline) {
