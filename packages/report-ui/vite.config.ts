@@ -1,110 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
-import { execFileSync } from 'child_process';
-import { startStudioNewReview } from '../cli/src/app/reviews/studio-create';
 import {
-  getStudioNewReviewPreflightCached,
   startStudioPreflightBackgroundPolling,
   stopStudioPreflightBackgroundPolling,
 } from '../cli/src/app/reviews/studio-preflight-cache';
+import { proxyApiRequest } from '../cli/src/app/reviews/ui-proxy';
 
 const REPORT_UI_MARKER = 'nimbus-report-ui';
 const REPORT_UI_HEALTH_PATH = '/__nimbus/report-ui-health';
-const STUDIO_CONTEXT_PATH = '/api/studio/context';
-const STUDIO_NEW_REVIEW_PREFLIGHT_PATH = '/api/studio/new-review/preflight';
-const STUDIO_NEW_REVIEW_START_PATH = '/api/studio/new-review/start';
-const STUDIO_NEW_REVIEW_START_EVENTS_PATH = '/api/studio/new-review/start/events';
-const REPO_SLUG_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
-
-function parseRepoSlug(remoteUrl: string): string | null {
-  const trimmed = remoteUrl.trim();
-  if (!trimmed) {
-    return null;
-  }
-
-  if (trimmed.startsWith('git@')) {
-    const idx = trimmed.indexOf(':');
-    if (idx < 0) {
-      return null;
-    }
-    const path = trimmed.slice(idx + 1).replace(/\.git$/i, '');
-    return REPO_SLUG_PATTERN.test(path) ? path : null;
-  }
-
-  try {
-    const parsed = new URL(trimmed);
-    const path = parsed.pathname.replace(/^\//, '').replace(/\.git$/i, '');
-    return REPO_SLUG_PATTERN.test(path) ? path : null;
-  } catch {
-    return null;
-  }
-}
-
-function readGitBranch(): string | null {
-  try {
-    const branch = execFileSync('git', ['symbolic-ref', '--quiet', '--short', 'HEAD'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-      .toString()
-      .trim();
-    return branch || null;
-  } catch {
-    return null;
-  }
-}
-
-function readGitRepoSlug(): string | null {
-  try {
-    const origin = execFileSync('git', ['remote', 'get-url', 'origin'], {
-      encoding: 'utf8',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    })
-      .toString()
-      .trim();
-    return parseRepoSlug(origin);
-  } catch {
-    return null;
-  }
-}
-
-function readRawRequestBody(
-  req: {
-    on: (event: 'data', listener: (chunk: Buffer | string) => void) => void;
-    once: (event: 'end' | 'error', listener: (error?: Error) => void) => void;
-  }
-): Promise<Buffer> {
-  return new Promise((resolvePromise, rejectPromise) => {
-    const chunks: Buffer[] = [];
-    req.on('data', (chunk) => {
-      if (typeof chunk === 'string') {
-        chunks.push(Buffer.from(chunk));
-      } else {
-        chunks.push(chunk);
-      }
-    });
-    req.once('end', () => {
-      resolvePromise(Buffer.concat(chunks));
-    });
-    req.once('error', (error) => {
-      rejectPromise(error);
-    });
-  });
-}
-
-type BodyReadableRequest = {
-  on: (event: 'data', listener: (chunk: Buffer | string) => void) => void;
-  once: (event: 'end' | 'error', listener: (error?: Error) => void) => void;
-};
-
-function writeSseFrame(
-  res: {
-    write: (chunk: string) => void;
-  },
-  payload: unknown
-): void {
-  res.write(`data: ${JSON.stringify(payload)}\n\n`);
-}
 
 function reportUiHealthPlugin() {
   return {
@@ -181,166 +84,31 @@ function studioContextPlugin() {
         ) => void;
       };
     }) {
-      const repoRoot = process.env.NIMBUS_STUDIO_REPO_ROOT?.trim() || process.cwd();
-      startStudioPreflightBackgroundPolling({ repoRoot });
+      const workerUrl = process.env.NIMBUS_API_PROXY_TARGET ?? 'http://127.0.0.1:8787';
+      const apiKey = process.env.NIMBUS_API_KEY?.trim() || null;
+      const reviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN?.trim() || null;
+      const openrouterApiKey = process.env.OPENROUTER_API_KEY?.trim() || null;
+      startStudioPreflightBackgroundPolling({ repoRoot: process.env.NIMBUS_STUDIO_REPO_ROOT?.trim() || process.cwd() });
       server.httpServer?.once('close', () => {
         stopStudioPreflightBackgroundPolling();
       });
-      server.middlewares.use((req, res, next) => {
+      server.middlewares.use(async (req, res, next) => {
         const requestUrl = new URL(req.url ?? '/', 'http://127.0.0.1');
-        if (
-          requestUrl.pathname !== STUDIO_CONTEXT_PATH &&
-          requestUrl.pathname !== STUDIO_NEW_REVIEW_PREFLIGHT_PATH &&
-          requestUrl.pathname !== STUDIO_NEW_REVIEW_START_PATH &&
-          requestUrl.pathname !== STUDIO_NEW_REVIEW_START_EVENTS_PATH
-        ) {
+        if (requestUrl.pathname !== '/api/studio/context' && !requestUrl.pathname.startsWith('/api/studio/')) {
           next();
           return;
         }
-
-        const method = (req.method ?? 'GET').toUpperCase();
-        if (requestUrl.pathname === STUDIO_CONTEXT_PATH) {
-          if (method !== 'GET' && method !== 'HEAD') {
-            res.statusCode = 405;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ error: 'Method not allowed' }));
-            return;
-          }
-
-          const body = JSON.stringify({
-            repo: readGitRepoSlug(),
-            branch: readGitBranch(),
-            detectedAt: new Date().toISOString(),
-          });
-
-          res.statusCode = 200;
-          res.setHeader('Cache-Control', 'no-store');
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.setHeader('Content-Length', String(Buffer.byteLength(body, 'utf8')));
-          if (method === 'HEAD') {
-            res.end();
-            return;
-          }
-          res.end(body);
-          return;
+        const handled = await proxyApiRequest(
+          req as Parameters<typeof proxyApiRequest>[0],
+          res as Parameters<typeof proxyApiRequest>[1],
+          workerUrl,
+          apiKey,
+          reviewGithubToken,
+          openrouterApiKey
+        );
+        if (!handled) {
+          next();
         }
-
-        if (requestUrl.pathname === STUDIO_NEW_REVIEW_PREFLIGHT_PATH) {
-          if (method !== 'GET' && method !== 'HEAD') {
-            res.statusCode = 405;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ error: 'Method not allowed' }));
-            return;
-          }
-          void getStudioNewReviewPreflightCached({ repoRoot })
-            .then((payload) => {
-              const body = JSON.stringify(payload);
-              res.statusCode = 200;
-              res.setHeader('Cache-Control', 'no-store');
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.setHeader('Content-Length', String(Buffer.byteLength(body, 'utf8')));
-              if (method === 'HEAD') {
-                res.end();
-                return;
-              }
-              res.end(body);
-            })
-            .catch((error: unknown) => {
-              const message = error instanceof Error ? error.message : String(error);
-              res.statusCode = 500;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ error: `Failed to load Studio preflight: ${message}` }));
-            });
-          return;
-        }
-
-        if (requestUrl.pathname === STUDIO_NEW_REVIEW_START_EVENTS_PATH) {
-          if (method !== 'GET') {
-            res.statusCode = 405;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ error: 'Method not allowed' }));
-            return;
-          }
-
-          const policyMode = requestUrl.searchParams.get('policyMode');
-          if (policyMode !== 'auto' && policyMode !== 'review') {
-            res.statusCode = 400;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ error: 'Invalid policyMode. Use auto or review.' }));
-            return;
-          }
-
-          const expectedRepo = requestUrl.searchParams.get('repo');
-          const expectedBranch = requestUrl.searchParams.get('branch');
-          let streamOpen = true;
-          (req as unknown as { once: (event: 'close', listener: () => void) => void }).once('close', () => {
-            streamOpen = false;
-          });
-          res.statusCode = 200;
-          res.setHeader('Cache-Control', 'no-store');
-          res.setHeader('Connection', 'keep-alive');
-          res.setHeader('Content-Type', 'text/event-stream; charset=utf-8');
-          void startStudioNewReview({
-            policyMode,
-            repoRoot,
-            expectedRepo,
-            expectedBranch,
-            onEvent: async (event) => {
-              if (streamOpen) {
-                writeSseFrame(res as unknown as { write: (chunk: string) => void }, event);
-              }
-            },
-          })
-            .catch((error: unknown) => {
-              const message = error instanceof Error ? error.message : String(error);
-              if (streamOpen) {
-                writeSseFrame(res as unknown as { write: (chunk: string) => void }, {
-                  type: 'error',
-                  message: `Failed to start review: ${message}`,
-                });
-              }
-            })
-            .finally(() => {
-              if (streamOpen) {
-                res.end();
-              }
-            });
-          return;
-        }
-
-        if (method !== 'POST') {
-          res.statusCode = 405;
-          res.setHeader('Content-Type', 'application/json; charset=utf-8');
-          res.end(JSON.stringify({ error: 'Method not allowed' }));
-          return;
-        }
-
-        void readRawRequestBody(req as unknown as BodyReadableRequest)
-          .then((rawBody) => {
-            const payload = JSON.parse(rawBody.toString('utf8')) as { policyMode?: unknown };
-            const policyMode = payload?.policyMode;
-            if (policyMode !== 'auto' && policyMode !== 'review') {
-              res.statusCode = 400;
-              res.setHeader('Content-Type', 'application/json; charset=utf-8');
-              res.end(JSON.stringify({ error: 'Invalid policyMode. Use auto or review.' }));
-              return;
-            }
-            return startStudioNewReview({ policyMode, repoRoot });
-          })
-          .then((started) => {
-            if (!started) {
-              return;
-            }
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify(started));
-          })
-          .catch((error: unknown) => {
-            const message = error instanceof Error ? error.message : String(error);
-            res.statusCode = 500;
-            res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            res.end(JSON.stringify({ error: `Failed to start review: ${message}` }));
-          });
       });
     },
   };

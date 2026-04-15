@@ -94,10 +94,7 @@ export async function createReviewSessionCommand(
   if (options?.openStudio) {
     await startReviewStudioCommand({
       port: options.openStudioPort,
-      routePath: buildStudioSessionRoutePath({
-        sessionId,
-        reviewId,
-      }),
+      routePath: `/sessions/${encodeURIComponent(sessionId)}/reports/${encodeURIComponent(reviewId)}`,
       detach: true,
     });
   }

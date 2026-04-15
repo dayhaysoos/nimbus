@@ -588,6 +588,162 @@ describe('ReviewSessionPage', () => {
     expect(screen.getByText(/Source branch/)).toBeInTheDocument();
   });
 
+  it('treats findings-only terminal sessions as non-adoptable', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/studio/sessions/session_findings_only')) {
+          return {
+            ok: true,
+            text: async () =>
+              JSON.stringify(
+                createAggregate({
+                  sessionId: 'session_findings_only',
+                  phase: 'completed',
+                  terminal: true,
+                  currentReviewStatus: null,
+                  passStatus: 'succeeded',
+                  latestReview: createReview('review_1', {
+                    status: 'succeeded',
+                    summaryText:
+                      'Nimbus stopped because further review passes looked low-yield relative to the remaining issues.',
+                    findings: [
+                      {
+                        id: 'finding_1',
+                        severity: 'low',
+                        confidence: 'medium',
+                        title: 'Registry entry can resolve unexpectedly',
+                        description:
+                          'Registry entry can resolve unexpectedly when duplicate local environment records exist.',
+                        conditions: null,
+                        locations: [{ path: 'packages/cli/src/app/reviews/local-environments.ts', line: 188 }],
+                        suggestedFix: {
+                          kind: 'text',
+                          value: 'Key records by branch name or choose the latest matching entry consistently.',
+                        },
+                        evidenceRefs: [],
+                      },
+                    ],
+                  }),
+                  reviews: [
+                    createReview('review_1', {
+                      status: 'succeeded',
+                      summaryText:
+                        'Nimbus stopped because further review passes looked low-yield relative to the remaining issues.',
+                      findings: [
+                        {
+                          id: 'finding_1',
+                          severity: 'low',
+                          confidence: 'medium',
+                          title: 'Registry entry can resolve unexpectedly',
+                          description:
+                            'Registry entry can resolve unexpectedly when duplicate local environment records exist.',
+                          conditions: null,
+                          locations: [{ path: 'packages/cli/src/app/reviews/local-environments.ts', line: 188 }],
+                          suggestedFix: {
+                            kind: 'text',
+                            value: 'Key records by branch name or choose the latest matching entry consistently.',
+                          },
+                          evidenceRefs: [],
+                        },
+                      ],
+                    }),
+                  ],
+                  findings: {
+                    unresolved: [
+                      {
+                        id: 'finding_1',
+                        severity: 'low',
+                        confidence: 'medium',
+                        title: 'Registry entry can resolve unexpectedly',
+                        description:
+                          'Registry entry can resolve unexpectedly when duplicate local environment records exist.',
+                        conditions: null,
+                        locations: [{ path: 'packages/cli/src/app/reviews/local-environments.ts', line: 188 }],
+                        suggestedFix: {
+                          kind: 'text',
+                          value: 'Key records by branch name or choose the latest matching entry consistently.',
+                        },
+                        evidenceRefs: [],
+                      },
+                    ],
+                    resolved: [],
+                    all: [],
+                  },
+                  reviewedDiff: {
+                    sessionId: 'session_findings_only',
+                    reviewId: 'review_1',
+                    available: false,
+                    status: 'unavailable',
+                    reason: 'Session did not produce a remediated worktree diff.',
+                    path: '/api/studio/sessions/session_findings_only/reviewed-diff',
+                    environmentRevision: null,
+                  },
+                  local: {
+                    environments: [],
+                    hasAny: false,
+                  },
+                  adopt: {
+                    available: false,
+                    reason: 'No remediated worktree is available for this session.',
+                  },
+                  activityDetail:
+                    'Nimbus stopped because further review passes looked low-yield relative to the remaining issues.',
+                  activitySummary:
+                    'Nimbus stopped because further review passes looked low-yield relative to the remaining issues.',
+                  outcome: {
+                    kind: 'exhausted',
+                    summary:
+                      'Nimbus stopped because further review passes looked low-yield relative to the remaining issues.',
+                    residualRisk: 'low',
+                    recommendation: 'comment',
+                    materializeReady: false,
+                    reviewed: {
+                      contextMode: 'intent_aware',
+                      latestReviewBasis: 'checkpoint',
+                      passCount: 1,
+                    },
+                    changes: {
+                      applied: false,
+                      remediationCount: 0,
+                      changedFileCount: 0,
+                      summaries: [],
+                      environmentRevision: null,
+                    },
+                    evidence: {
+                      passed: 0,
+                      failed: 0,
+                      warning: 0,
+                      info: 0,
+                      highlights: [],
+                    },
+                    unresolved: {
+                      findingCount: 1,
+                      highestSeverity: 'low',
+                      highlights: [],
+                    },
+                  },
+                })
+              ),
+          };
+        }
+        throw new Error(`Unhandled fetch: ${url}`);
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/sessions/session_findings_only']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByRole('heading', { name: 'No reviewed result to adopt' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Adopt locally' })).not.toBeInTheDocument();
+    expect(screen.getByText(/there is nothing to adopt or merge back/i)).toBeInTheDocument();
+    expect(screen.getByText('packages/cli/src/app/reviews/local-environments.ts:188')).toBeInTheDocument();
+  });
+
   it('renders live findings as activity events arrive', async () => {
     vi.stubGlobal(
       'fetch',

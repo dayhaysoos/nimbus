@@ -18,6 +18,7 @@ import type {
 const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
 const ENTIRE_DOCS_URL = 'https://github.com/dayhaysoos/nimbus/blob/main/docs/entire/recovery.md';
 const LAST_CHECKPOINTS = 1;
+const HOME_REFRESH_INTERVAL_MS = 3_000;
 
 interface StartStageState {
   stage: StudioNewReviewStartStageEvent['stage'];
@@ -36,13 +37,48 @@ function sessionRoute(session: Pick<ReviewSessionResponse, 'id' | 'repo' | 'bran
   )}`;
 }
 
-function pickActiveSession(sessions: ReviewSessionResponse[]): ReviewSessionResponse | null {
+function pickCurrentCommitSession(
+  sessions: ReviewSessionResponse[],
+  commitSha: string | null | undefined
+): ReviewSessionResponse | null {
+  if (!commitSha) {
+    return null;
+  }
   return (
     sessions
+      .filter((session) => session.anchorCommitSha === commitSha)
       .slice()
-      .sort((left, right) => Date.parse(right.updatedAt) - Date.parse(left.updatedAt))
-      .find((session) => !isTerminalPhase(session.phase)) ?? null
+      .sort((left, right) => {
+        const terminalDelta = Number(isTerminalPhase(left.phase)) - Number(isTerminalPhase(right.phase));
+        if (terminalDelta !== 0) {
+          return terminalDelta;
+        }
+        return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+      })[0] ?? null
   );
+}
+
+function currentSessionHeadline(session: ReviewSessionResponse): string {
+  if (session.phase === 'waiting_on_human') {
+    return 'Nimbus is waiting on a human decision for this commit.';
+  }
+  if (isTerminalPhase(session.phase)) {
+    return 'This commit already has a review session.';
+  }
+  return 'Nimbus is already reviewing this commit.';
+}
+
+function currentSessionDetail(session: ReviewSessionResponse): string {
+  if (session.phase === 'waiting_on_human') {
+    return 'Studio stays pinned to this session until policy approval or another required decision is made.';
+  }
+  if (isTerminalPhase(session.phase)) {
+    if (session.outcome?.materializeReady) {
+      return 'Continue from the session page to inspect the reviewed diff, adopt locally, test, and merge back before starting anything new.';
+    }
+    return 'This commit has already been reviewed. Studio will not create another session for the same commit.';
+  }
+  return 'Studio follows the current commit only. Open the existing session to watch passes, events, and findings as they evolve.';
 }
 
 function modeLabel(preflight: StudioNewReviewPreflightResponse | null): string {
@@ -85,7 +121,7 @@ function modeDetail(preflight: StudioNewReviewPreflightResponse | null): string 
 }
 
 async function fetchJson(input: string): Promise<unknown> {
-  const response = await fetch(input);
+  const response = await fetch(input, { cache: 'no-store' });
   if (!response.ok) {
     throw new Error(`Request failed (${response.status})`);
   }
@@ -95,18 +131,22 @@ async function fetchJson(input: string): Promise<unknown> {
 export function ReviewHistoryPage(): JSX.Element {
   const navigate = useNavigate();
   const startSourceRef = useRef<EventSource | null>(null);
+  const hasLoadedHomeRef = useRef(false);
   const [context, setContext] = useState<StudioContextResponse | null>(null);
   const [preflight, setPreflight] = useState<StudioNewReviewPreflightResponse | null>(null);
-  const [activeSession, setActiveSession] = useState<ReviewSessionResponse | null>(null);
+  const [currentSession, setCurrentSession] = useState<ReviewSessionResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [starting, setStarting] = useState(false);
   const [startStages, setStartStages] = useState<StartStageState[]>([]);
   const [startError, setStartError] = useState<string | null>(null);
 
-  const loadHome = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const loadHome = useCallback(async (options?: { background?: boolean }) => {
+    const background = options?.background === true;
+    if (!background) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       const [rawContext, rawPreflight] = await Promise.all([
         fetchJson(`${API_BASE}/api/studio/context`),
@@ -120,17 +160,23 @@ export function ReviewHistoryPage(): JSX.Element {
 
       if (parsedContext.repo && parsedContext.branch) {
         const rawSessions = await fetchJson(
-          `${API_BASE}/api/review-sessions?limit=5&repo=${encodeURIComponent(parsedContext.repo)}&branch=${encodeURIComponent(parsedContext.branch)}`
+          `${API_BASE}/api/review-sessions?limit=20&repo=${encodeURIComponent(parsedContext.repo)}&branch=${encodeURIComponent(parsedContext.branch)}`
         );
         const parsedSessions = parseListReviewSessionsResponse(rawSessions);
-        setActiveSession(pickActiveSession(parsedSessions.sessions));
+        setCurrentSession(pickCurrentCommitSession(parsedSessions.sessions, parsedPreflight.commitSha));
       } else {
-        setActiveSession(null);
+        setCurrentSession(null);
       }
+      hasLoadedHomeRef.current = true;
+      setError(null);
     } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : String(loadError));
+      if (!background || !hasLoadedHomeRef.current) {
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      }
     } finally {
-      setLoading(false);
+      if (!background) {
+        setLoading(false);
+      }
     }
   }, []);
 
@@ -142,6 +188,40 @@ export function ReviewHistoryPage(): JSX.Element {
     };
   }, [loadHome]);
 
+  useEffect(() => {
+    const refreshHome = (): void => {
+      if (starting) {
+        return;
+      }
+      void loadHome({ background: true });
+    };
+
+    const timer = window.setInterval(refreshHome, HOME_REFRESH_INTERVAL_MS);
+    const handleWindowFocus = (): void => {
+      refreshHome();
+    };
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') {
+        refreshHome();
+      }
+    };
+
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [loadHome, starting]);
+
+  useEffect(() => {
+    if (loading || starting || !currentSession) {
+      return;
+    }
+    navigate(sessionRoute(currentSession), { replace: true });
+  }, [currentSession, loading, navigate, starting]);
+
   const canStart = preflight?.capabilities.canStart === true;
   const hasRepoContext = Boolean(context?.repo && context?.branch);
   const checks = preflight?.checks ?? [];
@@ -150,8 +230,11 @@ export function ReviewHistoryPage(): JSX.Element {
     if (!context?.repo || !context.branch) {
       return 'Open Review Studio from inside a git repository to launch a session.';
     }
+    if (currentSession) {
+      return `Nimbus is already tracking the current commit on ${context.branch}. Continue that session instead of creating another review.`;
+    }
     return `Nimbus will review the last committed state on ${context.branch}.`;
-  }, [context]);
+  }, [context, currentSession]);
 
   const handleStart = useCallback(() => {
     if (!context?.repo || !context.branch) {
@@ -225,6 +308,89 @@ export function ReviewHistoryPage(): JSX.Element {
     source.addEventListener('error', handleTransportError);
   }, [context, navigate]);
 
+  if (currentSession) {
+    return (
+      <main className="studio-shell">
+        <motion.section
+          className="hero-card"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
+        >
+          <div className="hero-copy">
+            <p className="eyebrow">Nimbus Review Studio</p>
+            <h1>Continue the current review session.</h1>
+            <p className="hero-body">{launchSummary}</p>
+          </div>
+          <div className="hero-meta">
+            <div className="meta-chip">
+              <span>Repository</span>
+              <strong>{context?.repo ?? currentSession.repo}</strong>
+            </div>
+            <div className="meta-chip">
+              <span>Branch</span>
+              <strong>{context?.branch ?? currentSession.branch}</strong>
+            </div>
+            <div className="meta-chip">
+              <span>Session</span>
+              <strong>{currentSession.id}</strong>
+            </div>
+            <div className="meta-chip">
+              <span>Phase</span>
+              <strong>{currentSession.phase.replace(/_/g, ' ')}</strong>
+            </div>
+          </div>
+        </motion.section>
+
+        <motion.section
+          className="panel-card"
+          initial={{ opacity: 0, y: 22 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.3, ease: 'easeOut' }}
+        >
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Current session</p>
+              <h2>{currentSessionHeadline(currentSession)}</h2>
+            </div>
+            <span className={`status-pill ${isTerminalPhase(currentSession.phase) ? 'terminal' : currentSession.phase === 'waiting_on_human' ? 'waiting' : 'live'}`}>
+              {currentSession.phase.replace(/_/g, ' ')}
+            </span>
+          </div>
+          <p className="panel-body">{currentSessionDetail(currentSession)}</p>
+
+          <div className="meta-stack">
+            <div className="meta-row">
+              <span>Target commit</span>
+              <strong>{currentSession.anchorCommitSha?.slice(0, 12) ?? preflight?.commitSha?.slice(0, 12) ?? 'Unknown'}</strong>
+            </div>
+            <div className="meta-row">
+              <span>Passes</span>
+              <strong>{currentSession.passCount}</strong>
+            </div>
+            <div className="meta-row">
+              <span>Updated</span>
+              <strong>{dateTimeLabel(currentSession.updatedAt)}</strong>
+            </div>
+          </div>
+
+          <div className="button-row">
+            <button className="primary-button" onClick={() => navigate(sessionRoute(currentSession))}>
+              Open current session
+            </button>
+          </div>
+
+          {error ? (
+            <div className="notice-card error">
+              <strong>Background refresh failed</strong>
+              <p>{error}</p>
+            </div>
+          ) : null}
+        </motion.section>
+      </main>
+    );
+  }
+
   return (
     <main className="studio-shell">
       <motion.section
@@ -277,28 +443,7 @@ export function ReviewHistoryPage(): JSX.Element {
             <button className="primary-button" onClick={handleStart} disabled={!canStart || !hasRepoContext || starting || loading}>
               {starting ? 'Launching review…' : 'New review session'}
             </button>
-            {activeSession ? (
-              <button className="secondary-button" onClick={() => navigate(sessionRoute(activeSession))}>
-                Resume session
-              </button>
-            ) : null}
           </div>
-
-          {activeSession ? (
-            <div className="inline-session-card">
-              <div>
-                <span className="eyebrow">Active session</span>
-                <strong>{activeSession.id}</strong>
-              </div>
-              <div className="inline-session-meta">
-                <span className={`status-pill ${isTerminalPhase(activeSession.phase) ? 'terminal' : 'live'}`}>
-                  {activeSession.phase.replace(/_/g, ' ')}
-                </span>
-                <span>Pass {activeSession.passCount}</span>
-                <span>Updated {dateTimeLabel(activeSession.updatedAt)}</span>
-              </div>
-            </div>
-          ) : null}
 
           <AnimatePresence initial={false}>
             {startError ? (

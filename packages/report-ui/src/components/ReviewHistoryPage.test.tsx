@@ -217,7 +217,7 @@ describe('ReviewHistoryPage', () => {
     cleanup();
   });
 
-  it('shows a basic-mode fallback and resume action for an active session', async () => {
+  it('routes directly into the current commit session instead of offering a second launch path', async () => {
     vi.stubGlobal(
       'fetch',
       vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
@@ -275,7 +275,7 @@ describe('ReviewHistoryPage', () => {
             }),
           };
         }
-        if (url.includes('/api/review-sessions?limit=5')) {
+        if (url.includes('/api/review-sessions?limit=20')) {
           return {
             ok: true,
             json: async () => ({
@@ -315,6 +315,12 @@ describe('ReviewHistoryPage', () => {
             }),
           };
         }
+        if (url.includes('/api/studio/sessions/session_active')) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify(createAggregate({ sessionId: 'session_active', phase: 'reviewing' })),
+          };
+        }
         throw new Error(`Unhandled fetch: ${url}`);
       })
     );
@@ -325,11 +331,7 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText('Basic review fallback')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'New review session' })).toBeInTheDocument();
-    expect(screen.getAllByRole('button', { name: 'Resume session' })).toHaveLength(1);
-    expect(screen.getByText('session_active')).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: 'Learn more about Entire' })).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'session_active' })).toBeInTheDocument();
   });
 
   it('streams startup stages and navigates into the session page', async () => {
@@ -375,7 +377,7 @@ describe('ReviewHistoryPage', () => {
             }),
           };
         }
-        if (url.includes('/api/review-sessions?limit=5')) {
+        if (url.includes('/api/review-sessions?limit=20')) {
           return {
             ok: true,
             json: async () => ({ sessions: [] }),
@@ -399,8 +401,8 @@ describe('ReviewHistoryPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'New review session' }));
 
-    const source = MockEventSource.instances[0];
-    expect(source).toBeDefined();
+    await waitFor(() => expect(MockEventSource.instances[0]).toBeDefined());
+    const source = MockEventSource.instances[0]!;
 
     source.emit('message', {
       type: 'stage',
@@ -416,7 +418,7 @@ describe('ReviewHistoryPage', () => {
       type: 'completed',
       reviewId: 'review_launch',
       sessionId: 'session_launch',
-      routePath: '/sessions/session_launch',
+      routePath: '/sessions/session_launch/reports/review_launch',
       policyMode: 'auto',
       contextMode: 'intent_aware',
       requestedLastCheckpoints: 1,
@@ -426,5 +428,257 @@ describe('ReviewHistoryPage', () => {
     });
 
     expect(await screen.findByRole('heading', { name: 'session_launch' })).toBeInTheDocument();
+  });
+
+  it('keeps the launcher available when branch history only has sessions for older commits', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/studio/context')) {
+          return {
+            ok: true,
+            json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-04-15T00:00:00.000Z' }),
+          };
+        }
+        if (url.includes('/api/studio/new-review/preflight')) {
+          return {
+            ok: true,
+            json: async () => ({
+              repo: 'acme/web',
+              branch: 'main',
+              policyMode: 'auto',
+              startability: 'basic',
+              contextMode: 'basic',
+              requestedLastCheckpoints: 1,
+              effectiveLastCheckpoints: 1,
+              lastCheckpoints: 1,
+              checkpointSelectionMode: 'latest',
+              checkpointId: null,
+              commitSha: 'currentcommit1234567890currentcommit123456',
+              includedCheckpoints: [],
+              ready: true,
+              capabilities: {
+                canStart: true,
+                canStartInBasicMode: true,
+                canStartInIntentAwareMode: false,
+                canReviewPolicy: true,
+              },
+              blockingIssues: [],
+              warnings: [
+                {
+                  code: 'entire_context_unavailable',
+                  message: 'Entire context is unavailable on this commit.',
+                },
+              ],
+              checks: [
+                {
+                  code: 'checkpoint',
+                  label: 'Checkpoint target',
+                  ok: true,
+                  detail: 'Nimbus will review HEAD directly.',
+                },
+                {
+                  code: 'entire_context',
+                  label: 'Entire context',
+                  ok: false,
+                  detail: 'Entire context is unavailable. Falling back to basic mode.',
+                },
+              ],
+            }),
+          };
+        }
+        if (url.includes('/api/review-sessions?limit=20')) {
+          return {
+            ok: true,
+            json: async () => ({
+              sessions: [
+                {
+                  id: 'session_old_commit',
+                  workspaceId: 'ws_1',
+                  anchorDeploymentId: 'dep_1',
+                  repo: 'acme/web',
+                  branch: 'main',
+                  initialReviewBasis: 'checkpoint',
+                  anchorCommitSha: 'oldercommit1234567890oldercommit1234567',
+                  anchorCheckpointId: null,
+                  sourceProjectRoot: '/tmp/repo',
+                  phase: 'completed',
+                  passCount: 1,
+                  activeReviewId: null,
+                  latestReviewId: 'review_old',
+                  currentReviewStatus: 'succeeded',
+                  stopReason: 'initial_pass_completed',
+                  createdAt: '2026-04-15T00:00:00.000Z',
+                  updatedAt: '2026-04-15T00:01:00.000Z',
+                  finishedAt: '2026-04-15T00:02:00.000Z',
+                  passes: [
+                    {
+                      reviewId: 'review_old',
+                      status: 'succeeded',
+                      reviewBasis: 'checkpoint',
+                      createdAt: '2026-04-15T00:00:00.000Z',
+                      startedAt: '2026-04-15T00:00:01.000Z',
+                      finishedAt: '2026-04-15T00:02:00.000Z',
+                    },
+                  ],
+                  outcome: null,
+                },
+              ],
+            }),
+          };
+        }
+        throw new Error(`Unhandled fetch: ${url}`);
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Basic review fallback')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New review session' })).toBeEnabled();
+    expect(screen.queryByRole('button', { name: 'Open current session' })).not.toBeInTheDocument();
+  });
+
+  it('refreshes the launcher when the window regains focus after the commit context changes', async () => {
+    let preflightRequests = 0;
+
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/studio/context')) {
+          return {
+            ok: true,
+            json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-04-15T00:00:00.000Z' }),
+          };
+        }
+        if (url.includes('/api/studio/new-review/preflight')) {
+          preflightRequests += 1;
+          if (preflightRequests === 1) {
+            return {
+              ok: true,
+              json: async () => ({
+                repo: 'acme/web',
+                branch: 'main',
+                policyMode: 'auto',
+                startability: 'blocked',
+                contextMode: 'basic',
+                requestedLastCheckpoints: 1,
+                effectiveLastCheckpoints: 1,
+                lastCheckpoints: 1,
+                checkpointSelectionMode: 'latest',
+                checkpointId: null,
+                commitSha: '1111111111111111111111111111111111111111',
+                includedCheckpoints: [],
+                ready: false,
+                capabilities: {
+                  canStart: false,
+                  canStartInBasicMode: false,
+                  canStartInIntentAwareMode: false,
+                  canReviewPolicy: false,
+                },
+                blockingIssues: [
+                  {
+                    code: 'checkpoint_unavailable',
+                    message: 'Commit 111111111111 has no diff patch content. Review creation requires meaningful diff context.',
+                  },
+                ],
+                warnings: [],
+                checks: [
+                  {
+                    code: 'checkpoint',
+                    label: 'Checkpoint target',
+                    ok: false,
+                    detail: 'Commit 111111111111 has no diff patch content. Review creation requires meaningful diff context.',
+                  },
+                  {
+                    code: 'entire_context',
+                    label: 'Entire context',
+                    ok: false,
+                    detail: 'Blocked until checkpoint target is available.',
+                  },
+                ],
+                error: {
+                  code: 'checkpoint_unavailable',
+                  message: 'Commit 111111111111 has no diff patch content. Review creation requires meaningful diff context.',
+                },
+              }),
+            };
+          }
+
+          return {
+            ok: true,
+            json: async () => ({
+              repo: 'acme/web',
+              branch: 'main',
+              policyMode: 'auto',
+              startability: 'basic',
+              contextMode: 'basic',
+              requestedLastCheckpoints: 1,
+              effectiveLastCheckpoints: 1,
+              lastCheckpoints: 1,
+              checkpointSelectionMode: 'latest',
+              checkpointId: null,
+              commitSha: '2222222222222222222222222222222222222222',
+              includedCheckpoints: [],
+              ready: true,
+              capabilities: {
+                canStart: true,
+                canStartInBasicMode: true,
+                canStartInIntentAwareMode: false,
+                canReviewPolicy: true,
+              },
+              blockingIssues: [],
+              warnings: [
+                {
+                  code: 'entire_context_unavailable',
+                  message: 'Entire context is unavailable on this commit.',
+                },
+              ],
+              checks: [
+                {
+                  code: 'checkpoint',
+                  label: 'Checkpoint target',
+                  ok: true,
+                  detail: 'Nimbus will review HEAD directly.',
+                },
+                {
+                  code: 'entire_context',
+                  label: 'Entire context',
+                  ok: false,
+                  detail: 'Entire context is unavailable. Falling back to basic mode.',
+                },
+              ],
+            }),
+          };
+        }
+        if (url.includes('/api/review-sessions?limit=20')) {
+          return {
+            ok: true,
+            json: async () => ({ sessions: [] }),
+          };
+        }
+        throw new Error(`Unhandled fetch: ${url}`);
+      })
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/']}>
+        <App />
+      </MemoryRouter>
+    );
+
+    expect(await screen.findByText('Nimbus cannot start a session from this checkout yet.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New review session' })).toBeDisabled();
+
+    fireEvent(window, new Event('focus'));
+
+    await waitFor(() => expect(screen.getByText('Basic review fallback')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'New review session' })).toBeEnabled());
+    expect(preflightRequests).toBeGreaterThanOrEqual(2);
   });
 });

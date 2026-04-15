@@ -88,6 +88,9 @@ function normalizeEditablePolicyDraft(policy: EditablePolicyDraft): ReviewPolicy
 }
 
 function readErrorMessage(payload: unknown): string {
+  if (typeof payload === 'string' && payload.trim()) {
+    return payload.trim();
+  }
   if (payload && typeof payload === 'object' && !Array.isArray(payload) && 'error' in payload) {
     const error = (payload as { error?: unknown }).error;
     if (typeof error === 'string' && error.trim()) {
@@ -108,7 +111,11 @@ async function readJson(response: Response): Promise<unknown> {
   if (!text.trim()) {
     return {};
   }
-  return JSON.parse(text) as unknown;
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
 }
 
 async function fetchAggregate(sessionId: string): Promise<StudioSessionAggregateResponse> {
@@ -163,6 +170,12 @@ function severityClass(severity: string): string {
 
 function findingHeading(finding: ReviewFinding): string {
   return finding.title?.trim() || finding.description;
+}
+
+function shouldShowFindingDescription(finding: ReviewFinding): boolean {
+  const heading = findingHeading(finding).trim();
+  const description = finding.description.trim();
+  return Boolean(description) && description !== heading;
 }
 
 function findingLocation(finding: ReviewFinding): string | null {
@@ -269,7 +282,7 @@ function FindingList(props: {
                 {findingLocation(finding) ? <span className="finding-location">{findingLocation(finding)}</span> : null}
               </div>
               <strong>{findingHeading(finding)}</strong>
-              <p>{finding.description}</p>
+              {shouldShowFindingDescription(finding) ? <p>{finding.description}</p> : null}
               {finding.suggestedFix.trim() ? (
                 <div className="finding-note">
                   <span>Suggested fix</span>
@@ -443,6 +456,8 @@ export function ReviewSessionPage(): JSX.Element {
   const activeReview = aggregate?.activeReview ?? null;
   const isWaitingOnHuman = aggregate?.capabilities.waitingOnHuman === true;
   const isTerminal = aggregate?.capabilities.terminal === true;
+  const canShowReviewedDiff = aggregate?.capabilities.canShowReviewedDiff === true && aggregate.reviewedDiff.available;
+  const canAdopt = aggregate?.capabilities.canAdopt === true && aggregate.adopt.available;
   const unresolvedFindings = aggregate?.findings.unresolved ?? [];
   const resolvedFindings = useMemo(
     () => (aggregate?.findings.resolved ?? []).map((entry) => entry.finding),
@@ -870,7 +885,7 @@ export function ReviewSessionPage(): JSX.Element {
                 <h2>What Nimbus changed</h2>
               </div>
             </div>
-            {aggregate.reviewedDiff.available && aggregate.reviewedDiff.diff ? (
+            {canShowReviewedDiff && aggregate.reviewedDiff.diff ? (
               <div className="diff-card">
                 <div className="diff-meta">
                   <span>{aggregate.reviewedDiff.diff.summary.totalChanged} file(s) changed</span>
@@ -883,55 +898,76 @@ export function ReviewSessionPage(): JSX.Element {
                 )}
               </div>
             ) : (
-              <div className="empty-card">{aggregate.reviewedDiff.reason ?? 'Nimbus did not produce a remediated diff for this session.'}</div>
+              <div className="empty-card">
+                {aggregate.reviewedDiff.reason ??
+                  'Nimbus finished this session without publishing a remediated worktree diff. This run is findings-only.'}
+              </div>
             )}
           </section>
 
-          <section className="flow-section">
-            <div className="section-header">
-              <div>
-                <p className="eyebrow">Adopt</p>
-                <h2>Bring the reviewed result local</h2>
-              </div>
-            </div>
-
-            {!primaryEnvironment ? (
-              <>
-                <p className="panel-body">
-                  Adopting locally creates an isolated worktree for this session so you can run the code and test it yourself before merging anything back.
-                </p>
-                <div className="button-row">
-                  <button className="primary-button" onClick={handleAdopt} disabled={!aggregate.adopt.available || adopting}>
-                    {adopting ? 'Adopting locally…' : 'Adopt locally'}
-                  </button>
+          {primaryEnvironment || canAdopt ? (
+            <section className="flow-section">
+              <div className="section-header">
+                <div>
+                  <p className="eyebrow">Adopt</p>
+                  <h2>Bring the reviewed result local</h2>
                 </div>
-                {aggregate.adopt.reason ? <p className="panel-subtle">{aggregate.adopt.reason}</p> : null}
-                {adoptError ? (
-                  <div className="notice-card error">
-                    <strong>Adoption failed</strong>
-                    <p>{adoptError}</p>
-                  </div>
-                ) : null}
-              </>
-            ) : (
-              <div className="notice-card success">
-                <strong>Local worktree ready</strong>
-                <p>
-                  Nimbus created an isolated worktree at <code>{primaryEnvironment.worktreePath ?? 'unknown path'}</code>.
-                  Use the command below in your terminal to enter it and test manually.
-                </p>
-                <pre>{primaryEnvironment.enterCommand}</pre>
               </div>
-            )}
 
-            {adoptResult ? (
-              <div className="notice-card success">
-                <strong>Adoption complete</strong>
-                <p>Local branch <code>{adoptResult.branchName}</code> is ready for manual validation.</p>
-                <pre>{adoptResult.enterCommand}</pre>
+              {!primaryEnvironment ? (
+                <>
+                  <p className="panel-body">
+                    Adopting locally creates an isolated worktree for this session so you can run the code and test it yourself before merging anything back.
+                  </p>
+                  <div className="button-row">
+                    <button className="primary-button" onClick={handleAdopt} disabled={!canAdopt || adopting}>
+                      {adopting ? 'Adopting locally…' : 'Adopt locally'}
+                    </button>
+                  </div>
+                  {aggregate.adopt.reason ? <p className="panel-subtle">{aggregate.adopt.reason}</p> : null}
+                  {adoptError ? (
+                    <div className="notice-card error">
+                      <strong>Adoption failed</strong>
+                      <p>{adoptError}</p>
+                    </div>
+                  ) : null}
+                </>
+              ) : (
+                <div className="notice-card success">
+                  <strong>Local worktree ready</strong>
+                  <p>
+                    Nimbus created an isolated worktree at <code>{primaryEnvironment.worktreePath ?? 'unknown path'}</code>.
+                    Use the command below in your terminal to enter it and test manually.
+                  </p>
+                  <pre>{primaryEnvironment.enterCommand}</pre>
+                </div>
+              )}
+
+              {adoptResult ? (
+                <div className="notice-card success">
+                  <strong>Adoption complete</strong>
+                  <p>Local branch <code>{adoptResult.branchName}</code> is ready for manual validation.</p>
+                  <pre>{adoptResult.enterCommand}</pre>
+                </div>
+              ) : null}
+            </section>
+          ) : (
+            <section className="flow-section">
+              <div className="section-header">
+                <div>
+                  <p className="eyebrow">Next step</p>
+                  <h2>No reviewed result to adopt</h2>
+                </div>
               </div>
-            ) : null}
-          </section>
+              <div className="empty-card">
+                Nimbus did not produce a remediated worktree for this session, so there is nothing to adopt or merge back.
+                {unresolvedFindings.length > 0
+                  ? ' Address the remaining findings manually, commit that work, then start a new review on the new commit.'
+                  : ''}
+              </div>
+              {aggregate.adopt.reason ? <p className="panel-subtle">{aggregate.adopt.reason}</p> : null}
+            </section>
+          )}
 
           {primaryEnvironment ? (
             <section className="flow-section">

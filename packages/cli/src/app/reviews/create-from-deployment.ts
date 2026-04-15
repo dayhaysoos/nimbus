@@ -109,12 +109,7 @@ export async function createReviewCommand(
     await startReviewStudioCommand({
       port: options.openStudioPort,
       routePath: reviewSessionId
-        ? buildStudioSessionRoutePath({
-            sessionId: reviewSessionId,
-            reviewId,
-            repo: gitProvenance.repo,
-            branch: gitProvenance.branch,
-          })
+        ? `/branches/${encodeURIComponent(gitProvenance.repo)}/${encodeURIComponent(gitProvenance.branch)}/sessions/${encodeURIComponent(reviewSessionId)}/reports/${encodeURIComponent(reviewId)}`
         : buildStudioReviewRoutePath({
             reviewId,
             route: 'reports',

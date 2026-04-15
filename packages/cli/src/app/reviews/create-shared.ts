@@ -150,20 +150,14 @@ export function buildStudioSessionRoutePath(options: {
   branch?: string | null;
 }): string {
   const sessionId = encodeURIComponent(options.sessionId);
-  const reviewId = options.reviewId?.trim() ? encodeURIComponent(options.reviewId.trim()) : null;
   const repo = options.repo?.trim();
   const branch = options.branch?.trim();
 
-  const basePath =
+  return (
     repo && branch
       ? `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/sessions/${sessionId}`
-      : `/sessions/${sessionId}`;
-
-  if (reviewId) {
-    return `${basePath}/reports/${reviewId}`;
-  }
-
-  return basePath;
+      : `/sessions/${sessionId}`
+  );
 }
 
 export function formatReviewExecutionFailure(
