@@ -1,0 +1,25 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "80c8e665e6df",
+  "session_id": "ses_27191f984ffe8P7jrIdQvbjObB",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-15T01:15:27.015679Z",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "docs/architecture/README.md",
+    "docs/architecture/architecture.md",
+    "docs/architecture/review-session-implementation-handoff.md"
+  ],
+  "agent": "OpenCode",
+  "turn_id": "ef4f0c8c7a7b",
+  "initial_attribution": {
+    "calculated_at": "2026-04-15T01:15:27.013606Z",
+    "agent_lines": 571,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 571,
+    "agent_percentage": 100
+  }
+}
