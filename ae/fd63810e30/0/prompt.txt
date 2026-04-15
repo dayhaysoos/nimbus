@@ -341,3 +341,7 @@ it says you're running UserPromptSubmit hook, seems like you got stuck?
 ---
 
 should I commit these unstaged changes and test nimbus against them?
+
+---
+
+commit it for me and give me the commands so I can run in the CLI myself
