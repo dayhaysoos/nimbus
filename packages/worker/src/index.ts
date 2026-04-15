@@ -194,7 +194,7 @@ export default {
     // Route: GET /api/review-sessions/:id - Get review session
     const reviewSessionMatch = url.pathname.match(/^\/api\/review-sessions\/([a-z0-9_]+)$/);
     if (reviewSessionMatch && request.method === 'GET') {
-      return handleGetReviewSession(reviewSessionMatch[1], env, authContext);
+      return handleGetReviewSession(reviewSessionMatch[1], request, env, authContext);
     }
 
     // Route: POST /api/review-sessions/:id/reviews - Create next review pass inside an existing session
