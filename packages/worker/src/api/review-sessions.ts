@@ -1,9 +1,14 @@
 import type { AuthContext, Env } from '../types.js';
-import { getReviewSession, listReviewSessions } from '../lib/db.js';
+import { getReviewRun, getReviewSession, listReviewSessions } from '../lib/db.js';
 import { CreateReviewSessionPassError, createReviewSessionPass } from '../lib/review-session-pass.js';
 import { normalizeBranchRef, normalizeRepoSlug } from './reviews/request-shared.js';
 import { normalizePolicyMode, normalizeReviewBasis } from './reviews/request-shared.js';
 import { enqueueReviewRunIfNeeded } from './reviews/queue.js';
+import {
+  REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS,
+  failStaleRetryScheduledReviewIfNeeded,
+  recoverStaleRunningReviewIfNeeded,
+} from './reviews/recovery.js';
 import {
   isRecord,
   isReviewStatusActive,
@@ -15,6 +20,7 @@ import {
 
 export async function handleGetReviewSession(
   sessionId: string,
+  request: Request,
   env: Env,
   authContext?: AuthContext
 ): Promise<Response> {
@@ -27,9 +33,30 @@ export async function handleGetReviewSession(
     return accessResponse;
   }
 
-  const session = await getReviewSession(env.DB, sessionId);
+  let session = await getReviewSession(env.DB, sessionId);
   if (!session) {
     return jsonResponse({ error: 'Review session not found' }, 404);
+  }
+  if (session.latestReviewId) {
+    const latestReview = await getReviewRun(env.DB, session.latestReviewId);
+    if (latestReview) {
+      await recoverStaleRunningReviewIfNeeded(
+        env,
+        latestReview.id,
+        latestReview,
+        readReviewGithubTokenHeader(request),
+        readOpenrouterApiKeyHeader(request),
+        { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
+      );
+      const refreshedReview = await getReviewRun(env.DB, session.latestReviewId);
+      if (refreshedReview) {
+        await failStaleRetryScheduledReviewIfNeeded(env, refreshedReview.id, refreshedReview);
+      }
+      session = await getReviewSession(env.DB, sessionId);
+      if (!session) {
+        return jsonResponse({ error: 'Review session not found' }, 404);
+      }
+    }
   }
 
   return jsonResponse({ session });

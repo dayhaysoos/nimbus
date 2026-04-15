@@ -1,6 +1,7 @@
 import { strict as assert } from 'assert';
 import { handleCreateReview, handleFailReview, handleGetReview, handleGetReviewEvents, handleListReviews, handleRecoverReview } from '../../src/api/reviews.js';
-import { handleCreateReviewSessionPass, handleListReviewSessions } from '../../src/api/review-sessions.js';
+import { handleCreateReviewSessionPass, handleGetReviewSession, handleListReviewSessions } from '../../src/api/review-sessions.js';
+import { REVIEW_STALE_RETRY_SCHEDULED_GRACE_MS } from '../../src/api/reviews/recovery.js';
 import { setWorkspaceSandboxResolverForTests } from '../../src/api/workspaces/sandbox.js';
 import { setReviewAnalysisSandboxResolverForTests } from '../../src/lib/review-analysis.js';
 
@@ -39,6 +40,9 @@ function createReviewApiEnv(options?: {
   existingEventTypes?: string[];
   reviewErrorCode?: string | null;
   reviewAttemptCount?: number;
+  reviewCreatedAt?: string;
+  reviewUpdatedAt?: string;
+  reviewStartedAt?: string | null;
   existingRequestPayloadSha256?: string;
   workerReviewGithubToken?: string;
   workspaceAccountId?: string | null;
@@ -79,6 +83,9 @@ function createReviewApiEnv(options?: {
     queuedMessages: [] as Array<Record<string, unknown>>,
     findingsClearedCount: 0,
   };
+  const reviewCreatedAt = options?.reviewCreatedAt ?? '2026-03-11T00:00:00.000Z';
+  const reviewUpdatedAt = options?.reviewUpdatedAt ?? reviewCreatedAt;
+  const reviewStartedAt = options?.reviewStartedAt === undefined ? null : options.reviewStartedAt;
 
   const env = {
     REVIEW_CONTEXT_GITHUB_TOKEN: options?.workerReviewGithubToken ?? 'ghp_worker_default_token_abcdefghijklmnopqrstuvwxyz',
@@ -408,8 +415,8 @@ function createReviewApiEnv(options?: {
                         session_id: resolvedSessionId,
                         status: state.reviewStatus,
                         request_payload_json: JSON.stringify({ reviewBasis: 'checkpoint' }),
-                        created_at: '2026-03-11T00:00:00.000Z',
-                        started_at: null,
+                        created_at: reviewCreatedAt,
+                        started_at: reviewStartedAt,
                         finished_at: null,
                       },
                     ],
@@ -589,14 +596,14 @@ function createReviewApiEnv(options?: {
                     branch: 'main',
                     last_event_seq: 1,
                     attempt_count: options?.reviewAttemptCount ?? 0,
-                    started_at: null,
+                    started_at: reviewStartedAt,
                     finished_at: null,
                     report_json: null,
                     markdown_summary: null,
                     error_code: state.reviewErrorCode,
                     error_message: state.reviewErrorMessage,
-                    created_at: '2026-03-11T00:00:00.000Z',
-                    updated_at: '2026-03-11T00:00:00.000Z',
+                    created_at: reviewCreatedAt,
+                    updated_at: reviewUpdatedAt,
                   } as T;
                 },
               };
@@ -1499,9 +1506,66 @@ export async function runReviewApiTests(): Promise<void> {
   }
 
   {
+    const staleRetryScheduledAt = new Date(Date.now() - REVIEW_STALE_RETRY_SCHEDULED_GRACE_MS - 5_000).toISOString();
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'queued',
+      reviewErrorCode: 'retry_scheduled',
+      reviewUpdatedAt: staleRetryScheduledAt,
+    });
+    const response = await handleGetReview('rev_abcd1234', new Request('https://example.com/api/reviews/rev_abcd1234'), env as never);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { review?: { status?: string; error?: { code?: string; message?: string } } };
+    assert.equal(body.review?.status, 'failed');
+    assert.equal(body.review?.error?.code, 'review_execution_timeout');
+    assert.match(String(body.review?.error?.message ?? ''), /no worker claimed it/i);
+    assert.equal(state.eventTypes.has('review_failed'), true);
+    assert.equal(state.findingsClearedCount, 1);
+  }
+
+  {
+    const recentRetryScheduledAt = new Date(Date.now() - 5_000).toISOString();
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      initialReviewStatus: 'queued',
+      reviewErrorCode: 'retry_scheduled',
+      reviewUpdatedAt: recentRetryScheduledAt,
+    });
+    const response = await handleGetReview('rev_abcd1234', new Request('https://example.com/api/reviews/rev_abcd1234'), env as never);
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { review?: { status?: string; error?: { code?: string } } };
+    assert.equal(body.review?.status, 'queued');
+    assert.equal(body.review?.error?.code, 'retry_scheduled');
+    assert.equal(state.eventTypes.has('review_failed'), false);
+    assert.equal(state.findingsClearedCount, 0);
+  }
+
+  {
+    const staleRetryScheduledAt = new Date(Date.now() - REVIEW_STALE_RETRY_SCHEDULED_GRACE_MS - 5_000).toISOString();
+    const { env, state } = createReviewApiEnv({
+      reviewExists: true,
+      sessionExists: true,
+      sessionId: 'session_abcd1234',
+      initialReviewStatus: 'queued',
+      reviewErrorCode: 'retry_scheduled',
+      reviewUpdatedAt: staleRetryScheduledAt,
+    });
+    const response = await handleGetReviewSession(
+      'session_abcd1234',
+      new Request('https://example.com/api/review-sessions/session_abcd1234'),
+      env as never
+    );
+    assert.equal(response.status, 200);
+    const body = (await response.json()) as { session?: { currentReviewStatus?: string; phase?: string } };
+    assert.equal(body.session?.currentReviewStatus, 'failed');
+    assert.equal(body.session?.phase, 'failed');
+    assert.equal(state.eventTypes.has('review_failed'), true);
+  }
+
+  {
     const { env } = createReviewApiEnv({
       reviewExists: true,
-      reviewStatusSequence: ['running', 'succeeded', 'succeeded', 'succeeded'],
+      reviewStatusSequence: ['running', 'running', 'running', 'succeeded', 'succeeded', 'succeeded'],
       reviewEventBatches: [
         [
           {

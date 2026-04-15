@@ -1,17 +1,44 @@
 import { approveReviewPolicy, deriveReviewPolicy } from '../../clients/worker/reviews.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
-import { validateReviewCommitCheckpoint, validateReviewEntireIntentContext } from '../../commands/review/preflight.js';
+import {
+  buildMissingCheckpointTrailerMessage,
+  resolveReviewCommitTarget,
+  validateReviewCommitCheckpoint,
+  validateReviewEntireIntentContext,
+} from '../../commands/review/preflight.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import { resolveReviewContext, type ResolveReviewContextProgressEvent } from './context.js';
-import { buildStudioReviewRoutePath, resolveReviewGitProvenance } from './create-shared.js';
+import { buildStudioReviewRoutePath, buildStudioSessionRoutePath, resolveReviewGitProvenance } from './create-shared.js';
 import { readStudioPreferences, updateStudioPolicyMode } from './session.js';
 
 export type StudioReviewPolicyMode = 'auto' | 'review';
+export type StudioStartability = 'blocked' | 'basic' | 'intent_aware';
+
+export interface StudioPreflightIssue {
+  code:
+    | 'checkpoint_unavailable'
+    | 'checkpoint_missing_trailer'
+    | 'entire_context_unavailable'
+    | 'branch_context_changed'
+    | 'unknown';
+  message: string;
+}
+
+export interface StudioNewReviewPreflightCapabilities {
+  canStart: boolean;
+  canStartInBasicMode: boolean;
+  canStartInIntentAwareMode: boolean;
+  canReviewPolicy: boolean;
+}
 
 export interface StudioNewReviewPreflightResult {
   repo: string | null;
   branch: string | null;
   policyMode: StudioReviewPolicyMode;
+  startability: StudioStartability;
+  contextMode: 'basic' | 'intent_aware';
+  requestedLastCheckpoints: 1 | 2 | 3;
+  effectiveLastCheckpoints: 1 | 2 | 3;
   lastCheckpoints: 1 | 2 | 3;
   checkpointSelectionMode: 'latest' | 'last_n';
   checkpointId: string | null;
@@ -22,6 +49,9 @@ export interface StudioNewReviewPreflightResult {
     commitSubject: string;
   }>;
   ready: boolean;
+  capabilities: StudioNewReviewPreflightCapabilities;
+  blockingIssues: StudioPreflightIssue[];
+  warnings: StudioPreflightIssue[];
   checks: Array<{
     code: 'checkpoint' | 'entire_context';
     label: string;
@@ -29,7 +59,12 @@ export interface StudioNewReviewPreflightResult {
     detail: string;
   }>;
   error?: {
-    code: 'checkpoint_unavailable' | 'entire_context_unavailable' | 'unknown';
+    code:
+      | 'checkpoint_unavailable'
+      | 'checkpoint_missing_trailer'
+      | 'entire_context_unavailable'
+      | 'branch_context_changed'
+      | 'unknown';
     message: string;
   };
 }
@@ -38,13 +73,17 @@ function normalizeLastCheckpoints(value: number | null | undefined): 1 | 2 | 3 {
   if (value === 1 || value === 2 || value === 3) {
     return value;
   }
-  return 2;
+  return 1;
 }
 
 export interface StudioNewReviewStartResult {
   reviewId: string;
+  sessionId: string | null;
   routePath: string;
   policyMode: StudioReviewPolicyMode;
+  contextMode: 'basic' | 'intent_aware';
+  requestedLastCheckpoints: 1 | 2 | 3;
+  effectiveLastCheckpoints: 1 | 2 | 3;
   status: 'policy_ready' | 'queued';
 }
 
@@ -90,6 +129,15 @@ function normalizeStudioPolicyMode(value: string | null | undefined): StudioRevi
   return value === 'review' ? 'review' : 'auto';
 }
 
+function buildStudioPreflightCapabilities(startability: StudioStartability): StudioNewReviewPreflightCapabilities {
+  return {
+    canStart: startability !== 'blocked',
+    canStartInBasicMode: startability === 'basic' || startability === 'intent_aware',
+    canStartInIntentAwareMode: startability === 'intent_aware',
+    canReviewPolicy: startability !== 'blocked',
+  };
+}
+
 function resolveStudioRepoRoot(explicitRepoRoot?: string): string {
   if (explicitRepoRoot?.trim()) {
     return explicitRepoRoot.trim();
@@ -99,6 +147,54 @@ function resolveStudioRepoRoot(explicitRepoRoot?: string): string {
   } catch {
     return process.cwd();
   }
+}
+
+interface StudioCheckpointWindowResolution {
+  commitSha: string;
+  checkpointId: string | null;
+  includedCheckpoints: Array<{
+    checkpointId: string;
+    commitSha: string;
+    commitSubject: string;
+  }>;
+  checkpointSelectionMode: 'latest' | 'last_n';
+  effectiveLastCheckpoints: 1 | 2 | 3;
+  checkpointReady: boolean;
+  checkpointDetail: string;
+}
+
+function resolveStudioCheckpointWindow(repoRoot: string, lastCheckpoints: 1 | 2 | 3): StudioCheckpointWindowResolution {
+  const headCommit = resolveReviewCommitTarget('HEAD', repoRoot);
+  if (!headCommit.checkpointId) {
+    return {
+      commitSha: headCommit.commitSha,
+      checkpointId: null,
+      includedCheckpoints: [],
+      checkpointSelectionMode: 'latest',
+      effectiveLastCheckpoints: 1,
+      checkpointReady: false,
+      checkpointDetail: `${buildMissingCheckpointTrailerMessage(
+        headCommit.commitSha,
+        repoRoot
+      )} Nimbus will continue in basic diff/code-aware mode for the current commit.`,
+    };
+  }
+
+  const checkpoint = validateReviewCommitCheckpoint('HEAD', repoRoot, {
+    ...(lastCheckpoints > 1 ? { lastCheckpoints } : {}),
+  });
+  return {
+    commitSha: checkpoint.commitSha,
+    checkpointId: checkpoint.checkpointId,
+    includedCheckpoints: checkpoint.includedCheckpoints ?? [],
+    checkpointSelectionMode: checkpoint.checkpointSelectionMode === 'last_n' ? 'last_n' : 'latest',
+    effectiveLastCheckpoints: lastCheckpoints,
+    checkpointReady: true,
+    checkpointDetail:
+      checkpoint.checkpointSelectionMode === 'last_n'
+        ? `Resolved ${(checkpoint.includedCheckpoints ?? []).length} checkpoints ending at ${checkpoint.checkpointId}.`
+        : `Resolved checkpoint ${checkpoint.checkpointId} from ${checkpoint.commitSha.slice(0, 12)}.`,
+  };
 }
 
 function normalizeExpectedContextField(value: string | null | undefined): string | null {
@@ -123,7 +219,7 @@ export async function resolveStudioNewReviewPreflight(options?: {
   lastCheckpoints?: number;
 }): Promise<StudioNewReviewPreflightResult> {
   const repoRoot = resolveStudioRepoRoot(options?.repoRoot);
-  const lastCheckpoints = normalizeLastCheckpoints(options?.lastCheckpoints ?? null);
+  const requestedLastCheckpoints = normalizeLastCheckpoints(options?.lastCheckpoints ?? null);
   const preferences = await readStudioPreferences({ repoRoot });
   const policyMode = normalizeStudioPolicyMode(preferences.policyMode);
   let repo: string | null = null;
@@ -140,32 +236,44 @@ export async function resolveStudioNewReviewPreflight(options?: {
   let commitSha: string | null = null;
   let checkpointId: string | null = null;
   let includedCheckpoints: Array<{ checkpointId: string; commitSha: string; commitSubject: string }> = [];
-  let checkpointSelectionMode: 'latest' | 'last_n' = lastCheckpoints > 1 ? 'last_n' : 'latest';
+  let checkpointSelectionMode: 'latest' | 'last_n' = requestedLastCheckpoints > 1 ? 'last_n' : 'latest';
+  let effectiveLastCheckpoints: 1 | 2 | 3 = requestedLastCheckpoints;
   let checkpointDetail = '';
+  let checkpointReady = true;
   try {
-    const checkpoint = validateReviewCommitCheckpoint('HEAD', repoRoot, {
-      lastCheckpoints,
-    });
-    commitSha = checkpoint.commitSha;
-    checkpointId = checkpoint.checkpointId;
-    includedCheckpoints = checkpoint.includedCheckpoints ?? [];
-    checkpointSelectionMode = checkpoint.checkpointSelectionMode === 'last_n' ? 'last_n' : 'latest';
-    checkpointDetail =
-      checkpointSelectionMode === 'last_n'
-        ? `Resolved ${includedCheckpoints.length} checkpoints ending at ${checkpointId}.`
-        : `Resolved checkpoint ${checkpointId} from ${commitSha.slice(0, 12)}.`;
+    const checkpointWindow = resolveStudioCheckpointWindow(repoRoot, requestedLastCheckpoints);
+    commitSha = checkpointWindow.commitSha;
+    checkpointId = checkpointWindow.checkpointId;
+    includedCheckpoints = checkpointWindow.includedCheckpoints;
+    checkpointSelectionMode = checkpointWindow.checkpointSelectionMode;
+    effectiveLastCheckpoints = checkpointWindow.effectiveLastCheckpoints;
+    checkpointReady = checkpointWindow.checkpointReady;
+    checkpointDetail = checkpointWindow.checkpointDetail;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const blockingIssues: StudioPreflightIssue[] = [
+      {
+        code: preflightErrorCode(message),
+        message,
+      },
+    ];
     return {
       repo,
       branch,
       policyMode,
-      lastCheckpoints,
+      startability: 'blocked',
+      contextMode: 'basic',
+      requestedLastCheckpoints,
+      effectiveLastCheckpoints,
+      lastCheckpoints: requestedLastCheckpoints,
       checkpointSelectionMode,
       checkpointId: null,
       commitSha: null,
       includedCheckpoints: [],
       ready: false,
+      capabilities: buildStudioPreflightCapabilities('blocked'),
+      blockingIssues,
+      warnings: [],
       checks: [
         {
           code: 'checkpoint',
@@ -181,9 +289,55 @@ export async function resolveStudioNewReviewPreflight(options?: {
         },
       ],
       error: {
-        code: preflightErrorCode(message),
+        code: blockingIssues[0].code,
         message,
       },
+    };
+  }
+
+  if (!checkpointId || !checkpointReady) {
+    const warnings: StudioPreflightIssue[] = [
+      {
+        code: 'checkpoint_missing_trailer',
+        message: checkpointDetail,
+      },
+      {
+        code: 'entire_context_unavailable',
+        message:
+          'Entire session context is unavailable without a checkpoint trailer. Nimbus will continue in basic diff/code-aware mode for this branch.',
+      },
+    ];
+    return {
+      repo,
+      branch,
+      policyMode,
+      startability: 'basic',
+      contextMode: 'basic',
+      requestedLastCheckpoints,
+      effectiveLastCheckpoints,
+      lastCheckpoints: requestedLastCheckpoints,
+      checkpointSelectionMode,
+      checkpointId,
+      commitSha,
+      includedCheckpoints,
+      ready: true,
+      capabilities: buildStudioPreflightCapabilities('basic'),
+      blockingIssues: [],
+      warnings,
+      checks: [
+        {
+          code: 'checkpoint',
+          label: 'Checkpoint target',
+          ok: false,
+          detail: checkpointDetail,
+        },
+        {
+          code: 'entire_context',
+          label: 'Entire context',
+          ok: false,
+          detail: 'Entire session context is unavailable without a checkpoint trailer. Nimbus will continue in basic diff/code-aware mode for this branch.',
+        },
+      ],
     };
   }
 
@@ -207,12 +361,19 @@ export async function resolveStudioNewReviewPreflight(options?: {
       repo,
       branch,
       policyMode,
-      lastCheckpoints,
+      startability: 'intent_aware',
+      contextMode: 'intent_aware',
+      requestedLastCheckpoints,
+      effectiveLastCheckpoints,
+      lastCheckpoints: requestedLastCheckpoints,
       checkpointSelectionMode,
       checkpointId,
       commitSha,
       includedCheckpoints,
       ready: true,
+      capabilities: buildStudioPreflightCapabilities('intent_aware'),
+      blockingIssues: [],
+      warnings: [],
       checks: [
         {
           code: 'checkpoint',
@@ -230,16 +391,29 @@ export async function resolveStudioNewReviewPreflight(options?: {
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
+    const warnings: StudioPreflightIssue[] = [
+      {
+        code: 'entire_context_unavailable',
+        message: `${message} Nimbus will continue with a basic diff/code-aware review for this branch.`,
+      },
+    ];
     return {
       repo,
       branch,
       policyMode,
-      lastCheckpoints,
+      startability: 'basic',
+      contextMode: 'basic',
+      requestedLastCheckpoints,
+      effectiveLastCheckpoints,
+      lastCheckpoints: requestedLastCheckpoints,
       checkpointSelectionMode,
       checkpointId,
       commitSha,
       includedCheckpoints,
-      ready: false,
+      ready: true,
+      capabilities: buildStudioPreflightCapabilities('basic'),
+      blockingIssues: [],
+      warnings,
       checks: [
         {
           code: 'checkpoint',
@@ -251,13 +425,9 @@ export async function resolveStudioNewReviewPreflight(options?: {
           code: 'entire_context',
           label: 'Entire context',
           ok: false,
-          detail: message,
+          detail: `${message} Nimbus will continue with a basic diff/code-aware review for this branch.`,
         },
       ],
-      error: {
-        code: preflightErrorCode(message),
-        message,
-      },
     };
   }
 }
@@ -311,10 +481,11 @@ export async function startStudioNewReview(options: {
   }
 
   await updateStudioPolicyMode(policyMode, { repoRoot });
+  const checkpointWindow = resolveStudioCheckpointWindow(repoRoot, lastCheckpoints);
   const resolved = await resolveReviewContext({
     commitish: 'HEAD',
     projectRoot: '.',
-    lastCheckpoints,
+    lastCheckpoints: checkpointWindow.effectiveLastCheckpoints,
     signal: options.signal,
     onProgress: (event) => emitEvent({
       type: 'stage',
@@ -361,13 +532,24 @@ export async function startStudioNewReview(options: {
 
     const result: StudioNewReviewStartResult = {
       reviewId: derived.reviewId,
-      routePath: buildStudioReviewRoutePath({
-        reviewId: derived.reviewId,
-        route: 'reports',
-        repo: resolved.resolvedProvenance.repo,
-        branch: resolved.resolvedProvenance.branch,
-      }),
+      sessionId: derived.sessionId ?? null,
+      routePath: derived.sessionId
+        ? buildStudioSessionRoutePath({
+            sessionId: derived.sessionId,
+            reviewId: derived.reviewId,
+            repo: resolved.resolvedProvenance.repo,
+            branch: resolved.resolvedProvenance.branch,
+          })
+        : buildStudioReviewRoutePath({
+            reviewId: derived.reviewId,
+            route: 'reports',
+            repo: resolved.resolvedProvenance.repo,
+            branch: resolved.resolvedProvenance.branch,
+          }),
       policyMode,
+      contextMode: resolved.resolvedProvenance.reviewContextMode === 'intent_aware' ? 'intent_aware' : 'basic',
+      requestedLastCheckpoints: lastCheckpoints,
+      effectiveLastCheckpoints: checkpointWindow.effectiveLastCheckpoints,
       status: 'policy_ready',
     };
     await emitEvent({
@@ -415,13 +597,24 @@ export async function startStudioNewReview(options: {
 
   const result: StudioNewReviewStartResult = {
     reviewId: derived.reviewId,
-    routePath: buildStudioReviewRoutePath({
-      reviewId: derived.reviewId,
-      route: 'reports',
-      repo: resolved.resolvedProvenance.repo,
-      branch: resolved.resolvedProvenance.branch,
-    }),
+    sessionId: derived.sessionId ?? null,
+    routePath: derived.sessionId
+      ? buildStudioSessionRoutePath({
+          sessionId: derived.sessionId,
+          reviewId: derived.reviewId,
+          repo: resolved.resolvedProvenance.repo,
+          branch: resolved.resolvedProvenance.branch,
+        })
+      : buildStudioReviewRoutePath({
+          reviewId: derived.reviewId,
+          route: 'reports',
+          repo: resolved.resolvedProvenance.repo,
+          branch: resolved.resolvedProvenance.branch,
+        }),
     policyMode,
+    contextMode: resolved.resolvedProvenance.reviewContextMode === 'intent_aware' ? 'intent_aware' : 'basic',
+    requestedLastCheckpoints: lastCheckpoints,
+    effectiveLastCheckpoints: checkpointWindow.effectiveLastCheckpoints,
     status: 'queued',
   };
   await emitEvent({
@@ -437,6 +630,13 @@ export function shouldAbortStudioStartForTests(
   abortBeforeReviewCreation: boolean
 ): boolean {
   return shouldAbortStudioStart(signal, abortBeforeReviewCreation);
+}
+
+export function resolveStudioCheckpointWindowForTests(
+  repoRoot: string,
+  lastCheckpoints: 1 | 2 | 3
+): StudioCheckpointWindowResolution {
+  return resolveStudioCheckpointWindow(repoRoot, lastCheckpoints);
 }
 
 export async function emitStudioStartEventForTests(input: {

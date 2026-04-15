@@ -114,7 +114,7 @@ function queueRefresh(repoRoot: string): void {
   }
   refreshDebounceTimer = setTimeout(() => {
     refreshDebounceTimer = null;
-    void refreshPreflight(repoRoot, 2).catch(() => undefined);
+    void refreshPreflight(repoRoot, 1).catch(() => undefined);
   }, 250);
   if (typeof refreshDebounceTimer.unref === 'function') {
     refreshDebounceTimer.unref();
@@ -160,7 +160,7 @@ export async function getStudioNewReviewPreflightCached(options?: {
   lastCheckpoints?: 1 | 2 | 3;
 }): Promise<StudioNewReviewPreflightResult> {
   const repoRoot = options?.repoRoot ?? process.cwd();
-  const lastCheckpoints = options?.lastCheckpoints ?? 2;
+  const lastCheckpoints = options?.lastCheckpoints ?? 1;
   const headSha = resolveHeadSha(repoRoot);
   const policyMode = resolveStudioPolicyMode(repoRoot);
   const cacheIsFresh =
@@ -188,7 +188,7 @@ export function startStudioPreflightBackgroundPolling(options?: {
   const repoRoot = options?.repoRoot ?? process.cwd();
   const gitDir = resolveGitDir(repoRoot);
 
-  void refreshPreflight(repoRoot, 2).catch(() => undefined);
+  void refreshPreflight(repoRoot, 1).catch(() => undefined);
   if (!gitDir) {
     return;
   }

@@ -8,7 +8,7 @@ import {
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { formatEvent } from '../../commands/review/events.js';
 import {
-  buildStudioReviewRoutePath,
+  buildStudioSessionRoutePath,
   followReviewChain,
   formatReviewExecutionFailure,
   normalizeResultUrl,
@@ -92,15 +92,10 @@ export async function createReviewSessionCommand(
   p.log.message('Review basis: environment');
 
   if (options?.openStudio) {
-    const { session } = await getReviewSessionForFlow(workerUrl, sessionId);
     await startReviewStudioCommand({
       port: options.openStudioPort,
-      routePath: buildStudioReviewRoutePath({
-        reviewId,
-        route: 'reports',
-        repo: session.repo,
-        branch: session.branch,
-      }),
+      // Demo bug: this should open the current session route, not dump the user back at Studio home.
+      routePath: '/',
       detach: true,
     });
   }

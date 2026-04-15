@@ -649,6 +649,28 @@ export interface ReviewSessionIntentSummary {
   constraints: string[];
 }
 
+export interface ReviewSessionFindingMemoryEntry {
+  fingerprint: string;
+  severity: ReviewFindingSeverityV2;
+  category: ReviewFindingCategory;
+  description: string;
+  filePath: string | null;
+  startLine: number | null;
+  firstSeenPassIndex: number;
+  lastSeenPassIndex: number;
+  occurrenceCount: number;
+}
+
+export interface ReviewSessionFindingMemory {
+  schema: 'v1';
+  remediationSourceReviewId: string;
+  sourcePassIndex: number;
+  sourceOpenFindings: ReviewSessionFindingMemoryEntry[];
+  remediationTargets: ReviewSessionFindingMemoryEntry[];
+  repeatedTargets: ReviewSessionFindingMemoryEntry[];
+  previouslyResolvedFindings: ReviewSessionFindingMemoryEntry[];
+}
+
 export interface ReviewApprovedPolicy {
   goal: string | null;
   prohibitions: string[];
@@ -674,6 +696,7 @@ export type ReviewSessionStopReason =
   | 'risky_fix_requires_approval'
   | 'no_safe_fixes'
   | 'no_progress'
+  | 'no_progress_after_remediation'
   | 'max_repair_cycles_reached'
   | 'auto_remediation_failed'
   | 'cancelled';
@@ -859,6 +882,7 @@ export interface ReviewProvenanceSummary {
     rationale: string;
     source: 'model-self-assessment';
   };
+  sessionFindingMemory?: ReviewSessionFindingMemory;
   advisories?: string[];
 }
 

@@ -284,15 +284,7 @@ function createRemediationEnv(options?: { queue?: boolean }): { env: Record<stri
                   return {
                     results: Array.from(state.reviewRunRecords.values())
                       .filter((record) => record.session_id === 'session_slice4')
-                      .map((record) => ({
-                        id: record.id,
-                        session_id: record.session_id,
-                        status: record.status,
-                        request_payload_json: record.request_payload_json,
-                        created_at: record.created_at,
-                        started_at: record.started_at,
-                        finished_at: record.finished_at,
-                      })),
+                      .sort((left, right) => String(left.created_at).localeCompare(String(right.created_at)) || String(left.id).localeCompare(String(right.id))),
                   } as unknown as T;
                 },
               };
@@ -306,6 +298,19 @@ function createRemediationEnv(options?: { queue?: boolean }): { env: Record<stri
               return {
                 async first<T>() {
                   return (state.reviewRunRecords.get(reviewId) ?? null) as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (/SELECT request_payload_json FROM review_runs WHERE id = \?/i.test(sql)) {
+          return {
+            bind(reviewId: string) {
+              return {
+                async first<T>() {
+                  const record = state.reviewRunRecords.get(reviewId);
+                  return (record ? { request_payload_json: record.request_payload_json } : null) as T;
                 },
               };
             },
@@ -1280,6 +1285,10 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
     assert.equal(state.workspaceTaskEvents.some((event) => event.eventType === 'task_succeeded'), true);
     assert.equal(state.reviewEvents.some((event) => event.eventType === 'review_auto_remediation_completed'), true);
     assert.equal(state.sessionPassCount, 2);
+    const followup = result.nextReviewId ? state.reviewRunRecords.get(result.nextReviewId) : null;
+    assert.equal(String(followup?.request_payload_json).includes('"sessionFindingMemory":{"schema":"v1"'), true);
+    assert.equal(String(followup?.request_payload_json).includes('"remediationSourceReviewId":"review_current"'), true);
+    assert.equal(String(followup?.request_payload_json).includes('"remediationTargets":[{'), true);
   }
 
   {
@@ -1433,6 +1442,114 @@ export async function runReviewSessionRemediationTests(): Promise<void> {
     assert.equal(state.sessionStopReason, 'followup_pass_completed');
     assert.equal(state.sessionActiveReviewId, null);
     assert.equal(state.sessionLatestReviewId, 'review_followup');
+  }
+
+  {
+    const { env, state } = createRemediationEnv();
+    state.sessionPassCount = 2;
+    state.sessionActiveReviewId = 'review_followup';
+    state.sessionLatestReviewId = 'review_followup';
+    state.reviewRunRecords.set('review_followup', {
+      id: 'review_followup',
+      workspace_id: 'ws_slice4',
+      deployment_id: 'dep_slice4',
+      session_id: 'session_slice4',
+      target_type: 'workspace_deployment',
+      mode: 'report_only',
+      status: 'succeeded',
+      idempotency_key: 'idem_followup',
+      request_payload_json: JSON.stringify({
+        target: { type: 'workspace_deployment', workspaceId: 'ws_slice4', deploymentId: 'dep_slice4' },
+        mode: 'report_only',
+        reviewBasis: 'environment',
+        provenance: {
+          repo: 'dayhaysoos/nimbus',
+          branch: 'main',
+          remediationSourceReviewId: 'review_current',
+          sessionFindingMemory: {
+            schema: 'v1',
+            remediationSourceReviewId: 'review_current',
+            sourcePassIndex: 1,
+            sourceOpenFindings: [
+              {
+                fingerprint: 'logic|src/value.ts|1|value ts returns the wrong constant',
+                severity: 'medium',
+                category: 'logic',
+                description: 'value.ts returns the wrong constant.',
+                filePath: 'src/value.ts',
+                startLine: 1,
+                firstSeenPassIndex: 1,
+                lastSeenPassIndex: 1,
+                occurrenceCount: 1,
+              },
+            ],
+            remediationTargets: [
+              {
+                fingerprint: 'logic|src/value.ts|1|value ts returns the wrong constant',
+                severity: 'medium',
+                category: 'logic',
+                description: 'value.ts returns the wrong constant.',
+                filePath: 'src/value.ts',
+                startLine: 1,
+                firstSeenPassIndex: 1,
+                lastSeenPassIndex: 1,
+                occurrenceCount: 1,
+              },
+            ],
+            repeatedTargets: [],
+            previouslyResolvedFindings: [],
+          },
+        },
+      }),
+      request_payload_sha256: 'hash_followup_repeat',
+      provenance_json: JSON.stringify({ promptSummary: 'Slice 4 remediation test' }),
+      repo: 'dayhaysoos/nimbus',
+      branch: 'main',
+      derived_policy_json: null,
+      approved_policy_json: null,
+      approved_policy_sha256: null,
+      last_event_seq: 0,
+      attempt_count: 1,
+      started_at: '2026-04-12T12:04:00.000Z',
+      finished_at: '2026-04-12T12:05:00.000Z',
+      report_json: null,
+      markdown_summary: null,
+      error_code: null,
+      error_message: null,
+      created_at: '2026-04-12T12:04:00.000Z',
+      updated_at: '2026-04-12T12:05:00.000Z',
+    });
+    const review = {
+      ...createReviewResponse(),
+      id: 'review_followup',
+      reviewBasis: 'environment' as const,
+    };
+    const report = createBaseReport(
+      [
+        {
+          severity: 'medium',
+          category: 'logic',
+          passType: 'single',
+          description: 'value.ts returns the wrong constant.',
+          suggestedFix: 'Update the exported value to 2.',
+          locations: [{ filePath: 'src/value.ts', startLine: 1, endLine: 1 }],
+        },
+      ],
+      3
+    );
+
+    const result = await continueReviewSessionAfterSuccessfulPass(env as never, review, report);
+    assert.equal(result.nextReviewId, null);
+    assert.equal(state.sessionStopReason, 'no_progress_after_remediation');
+    assert.equal(state.workspaceTasks.size, 0);
+    const noProgressEvent = state.reviewEvents.find(
+      (event) =>
+        event.eventType === 'review_auto_remediation_skipped' &&
+        typeof event.payload === 'object' &&
+        event.payload !== null &&
+        (event.payload as { reason?: string }).reason === 'no_progress_after_remediation'
+    );
+    assert.ok(noProgressEvent);
   }
 
   {

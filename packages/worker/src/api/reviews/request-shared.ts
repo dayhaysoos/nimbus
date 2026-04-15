@@ -242,6 +242,93 @@ function normalizeEnvironmentRevision(value: unknown):
   };
 }
 
+function normalizeSessionFindingMemory(value: unknown): Record<string, unknown> | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+  if (value.schema !== 'v1') {
+    return undefined;
+  }
+  const remediationSourceReviewId =
+    typeof value.remediationSourceReviewId === 'string' && value.remediationSourceReviewId.trim()
+      ? value.remediationSourceReviewId.trim().slice(0, 64)
+      : '';
+  const sourcePassIndex =
+    typeof value.sourcePassIndex === 'number' && Number.isFinite(value.sourcePassIndex)
+      ? Math.max(1, Math.min(20, Math.floor(value.sourcePassIndex)))
+      : 1;
+  const normalizeEntries = (entries: unknown): Array<Record<string, unknown>> =>
+    Array.isArray(entries)
+      ? entries
+          .filter((entry): entry is Record<string, unknown> => isRecord(entry))
+          .map((entry) => ({
+            fingerprint:
+              typeof entry.fingerprint === 'string' && entry.fingerprint.trim()
+                ? entry.fingerprint.trim().slice(0, 256)
+                : '',
+            severity:
+              typeof entry.severity === 'string' && entry.severity.trim()
+                ? entry.severity.trim().slice(0, 32)
+                : '',
+            category:
+              typeof entry.category === 'string' && entry.category.trim()
+                ? entry.category.trim().slice(0, 32)
+                : '',
+            description:
+              typeof entry.description === 'string' && entry.description.trim()
+                ? entry.description.trim().slice(0, 512)
+                : '',
+            filePath:
+              typeof entry.filePath === 'string' && entry.filePath.trim()
+                ? entry.filePath.trim().slice(0, 512)
+                : null,
+            startLine:
+              typeof entry.startLine === 'number' && Number.isFinite(entry.startLine)
+                ? Math.max(1, Math.floor(entry.startLine))
+                : null,
+            firstSeenPassIndex:
+              typeof entry.firstSeenPassIndex === 'number' && Number.isFinite(entry.firstSeenPassIndex)
+                ? Math.max(1, Math.min(20, Math.floor(entry.firstSeenPassIndex)))
+                : sourcePassIndex,
+            lastSeenPassIndex:
+              typeof entry.lastSeenPassIndex === 'number' && Number.isFinite(entry.lastSeenPassIndex)
+                ? Math.max(1, Math.min(20, Math.floor(entry.lastSeenPassIndex)))
+                : sourcePassIndex,
+            occurrenceCount:
+              typeof entry.occurrenceCount === 'number' && Number.isFinite(entry.occurrenceCount)
+                ? Math.max(1, Math.min(20, Math.floor(entry.occurrenceCount)))
+                : 1,
+          }))
+          .filter((entry) => entry.fingerprint && entry.severity && entry.category && entry.description)
+          .slice(0, 8)
+      : [];
+
+  const sourceOpenFindings = normalizeEntries(value.sourceOpenFindings);
+  const remediationTargets = normalizeEntries(value.remediationTargets);
+  const repeatedTargets = normalizeEntries(value.repeatedTargets);
+  const previouslyResolvedFindings = normalizeEntries(value.previouslyResolvedFindings);
+
+  const hasAnyEntries =
+    sourceOpenFindings.length > 0 ||
+    remediationTargets.length > 0 ||
+    repeatedTargets.length > 0 ||
+    previouslyResolvedFindings.length > 0;
+
+  if (!remediationSourceReviewId && !hasAnyEntries) {
+    return undefined;
+  }
+
+  return {
+    schema: 'v1',
+    remediationSourceReviewId,
+    sourcePassIndex,
+    sourceOpenFindings,
+    remediationTargets,
+    repeatedTargets,
+    previouslyResolvedFindings,
+  };
+}
+
 /**
  * Normalizes review create request payloads and derives the canonical idempotency subset.
  * This keeps equivalent requests stable even when optional fields are omitted.
@@ -331,6 +418,23 @@ export function buildReviewRequestPayload(input: {
       ? input.provenance.contextResolutionResolvedCommitMessage.trim()
       : undefined;
   const localCochange = normalizeLocalCochange(input.provenance.localCochange);
+  const trigger =
+    typeof input.provenance.trigger === 'string' && input.provenance.trigger.trim()
+      ? input.provenance.trigger.trim().slice(0, 64)
+      : 'api';
+  const remediationSourceReviewId =
+    typeof input.provenance.remediationSourceReviewId === 'string' && input.provenance.remediationSourceReviewId.trim()
+      ? input.provenance.remediationSourceReviewId.trim().slice(0, 64)
+      : undefined;
+  const remediationTaskId =
+    typeof input.provenance.remediationTaskId === 'string' && input.provenance.remediationTaskId.trim()
+      ? input.provenance.remediationTaskId.trim().slice(0, 64)
+      : undefined;
+  const remediationTaskSummary =
+    typeof input.provenance.remediationTaskSummary === 'string' && input.provenance.remediationTaskSummary.trim()
+      ? input.provenance.remediationTaskSummary.trim().slice(0, 1000)
+      : undefined;
+  const sessionFindingMemory = normalizeSessionFindingMemory(input.provenance.sessionFindingMemory);
   const checkpointSelectionMode =
     input.provenance.checkpointSelectionMode === 'latest' ||
     input.provenance.checkpointSelectionMode === 'last_n' ||
@@ -386,7 +490,7 @@ export function buildReviewRequestPayload(input: {
       includeMarkdownSummary: input.format.includeMarkdownSummary !== false,
     },
     provenance: {
-      trigger: 'api',
+      trigger,
       ...(persistedReviewContextMode ? { reviewContextMode: persistedReviewContextMode } : {}),
       ...(note ? { note } : {}),
       ...(transcriptUrl ? { transcriptUrl } : {}),
@@ -405,6 +509,10 @@ export function buildReviewRequestPayload(input: {
       ...(contextResolutionResolvedCheckpointId ? { contextResolutionResolvedCheckpointId } : {}),
       ...(contextResolutionResolvedCommitSha ? { contextResolutionResolvedCommitSha } : {}),
       ...(contextResolutionResolvedCommitMessage ? { contextResolutionResolvedCommitMessage } : {}),
+      ...(remediationSourceReviewId ? { remediationSourceReviewId } : {}),
+      ...(remediationTaskId ? { remediationTaskId } : {}),
+      ...(remediationTaskSummary ? { remediationTaskSummary } : {}),
+      ...(sessionFindingMemory ? { sessionFindingMemory } : {}),
       ...(checkpointSelectionMode ? { checkpointSelectionMode } : {}),
       ...(includedCheckpoints.length > 0 ? { includedCheckpoints } : {}),
       repo: input.repo,

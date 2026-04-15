@@ -143,6 +143,23 @@ export function buildStudioReviewRoutePath(options: {
   return `/${options.route}/${reviewId}`;
 }
 
+export function buildStudioSessionRoutePath(options: {
+  sessionId: string;
+  reviewId?: string | null;
+  repo?: string | null;
+  branch?: string | null;
+}): string {
+  const sessionId = encodeURIComponent(options.sessionId);
+  const repo = options.repo?.trim();
+  const branch = options.branch?.trim();
+
+  return (
+    repo && branch
+      ? `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/sessions/${sessionId}`
+      : `/sessions/${sessionId}`
+  );
+}
+
 export function formatReviewExecutionFailure(
   status: string,
   finalReview: { error?: { code: string; message: string } },

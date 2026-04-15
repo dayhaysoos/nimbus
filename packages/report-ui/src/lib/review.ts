@@ -1,17 +1,37 @@
 import type {
+  GetReviewSessionResponse,
   GetReviewResponse,
+  LocalReviewEnvironment,
+  LocalReviewEnvironmentDiffResponse,
+  LocalReviewEnvironmentListResponse,
+  LocalReviewEnvironmentMergeBackResponse,
   ListReviewsResponse,
   ReviewCategory,
+  ReviewContextMode,
+  ReviewBasis,
   ReviewFailureGuidance,
   ReviewFinding,
+  ReviewConfidence,
   ReviewHistoryItem,
   ReviewPassType,
   ReviewRecommendation,
   ReviewResponse,
+  ReviewSessionListResponse,
+  ReviewSessionPhase,
+  ReviewSessionResponse,
   ReviewSeverity,
+  StudioLocalReviewEnvironment,
+  WorkspaceDiffResponse,
+  StudioReviewedDiffResponse,
   StudioNewReviewPreflightResponse,
   StudioNewReviewStartResponse,
   StudioNewReviewStartStreamEvent,
+  StudioPreflightIssueCode,
+  StudioSessionActivityEvent,
+  StudioSessionActivitySnapshot,
+  StudioSessionActivitySnapshotResponse,
+  StudioSessionAggregateResponse,
+  StudioSessionFindingRollupEntry,
   StudioContextResponse,
   ReviewStatus,
 } from '../types';
@@ -66,6 +86,66 @@ function readStatus(value: unknown): ReviewStatus {
   throw new Error('Invalid review payload: review status is invalid.');
 }
 
+function readReviewBasis(value: unknown): ReviewBasis {
+  if (value === 'checkpoint' || value === 'environment') {
+    return value;
+  }
+  throw new Error('Invalid review payload: review basis is invalid.');
+}
+
+function readContextMode(value: unknown): ReviewContextMode {
+  if (value === 'basic' || value === 'intent_aware') {
+    return value;
+  }
+  throw new Error('Invalid review payload: context mode is invalid.');
+}
+
+function readOptionalContextMode(value: unknown): ReviewContextMode | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return readContextMode(value);
+}
+
+function readSessionPhase(value: unknown): ReviewSessionPhase {
+  if (
+    value === 'preparing' ||
+    value === 'reviewing' ||
+    value === 'fixing' ||
+    value === 'verifying' ||
+    value === 'waiting_on_human' ||
+    value === 'completed' ||
+    value === 'failed' ||
+    value === 'cancelled'
+  ) {
+    return value;
+  }
+  throw new Error('Invalid review payload: review session phase is invalid.');
+}
+
+function readStopReason(value: unknown): ReviewSessionResponse['stopReason'] {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (
+    value === 'initial_pass_completed' ||
+    value === 'initial_pass_failed' ||
+    value === 'followup_pass_completed' ||
+    value === 'followup_pass_failed' ||
+    value === 'diminishing_returns' ||
+    value === 'risky_fix_requires_approval' ||
+    value === 'no_safe_fixes' ||
+    value === 'no_progress' ||
+    value === 'no_progress_after_remediation' ||
+    value === 'max_repair_cycles_reached' ||
+    value === 'auto_remediation_failed' ||
+    value === 'cancelled'
+  ) {
+    return value;
+  }
+  throw new Error('Invalid review payload: review session stopReason is invalid.');
+}
+
 function readPolicyDraft(value: unknown): { goal: string | null; prohibitions: string[]; constraints: string[] } | undefined {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return undefined;
@@ -105,17 +185,31 @@ function readSeverity(value: unknown): ReviewSeverity {
 }
 
 function readCategory(value: unknown): ReviewCategory {
-  if (value === 'security' || value === 'logic' || value === 'style' || value === 'breaking-change') {
+  if (value === 'security' || value === 'logic' || value === 'style' || value === 'breaking-change' || value === 'unknown') {
     return value;
   }
   throw new Error('Invalid review payload: finding category is invalid.');
 }
 
 function readPassType(value: unknown): ReviewPassType {
-  if (value === 'single' || value === 'security' || value === 'logic' || value === 'style' || value === 'breaking-change') {
+  if (
+    value === 'single' ||
+    value === 'security' ||
+    value === 'logic' ||
+    value === 'style' ||
+    value === 'breaking-change' ||
+    value === 'unknown'
+  ) {
     return value;
   }
   throw new Error('Invalid review payload: finding passType is invalid.');
+}
+
+function readOptionalConfidence(value: unknown): ReviewConfidence | undefined {
+  if (value === 'low' || value === 'medium' || value === 'high') {
+    return value;
+  }
+  return undefined;
 }
 
 function readRecommendation(value: unknown): ReviewRecommendation {
@@ -170,20 +264,76 @@ function readNullableTimestamp(value: unknown, label: string): string | null {
   return value;
 }
 
-export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
-  const root = asRecord(payload);
-  const review = asRecord(root.review);
-  if (!root.review || Object.keys(review).length === 0) {
-    throw new Error('No review payload in response.');
+function readEnvironmentRevision(value: unknown): ReviewSessionResponse['passes'][number]['environmentRevision'] {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const record = value as Record<string, unknown>;
+  if (
+    record.source !== 'workspace_head' ||
+    typeof record.diffSha256 !== 'string' ||
+    !record.diffSha256.trim() ||
+    typeof record.changedFileCount !== 'number' ||
+    !Number.isFinite(record.changedFileCount) ||
+    record.changedFileCount < 0 ||
+    typeof record.generatedAt !== 'string' ||
+    !record.generatedAt.trim()
+  ) {
+    throw new Error('Invalid review payload: environment revision is invalid.');
   }
 
-  const summaryRecord = review.summary === undefined ? null : asRecord(review.summary);
-  const findings = Array.isArray(review.findings)
-    ? review.findings.map((item) => {
+  return {
+    source: 'workspace_head',
+    diffSha256: record.diffSha256.trim(),
+    changedFileCount: Math.max(0, Math.floor(record.changedFileCount)),
+    generatedAt: record.generatedAt.trim(),
+  };
+}
+
+function readEvidenceList(value: unknown): ReviewResponse['evidence'] {
+  return Array.isArray(value)
+    ? value.map((item, index) => {
+        const evidenceItem = asRecord(item);
+        return {
+          id: readString(evidenceItem.id, `evidence[${index}].id`),
+          type: readString(evidenceItem.type, `evidence[${index}].type`),
+          label: readString(evidenceItem.label, `evidence[${index}].label`),
+          status:
+            evidenceItem.status === 'passed' ||
+            evidenceItem.status === 'failed' ||
+            evidenceItem.status === 'warning' ||
+            evidenceItem.status === 'info'
+              ? evidenceItem.status
+              : 'info',
+          metadata:
+            evidenceItem.metadata && typeof evidenceItem.metadata === 'object'
+              ? (evidenceItem.metadata as Record<string, unknown>)
+              : undefined,
+        };
+      })
+    : [];
+}
+
+function readFindings(value: unknown): ReviewFinding[] {
+  return Array.isArray(value)
+    ? value.map((item) => {
         const finding = asRecord(item);
         const locations = Array.isArray(finding.locations)
           ? finding.locations.map((locationItem) => {
               const location = asRecord(locationItem);
+              const path = readOptionalString(location.path);
+              if (path) {
+                const line = location.line;
+                if (!Number.isInteger(line) || (line as number) <= 0) {
+                  throw new Error('Invalid review payload: finding location line is invalid.');
+                }
+                return {
+                  filePath: path,
+                  startLine: line as number,
+                  endLine: line as number,
+                };
+              }
+
               const startLine = location.startLine;
               const endLine = location.endLine;
               const hasNullRange = startLine === null && endLine === null;
@@ -203,16 +353,43 @@ export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
             })
           : [];
 
+        const title = readOptionalString(finding.title);
+        const description = readOptionalString(finding.description) ?? title ?? 'No description provided.';
+        const suggestedFixValue =
+          typeof finding.suggestedFix === 'string'
+            ? finding.suggestedFix
+            : finding.suggestedFix && typeof finding.suggestedFix === 'object' && !Array.isArray(finding.suggestedFix)
+              ? readOptionalString((finding.suggestedFix as Record<string, unknown>).value) ?? ''
+              : '';
+
         return {
+          ...(readOptionalString(finding.id) ? { id: readOptionalString(finding.id) ?? undefined } : {}),
           severity: readSeverity(finding.severity),
-          category: readCategory(finding.category),
-          passType: readPassType(finding.passType),
-          description: readString(finding.description, 'finding description'),
+          category:
+            finding.category === undefined || finding.category === null ? 'unknown' : readCategory(finding.category),
+          passType:
+            finding.passType === undefined || finding.passType === null ? 'unknown' : readPassType(finding.passType),
+          ...(readOptionalConfidence(finding.confidence) ? { confidence: readOptionalConfidence(finding.confidence) } : {}),
+          ...(title ? { title } : {}),
+          description,
+          ...(finding.conditions === undefined ? {} : { conditions: readOptionalString(finding.conditions) }),
           locations,
-          suggestedFix: typeof finding.suggestedFix === 'string' ? finding.suggestedFix : '',
+          suggestedFix: suggestedFixValue,
+          ...(Array.isArray(finding.evidenceRefs) ? { evidenceRefs: readStringList(finding.evidenceRefs) } : {}),
         };
       })
     : [];
+}
+
+export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
+  const root = asRecord(payload);
+  const review = asRecord(root.review);
+  if (!root.review || Object.keys(review).length === 0) {
+    throw new Error('No review payload in response.');
+  }
+
+  const summaryRecord = review.summary === undefined ? null : asRecord(review.summary);
+  const findings = readFindings(review.findings);
 
   const targetRecord = asRecord(review.target);
   const provenanceRecord = asRecord(review.provenance);
@@ -406,6 +583,145 @@ export function parseGetReviewResponse(payload: unknown): GetReviewResponse {
   };
 }
 
+function parseReviewSessionResponseValue(value: unknown): ReviewSessionResponse {
+  const session = asRecord(value);
+  if (Object.keys(session).length === 0) {
+    throw new Error('Invalid review session payload: session is required.');
+  }
+
+  const outcomeRecord = asRecord(session.outcome);
+  const reviewedRecord = asRecord(outcomeRecord.reviewed);
+  const changesRecord = asRecord(outcomeRecord.changes);
+  const evidenceRecord = asRecord(outcomeRecord.evidence);
+  const unresolvedRecord = asRecord(outcomeRecord.unresolved);
+
+  return {
+    id: readString(session.id, 'session.id'),
+    workspaceId: readString(session.workspaceId, 'session.workspaceId'),
+    anchorDeploymentId: readString(session.anchorDeploymentId, 'session.anchorDeploymentId'),
+    repo: readString(session.repo, 'session.repo'),
+    branch: readString(session.branch, 'session.branch'),
+    initialReviewBasis: readReviewBasis(session.initialReviewBasis),
+    anchorCommitSha: readOptionalString(session.anchorCommitSha),
+    anchorCheckpointId: readOptionalString(session.anchorCheckpointId),
+    sourceProjectRoot: readOptionalString(session.sourceProjectRoot),
+    phase: readSessionPhase(session.phase),
+    passCount: Number(session.passCount) || 0,
+    activeReviewId: readOptionalString(session.activeReviewId),
+    latestReviewId: readOptionalString(session.latestReviewId),
+    currentReviewStatus:
+      session.currentReviewStatus === null || session.currentReviewStatus === undefined
+        ? null
+        : readStatus(session.currentReviewStatus),
+    stopReason: readStopReason(session.stopReason),
+    createdAt: readString(session.createdAt, 'session.createdAt'),
+    updatedAt: readString(session.updatedAt, 'session.updatedAt'),
+    finishedAt: readNullableTimestamp(session.finishedAt, 'session.finishedAt'),
+    passes: Array.isArray(session.passes)
+      ? session.passes.map((item, index) => {
+          const pass = asRecord(item);
+          return {
+            reviewId: readString(pass.reviewId, `session.passes[${index}].reviewId`),
+            status: readStatus(pass.status),
+            reviewBasis: readReviewBasis(pass.reviewBasis),
+            ...(pass.environmentRevision !== undefined
+              ? { environmentRevision: readEnvironmentRevision(pass.environmentRevision) }
+              : {}),
+            createdAt: readString(pass.createdAt, `session.passes[${index}].createdAt`),
+            startedAt: readNullableTimestamp(pass.startedAt, `session.passes[${index}].startedAt`),
+            finishedAt: readNullableTimestamp(pass.finishedAt, `session.passes[${index}].finishedAt`),
+          };
+        })
+      : [],
+    outcome:
+      Object.keys(outcomeRecord).length > 0
+        ? {
+            kind:
+              outcomeRecord.kind === 'clean' ||
+              outcomeRecord.kind === 'converged_with_blockers' ||
+              outcomeRecord.kind === 'blocked' ||
+              outcomeRecord.kind === 'exhausted' ||
+              outcomeRecord.kind === 'cancelled'
+                ? outcomeRecord.kind
+                : 'blocked',
+            summary: readOptionalString(outcomeRecord.summary),
+            residualRisk:
+              outcomeRecord.residualRisk === null || outcomeRecord.residualRisk === undefined
+                ? null
+                : readSeverity(outcomeRecord.residualRisk),
+            recommendation:
+              outcomeRecord.recommendation === null || outcomeRecord.recommendation === undefined
+                ? null
+                : readRecommendation(outcomeRecord.recommendation),
+            materializeReady: outcomeRecord.materializeReady === true,
+            reviewed: {
+              contextMode: readOptionalContextMode(reviewedRecord.contextMode),
+              latestReviewBasis:
+                reviewedRecord.latestReviewBasis === null || reviewedRecord.latestReviewBasis === undefined
+                  ? null
+                  : readReviewBasis(reviewedRecord.latestReviewBasis),
+              passCount: Number(reviewedRecord.passCount) || 0,
+            },
+            changes: {
+              applied: changesRecord.applied === true,
+              remediationCount: Number(changesRecord.remediationCount) || 0,
+              changedFileCount: Number(changesRecord.changedFileCount) || 0,
+              summaries: readStringList(changesRecord.summaries),
+              environmentRevision:
+                changesRecord.environmentRevision === null || changesRecord.environmentRevision === undefined
+                  ? null
+                  : (readEnvironmentRevision(changesRecord.environmentRevision) ?? null),
+            },
+            evidence: {
+              passed: Number(evidenceRecord.passed) || 0,
+              failed: Number(evidenceRecord.failed) || 0,
+              warning: Number(evidenceRecord.warning) || 0,
+              info: Number(evidenceRecord.info) || 0,
+              highlights: readEvidenceList(evidenceRecord.highlights),
+            },
+            unresolved: {
+              findingCount: Number(unresolvedRecord.findingCount) || 0,
+              highestSeverity:
+                unresolvedRecord.highestSeverity === null || unresolvedRecord.highestSeverity === undefined
+                  ? null
+                  : readSeverity(unresolvedRecord.highestSeverity),
+              highlights: Array.isArray(unresolvedRecord.highlights)
+                ? unresolvedRecord.highlights.map((item, index) => {
+                    const highlight = asRecord(item);
+                    return {
+                      severity: readSeverity(highlight.severity),
+                      category: readCategory(highlight.category),
+                      description: readString(
+                        highlight.description,
+                        `session.outcome.unresolved.highlights[${index}].description`
+                      ),
+                      filePath: readOptionalString(highlight.filePath),
+                    };
+                  })
+                : [],
+            },
+          }
+        : null,
+  };
+}
+
+export function parseGetReviewSessionResponse(payload: unknown): GetReviewSessionResponse {
+  const root = asRecord(payload);
+  return {
+    session: parseReviewSessionResponseValue(root.session),
+  };
+}
+
+export function parseListReviewSessionsResponse(payload: unknown): ReviewSessionListResponse {
+  const root = asRecord(payload);
+  if (!Array.isArray(root.sessions)) {
+    throw new Error('Invalid review session payload: sessions must be an array.');
+  }
+  return {
+    sessions: root.sessions.map((item) => parseReviewSessionResponseValue(item)),
+  };
+}
+
 export function parseListReviewsResponse(payload: unknown): ListReviewsResponse {
   const root = asRecord(payload);
   if (!Array.isArray(root.reviews)) {
@@ -499,6 +815,76 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
   if (typeof root.ready !== 'boolean') {
     throw new Error('Invalid Studio preflight payload: ready must be boolean.');
   }
+
+  const startability =
+    root.startability === 'blocked' || root.startability === 'basic' || root.startability === 'intent_aware'
+      ? root.startability
+      : root.ready
+        ? root.contextMode === 'basic'
+          ? 'basic'
+          : 'intent_aware'
+        : 'blocked';
+
+  const capabilitiesRecord = asRecord(root.capabilities);
+  const capabilities =
+    Object.keys(capabilitiesRecord).length > 0
+      ? {
+          canStart: capabilitiesRecord.canStart === true,
+          canStartInBasicMode: capabilitiesRecord.canStartInBasicMode === true,
+          canStartInIntentAwareMode: capabilitiesRecord.canStartInIntentAwareMode === true,
+          canReviewPolicy: capabilitiesRecord.canReviewPolicy === true,
+        }
+      : {
+          canStart: startability !== 'blocked',
+          canStartInBasicMode: startability === 'basic' || startability === 'intent_aware',
+          canStartInIntentAwareMode: startability === 'intent_aware',
+          canReviewPolicy: startability !== 'blocked',
+        };
+
+  const readIssueCode = (value: unknown): StudioPreflightIssueCode => {
+    if (
+      value === 'checkpoint_unavailable' ||
+      value === 'checkpoint_missing_trailer' ||
+      value === 'entire_context_unavailable' ||
+      value === 'branch_context_changed' ||
+      value === 'unknown'
+    ) {
+      return value;
+    }
+    return 'unknown';
+  };
+
+  const parseIssueList = (value: unknown, field: 'blockingIssues' | 'warnings') => {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value.map((item, index) => {
+      const issue = asRecord(item);
+      return {
+        code: readIssueCode(issue.code),
+        message: readString(issue.message, `${field}[${index}].message`),
+      };
+    });
+  };
+
+  const parseCheckpointCount = (
+    value: unknown,
+    label: string,
+    fallback: 1 | 2 | 3
+  ): 1 | 2 | 3 => {
+    const count = Number(value);
+    if (count === 1 || count === 2 || count === 3) {
+      return count;
+    }
+    if (value === undefined || value === null) {
+      return fallback;
+    }
+    throw new Error(`Invalid Studio preflight payload: ${label} must be 1, 2, or 3.`);
+  };
+
+  const requestedLastCheckpoints = parseCheckpointCount(root.requestedLastCheckpoints, 'requestedLastCheckpoints', lastCheckpoints as 1 | 2 | 3);
+  const effectiveLastCheckpoints = parseCheckpointCount(root.effectiveLastCheckpoints, 'effectiveLastCheckpoints', lastCheckpoints as 1 | 2 | 3);
+
   if (!Array.isArray(root.checks)) {
     throw new Error('Invalid Studio preflight payload: checks must be an array.');
   }
@@ -542,13 +928,7 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
   const error =
     Object.keys(errorRecord).length > 0
       ? {
-          code: (
-            errorRecord.code === 'checkpoint_unavailable' ||
-            errorRecord.code === 'entire_context_unavailable' ||
-            errorRecord.code === 'unknown'
-              ? errorRecord.code
-              : 'unknown'
-          ) as 'checkpoint_unavailable' | 'entire_context_unavailable' | 'unknown',
+          code: readIssueCode(errorRecord.code),
           message: readString(errorRecord.message, 'error.message'),
         }
       : undefined;
@@ -557,12 +937,19 @@ export function parseStudioNewReviewPreflightResponse(payload: unknown): StudioN
     repo: typeof repo === 'string' ? repo : null,
     branch: typeof branch === 'string' ? branch : null,
     policyMode: root.policyMode,
+    startability,
+    contextMode: root.contextMode === undefined ? 'intent_aware' : readContextMode(root.contextMode),
+    requestedLastCheckpoints,
+    effectiveLastCheckpoints,
     lastCheckpoints: lastCheckpoints as 1 | 2 | 3,
     checkpointSelectionMode: root.checkpointSelectionMode,
     checkpointId: typeof root.checkpointId === 'string' ? root.checkpointId : null,
     commitSha: typeof root.commitSha === 'string' ? root.commitSha : null,
     includedCheckpoints,
     ready: root.ready,
+    capabilities,
+    blockingIssues: parseIssueList(root.blockingIssues, 'blockingIssues'),
+    warnings: parseIssueList(root.warnings, 'warnings'),
     checks,
     error,
   };
@@ -579,10 +966,31 @@ export function parseStudioNewReviewStartResponse(payload: unknown): StudioNewRe
     throw new Error('Invalid Studio start payload: status must be policy_ready or queued.');
   }
 
+  const sessionId = readOptionalString(root.sessionId);
+  const defaultCheckpointCount = (() => {
+    const count = Number(root.lastCheckpoints);
+    if (count === 1 || count === 2 || count === 3) {
+      return count as 1 | 2 | 3;
+    }
+    return 1 as const;
+  })();
+  const requestedLastCheckpoints = Number(root.requestedLastCheckpoints ?? defaultCheckpointCount);
+  const effectiveLastCheckpoints = Number(root.effectiveLastCheckpoints ?? defaultCheckpointCount);
+  if (requestedLastCheckpoints !== 1 && requestedLastCheckpoints !== 2 && requestedLastCheckpoints !== 3) {
+    throw new Error('Invalid Studio start payload: requestedLastCheckpoints must be 1, 2, or 3.');
+  }
+  if (effectiveLastCheckpoints !== 1 && effectiveLastCheckpoints !== 2 && effectiveLastCheckpoints !== 3) {
+    throw new Error('Invalid Studio start payload: effectiveLastCheckpoints must be 1, 2, or 3.');
+  }
+
   return {
     reviewId,
+    sessionId,
     routePath,
     policyMode: root.policyMode,
+    contextMode: readContextMode(root.contextMode),
+    requestedLastCheckpoints: requestedLastCheckpoints as 1 | 2 | 3,
+    effectiveLastCheckpoints: effectiveLastCheckpoints as 1 | 2 | 3,
     status: root.status,
   };
 }
@@ -639,6 +1047,312 @@ export function parseStudioNewReviewStartStreamEvent(payload: unknown): StudioNe
   }
 
   throw new Error('Invalid Studio start stream payload: type is invalid.');
+}
+
+export function parseWorkspaceDiffResponse(payload: unknown): WorkspaceDiffResponse {
+  const root = asRecord(payload);
+  const summary = asRecord(root.summary);
+  return {
+    workspaceId: readString(root.workspaceId, 'workspaceId'),
+    includePatch: root.includePatch === true,
+    maxBytes: Number(root.maxBytes) || 0,
+    truncated: root.truncated === true,
+    changedFilesTruncated: root.changedFilesTruncated === undefined ? undefined : root.changedFilesTruncated === true,
+    patchTruncated: root.patchTruncated === undefined ? undefined : root.patchTruncated === true,
+    summaryIsPartial: root.summaryIsPartial === undefined ? undefined : root.summaryIsPartial === true,
+    summary: {
+      added: Number(summary.added) || 0,
+      modified: Number(summary.modified) || 0,
+      deleted: Number(summary.deleted) || 0,
+      renamed: Number(summary.renamed) || 0,
+      totalChanged: Number(summary.totalChanged) || 0,
+    },
+    changedFiles: Array.isArray(root.changedFiles)
+      ? root.changedFiles.map((item, index) => {
+          const file = asRecord(item);
+          const status =
+            file.status === 'added' || file.status === 'modified' || file.status === 'deleted' || file.status === 'renamed'
+              ? file.status
+              : null;
+          if (!status) {
+            throw new Error(`Invalid workspace diff payload: changedFiles[${index}].status is invalid.`);
+          }
+          return {
+            path: readString(file.path, `changedFiles[${index}].path`),
+            status,
+            ...(typeof file.previousPath === 'string' && file.previousPath.trim()
+              ? { previousPath: file.previousPath }
+              : {}),
+          };
+        })
+      : [],
+    changedFilesBytes: root.changedFilesBytes === undefined ? undefined : Number(root.changedFilesBytes) || 0,
+    changedFilesTotalBytes: root.changedFilesTotalBytes === undefined ? undefined : Number(root.changedFilesTotalBytes) || 0,
+    patch: typeof root.patch === 'string' ? root.patch : undefined,
+    patchBytes: root.patchBytes === undefined ? undefined : Number(root.patchBytes) || 0,
+    patchTotalBytes: root.patchTotalBytes === undefined ? undefined : Number(root.patchTotalBytes) || 0,
+  };
+}
+
+function parseLocalReviewEnvironment(value: unknown): LocalReviewEnvironment {
+  const root = asRecord(value);
+  const environmentRevision = readEnvironmentRevision(root.environmentRevision);
+  if (!environmentRevision) {
+    throw new Error('Invalid local review environment payload: environmentRevision is required.');
+  }
+  return {
+    sessionId: readString(root.sessionId, 'sessionId'),
+    repoRoot: readString(root.repoRoot, 'repoRoot'),
+    repo: readOptionalString(root.repo),
+    branchName: readString(root.branchName, 'branchName'),
+    mode: root.mode === 'branch' ? 'branch' : 'worktree',
+    worktreePath: readOptionalString(root.worktreePath),
+    artifactId: readString(root.artifactId, 'artifactId'),
+    artifactSha256: readString(root.artifactSha256, 'artifactSha256'),
+    latestReviewId: readString(root.latestReviewId, 'latestReviewId'),
+    anchorCommitSha: readString(root.anchorCommitSha, 'anchorCommitSha'),
+    commitSha: readOptionalString(root.commitSha),
+    environmentRevision,
+    contextMode:
+      root.contextMode === 'unknown' ? 'unknown' : readContextMode(root.contextMode),
+    materializedAt: readString(root.materializedAt, 'materializedAt'),
+    enterCommand: readString(root.enterCommand, 'enterCommand'),
+  };
+}
+
+export function parseLocalReviewEnvironmentListResponse(payload: unknown): LocalReviewEnvironmentListResponse {
+  const root = asRecord(payload);
+  if (!Array.isArray(root.environments)) {
+    throw new Error('Invalid local review environment payload: environments must be an array.');
+  }
+  return {
+    environments: root.environments.map((item) => parseLocalReviewEnvironment(item)),
+  };
+}
+
+export function parseLocalReviewEnvironmentDiffResponse(payload: unknown): LocalReviewEnvironmentDiffResponse {
+  const root = asRecord(payload);
+  return {
+    entry: parseLocalReviewEnvironment(root.entry),
+    baseRef: readString(root.baseRef, 'baseRef'),
+    diff: typeof root.diff === 'string' ? root.diff : '',
+    hasDiff: root.hasDiff === true,
+    enterCommand: readString(root.enterCommand, 'enterCommand'),
+  };
+}
+
+export function parseLocalReviewEnvironmentMergeBackResponse(
+  payload: unknown
+): LocalReviewEnvironmentMergeBackResponse {
+  const root = asRecord(payload);
+  return {
+    sessionId: readString(root.sessionId, 'sessionId'),
+    currentBranch: readString(root.currentBranch, 'currentBranch'),
+    sourceBranch: readString(root.sourceBranch, 'sourceBranch'),
+    sourceCommit: readString(root.sourceCommit, 'sourceCommit'),
+    newHead: readOptionalString(root.newHead),
+    worktreePath: readOptionalString(root.worktreePath),
+    status: root.status === 'already_applied' ? 'already_applied' : 'applied',
+  };
+}
+
+function parseStudioSessionActivitySnapshotValue(value: unknown): StudioSessionActivitySnapshot {
+  const root = asRecord(value);
+  const state =
+    root.state === 'active' || root.state === 'waiting_on_human' || root.state === 'terminal'
+      ? root.state
+      : null;
+  if (!state) {
+    throw new Error('Invalid Studio session activity payload: state is invalid.');
+  }
+
+  return {
+    sessionId: readString(root.sessionId, 'activity.sessionId'),
+    phase: readSessionPhase(root.phase),
+    state,
+    currentReviewStatus:
+      root.currentReviewStatus === null || root.currentReviewStatus === undefined
+        ? null
+        : readStatus(root.currentReviewStatus),
+    activeReviewId: readOptionalString(root.activeReviewId),
+    latestReviewId: readOptionalString(root.latestReviewId),
+    passCount: Number(root.passCount) || 0,
+    summary: readString(root.summary, 'activity.summary'),
+    detail: readString(root.detail, 'activity.detail'),
+    canStream: root.canStream === true,
+    streamPath: readString(root.streamPath, 'activity.streamPath'),
+    updatedAt: readString(root.updatedAt, 'activity.updatedAt'),
+  };
+}
+
+function parseStudioLocalReviewEnvironment(value: unknown): StudioLocalReviewEnvironment {
+  const root = asRecord(value);
+  const base = parseLocalReviewEnvironment(root);
+  return {
+    ...base,
+    diffPath: readString(root.diffPath, 'environment.diffPath'),
+    mergeBackPath: readString(root.mergeBackPath, 'environment.mergeBackPath'),
+  };
+}
+
+function parseStudioSessionFindingRollupEntry(value: unknown, label: string): StudioSessionFindingRollupEntry {
+  const root = asRecord(value);
+  const parsedFinding = readFindings([root.finding])[0];
+  if (!parsedFinding) {
+    throw new Error(`Invalid Studio session payload: ${label}.finding is invalid.`);
+  }
+  return {
+    finding: parsedFinding,
+    state: root.state === 'unresolved' ? 'unresolved' : 'resolved',
+    firstSeenReviewId: readString(root.firstSeenReviewId, `${label}.firstSeenReviewId`),
+    lastSeenReviewId: readString(root.lastSeenReviewId, `${label}.lastSeenReviewId`),
+    reviewIds: readStringList(root.reviewIds),
+  };
+}
+
+export function parseStudioSessionActivitySnapshotResponse(payload: unknown): StudioSessionActivitySnapshotResponse {
+  const root = asRecord(payload);
+  return {
+    sessionId: readString(root.sessionId, 'sessionId'),
+    activity: parseStudioSessionActivitySnapshotValue(root.activity),
+  };
+}
+
+export function parseStudioSessionActivityEvent(payload: unknown): StudioSessionActivityEvent {
+  const root = asRecord(payload);
+  if (root.type === 'snapshot') {
+    return {
+      type: 'snapshot',
+      sessionId: readString(root.sessionId, 'sessionId'),
+      activity: parseStudioSessionActivitySnapshotValue(root.activity),
+    };
+  }
+  if (root.type === 'terminal') {
+    return {
+      type: 'terminal',
+      sessionId: readString(root.sessionId, 'sessionId'),
+      activity: parseStudioSessionActivitySnapshotValue(root.activity),
+    };
+  }
+  if (root.type === 'error') {
+    return {
+      type: 'error',
+      sessionId: readOptionalString(root.sessionId),
+      message: readString(root.message, 'message'),
+    };
+  }
+  if (root.type === 'activity') {
+    const kind =
+      root.kind === 'policy' ||
+      root.kind === 'progress' ||
+      root.kind === 'finding' ||
+      root.kind === 'remediation' ||
+      root.kind === 'terminal' ||
+      root.kind === 'status'
+        ? root.kind
+        : null;
+    if (!kind) {
+      throw new Error('Invalid Studio session activity payload: kind is invalid.');
+    }
+    return {
+      type: 'activity',
+      sessionId: readString(root.sessionId, 'sessionId'),
+      reviewId: readString(root.reviewId, 'reviewId'),
+      passIndex: Number(root.passIndex) || 0,
+      rawType: readString(root.rawType, 'rawType'),
+      kind,
+      label: readString(root.label, 'label'),
+      detail: readString(root.detail, 'detail'),
+      createdAt: root.createdAt === undefined ? null : readNullableTimestamp(root.createdAt, 'createdAt'),
+      seq: root.seq === null || root.seq === undefined ? null : Number(root.seq) || 0,
+      payload: asRecord(root.payload),
+    };
+  }
+
+  throw new Error('Invalid Studio session activity payload: type is invalid.');
+}
+
+export function parseStudioSessionAggregateResponse(payload: unknown): StudioSessionAggregateResponse {
+  const root = asRecord(payload);
+  const findings = asRecord(root.findings);
+  const local = asRecord(root.local);
+  const capabilities = asRecord(root.capabilities);
+  const paths = asRecord(root.paths);
+  const adopt = asRecord(root.adopt);
+  const reviewedDiff = asRecord(root.reviewedDiff);
+
+  const unresolved = Array.isArray(findings.unresolved) ? readFindings(findings.unresolved) : [];
+
+  return {
+    session: parseReviewSessionResponseValue(root.session),
+    reviews: Array.isArray(root.reviews) ? root.reviews.map((item) => parseGetReviewResponse({ review: item }).review) : [],
+    latestReview:
+      root.latestReview === null || root.latestReview === undefined
+        ? null
+        : parseGetReviewResponse({ review: root.latestReview }).review,
+    activeReview:
+      root.activeReview === null || root.activeReview === undefined
+        ? null
+        : parseGetReviewResponse({ review: root.activeReview }).review,
+    findings: {
+      unresolved,
+      resolved: Array.isArray(findings.resolved)
+        ? findings.resolved.map((item, index) => parseStudioSessionFindingRollupEntry(item, `findings.resolved[${index}]`))
+        : [],
+      all: Array.isArray(findings.all)
+        ? findings.all.map((item, index) => parseStudioSessionFindingRollupEntry(item, `findings.all[${index}]`))
+        : [],
+    },
+    activity: parseStudioSessionActivitySnapshotValue(root.activity),
+    reviewedDiff: {
+      sessionId: readString(reviewedDiff.sessionId, 'reviewedDiff.sessionId'),
+      reviewId: readOptionalString(reviewedDiff.reviewId),
+      available: reviewedDiff.available === true,
+      status:
+        reviewedDiff.status === 'available' || reviewedDiff.status === 'error' || reviewedDiff.status === 'unavailable'
+          ? reviewedDiff.status
+          : 'unavailable',
+      reason: readOptionalString(reviewedDiff.reason),
+      path: readString(reviewedDiff.path, 'reviewedDiff.path'),
+      environmentRevision:
+        reviewedDiff.environmentRevision === null || reviewedDiff.environmentRevision === undefined
+          ? null
+          : (readEnvironmentRevision(reviewedDiff.environmentRevision) ?? null),
+      diff: reviewedDiff.diff === undefined ? undefined : parseWorkspaceDiffResponse(reviewedDiff.diff),
+    } satisfies StudioReviewedDiffResponse,
+    local: {
+      environments: Array.isArray(local.environments)
+        ? local.environments.map((item) => parseStudioLocalReviewEnvironment(item))
+        : [],
+      hasAny: local.hasAny === true,
+    },
+    capabilities: {
+      active: capabilities.active === true,
+      waitingOnHuman: capabilities.waitingOnHuman === true,
+      terminal: capabilities.terminal === true,
+      canShowReviewedDiff: capabilities.canShowReviewedDiff === true,
+      canAdopt: capabilities.canAdopt === true,
+      canListLocalEnvironments: capabilities.canListLocalEnvironments === true,
+      canShowLocalDiff: capabilities.canShowLocalDiff === true,
+      canMergeBack: capabilities.canMergeBack === true,
+    },
+    paths: {
+      self: readString(paths.self, 'paths.self'),
+      activity: readString(paths.activity, 'paths.activity'),
+      activityEvents: readString(paths.activityEvents, 'paths.activityEvents'),
+      reviewedDiff: readString(paths.reviewedDiff, 'paths.reviewedDiff'),
+      localEnvironments: readString(paths.localEnvironments, 'paths.localEnvironments'),
+      adopt: readString(paths.adopt, 'paths.adopt'),
+    },
+    adopt: {
+      available: adopt.available === true,
+      reason: readOptionalString(adopt.reason),
+      path: readString(adopt.path, 'adopt.path'),
+      modes: Array.isArray(adopt.modes)
+        ? adopt.modes.filter((item): item is 'worktree' | 'branch' => item === 'worktree' || item === 'branch')
+        : [],
+    },
+  };
 }
 
 function defaultText(value: string | null | undefined, fallback: string): string {

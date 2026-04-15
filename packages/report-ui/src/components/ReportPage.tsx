@@ -758,7 +758,12 @@ function ActivityLog({ entries, isLive }: { entries: ActivityLogEntry[]; isLive:
 }
 
 export function ReportPage(): JSX.Element {
-  const { reviewId, repo, branch } = useParams<{ reviewId: string; repo: string; branch: string }>();
+  const { reviewId, repo, branch, sessionId } = useParams<{
+    reviewId: string;
+    repo?: string;
+    branch?: string;
+    sessionId?: string;
+  }>();
   const hasBranchContext = Boolean(repo && branch);
 
   const [state, setState] = useState<LoadState>('loading');
@@ -1354,6 +1359,21 @@ export function ReportPage(): JSX.Element {
               className="hover:text-foreground transition-colors truncate max-w-[240px]"
             >
               {branch}
+            </Link>
+          </>
+        )}
+        {sessionId && (
+          <>
+            <span className="text-muted-foreground/50">/</span>
+            <Link
+              to={
+                hasBranchContext
+                  ? `/branches/${encodeURIComponent(repo!)}/${encodeURIComponent(branch!)}/sessions/${encodeURIComponent(sessionId)}`
+                  : `/sessions/${encodeURIComponent(sessionId)}`
+              }
+              className="hover:text-foreground transition-colors truncate max-w-[240px]"
+            >
+              {sessionId}
             </Link>
           </>
         )}

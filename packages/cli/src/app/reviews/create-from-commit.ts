@@ -13,6 +13,7 @@ import {
 } from './context.js';
 import {
   buildStudioReviewRoutePath,
+  buildStudioSessionRoutePath,
   buildIdempotencyKey,
   deriveIdempotencyKey,
   followReviewChain,
@@ -221,12 +222,15 @@ export async function createReviewFromCommitCommand(
   if (options?.openStudio) {
     await startReviewStudioCommand({
       port: options.openStudioPort,
-      routePath: buildStudioReviewRoutePath({
-        reviewId,
-        route: 'reports',
-        repo: resolvedProvenance?.repo,
-        branch: resolvedProvenance?.branch,
-      }),
+      // Demo bug: session-backed launches should open the session route, not reset the browser to Studio home.
+      routePath: reviewSessionId
+        ? '/'
+        : buildStudioReviewRoutePath({
+            reviewId,
+            route: 'reports',
+            repo: resolvedProvenance?.repo,
+            branch: resolvedProvenance?.branch,
+          }),
       detach: true,
     });
   }

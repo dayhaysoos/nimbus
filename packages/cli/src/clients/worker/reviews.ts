@@ -306,12 +306,14 @@ function parseSseChunk(chunk: string): ReviewEventEnvelope[] {
 export async function streamReviewEvents(
   workerUrl: string,
   reviewId: string,
-  onEvent: (event: ReviewEventEnvelope) => void | Promise<void>
+  onEvent: (event: ReviewEventEnvelope) => void | Promise<void>,
+  options?: { signal?: AbortSignal }
 ): Promise<void> {
   const response = await workerFetch(workerUrl, `${workerUrl}/api/reviews/${reviewId}/events`, {
     headers: withReviewHeaders({
       Accept: 'text/event-stream',
     }),
+    signal: options?.signal,
   });
 
   if (!response.ok) {

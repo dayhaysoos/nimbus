@@ -1,6 +1,10 @@
 import { getReviewRun, listReviewEvents } from '../../lib/db.js';
 import type { Env, ReviewRunStatus } from '../../types.js';
-import { REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS, recoverStaleRunningReviewIfNeeded } from './recovery.js';
+import {
+  REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS,
+  failStaleRetryScheduledReviewIfNeeded,
+  recoverStaleRunningReviewIfNeeded,
+} from './recovery.js';
 import {
   REVIEW_STREAM_HEARTBEAT_INTERVAL_MS,
   REVIEW_STREAM_POLL_INTERVAL_MS,
@@ -109,7 +113,11 @@ export function createReviewEventsStream(
               { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
             );
             const refreshed = await getReviewRun(env.DB, reviewId);
-            currentStatus = refreshed?.status ?? latest.status;
+            if (refreshed) {
+              await failStaleRetryScheduledReviewIfNeeded(env, reviewId, refreshed);
+            }
+            const finalized = await getReviewRun(env.DB, reviewId);
+            currentStatus = finalized?.status ?? refreshed?.status ?? latest.status;
           }
 
           if (!isReviewStatusActive(currentStatus) && terminalGraceDeadline === null) {

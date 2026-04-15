@@ -11,6 +11,7 @@ import { jsonResponse } from './shared.js';
 
 const REVIEW_STALE_RUNNING_GRACE_MS = 60_000;
 export const REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS = 120_000;
+export const REVIEW_STALE_RETRY_SCHEDULED_GRACE_MS = 60_000;
 
 function parseTimeoutMs(value: string | undefined, fallback: number): number {
   if (typeof value !== 'string') {
@@ -89,6 +90,49 @@ async function persistManualFailIfCurrent(input: {
 
   const result = await input.db.prepare(sql.join(' ')).bind(...values).run();
   return (result.meta?.changes ?? 0) > 0;
+}
+
+function parseReviewTimestampMs(review: { updatedAt: string; createdAt: string }): number | null {
+  const parsed = Date.parse(review.updatedAt ?? review.createdAt);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export async function failStaleRetryScheduledReviewIfNeeded(
+  env: Env,
+  reviewId: string,
+  review: { status: ReviewRunStatus; updatedAt: string; createdAt: string; error?: { code: string; message: string } | null }
+): Promise<void> {
+  if (review.status !== 'queued' || review.error?.code !== 'retry_scheduled') {
+    return;
+  }
+
+  const updatedAtMs = parseReviewTimestampMs(review);
+  if (updatedAtMs === null) {
+    return;
+  }
+
+  const queuedForMs = Date.now() - updatedAtMs;
+  if (queuedForMs < REVIEW_STALE_RETRY_SCHEDULED_GRACE_MS) {
+    return;
+  }
+
+  const message = `Review recovery retry was scheduled but no worker claimed it within ${Math.floor(REVIEW_STALE_RETRY_SCHEDULED_GRACE_MS / 1000)}s.`;
+  await replaceReviewFindings(env.DB, reviewId, []);
+  await updateReviewRunStatus(env.DB, reviewId, 'failed', {
+    report: null,
+    markdownSummary: null,
+    errorCode: 'review_execution_timeout',
+    errorMessage: message,
+  });
+  await appendReviewEvent(env.DB, {
+    reviewId,
+    eventType: 'review_failed',
+    payload: {
+      code: 'review_execution_timeout',
+      message,
+      reason: 'retry_not_claimed',
+    },
+  });
 }
 
 export async function recoverStaleRunningReviewIfNeeded(

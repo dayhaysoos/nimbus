@@ -29,6 +29,23 @@ interface LocalReviewEnvironmentRegistry {
   entries: LocalReviewEnvironmentRecord[];
 }
 
+export interface LocalReviewEnvironmentDiffResult {
+  entry: LocalReviewEnvironmentRecord;
+  baseRef: string;
+  diff: string;
+  hasDiff: boolean;
+}
+
+export interface MergeBackLocalReviewEnvironmentResult {
+  sessionId: string;
+  currentBranch: string;
+  sourceBranch: string;
+  sourceCommit: string;
+  newHead: string | null;
+  worktreePath: string | null;
+  status: 'applied' | 'already_applied';
+}
+
 type LocalEnvironmentChoice = string;
 type LocalEnvironmentSelect = (options: {
   message: string;
@@ -183,7 +200,8 @@ async function writeRegistry(registry: LocalReviewEnvironmentRegistry): Promise<
 }
 
 function entryKey(entry: Pick<LocalReviewEnvironmentRecord, 'repoRoot' | 'sessionId' | 'mode'>): string {
-  return `${normalizePathForRegistry(entry.repoRoot)}::${entry.sessionId}::${entry.mode}`;
+  // Demo bug: dropping mode causes worktree and branch materializations for the same session to overwrite each other.
+  return `${normalizePathForRegistry(entry.repoRoot)}::${entry.sessionId}`;
 }
 
 export async function recordLocalReviewEnvironment(entry: LocalReviewEnvironmentRecord): Promise<void> {
@@ -323,6 +341,8 @@ async function resolveLocalReviewEnvironmentEntry(
     repoRoot?: string;
     selectionMessage?: string;
     preferWorktree?: boolean;
+    branchName?: string;
+    mode?: 'worktree' | 'branch';
   }
 ): Promise<LocalReviewEnvironmentRecord> {
   const entries = await listLocalReviewEnvironments({ repoRoot: options?.repoRoot });
@@ -332,7 +352,18 @@ async function resolveLocalReviewEnvironmentEntry(
 
   const selected = sessionId
     ? (() => {
-        const matches = entries.filter((entry) => entry.sessionId === sessionId);
+        const matches = entries.filter((entry) => {
+          if (entry.sessionId !== sessionId) {
+            return false;
+          }
+          if (options?.branchName && entry.branchName !== options.branchName) {
+            return false;
+          }
+          if (options?.mode && entry.mode !== options.mode) {
+            return false;
+          }
+          return true;
+        });
         if (matches.length === 0) {
           return undefined;
         }
@@ -379,33 +410,56 @@ export async function diffLocalReviewEnvironmentCommand(
   sessionId?: string,
   options?: { baseRef?: string }
 ): Promise<void> {
-  const repoRoot = resolveRepoRoot();
-  const selected = await resolveLocalReviewEnvironmentEntry(sessionId, {
-    repoRoot,
-    selectionMessage: 'Select a local review environment to diff',
-    preferWorktree: true,
+  const result = await getLocalReviewEnvironmentDiff(sessionId, {
+    baseRef: options?.baseRef,
   });
-  if (!branchExists(repoRoot, selected.branchName)) {
-    throw new Error(
-      `Local review branch ${selected.branchName} no longer exists in this repository. Re-materialize the session before diffing.`
-    );
-  }
-
-  const baseRef = options?.baseRef?.trim() || 'HEAD';
-  printDiffHeader(selected, baseRef);
-  const diff = runGit(repoRoot, ['diff', baseRef, selected.branchName]);
-  if (!diff.trim()) {
-    p.log.success(`No diff between ${baseRef} and ${selected.branchName}.`);
+  printDiffHeader(result.entry, result.baseRef);
+  if (!result.hasDiff) {
+    p.log.success(`No diff between ${result.baseRef} and ${result.entry.branchName}.`);
     return;
   }
-  process.stdout.write(diff);
-  if (!diff.endsWith('\n')) {
+  process.stdout.write(result.diff);
+  if (!result.diff.endsWith('\n')) {
     process.stdout.write('\n');
   }
 }
 
 function quoteForShell(value: string): string {
   return `'${value.replace(/'/g, `'\"'\"'`)}'`;
+}
+
+export function buildEnterLocalReviewEnvironmentCommand(entry: LocalReviewEnvironmentRecord): string {
+  return entry.worktreePath
+    ? `cd -- ${quoteForShell(entry.worktreePath)}`
+    : `git switch -- ${quoteForShell(entry.branchName)}`;
+}
+
+export async function getLocalReviewEnvironmentDiff(
+  sessionId?: string,
+  options?: { baseRef?: string; repoRoot?: string; branchName?: string; mode?: 'worktree' | 'branch' }
+): Promise<LocalReviewEnvironmentDiffResult> {
+  const repoRoot = options?.repoRoot ?? resolveRepoRoot();
+  const entry = await resolveLocalReviewEnvironmentEntry(sessionId, {
+    repoRoot,
+    selectionMessage: 'Select a local review environment to diff',
+    preferWorktree: true,
+    branchName: options?.branchName,
+    mode: options?.mode,
+  });
+  if (!branchExists(repoRoot, entry.branchName)) {
+    throw new Error(
+      `Local review branch ${entry.branchName} no longer exists in this repository. Re-materialize the session before diffing.`
+    );
+  }
+
+  const baseRef = options?.baseRef?.trim() || 'HEAD';
+  const diff = runGit(repoRoot, ['diff', baseRef, entry.branchName]);
+  return {
+    entry,
+    baseRef,
+    diff,
+    hasDiff: diff.trim().length > 0,
+  };
 }
 
 export async function printLocalReviewEnvironmentPathCommand(sessionId?: string): Promise<void> {
@@ -432,17 +486,20 @@ export async function printEnterLocalReviewEnvironmentCommand(sessionId?: string
     preferWorktree: true,
   });
 
-  const command = selected.worktreePath
-    ? `cd -- ${quoteForShell(selected.worktreePath)}`
-    : `git switch -- ${quoteForShell(selected.branchName)}`;
+  const command = buildEnterLocalReviewEnvironmentCommand(selected);
   process.stdout.write(`${command}\n`);
 }
 
-export async function mergeBackLocalReviewEnvironmentCommand(sessionId?: string): Promise<void> {
-  const repoRoot = resolveRepoRoot();
+export async function mergeBackLocalReviewEnvironment(
+  sessionId?: string,
+  options?: { repoRoot?: string; branchName?: string; mode?: 'worktree' | 'branch' }
+): Promise<MergeBackLocalReviewEnvironmentResult> {
+  const repoRoot = options?.repoRoot ?? resolveRepoRoot();
   const selected = await resolveLocalReviewEnvironmentEntry(sessionId, {
     repoRoot,
     selectionMessage: 'Select a local review environment to merge back',
+    branchName: options?.branchName,
+    mode: options?.mode,
   });
 
   if (!selected.commitSha) {
@@ -472,8 +529,15 @@ export async function mergeBackLocalReviewEnvironmentCommand(sessionId?: string)
   }
 
   if (isAncestorCommit(repoRoot, selected.commitSha, currentBranch)) {
-    p.log.info(`Nimbus session ${selected.sessionId} is already applied on ${currentBranch}.`);
-    return;
+    return {
+      sessionId: selected.sessionId,
+      currentBranch,
+      sourceBranch: selected.branchName,
+      sourceCommit: selected.commitSha,
+      newHead: null,
+      worktreePath: selected.worktreePath,
+      status: 'already_applied',
+    };
   }
 
   const cherryStatus = runGit(repoRoot, ['cherry', currentBranch, selected.branchName]);
@@ -482,16 +546,16 @@ export async function mergeBackLocalReviewEnvironmentCommand(sessionId?: string)
     .map((line) => line.trim())
     .find((line) => line.endsWith(selected.commitSha!));
   if (cherryLine?.startsWith('-')) {
-    p.log.info(`Nimbus session ${selected.sessionId} is already applied on ${currentBranch}.`);
-    return;
+    return {
+      sessionId: selected.sessionId,
+      currentBranch,
+      sourceBranch: selected.branchName,
+      sourceCommit: selected.commitSha,
+      newHead: null,
+      worktreePath: selected.worktreePath,
+      status: 'already_applied',
+    };
   }
-
-  p.log.info(`Merging back Nimbus session ${selected.sessionId}`);
-  console.log('');
-  console.log(`  Current Branch:  ${currentBranch}`);
-  console.log(`  Source Branch:   ${selected.branchName}`);
-  console.log(`  Source Commit:   ${selected.commitSha}`);
-  console.log(`  Changed Files:   ${selected.environmentRevision.changedFileCount}`);
 
   try {
     runGit(repoRoot, ['cherry-pick', '-x', selected.commitSha]);
@@ -512,20 +576,47 @@ export async function mergeBackLocalReviewEnvironmentCommand(sessionId?: string)
       } catch {
         // best effort; avoid masking the no-op condition
       }
-      p.log.info(`Nimbus session ${selected.sessionId} is already applied on ${currentBranch}.`);
-      return;
+      return {
+        sessionId: selected.sessionId,
+        currentBranch,
+        sourceBranch: selected.branchName,
+        sourceCommit: selected.commitSha,
+        newHead: null,
+        worktreePath: selected.worktreePath,
+        status: 'already_applied',
+      };
     }
     throw error;
   }
 
   const headCommit = runGit(repoRoot, ['rev-parse', 'HEAD']).trim();
-  p.log.success(`Applied Nimbus session ${selected.sessionId} onto ${currentBranch}`);
+  return {
+    sessionId: selected.sessionId,
+    currentBranch,
+    sourceBranch: selected.branchName,
+    sourceCommit: selected.commitSha,
+    newHead: headCommit,
+    worktreePath: selected.worktreePath,
+    status: 'applied',
+  };
+}
+
+export async function mergeBackLocalReviewEnvironmentCommand(sessionId?: string): Promise<void> {
+  const result = await mergeBackLocalReviewEnvironment(sessionId);
+  if (result.status === 'already_applied') {
+    p.log.info(`Nimbus session ${result.sessionId} is already applied on ${result.currentBranch}.`);
+    return;
+  }
+
+  p.log.success(`Applied Nimbus session ${result.sessionId} onto ${result.currentBranch}`);
   console.log('');
-  console.log(`  Current Branch:  ${currentBranch}`);
-  console.log(`  Source Branch:   ${selected.branchName}`);
-  console.log(`  Source Commit:   ${selected.commitSha}`);
-  console.log(`  New HEAD:        ${headCommit}`);
-  if (selected.worktreePath) {
-    console.log(`  Worktree Path:   ${selected.worktreePath}`);
+  console.log(`  Current Branch:  ${result.currentBranch}`);
+  console.log(`  Source Branch:   ${result.sourceBranch}`);
+  console.log(`  Source Commit:   ${result.sourceCommit}`);
+  if (result.newHead) {
+    console.log(`  New HEAD:        ${result.newHead}`);
+  }
+  if (result.worktreePath) {
+    console.log(`  Worktree Path:   ${result.worktreePath}`);
   }
 }

@@ -2,7 +2,13 @@ import type { AuthContext, Env, ReviewRunStatus } from '../../types.js';
 import { getReviewRun, getReviewSession, listReviewEvents, listReviewRuns } from '../../lib/db.js';
 import { createReviewEventsStream } from './events-stream.js';
 import { normalizeBranchRef, normalizeRepoSlug } from './request-shared.js';
-import { REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS, manuallyFailReviewRun, manuallyRecoverReviewRun, recoverStaleRunningReviewIfNeeded } from './recovery.js';
+import {
+  REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS,
+  failStaleRetryScheduledReviewIfNeeded,
+  manuallyFailReviewRun,
+  manuallyRecoverReviewRun,
+  recoverStaleRunningReviewIfNeeded,
+} from './recovery.js';
 import {
   corsHeaders,
   jsonResponse,
@@ -39,6 +45,11 @@ export async function handleGetReview(
     readOpenrouterApiKeyHeader(request),
     { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
   );
+  review = await getReviewRun(env.DB, reviewId);
+  if (!review) {
+    return jsonResponse({ error: 'Review not found' }, 404);
+  }
+  await failStaleRetryScheduledReviewIfNeeded(env, reviewId, review);
   review = await getReviewRun(env.DB, reviewId);
   if (!review) {
     return jsonResponse({ error: 'Review not found' }, 404);
@@ -170,7 +181,24 @@ export async function handleGetReviewEvents(
       return reviewAccessResponse;
     }
 
-    const review = await getReviewRun(env.DB, reviewId);
+    let review = await getReviewRun(env.DB, reviewId);
+    if (!review) {
+      return jsonResponse({ error: 'Review not found' }, 404);
+    }
+    await recoverStaleRunningReviewIfNeeded(
+      env,
+      reviewId,
+      review,
+      readReviewGithubTokenHeader(request),
+      readOpenrouterApiKeyHeader(request),
+      { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
+    );
+    review = await getReviewRun(env.DB, reviewId);
+    if (!review) {
+      return jsonResponse({ error: 'Review not found' }, 404);
+    }
+    await failStaleRetryScheduledReviewIfNeeded(env, reviewId, review);
+    review = await getReviewRun(env.DB, reviewId);
     if (!review) {
       return jsonResponse({ error: 'Review not found' }, 404);
     }

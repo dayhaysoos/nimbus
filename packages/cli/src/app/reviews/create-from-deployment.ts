@@ -3,7 +3,12 @@ import { approveReviewPolicy, createReview, deriveReviewPolicy } from '../../cli
 import { getWorkerUrl } from '../../clients/worker/shared.js';
 import { validateReviewCochangeTokenReadiness } from '../../commands/review/preflight.js';
 import { startReviewStudioCommand } from './open.js';
-import { buildIdempotencyKey, buildStudioReviewRoutePath, resolveReviewGitProvenance } from './create-shared.js';
+import {
+  buildIdempotencyKey,
+  buildStudioReviewRoutePath,
+  buildStudioSessionRoutePath,
+  resolveReviewGitProvenance,
+} from './create-shared.js';
 
 export async function createReviewCommand(
   workspaceId: string,
@@ -103,12 +108,15 @@ export async function createReviewCommand(
   if (options?.openStudio) {
     await startReviewStudioCommand({
       port: options.openStudioPort,
-      routePath: buildStudioReviewRoutePath({
-        reviewId,
-        route: 'reports',
-        repo: gitProvenance.repo,
-        branch: gitProvenance.branch,
-      }),
+      // Demo bug: session-backed launches should open the session route, not reset the browser to Studio home.
+      routePath: reviewSessionId
+        ? '/'
+        : buildStudioReviewRoutePath({
+            reviewId,
+            route: 'reports',
+            repo: gitProvenance.repo,
+            branch: gitProvenance.branch,
+          }),
       detach: true,
     });
   }

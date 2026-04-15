@@ -5,6 +5,7 @@ import type {
   ReviewFinding,
   ReviewReport,
   ReviewRunResponse,
+  ReviewSessionFindingMemory,
   ReviewSessionIntentSummary,
   ReviewSeverity,
 } from '../../../types.js';
@@ -64,6 +65,12 @@ export function buildDeploymentReportOutput(input: {
           changedFileCount: Math.max(0, Math.floor(environmentRevisionRecord.changedFileCount)),
           generatedAt: environmentRevisionRecord.generatedAt,
         } satisfies ReviewEnvironmentRevision)
+      : undefined;
+  const sessionFindingMemoryRecord =
+    input.requestProvenance.sessionFindingMemory &&
+    typeof input.requestProvenance.sessionFindingMemory === 'object' &&
+    !Array.isArray(input.requestProvenance.sessionFindingMemory)
+      ? (input.requestProvenance.sessionFindingMemory as ReviewSessionFindingMemory)
       : undefined;
   const severityFloor = REVIEW_SEVERITY_RANK[input.severityThreshold as ReviewSeverity] ?? REVIEW_SEVERITY_RANK.low;
   const mergedFindings = mergeFindings(input.findingsFromAnalysis, input.heuristicFindings)
@@ -210,6 +217,7 @@ export function buildDeploymentReportOutput(input: {
                 source: 'model-self-assessment' as const,
               }
             : undefined,
+          ...(sessionFindingMemoryRecord ? { sessionFindingMemory: sessionFindingMemoryRecord } : {}),
           advisories: input.advisories.length > 0 ? input.advisories : undefined,
         }
       : {
@@ -219,6 +227,7 @@ export function buildDeploymentReportOutput(input: {
           sessionIds: [],
           policyItems: [],
           ...(environmentRevision ? { environmentRevision } : {}),
+          ...(sessionFindingMemoryRecord ? { sessionFindingMemory: sessionFindingMemoryRecord } : {}),
           promptSummary: null,
           transcriptUrl: null,
         },

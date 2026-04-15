@@ -1,1206 +1,561 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
 import { AnimatePresence, motion } from 'framer-motion';
-import { CompactHistoryText } from './CompactHistoryText';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
-  parseListReviewsResponse,
+  dateTimeLabel,
+  parseListReviewSessionsResponse,
   parseStudioContextResponse,
   parseStudioNewReviewPreflightResponse,
-  parseStudioNewReviewStartResponse,
   parseStudioNewReviewStartStreamEvent,
 } from '../lib/review';
 import type {
-  ListReviewsResponse,
-  ReviewHistoryItem,
-  ReviewStatus,
+  ReviewSessionResponse,
   StudioContextResponse,
   StudioNewReviewPreflightResponse,
   StudioNewReviewStartStageEvent,
-  StudioPolicyMode,
 } from '../types';
-import { StatusPill } from './ui/StatusPill';
-import { Badge } from './ui/badge';
-import { Button } from './ui/button';
-import { Card } from './ui/card';
 
 const API_BASE = (import.meta.env.VITE_NIMBUS_API_BASE_URL as string | undefined)?.replace(/\/$/, '') ?? '';
-const REVIEW_LIST_POLL_MS = 30_000;
-const BRANCH_CONTEXT_POLL_MS = 10_000;
-const STUDIO_NEW_REVIEW_START_EVENTS_PATH = '/api/studio/new-review/start/events';
-const ACTIVE_STATUSES: ReadonlySet<ReviewStatus> = new Set([
-  'policy_pending',
-  'policy_ready',
-  'policy_approved',
-  'queued',
-  'running',
-]);
+const ENTIRE_DOCS_URL = 'https://github.com/dayhaysoos/nimbus/blob/main/docs/entire/recovery.md';
+const LAST_CHECKPOINTS = 1;
+const HOME_REFRESH_INTERVAL_MS = 3_000;
 
-const PANEL_TRANSITION = {
-  duration: 0.22,
-  ease: [0.215, 0.61, 0.355, 1],
-} as const;
-
-const PREFLIGHT_LOADING_STEPS = [
-  {
-    id: 'checkpoint',
-    label: 'Resolving checkpoint',
-    detail: 'Matching the Home branch to the latest checkpoint context.',
-  },
-  {
-    id: 'session',
-    label: 'Reading session context',
-    detail: 'Checking that Entire session metadata is available and readable.',
-  },
-  {
-    id: 'related',
-    label: 'Loading related context',
-    detail: 'Scanning recent checkpoints for nearby files and branch context.',
-  },
-  {
-    id: 'target',
-    label: 'Validating review target',
-    detail: 'Confirming the Home branch is still the action target before start.',
-  },
-] as const;
-
-const START_STAGE_ORDER = [
-  'checkpoint',
-  'entire_context',
-  'cochange',
-  'workspace',
-  'deployment',
-  'review_creation',
-  'policy',
-] as const;
-
-interface StudioBranchRef {
-  repo: string;
-  branch: string;
+interface StartStageState {
+  stage: StudioNewReviewStartStageEvent['stage'];
+  label: string;
+  detail: string;
+  state: 'active' | 'completed';
 }
 
-interface BranchGroup extends StudioBranchRef {
-  key: string;
-  reviews: ReviewHistoryItem[];
+function isTerminalPhase(phase: ReviewSessionResponse['phase']): boolean {
+  return phase === 'completed' || phase === 'failed' || phase === 'cancelled';
 }
 
-type AnimatedPreflightStepState = 'pending' | 'active' | 'complete';
+function sessionRoute(session: Pick<ReviewSessionResponse, 'id' | 'repo' | 'branch'>): string {
+  return `/branches/${encodeURIComponent(session.repo)}/${encodeURIComponent(session.branch)}/sessions/${encodeURIComponent(
+    session.id
+  )}`;
+}
 
-function toStudioBranchRef(input: { repo: string | null; branch: string | null } | null | undefined): StudioBranchRef | null {
-  if (!input?.repo || !input.branch) {
+function pickCurrentCommitSession(
+  sessions: ReviewSessionResponse[],
+  commitSha: string | null | undefined
+): ReviewSessionResponse | null {
+  if (!commitSha) {
     return null;
   }
-  return {
-    repo: input.repo,
-    branch: input.branch,
-  };
-}
-
-function branchRefKey(branch: StudioBranchRef): string {
-  return `${branch.repo}\u0000${branch.branch}`;
-}
-
-function sameBranchRef(left: StudioBranchRef | null, right: StudioBranchRef | null): boolean {
-  return Boolean(left && right && left.repo === right.repo && left.branch === right.branch);
-}
-
-function reviewDestinationPath(entry: ReviewHistoryItem): string {
-  const branchBase = `/branches/${encodeURIComponent(entry.repo)}/${encodeURIComponent(entry.branch)}`;
-  return `${branchBase}/reports/${entry.id}`;
-}
-
-function branchDestinationPath(repo: string, branch: string): string {
-  return `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}`;
-}
-
-function relativeTime(timestamp: string | null): string {
-  if (!timestamp) {
-    return 'unknown';
-  }
-  const date = new Date(timestamp);
-  if (Number.isNaN(date.getTime())) {
-    return 'unknown';
-  }
-  const diffMs = Date.now() - date.getTime();
-  const absSeconds = Math.floor(Math.abs(diffMs) / 1000);
-  if (absSeconds < 60) {
-    return 'just now';
-  }
-  const inFuture = diffMs < 0;
-  const absMinutes = Math.floor(absSeconds / 60);
-  if (absMinutes < 60) {
-    return inFuture ? `in ${absMinutes}m` : `${absMinutes}m ago`;
-  }
-  const absHours = Math.floor(absMinutes / 60);
-  if (absHours < 24) {
-    return inFuture ? `in ${absHours}h` : `${absHours}h ago`;
-  }
-  const absDays = Math.floor(absHours / 24);
-  return inFuture ? `in ${absDays}d` : `${absDays}d ago`;
-}
-
-function branchSummary(group: BranchGroup): string {
-  const latest = group.reviews[0];
-  if (!latest) {
-    return 'No reviews yet.';
-  }
-  return latest.summaryText?.trim() || `Latest review ${latest.id}`;
-}
-
-function preflightLoadingState(index: number, activeIndex: number): AnimatedPreflightStepState {
-  if (index < activeIndex) {
-    return 'complete';
-  }
-  if (index === activeIndex) {
-    return 'active';
-  }
-  return 'pending';
-}
-
-function preflightLoadingClass(state: AnimatedPreflightStepState): string {
-  if (state === 'complete') {
-    return 'border-emerald-200 bg-emerald-50/80 text-emerald-900';
-  }
-  if (state === 'active') {
-    return 'border-sky-200 bg-sky-50/80 text-sky-900';
-  }
-  return 'border-border/70 bg-card/70 text-muted-foreground';
-}
-
-function startStageClass(state: StudioNewReviewStartStageEvent['state']): string {
-  if (state === 'completed') {
-    return 'border-emerald-200 bg-emerald-50/80 text-emerald-900';
-  }
-  return 'border-sky-200 bg-sky-50/80 text-sky-900';
-}
-
-function sortStartStages(stages: StudioNewReviewStartStageEvent[]): StudioNewReviewStartStageEvent[] {
-  return [...stages].sort(
-    (left, right) => START_STAGE_ORDER.indexOf(left.stage) - START_STAGE_ORDER.indexOf(right.stage)
+  return (
+    sessions
+      .filter((session) => session.anchorCommitSha === commitSha)
+      .slice()
+      .sort((left, right) => {
+        const terminalDelta = Number(isTerminalPhase(left.phase)) - Number(isTerminalPhase(right.phase));
+        if (terminalDelta !== 0) {
+          return terminalDelta;
+        }
+        return Date.parse(right.updatedAt) - Date.parse(left.updatedAt);
+      })[0] ?? null
   );
 }
 
-function startStageStatusLabel(state: StudioNewReviewStartStageEvent['state']): string {
-  return state === 'completed' ? 'Done' : 'Working';
+function currentSessionHeadline(session: ReviewSessionResponse): string {
+  if (session.phase === 'waiting_on_human') {
+    return 'Nimbus is waiting on a human decision for this commit.';
+  }
+  if (isTerminalPhase(session.phase)) {
+    return 'This commit already has a review session.';
+  }
+  return 'Nimbus is already reviewing this commit.';
+}
+
+function currentSessionDetail(session: ReviewSessionResponse): string {
+  if (session.phase === 'waiting_on_human') {
+    return 'Studio stays pinned to this session until policy approval or another required decision is made.';
+  }
+  if (isTerminalPhase(session.phase)) {
+    if (session.outcome?.materializeReady) {
+      return 'Continue from the session page to inspect the reviewed diff, adopt locally, test, and merge back before starting anything new.';
+    }
+    return 'This commit has already been reviewed. Studio will not create another session for the same commit.';
+  }
+  return 'Studio follows the current commit only. Open the existing session to watch passes, events, and findings as they evolve.';
+}
+
+function modeLabel(preflight: StudioNewReviewPreflightResponse | null): string {
+  if (!preflight) {
+    return 'Checking review mode';
+  }
+  if (preflight.startability === 'intent_aware') {
+    return 'Intent-aware review';
+  }
+  if (preflight.startability === 'basic') {
+    return 'Basic review';
+  }
+  return 'Review unavailable';
+}
+
+function modeHeadline(preflight: StudioNewReviewPreflightResponse | null): string {
+  if (!preflight) {
+    return 'Checking the current commit';
+  }
+  if (preflight.startability === 'intent_aware') {
+    return 'Entire context is ready for this review.';
+  }
+  if (preflight.startability === 'basic') {
+    return 'Entire context is unavailable, so Nimbus will fall back to a basic review.';
+  }
+  return 'Nimbus cannot start a session from this checkout yet.';
+}
+
+function modeDetail(preflight: StudioNewReviewPreflightResponse | null): string {
+  if (!preflight) {
+    return 'Nimbus is verifying the current branch and commit context.';
+  }
+  if (preflight.startability === 'intent_aware') {
+    return 'Nimbus will review the current commit with Entire-backed session context.';
+  }
+  if (preflight.startability === 'basic') {
+    return 'Nimbus will still review the current commit, but without Entire-derived intent context.';
+  }
+  return preflight.blockingIssues[0]?.message ?? preflight.error?.message ?? 'Studio could not resolve a startable review target.';
+}
+
+async function fetchJson(input: string): Promise<unknown> {
+  const response = await fetch(input, { cache: 'no-store' });
+  if (!response.ok) {
+    throw new Error(`Request failed (${response.status})`);
+  }
+  return response.json();
 }
 
 export function ReviewHistoryPage(): JSX.Element {
   const navigate = useNavigate();
-  const startStreamRef = useRef<EventSource | null>(null);
-  const [entries, setEntries] = useState<ReviewHistoryItem[]>([]);
+  const startSourceRef = useRef<EventSource | null>(null);
+  const hasLoadedHomeRef = useRef(false);
+  const [context, setContext] = useState<StudioContextResponse | null>(null);
+  const [preflight, setPreflight] = useState<StudioNewReviewPreflightResponse | null>(null);
+  const [currentSession, setCurrentSession] = useState<ReviewSessionResponse | null>(null);
   const [loading, setLoading] = useState(true);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [studioContext, setStudioContext] = useState<StudioContextResponse | null>(null);
-  const [homeBranch, setHomeBranch] = useState<StudioBranchRef | null>(null);
-  const [pendingBranchSwitch, setPendingBranchSwitch] = useState<StudioBranchRef | null>(null);
-  const [lastDetectedBranch, setLastDetectedBranch] = useState<StudioBranchRef | null>(null);
-  const [showNewReviewPanel, setShowNewReviewPanel] = useState(false);
-  const [newReviewPolicyMode, setNewReviewPolicyMode] = useState<StudioPolicyMode>('auto');
-  const [newReviewCheckpointCount, setNewReviewCheckpointCount] = useState<1 | 2 | 3>(2);
-  const [newReviewPreflight, setNewReviewPreflight] = useState<StudioNewReviewPreflightResponse | null>(null);
-  const [newReviewPreflightLoading, setNewReviewPreflightLoading] = useState(false);
-  const [newReviewPreflightError, setNewReviewPreflightError] = useState<string | null>(null);
-  const [newReviewStarting, setNewReviewStarting] = useState(false);
-  const [newReviewStartError, setNewReviewStartError] = useState<string | null>(null);
-  const [newReviewStartStages, setNewReviewStartStages] = useState<StudioNewReviewStartStageEvent[]>([]);
-  const [preflightLoadingStepIndex, setPreflightLoadingStepIndex] = useState(0);
-  const [showPreflightDetails, setShowPreflightDetails] = useState(false);
-  const [editingPolicyMode, setEditingPolicyMode] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [starting, setStarting] = useState(false);
+  const [startStages, setStartStages] = useState<StartStageState[]>([]);
+  const [startError, setStartError] = useState<string | null>(null);
 
-  const detectedBranch = useMemo(() => toStudioBranchRef(studioContext), [studioContext]);
-
-  const closeStartStream = useCallback(() => {
-    startStreamRef.current?.close();
-    startStreamRef.current = null;
-  }, []);
-
-  const closeNewReviewPanel = useCallback(() => {
-    closeStartStream();
-    setShowNewReviewPanel(false);
-    setNewReviewPreflight(null);
-    setNewReviewPreflightError(null);
-    setNewReviewStartError(null);
-    setNewReviewStartStages([]);
-    setShowPreflightDetails(false);
-    setEditingPolicyMode(false);
-  }, [closeStartStream]);
-
-  const fetchReviews = useCallback(async () => {
-    const response = await fetch(`${API_BASE}/api/reviews?limit=100`);
-    if (!response.ok) {
-      const body = (await response.json().catch(() => null)) as { error?: string } | null;
-      if (response.status === 404) {
-        throw new Error('This worker does not support review history yet. Deploy the latest worker build, then reload.');
-      }
-      throw new Error(body?.error ?? `Request failed (${response.status})`);
+  const loadHome = useCallback(async (options?: { background?: boolean }) => {
+    const background = options?.background === true;
+    if (!background) {
+      setLoading(true);
+      setError(null);
     }
-    const payload = parseListReviewsResponse((await response.json()) as ListReviewsResponse);
-    setEntries(payload.reviews);
-    setErrorMessage(null);
-  }, []);
-
-  const fetchStudioContext = useCallback(async () => {
-    const response = await fetch(`${API_BASE}/api/studio/context`);
-    if (!response.ok) {
-      throw new Error(`Failed to load studio context (${response.status})`);
-    }
-    const payload = parseStudioContextResponse(await response.json());
-    setStudioContext(payload);
-  }, []);
-
-  const fetchNewReviewPreflight = useCallback(async () => {
-    setNewReviewPreflightLoading(true);
-    setNewReviewPreflightError(null);
     try {
-      const params = new URLSearchParams({
-        lastCheckpoints: String(newReviewCheckpointCount),
-      });
-      const response = await fetch(`${API_BASE}/api/studio/new-review/preflight?${params.toString()}`);
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `Failed to load review preflight (${response.status})`);
-      }
-      const payload = parseStudioNewReviewPreflightResponse(await response.json());
-      setNewReviewPreflight(payload);
-      setNewReviewPolicyMode(payload.policyMode);
-      setNewReviewCheckpointCount(payload.lastCheckpoints);
-      setShowPreflightDetails(false);
-      setEditingPolicyMode(false);
-    } catch (error) {
-      setNewReviewPreflight(null);
-      setNewReviewPreflightError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setNewReviewPreflightLoading(false);
-    }
-  }, [newReviewCheckpointCount]);
+      const [rawContext, rawPreflight] = await Promise.all([
+        fetchJson(`${API_BASE}/api/studio/context`),
+        fetchJson(`${API_BASE}/api/studio/new-review/preflight?lastCheckpoints=${LAST_CHECKPOINTS}`),
+      ]);
 
-  useEffect(() => {
-    return () => {
-      closeStartStream();
-    };
-  }, [closeStartStream]);
+      const parsedContext = parseStudioContextResponse(rawContext);
+      const parsedPreflight = parseStudioNewReviewPreflightResponse(rawPreflight);
+      setContext(parsedContext);
+      setPreflight(parsedPreflight);
 
-  useEffect(() => {
-    if (!detectedBranch) {
-      return;
-    }
-    if (!homeBranch) {
-      setHomeBranch(detectedBranch);
-    }
-    if (!lastDetectedBranch) {
-      setLastDetectedBranch(detectedBranch);
-      return;
-    }
-    if (!sameBranchRef(detectedBranch, lastDetectedBranch)) {
-      if (homeBranch && !sameBranchRef(detectedBranch, homeBranch)) {
-        setPendingBranchSwitch(detectedBranch);
-        if (showNewReviewPanel) {
-          closeNewReviewPanel();
-        }
+      if (parsedContext.repo && parsedContext.branch) {
+        const rawSessions = await fetchJson(
+          `${API_BASE}/api/review-sessions?limit=20&repo=${encodeURIComponent(parsedContext.repo)}&branch=${encodeURIComponent(parsedContext.branch)}`
+        );
+        const parsedSessions = parseListReviewSessionsResponse(rawSessions);
+        setCurrentSession(pickCurrentCommitSession(parsedSessions.sessions, parsedPreflight.commitSha));
       } else {
-        setPendingBranchSwitch(null);
+        setCurrentSession(null);
       }
-      setLastDetectedBranch(detectedBranch);
-      return;
+      hasLoadedHomeRef.current = true;
+      setError(null);
+    } catch (loadError) {
+      if (!background || !hasLoadedHomeRef.current) {
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
+      }
+    } finally {
+      if (!background) {
+        setLoading(false);
+      }
     }
-    if (pendingBranchSwitch && homeBranch && sameBranchRef(detectedBranch, homeBranch)) {
-      setPendingBranchSwitch(null);
-    }
-  }, [closeNewReviewPanel, detectedBranch, homeBranch, lastDetectedBranch, pendingBranchSwitch, showNewReviewPanel]);
+  }, []);
 
   useEffect(() => {
-    let cancelled = false;
-    const canRefresh = () => !cancelled && document.visibilityState === 'visible';
-    const refresh = async () => {
-      try {
-        await Promise.all([fetchReviews(), fetchStudioContext()]);
-      } catch (error) {
-        if (!cancelled) {
-          setErrorMessage(error instanceof Error ? error.message : String(error));
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    };
-    void refresh();
-    const reviewTimer = window.setInterval(() => {
-      if (!canRefresh()) {
-        return;
-      }
-      void fetchReviews().catch((error) => {
-        if (!cancelled) {
-          setErrorMessage(error instanceof Error ? error.message : String(error));
-        }
-      });
-    }, REVIEW_LIST_POLL_MS);
-    const branchTimer = window.setInterval(() => {
-      if (!canRefresh()) {
-        return;
-      }
-      void fetchStudioContext().catch(() => undefined);
-    }, BRANCH_CONTEXT_POLL_MS);
-    const onVisibilityChange = () => {
-      if (!canRefresh()) {
-        return;
-      }
-      void Promise.all([fetchReviews(), fetchStudioContext()]).catch((error) => {
-        if (!cancelled) {
-          setErrorMessage(error instanceof Error ? error.message : String(error));
-        }
-      });
-    };
-    document.addEventListener('visibilitychange', onVisibilityChange);
+    void loadHome();
     return () => {
-      cancelled = true;
-      window.clearInterval(reviewTimer);
-      window.clearInterval(branchTimer);
-      document.removeEventListener('visibilitychange', onVisibilityChange);
+      startSourceRef.current?.close();
+      startSourceRef.current = null;
     };
-  }, [fetchReviews, fetchStudioContext]);
+  }, [loadHome]);
 
   useEffect(() => {
-    if (!showNewReviewPanel) {
-      return;
-    }
-    void fetchNewReviewPreflight();
-  }, [showNewReviewPanel, fetchNewReviewPreflight, newReviewCheckpointCount]);
+    const refreshHome = (): void => {
+      if (starting) {
+        return;
+      }
+      void loadHome({ background: true });
+    };
 
-  useEffect(() => {
-    if (!showNewReviewPanel || !newReviewPreflightLoading) {
-      setPreflightLoadingStepIndex(0);
-      return;
-    }
+    const timer = window.setInterval(refreshHome, HOME_REFRESH_INTERVAL_MS);
+    const handleWindowFocus = (): void => {
+      refreshHome();
+    };
+    const handleVisibilityChange = (): void => {
+      if (document.visibilityState === 'visible') {
+        refreshHome();
+      }
+    };
 
-    const timer = window.setInterval(() => {
-      setPreflightLoadingStepIndex((current) =>
-        current >= PREFLIGHT_LOADING_STEPS.length - 1 ? 0 : current + 1
-      );
-    }, 900);
-
+    window.addEventListener('focus', handleWindowFocus);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => {
       window.clearInterval(timer);
+      window.removeEventListener('focus', handleWindowFocus);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [newReviewPreflightLoading, showNewReviewPanel]);
+  }, [loadHome, starting]);
 
-  const branches = useMemo((): BranchGroup[] => {
-    const sorted = [...entries].sort((a, b) => {
-      const aTime = new Date(a.createdAt).getTime() || 0;
-      const bTime = new Date(b.createdAt).getTime() || 0;
-      return bTime - aTime;
-    });
-    const map = new Map<string, BranchGroup>();
-    for (const entry of sorted) {
-      const ref = { repo: entry.repo, branch: entry.branch };
-      const key = branchRefKey(ref);
-      const existing = map.get(key);
-      if (existing) {
-        existing.reviews.push(entry);
-      } else {
-        map.set(key, {
-          key,
-          repo: entry.repo,
-          branch: entry.branch,
-          reviews: [entry],
-        });
-      }
-    }
-    return Array.from(map.values()).sort((a, b) => {
-      const aTime = new Date(a.reviews[0]?.createdAt ?? 0).getTime() || 0;
-      const bTime = new Date(b.reviews[0]?.createdAt ?? 0).getTime() || 0;
-      return bTime - aTime;
-    });
-  }, [entries]);
-
-  const homeBranchKey = homeBranch ? branchRefKey(homeBranch) : null;
-  const homeBranchGroup = homeBranchKey ? (branches.find((branchGroup) => branchGroup.key === homeBranchKey) ?? null) : null;
-  const homeBranchReviews = homeBranchGroup?.reviews ?? [];
-  const recentHomeReviews = homeBranchReviews.slice(0, 3);
-  const activeReview = homeBranchReviews.find((review) => ACTIVE_STATUSES.has(review.status)) ?? null;
-  const latestHomeReview = homeBranchReviews[0] ?? null;
-  const otherBranches = homeBranchKey ? branches.filter((branchGroup) => branchGroup.key !== homeBranchKey) : branches;
-  const homeBranchPath = homeBranch ? branchDestinationPath(homeBranch.repo, homeBranch.branch) : null;
-  const canStartNewReview = Boolean(homeBranch && detectedBranch && sameBranchRef(homeBranch, detectedBranch) && !pendingBranchSwitch);
-  const preflightReady = Boolean(newReviewPreflight?.ready);
-  const showExpandedPolicyMode = !preflightReady || editingPolicyMode;
-  const activeStartStage = newReviewStartStages.find((stage) => stage.state === 'active') ?? null;
-  const completedStartStages = newReviewStartStages.filter((stage) => stage.state === 'completed');
-  const latestCompletedStartStage = completedStartStages[completedStartStages.length - 1] ?? null;
-  const startProgressCount = Math.max(completedStartStages.length + (activeStartStage ? 1 : 0), 1);
-  const startProgressRatio = Math.min(1, startProgressCount / START_STAGE_ORDER.length);
-
-  const startNewReview = useCallback(async () => {
-    if (!homeBranch) {
+  useEffect(() => {
+    if (loading || starting || !currentSession) {
       return;
     }
-    setNewReviewStarting(true);
-    setNewReviewStartError(null);
-    setNewReviewStartStages([]);
-    closeStartStream();
+    navigate(sessionRoute(currentSession), { replace: true });
+  }, [currentSession, loading, navigate, starting]);
 
-    if (typeof EventSource !== 'undefined') {
-      const params = new URLSearchParams({
-        policyMode: newReviewPolicyMode,
-        lastCheckpoints: String(newReviewCheckpointCount),
-        repo: homeBranch.repo,
-        branch: homeBranch.branch,
-      });
-      const stream = new EventSource(`${API_BASE}${STUDIO_NEW_REVIEW_START_EVENTS_PATH}?${params.toString()}`);
-      startStreamRef.current = stream;
+  const canStart = preflight?.capabilities.canStart === true;
+  const hasRepoContext = Boolean(context?.repo && context?.branch);
+  const checks = preflight?.checks ?? [];
 
-      stream.addEventListener('message', (event: MessageEvent<string>) => {
-        try {
-          const payload = parseStudioNewReviewStartStreamEvent(JSON.parse(event.data));
-          if (payload.type === 'stage') {
-            setNewReviewStartStages((current) => {
-              const next = current.filter((item) => item.stage !== payload.stage);
-              next.push(payload);
-              return sortStartStages(next);
-            });
-            return;
-          }
+  const launchSummary = useMemo(() => {
+    if (!context?.repo || !context.branch) {
+      return 'Open Review Studio from inside a git repository to launch a session.';
+    }
+    if (currentSession) {
+      return `Nimbus is already tracking the current commit on ${context.branch}. Continue that session instead of creating another review.`;
+    }
+    return `Nimbus will review the last committed state on ${context.branch}.`;
+  }, [context, currentSession]);
 
-          if (payload.type === 'completed') {
-            closeStartStream();
-            closeNewReviewPanel();
-            navigate(payload.routePath);
-            return;
-          }
+  const handleStart = useCallback(() => {
+    if (!context?.repo || !context.branch) {
+      setStartError('Studio could not detect the current repository and branch.');
+      return;
+    }
 
-          closeStartStream();
-          setNewReviewStartError(payload.message);
-          setNewReviewStarting(false);
-        } catch (error) {
-          closeStartStream();
-          setNewReviewStartError(error instanceof Error ? error.message : String(error));
-          setNewReviewStarting(false);
+    startSourceRef.current?.close();
+    setStarting(true);
+    setStartError(null);
+    setStartStages([]);
+
+    const params = new URLSearchParams({
+      policyMode: 'auto',
+      lastCheckpoints: String(LAST_CHECKPOINTS),
+      repo: context.repo,
+      branch: context.branch,
+    });
+    const source = new EventSource(`${API_BASE}/api/studio/new-review/start/events?${params.toString()}`);
+    startSourceRef.current = source;
+
+    const handleMessage = (messageEvent: MessageEvent<string>): void => {
+      try {
+        const event = parseStudioNewReviewStartStreamEvent(JSON.parse(messageEvent.data) as unknown);
+        if (event.type === 'stage') {
+          setStartStages((current) => {
+            const next = [...current];
+            const existingIndex = next.findIndex((entry) => entry.stage === event.stage);
+            const nextEntry: StartStageState = {
+              stage: event.stage,
+              label: event.label,
+              detail: event.detail,
+              state: event.state,
+            };
+            if (existingIndex >= 0) {
+              next.splice(existingIndex, 1, nextEntry);
+              return next;
+            }
+            return [...next, nextEntry];
+          });
+          return;
         }
-      });
 
-      stream.addEventListener('error', () => {
-        closeStartStream();
-        setNewReviewStartError('Studio start stream was interrupted before the review route was ready.');
-        setNewReviewStarting(false);
-      });
-      return;
-    }
+        if (event.type === 'completed') {
+          setStarting(false);
+          startSourceRef.current?.close();
+          startSourceRef.current = null;
+          navigate(event.routePath);
+          return;
+        }
 
-    try {
-      const response = await fetch(`${API_BASE}/api/studio/new-review/start`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          policyMode: newReviewPolicyMode,
-          lastCheckpoints: newReviewCheckpointCount,
-          repo: homeBranch.repo,
-          branch: homeBranch.branch,
-        }),
-      });
-      if (!response.ok) {
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? `Failed to start review (${response.status})`);
+        setStarting(false);
+        setStartError(event.message);
+      } catch (parseError) {
+        setStarting(false);
+        setStartError(parseError instanceof Error ? parseError.message : String(parseError));
       }
-      const started = parseStudioNewReviewStartResponse(await response.json());
-      closeNewReviewPanel();
-      navigate(started.routePath);
-  } catch (error) {
-      setNewReviewStartError(error instanceof Error ? error.message : String(error));
-    } finally {
-      setNewReviewStarting(false);
-    }
-  }, [
-    closeNewReviewPanel,
-    closeStartStream,
-    homeBranch,
-    navigate,
-    newReviewCheckpointCount,
-    newReviewPolicyMode,
-  ]);
+    };
+
+    const handleTransportError = (): void => {
+      if (!startSourceRef.current) {
+        return;
+      }
+      setStarting(false);
+      setStartError('The launch stream disconnected before Nimbus could start the session.');
+      startSourceRef.current.close();
+      startSourceRef.current = null;
+    };
+
+    source.addEventListener('message', handleMessage);
+    source.addEventListener('error', handleTransportError);
+  }, [context, navigate]);
+
+  if (currentSession) {
+    return (
+      <main className="studio-shell">
+        <motion.section
+          className="hero-card"
+          initial={{ opacity: 0, y: 18 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, ease: 'easeOut' }}
+        >
+          <div className="hero-copy">
+            <p className="eyebrow">Nimbus Review Studio</p>
+            <h1>Continue the current review session.</h1>
+            <p className="hero-body">{launchSummary}</p>
+          </div>
+          <div className="hero-meta">
+            <div className="meta-chip">
+              <span>Repository</span>
+              <strong>{context?.repo ?? currentSession.repo}</strong>
+            </div>
+            <div className="meta-chip">
+              <span>Branch</span>
+              <strong>{context?.branch ?? currentSession.branch}</strong>
+            </div>
+            <div className="meta-chip">
+              <span>Session</span>
+              <strong>{currentSession.id}</strong>
+            </div>
+            <div className="meta-chip">
+              <span>Phase</span>
+              <strong>{currentSession.phase.replace(/_/g, ' ')}</strong>
+            </div>
+          </div>
+        </motion.section>
+
+        <motion.section
+          className="panel-card"
+          initial={{ opacity: 0, y: 22 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.3, ease: 'easeOut' }}
+        >
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Current session</p>
+              <h2>{currentSessionHeadline(currentSession)}</h2>
+            </div>
+            <span className={`status-pill ${isTerminalPhase(currentSession.phase) ? 'terminal' : currentSession.phase === 'waiting_on_human' ? 'waiting' : 'live'}`}>
+              {currentSession.phase.replace(/_/g, ' ')}
+            </span>
+          </div>
+          <p className="panel-body">{currentSessionDetail(currentSession)}</p>
+
+          <div className="meta-stack">
+            <div className="meta-row">
+              <span>Target commit</span>
+              <strong>{currentSession.anchorCommitSha?.slice(0, 12) ?? preflight?.commitSha?.slice(0, 12) ?? 'Unknown'}</strong>
+            </div>
+            <div className="meta-row">
+              <span>Passes</span>
+              <strong>{currentSession.passCount}</strong>
+            </div>
+            <div className="meta-row">
+              <span>Updated</span>
+              <strong>{dateTimeLabel(currentSession.updatedAt)}</strong>
+            </div>
+          </div>
+
+          <div className="button-row">
+            <button className="primary-button" onClick={() => navigate(sessionRoute(currentSession))}>
+              Open current session
+            </button>
+          </div>
+
+          {error ? (
+            <div className="notice-card error">
+              <strong>Background refresh failed</strong>
+              <p>{error}</p>
+            </div>
+          ) : null}
+        </motion.section>
+      </main>
+    );
+  }
 
   return (
-    <main className="mx-auto flex w-full max-w-[1200px] flex-col gap-3 px-3 py-3">
-      <header className="flex flex-col gap-2">
-        <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Review Studio</p>
-        <div className="flex flex-col gap-1 md:flex-row md:items-end md:justify-between">
-          <div>
-            <h1 className="policy-heading text-base text-foreground tracking-tight">Home</h1>
-            <p className="text-sm text-muted-foreground">
-              Start from the branch you intend to review, then browse other branch history without changing that target.
-            </p>
+    <main className="studio-shell">
+      <motion.section
+        className="hero-card"
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3, ease: 'easeOut' }}
+      >
+        <div className="hero-copy">
+          <p className="eyebrow">Nimbus Review Studio</p>
+          <h1>Start a review session on the current commit.</h1>
+          <p className="hero-body">{launchSummary}</p>
+        </div>
+        <div className="hero-meta">
+          <div className="meta-chip">
+            <span>Repository</span>
+            <strong>{context?.repo ?? 'Not detected'}</strong>
+          </div>
+          <div className="meta-chip">
+            <span>Branch</span>
+            <strong>{context?.branch ?? 'Not detected'}</strong>
+          </div>
+          <div className="meta-chip">
+            <span>Mode</span>
+            <strong>{modeLabel(preflight)}</strong>
           </div>
         </div>
-      </header>
+      </motion.section>
 
-      {pendingBranchSwitch && (
-        <div className="rounded-sm border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-          <p>
-            Working branch changed to <span className="font-mono">{pendingBranchSwitch.branch}</span>. Switch Home before starting another review so the target stays explicit.
-          </p>
-          <div className="mt-2">
-            <Button
-              size="sm"
-              onClick={() => {
-                setHomeBranch(pendingBranchSwitch);
-                setPendingBranchSwitch(null);
-              }}
-            >
-              Switch Home to {pendingBranchSwitch.branch}
-            </Button>
-          </div>
-        </div>
-      )}
-
-      <Card className="p-4">
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div className="space-y-1.5">
-              <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Home branch</p>
-              <h2 className="text-lg font-semibold tracking-tight text-foreground">
-                {homeBranch?.branch ?? detectedBranch?.branch ?? 'Branch unavailable'}
-              </h2>
-              <p className="text-sm text-muted-foreground">{homeBranch?.repo ?? detectedBranch?.repo ?? 'Repo unavailable'}</p>
-              <p className="max-w-2xl text-sm text-muted-foreground">
-                {pendingBranchSwitch
-                  ? `Home is still focused on ${homeBranch?.branch ?? 'the previous branch'}. Resume history here if needed, or switch before starting a new review.`
-                  : 'New Review and Resume active review both target this branch.'}
-              </p>
-            </div>
-
-            <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-              <Button
-                size="sm"
-                onClick={() => {
-                  setNewReviewStartError(null);
-                  setNewReviewPreflightError(null);
-                  setShowNewReviewPanel(true);
-                }}
-                disabled={!canStartNewReview}
-              >
-                New Review
-              </Button>
-              {activeReview && (
-                <Link to={reviewDestinationPath(activeReview)}>
-                  <Button size="sm" variant="outline">
-                    Resume active review
-                  </Button>
-                </Link>
-              )}
-              {homeBranchPath && (
-                <Link to={homeBranchPath}>
-                  <Button size="sm" variant="ghost">
-                    View branch history
-                  </Button>
-                </Link>
-              )}
-            </div>
-          </div>
-
-          <dl className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-            <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2.5">
-              <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Active review</dt>
-              <dd className="mt-1 text-sm font-semibold text-foreground">
-                {activeReview ? activeReview.id : 'None on this branch'}
-              </dd>
-            </div>
-            <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2.5">
-              <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Recent reviews</dt>
-              <dd className="mt-1 text-sm font-semibold text-foreground">{homeBranchReviews.length}</dd>
-            </div>
-            <div className="rounded-sm border border-border/70 bg-card/70 px-3 py-2.5">
-              <dt className="text-[11px] uppercase tracking-[0.08em] text-muted-foreground">Latest update</dt>
-              <dd className="mt-1 text-sm font-semibold text-foreground">{relativeTime(latestHomeReview?.updatedAt ?? latestHomeReview?.createdAt ?? null)}</dd>
-            </div>
-          </dl>
-        </div>
-      </Card>
-
-      <AnimatePresence initial={false}>
-        {showNewReviewPanel && (
-          <motion.div
-            key="new-review-panel"
-            initial={{ opacity: 0, y: 18, scale: 0.985 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.99 }}
-            transition={PANEL_TRANSITION}
-            layout
-          >
-            <Card className="overflow-hidden p-4">
-              <motion.div
-                className="space-y-4"
-                initial="hidden"
-                animate="visible"
-                exit="hidden"
-                variants={{
-                  hidden: {},
-                  visible: {
-                    transition: {
-                      staggerChildren: 0.05,
-                      delayChildren: 0.02,
-                    },
-                  },
-                }}
-              >
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 10 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  transition={PANEL_TRANSITION}
-                  className="flex items-start justify-between gap-3"
-                >
-                  <div>
-                    <h2 className="text-sm font-semibold text-foreground">Start review</h2>
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      Nimbus will review up to {newReviewCheckpointCount} checkpoint{newReviewCheckpointCount === 1 ? '' : 's'} on{' '}
-                      <span className="font-mono text-foreground">{homeBranch?.branch ?? detectedBranch?.branch ?? 'this branch'}</span>.
-                    </p>
-                  </div>
-                  <Button size="sm" variant="ghost" onClick={closeNewReviewPanel} disabled={newReviewStarting}>
-                    Close
-                  </Button>
-                </motion.div>
-
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 10 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  transition={PANEL_TRANSITION}
-                  className="space-y-2"
-                >
-                  <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Checkpoint window</p>
-                  <div className="grid grid-cols-3 gap-2">
-                    {[1, 2, 3].map((count) => {
-                      const active = newReviewCheckpointCount === count;
-                      return (
-                        <button
-                          key={count}
-                          type="button"
-                          onClick={() => setNewReviewCheckpointCount(count as 1 | 2 | 3)}
-                          className={`rounded-sm border px-3 py-2 text-left text-sm transition-colors ${
-                            active ? 'border-primary bg-accent/30' : 'border-border bg-background'
-                          }`}
-                        >
-                          <p className="font-medium text-foreground">Last {count}</p>
-                          <p className="mt-0.5 text-xs text-muted-foreground">checkpoint{count === 1 ? '' : 's'}</p>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 10 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  transition={PANEL_TRANSITION}
-                  className="space-y-2"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Policy mode</p>
-                    {preflightReady && !showExpandedPolicyMode ? (
-                      <button
-                        type="button"
-                        onClick={() => setEditingPolicyMode(true)}
-                        className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        Change
-                      </button>
-                    ) : null}
-                  </div>
-                  <AnimatePresence mode="wait" initial={false}>
-                    {showExpandedPolicyMode ? (
-                      <motion.div
-                        key="policy-expanded"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={PANEL_TRANSITION}
-                        className="grid grid-cols-1 gap-2 md:grid-cols-2"
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setNewReviewPolicyMode('auto')}
-                          className={`rounded-sm border px-3 py-3 text-left text-sm transition-colors ${
-                            newReviewPolicyMode === 'auto' ? 'border-primary bg-accent/30' : 'border-border bg-background'
-                          }`}
-                        >
-                          <p className="font-medium text-foreground">Auto policy</p>
-                          <p className="mt-1 text-xs text-muted-foreground">Derive and approve policy automatically, then queue the review.</p>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setNewReviewPolicyMode('review')}
-                          className={`rounded-sm border px-3 py-3 text-left text-sm transition-colors ${
-                            newReviewPolicyMode === 'review' ? 'border-primary bg-accent/30' : 'border-border bg-background'
-                          }`}
-                        >
-                          <p className="font-medium text-foreground">Review policy first</p>
-                          <p className="mt-1 text-xs text-muted-foreground">Pause on the derived policy so you can review or edit it before execution.</p>
-                        </button>
-                      </motion.div>
-                    ) : (
-                      <motion.div
-                        key="policy-collapsed"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={PANEL_TRANSITION}
-                        className="rounded-sm border border-border/70 bg-card/75 px-3 py-2.5"
-                      >
-                        <p className="text-sm font-medium text-foreground">
-                          {newReviewPolicyMode === 'auto' ? 'Auto policy' : 'Review policy first'}
-                        </p>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          {newReviewPolicyMode === 'auto'
-                            ? 'Nimbus will derive the policy and continue automatically.'
-                            : 'Nimbus will pause on the policy before running the review.'}
-                        </p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
-                </motion.div>
-
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 10 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  transition={PANEL_TRANSITION}
-                  className="rounded-sm border border-border bg-muted/20 p-3"
-                >
-                  <div className="flex items-baseline justify-between gap-3">
-                    <p className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Preflight</p>
-                    <p className="text-xs text-muted-foreground">Action target must match the Home branch above.</p>
-                  </div>
-                  <AnimatePresence mode="wait" initial={false}>
-                    {newReviewPreflightLoading ? (
-                      <motion.div
-                        key="preflight-loading"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={PANEL_TRANSITION}
-                        className="mt-3 space-y-3"
-                      >
-                        <div className="space-y-1">
-                          <p className="text-sm font-medium text-foreground">Preparing review target…</p>
-                          <p className="text-sm text-muted-foreground">
-                            Nimbus is collecting the branch context before you commit to the review.
-                          </p>
-                        </div>
-                        <div className="h-1.5 overflow-hidden rounded-full bg-border/60">
-                          <motion.div
-                            className="h-full rounded-full bg-foreground/80"
-                            initial={{ x: '-35%' }}
-                            animate={{ x: ['-35%', '135%'] }}
-                            transition={{ duration: 1.2, repeat: Infinity, ease: 'easeInOut' }}
-                            style={{ width: '35%' }}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          {PREFLIGHT_LOADING_STEPS.map((step, index) => {
-                            const state = preflightLoadingState(index, preflightLoadingStepIndex);
-                            return (
-                              <motion.div
-                                key={step.id}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ ...PANEL_TRANSITION, delay: index * 0.04 }}
-                                className={`rounded-sm border px-3 py-2 ${preflightLoadingClass(state)}`}
-                              >
-                                <div className="flex items-center gap-3">
-                                  <motion.span
-                                    className={`inline-flex h-2.5 w-2.5 rounded-full ${
-                                      state === 'complete'
-                                        ? 'bg-emerald-500'
-                                        : state === 'active'
-                                          ? 'bg-sky-500'
-                                          : 'bg-border'
-                                    }`}
-                                    animate={
-                                      state === 'active'
-                                        ? { scale: [1, 1.35, 1], opacity: [0.85, 1, 0.85] }
-                                        : { scale: 1, opacity: 1 }
-                                    }
-                                    transition={
-                                      state === 'active'
-                                        ? { duration: 1.1, repeat: Infinity, ease: 'easeInOut' }
-                                        : { duration: 0.2 }
-                                    }
-                                  />
-                                  <div className="min-w-0">
-                                    <p className="text-sm font-medium">{step.label}</p>
-                                    <p className="mt-0.5 text-xs opacity-80">{step.detail}</p>
-                                  </div>
-                                  <span className="ml-auto text-[11px] uppercase tracking-[0.08em]">
-                                    {state === 'complete' ? 'Done' : state === 'active' ? 'Working' : 'Queued'}
-                                  </span>
-                                </div>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </motion.div>
-                    ) : newReviewPreflightError ? (
-                      <motion.p
-                        key="preflight-error"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={PANEL_TRANSITION}
-                        className="mt-2 text-sm text-red-700"
-                      >
-                        {newReviewPreflightError}
-                      </motion.p>
-                    ) : newReviewPreflight ? (
-                      <motion.div
-                        key="preflight-ready"
-                        initial={{ opacity: 0, y: 6 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -6 }}
-                        transition={PANEL_TRANSITION}
-                        className="mt-3 space-y-3 text-sm"
-                      >
-                        {newReviewPreflight.ready ? (
-                          <div className="space-y-3">
-                            <div className="rounded-sm border border-emerald-200 bg-emerald-50/75 px-3 py-3">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <p className="text-sm font-semibold text-emerald-950">Ready for review</p>
-                                  <p className="mt-1 text-sm text-emerald-900/90">
-                                    Checkpoint resolved and context is ready for this branch.
-                                  </p>
-                                </div>
-                                <Badge
-                                  variant="outline"
-                                  className="rounded-full border-emerald-200 bg-white/75 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-emerald-900"
-                                >
-                                  Ready
-                                </Badge>
-                              </div>
-                              <div className="mt-3 flex flex-wrap gap-2">
-                                <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] font-mono">
-                                  {newReviewPreflight.branch ?? 'unknown branch'}
-                                </Badge>
-                                <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] font-mono">
-                                  {newReviewPreflight.checkpointId ?? 'checkpoint unavailable'}
-                                </Badge>
-                                <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px]">
-                                  Last {newReviewCheckpointCount} checkpoint{newReviewCheckpointCount === 1 ? '' : 's'}
-                                </Badge>
-                                <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px]">
-                                  {newReviewPolicyMode === 'auto' ? 'Auto policy' : 'Review policy first'}
-                                </Badge>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center justify-between gap-3">
-                              <p className="text-xs text-muted-foreground">Technical checks are available if you need to verify the setup.</p>
-                              <button
-                                type="button"
-                                onClick={() => setShowPreflightDetails((current) => !current)}
-                                className="text-xs text-muted-foreground transition-colors hover:text-foreground"
-                              >
-                                {showPreflightDetails ? 'Hide technical details' : 'View technical details'}
-                              </button>
-                            </div>
-
-                            <AnimatePresence initial={false}>
-                              {showPreflightDetails && (
-                                <motion.div
-                                  key="preflight-details"
-                                  initial={{ opacity: 0, height: 0 }}
-                                  animate={{ opacity: 1, height: 'auto' }}
-                                  exit={{ opacity: 0, height: 0 }}
-                                  transition={PANEL_TRANSITION}
-                                  className="overflow-hidden"
-                                >
-                                  <div className="space-y-2 pt-1">
-                                    {newReviewPreflight.checks.map((check, index) => (
-                                      <motion.div
-                                        key={check.code}
-                                        initial={{ opacity: 0, y: 8 }}
-                                        animate={{ opacity: 1, y: 0 }}
-                                        transition={{ ...PANEL_TRANSITION, delay: index * 0.04 }}
-                                        className="rounded-sm border border-border/70 bg-card/80 px-3 py-2"
-                                      >
-                                        <div className="flex items-center justify-between gap-3">
-                                          <p className="text-sm font-medium text-foreground">{check.label}</p>
-                                          <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">
-                                            {check.ok ? 'Ready' : 'Blocked'}
-                                          </Badge>
-                                        </div>
-                                        <p className={`mt-1 text-sm ${check.ok ? 'text-muted-foreground' : 'text-red-700'}`}>{check.detail}</p>
-                                      </motion.div>
-                                    ))}
-                                  </div>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        ) : (
-                          <div className="space-y-2">
-                            {newReviewPreflight.checks.map((check, index) => (
-                              <motion.div
-                                key={check.code}
-                                initial={{ opacity: 0, y: 8 }}
-                                animate={{ opacity: 1, y: 0 }}
-                                transition={{ ...PANEL_TRANSITION, delay: index * 0.04 }}
-                                className="rounded-sm border border-border/70 bg-card/80 px-3 py-2"
-                              >
-                                <div className="flex items-center justify-between gap-3">
-                                  <p className="text-sm font-medium text-foreground">{check.label}</p>
-                                  <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.08em]">
-                                    {check.ok ? 'Ready' : 'Blocked'}
-                                  </Badge>
-                                </div>
-                                <p className={`mt-1 text-sm ${check.ok ? 'text-muted-foreground' : 'text-red-700'}`}>{check.detail}</p>
-                              </motion.div>
-                            ))}
-                            {newReviewPreflight.error && (
-                              <p className="text-sm text-red-700">{newReviewPreflight.error.message}</p>
-                            )}
-                          </div>
-                        )}
-                      </motion.div>
-                    ) : null}
-                  </AnimatePresence>
-                </motion.div>
-
-                <AnimatePresence initial={false}>
-                  {newReviewStartError && (
-                    <motion.p
-                      key="start-error"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={PANEL_TRANSITION}
-                      className="text-sm text-red-700"
-                    >
-                      {newReviewStartError}
-                    </motion.p>
-                  )}
-                </AnimatePresence>
-
-                <AnimatePresence initial={false}>
-                  {newReviewStarting && (
-                    <motion.div
-                      key="start-progress"
-                      initial={{ opacity: 0, y: 6 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      exit={{ opacity: 0, y: -6 }}
-                      transition={PANEL_TRANSITION}
-                      className="overflow-hidden rounded-sm border border-sky-200 bg-[linear-gradient(135deg,rgba(232,244,255,0.96),rgba(248,251,255,0.98))] p-3"
-                    >
-                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <motion.span
-                              className="inline-flex h-2.5 w-2.5 rounded-full bg-sky-500"
-                              animate={{ scale: [1, 1.35, 1], opacity: [0.85, 1, 0.85] }}
-                              transition={{ duration: 1.1, repeat: Infinity, ease: 'easeInOut' }}
-                            />
-                            <p className="text-sm font-semibold text-sky-950">Starting review…</p>
-                          </div>
-                          <p className="text-sm text-sky-900/90">
-                            Nimbus is preparing the review and will open the live results page as soon as the run is ready.
-                          </p>
-                        </div>
-                        <div className="rounded-full border border-sky-200 bg-white/75 px-3 py-1 text-xs uppercase tracking-[0.08em] text-sky-900">
-                          Step {Math.min(startProgressCount, START_STAGE_ORDER.length)} of {START_STAGE_ORDER.length}
-                        </div>
-                      </div>
-
-                      <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-sky-100">
-                        <motion.div
-                          className="h-full rounded-full bg-sky-500"
-                          animate={{ width: `${Math.max(startProgressRatio * 100, 12)}%` }}
-                          transition={{ duration: 0.28, ease: [0.215, 0.61, 0.355, 1] }}
-                        />
-                      </div>
-
-                      <div className="mt-3 space-y-3">
-                        {newReviewStartStages.length === 0 ? (
-                          <div className="rounded-sm border border-sky-200/80 bg-white/70 px-3 py-2 text-sm text-sky-900">
-                            Establishing the review start stream…
-                          </div>
-                        ) : (
-                          <>
-                            <motion.div
-                              key={`${activeStartStage?.stage ?? 'completed'}-${activeStartStage?.state ?? 'completed'}`}
-                              initial={{ opacity: 0, y: 8 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={PANEL_TRANSITION}
-                              className={`rounded-sm border px-3 py-3 ${startStageClass(activeStartStage?.state ?? 'completed')}`}
-                            >
-                              <div className="flex items-start justify-between gap-3">
-                                <div className="min-w-0">
-                                  <p className="text-[11px] uppercase tracking-[0.08em] opacity-75">Current step</p>
-                                  <p className="mt-1 text-sm font-semibold">
-                                    {activeStartStage?.label ?? latestCompletedStartStage?.label ?? 'Preparing review'}
-                                  </p>
-                                  <p className="mt-1 text-sm opacity-85">
-                                    {activeStartStage?.detail ??
-                                      latestCompletedStartStage?.detail ??
-                                      'Nimbus is preparing the review handoff.'}
-                                  </p>
-                                </div>
-                                <span className="shrink-0 rounded-full border border-current/20 bg-white/60 px-2 py-0.5 text-[11px] uppercase tracking-[0.08em]">
-                                  {startStageStatusLabel(activeStartStage?.state ?? 'completed')}
-                                </span>
-                              </div>
-                            </motion.div>
-
-                            {completedStartStages.length > 0 && (
-                              <div className="space-y-2">
-                                <p className="text-[11px] uppercase tracking-[0.08em] text-sky-900/65">Completed</p>
-                                <div className="flex flex-wrap gap-2">
-                                  {completedStartStages.map((stage, index) => (
-                                    <motion.span
-                                      key={`${stage.stage}-${stage.state}`}
-                                      initial={{ opacity: 0, y: 6 }}
-                                      animate={{ opacity: 1, y: 0 }}
-                                      transition={{ ...PANEL_TRANSITION, delay: index * 0.03 }}
-                                      className="inline-flex items-center gap-1.5 rounded-full border border-emerald-200 bg-white/80 px-2.5 py-1 text-[11px] font-medium text-emerald-900"
-                                    >
-                                      <span className="inline-flex h-1.5 w-1.5 rounded-full bg-emerald-500" />
-                                      {stage.label}
-                                    </motion.span>
-                                  ))}
-                                </div>
-                              </div>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <motion.div
-                  variants={{
-                    hidden: { opacity: 0, y: 10 },
-                    visible: { opacity: 1, y: 0 },
-                  }}
-                  transition={PANEL_TRANSITION}
-                  className="flex items-center justify-end gap-2"
-                >
-                  <Button size="sm" variant="ghost" onClick={() => void fetchNewReviewPreflight()} disabled={newReviewStarting}>
-                    Refresh preflight
-                  </Button>
-                  <Button
-                    size="sm"
-                    onClick={() => void startNewReview()}
-                    disabled={newReviewStarting || newReviewPreflightLoading || !newReviewPreflight?.ready || !canStartNewReview}
-                  >
-                    {newReviewStarting ? 'Starting…' : 'Start Review'}
-                  </Button>
-                </motion.div>
-              </motion.div>
-            </Card>
-          </motion.div>
-        )}
-      </AnimatePresence>
-
-      {loading ? (
-        <div className="text-center py-8">
-          <p className="text-sm text-muted-foreground">Loading home view…</p>
-        </div>
-      ) : errorMessage ? (
-        <Card className="p-4">
-          <h2 className="text-sm font-semibold">Unable to load Studio Home</h2>
-          <p className="mt-1 text-sm text-muted-foreground">{errorMessage}</p>
-        </Card>
-      ) : (
-        <>
-          {recentHomeReviews.length > 0 ? (
-            <section className="space-y-2">
-              <div className="flex items-baseline justify-between gap-3">
-                <div>
-                  <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Recent on this branch</h2>
-                  <p className="text-sm text-muted-foreground">Keep momentum on the branch Home is currently targeting.</p>
-                </div>
-                {homeBranchPath && (
-                  <Link to={homeBranchPath} className="text-xs text-muted-foreground transition-colors hover:text-foreground">
-                    Open full history
-                  </Link>
-                )}
-              </div>
-              <div className="grid grid-cols-1 gap-2 lg:grid-cols-3">
-                {recentHomeReviews.map((entry) => (
-                  <Link key={entry.id} to={reviewDestinationPath(entry)} className="block">
-                    <Card className="h-full px-3 py-3 transition-colors hover:bg-accent/30">
-                      <div className="flex items-start justify-between gap-2">
-                        <StatusPill status={entry.status} />
-                        <span className="text-xs text-muted-foreground">{relativeTime(entry.updatedAt || entry.createdAt)}</span>
-                      </div>
-                      <CompactHistoryText className="mt-2 text-sm text-foreground/85" text={entry.summaryText ?? entry.id} />
-                      <p className="mt-2 text-[11px] text-muted-foreground font-mono">{entry.id}</p>
-                    </Card>
-                  </Link>
-                ))}
-              </div>
-            </section>
-          ) : (
-            <Card className="p-3">
-              <p className="text-sm text-muted-foreground">
-                No reviews on this branch yet. Start one from the current Home branch when you are ready.
-              </p>
-            </Card>
-          )}
-
-          <section className="space-y-2">
+      <div className="studio-grid">
+        <motion.section
+          className="panel-card"
+          initial={{ opacity: 0, y: 22 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.05, duration: 0.3, ease: 'easeOut' }}
+        >
+          <div className="panel-header">
             <div>
-              <h2 className="text-xs uppercase tracking-[0.08em] text-muted-foreground">Browse other branches</h2>
-              <p className="text-sm text-muted-foreground">History only. New reviews still start from the Home branch above.</p>
+              <p className="eyebrow">Launch</p>
+              <h2>New review session</h2>
             </div>
-            {otherBranches.length === 0 ? (
-              <Card className="p-3">
-                <p className="text-sm text-muted-foreground">No other branch review history yet.</p>
-              </Card>
-            ) : (
-              <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-                {otherBranches.map((branchGroup) => {
-                  const latest = branchGroup.reviews[0];
-                  const hasActive = branchGroup.reviews.some((review) => ACTIVE_STATUSES.has(review.status));
-                  return (
-                    <Link
-                      key={branchGroup.key}
-                      to={branchDestinationPath(branchGroup.repo, branchGroup.branch)}
-                      className="block"
+            {loading ? <span className="status-pill muted">Loading</span> : null}
+          </div>
+          <p className="panel-body">
+            {modeHeadline(preflight)}
+          </p>
+          <p className="panel-subtle">{modeDetail(preflight)}</p>
+
+          <div className="button-row">
+            <button className="primary-button" onClick={handleStart} disabled={!canStart || !hasRepoContext || starting || loading}>
+              {starting ? 'Launching review…' : 'New review session'}
+            </button>
+          </div>
+
+          <AnimatePresence initial={false}>
+            {startError ? (
+              <motion.div
+                key="start-error"
+                className="notice-card error"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+              >
+                <strong>Launch failed</strong>
+                <p>{startError}</p>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          <AnimatePresence initial={false}>
+            {starting ? (
+              <motion.div
+                key="start-progress"
+                className="timeline-card"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
+              >
+                <div className="timeline-heading">
+                  <strong>Starting the session</strong>
+                  <span>Nimbus is resolving context, creating the review, and opening the session flow.</span>
+                </div>
+                <ol className="timeline-list">
+                  {startStages.map((stage, index) => (
+                    <motion.li
+                      key={stage.stage}
+                      className="timeline-item"
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: index * 0.04 }}
                     >
-                      <Card className="h-full px-3 py-3 transition-colors hover:bg-accent/30">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-semibold text-foreground">{branchGroup.branch}</p>
-                              {hasActive && (
-                                <Badge variant="outline" className="rounded-full border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-blue-800">
-                                  Active
-                                </Badge>
-                              )}
-                            </div>
-                            <p className="text-xs text-muted-foreground">{branchGroup.repo}</p>
-                          </div>
-                          <span className="text-xs text-muted-foreground">{latest ? relativeTime(latest.updatedAt || latest.createdAt) : 'unknown'}</span>
-                        </div>
-                        <CompactHistoryText className="mt-2 text-sm text-foreground/80" text={branchSummary(branchGroup)} />
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {branchGroup.reviews.length} review{branchGroup.reviews.length === 1 ? '' : 's'}
-                        </p>
-                      </Card>
-                    </Link>
-                  );
-                })}
+                      <span className={`timeline-state ${stage.state}`}>{stage.state === 'completed' ? 'Done' : 'Live'}</span>
+                      <div>
+                        <strong>{stage.label}</strong>
+                        <p>{stage.detail}</p>
+                      </div>
+                    </motion.li>
+                  ))}
+                </ol>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          {preflight?.startability === 'basic' ? (
+            <div className="notice-card warning">
+              <strong>Basic review fallback</strong>
+              <p>
+                Entire is optional now. Nimbus will keep going in basic mode, but if you want higher-quality context,
+                restore Entire first.
+              </p>
+              <a className="inline-link" href={ENTIRE_DOCS_URL} target="_blank" rel="noreferrer">
+                Learn more about Entire
+              </a>
+            </div>
+          ) : null}
+
+          {error ? (
+            <div className="notice-card error">
+              <strong>Studio failed to load</strong>
+              <p>{error}</p>
+            </div>
+          ) : null}
+        </motion.section>
+
+        <motion.section
+          className="panel-card"
+          initial={{ opacity: 0, y: 22 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1, duration: 0.3, ease: 'easeOut' }}
+        >
+          <div className="panel-header">
+            <div>
+              <p className="eyebrow">Preflight</p>
+              <h2>Context check</h2>
+            </div>
+          </div>
+
+          <div className="check-grid">
+            {checks.map((check) => (
+              <div key={check.code} className={`check-card ${check.ok ? 'ok' : 'warning'}`}>
+                <div className="check-card-header">
+                  <strong>{check.label}</strong>
+                  <span>{check.ok ? 'Ready' : 'Attention'}</span>
+                </div>
+                <p>{check.detail}</p>
               </div>
-            )}
-          </section>
-        </>
-      )}
+            ))}
+          </div>
+
+          <div className="meta-stack">
+            <div className="meta-row">
+              <span>Target commit</span>
+              <strong>{preflight?.commitSha?.slice(0, 12) ?? 'Not available'}</strong>
+            </div>
+            <div className="meta-row">
+              <span>Checkpoint window</span>
+              <strong>{preflight ? `Last ${preflight.effectiveLastCheckpoints}` : 'Checking'}</strong>
+            </div>
+            <div className="meta-row">
+              <span>Detected at</span>
+              <strong>{dateTimeLabel(context?.detectedAt ?? null)}</strong>
+            </div>
+          </div>
+        </motion.section>
+      </div>
     </main>
   );
 }
