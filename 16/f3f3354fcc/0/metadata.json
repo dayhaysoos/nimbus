@@ -1,0 +1,41 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "16f3f3354fcc",
+  "session_id": "019d7ea2-dd77-7633-9509-834b381e1a3b",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-15T00:09:37.348146Z",
+  "branch": "review-session-redesign",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "packages/cli/src/app/reviews/local-environments.ts",
+    "packages/cli/src/cli/dispatch/review.ts",
+    "packages/cli/src/cli/help.ts",
+    "packages/cli/src/commands/review/session.ts",
+    "packages/cli/test/commands/review/review.test.ts",
+    "packages/cli/test/lib/args.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "f2c4bfa927ef",
+  "checkpoint_transcript_start": 20516,
+  "transcript_lines_at_start": 20516,
+  "token_usage": {
+    "input_tokens": 5165168,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 4435328,
+    "output_tokens": 22262,
+    "api_call_count": 42
+  },
+  "session_metrics": {
+    "turn_count": 106
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-15T00:09:18.770434Z",
+    "agent_lines": 243,
+    "human_added": 128,
+    "human_modified": 3,
+    "human_removed": 0,
+    "total_committed": 374,
+    "agent_percentage": 64.97326203208557
+  }
+}
