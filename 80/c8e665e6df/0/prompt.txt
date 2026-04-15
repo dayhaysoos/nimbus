@@ -1,0 +1,49 @@
+commit them for me and push.
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 61 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 62 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 62 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 62 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 62 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 62 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 62 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 62 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+Warning: The maximum number of unified exec processes you can keep open is 60 and you currently have 62 processes open. Reuse older processes or close them to prevent automatic pruning of old processes
+
+---
+
+so is everything okay or not?
+
+---
+
+hmm yeah I would like to figure out what's going on with Entire but honestly, if it doesn't work, it'll default to the non-Entire review right?
+
+---
+
+so I think this session went on WAY too long but for good reason. I want to continue the UI work but with a different agent. I'm thinking you shoould make a document that goes over all the stuff we went through, detail the changes we made and why.
