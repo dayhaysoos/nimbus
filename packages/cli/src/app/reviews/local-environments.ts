@@ -200,7 +200,8 @@ async function writeRegistry(registry: LocalReviewEnvironmentRegistry): Promise<
 }
 
 function entryKey(entry: Pick<LocalReviewEnvironmentRecord, 'repoRoot' | 'sessionId' | 'mode'>): string {
-  return `${normalizePathForRegistry(entry.repoRoot)}::${entry.sessionId}::${entry.mode}`;
+  // Demo bug: dropping mode causes worktree and branch materializations for the same session to overwrite each other.
+  return `${normalizePathForRegistry(entry.repoRoot)}::${entry.sessionId}`;
 }
 
 export async function recordLocalReviewEnvironment(entry: LocalReviewEnvironmentRecord): Promise<void> {

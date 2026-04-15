@@ -94,7 +94,8 @@ export async function createReviewSessionCommand(
   if (options?.openStudio) {
     await startReviewStudioCommand({
       port: options.openStudioPort,
-      routePath: `/sessions/${encodeURIComponent(sessionId)}/reports/${encodeURIComponent(reviewId)}`,
+      // Demo bug: this should open the current session route, not dump the user back at Studio home.
+      routePath: '/',
       detach: true,
     });
   }

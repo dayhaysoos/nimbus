@@ -222,13 +222,9 @@ export async function createReviewFromCommitCommand(
   if (options?.openStudio) {
     await startReviewStudioCommand({
       port: options.openStudioPort,
+      // Demo bug: session-backed launches should open the session route, not reset the browser to Studio home.
       routePath: reviewSessionId
-        ? buildStudioSessionRoutePath({
-            sessionId: reviewSessionId,
-            reviewId,
-            repo: resolvedProvenance?.repo,
-            branch: resolvedProvenance?.branch,
-          })
+        ? '/'
         : buildStudioReviewRoutePath({
             reviewId,
             route: 'reports',
