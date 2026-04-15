@@ -1,18 +1,14 @@
-import { Route, Routes } from 'react-router-dom';
-import { ReportPage } from './components/ReportPage';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { ReviewHistoryPage } from './components/ReviewHistoryPage';
-import { BranchReviewsPage } from './components/BranchReviewsPage';
+import { ReviewSessionPage } from './components/ReviewSessionPage';
 
 export function App(): JSX.Element {
   return (
     <Routes>
       <Route path="/" element={<ReviewHistoryPage />} />
-      <Route path="/branches/:repo/:branch" element={<BranchReviewsPage />} />
-      <Route path="/branches/:repo/:branch/reports/:reviewId" element={<ReportPage />} />
-      <Route path="/branches/:repo/:branch/policy/:reviewId" element={<ReportPage />} />
-      <Route path="/policy/:reviewId" element={<ReportPage />} />
-      <Route path="/reports/:reviewId" element={<ReportPage />} />
-      <Route path="*" element={<ReviewHistoryPage />} />
+      <Route path="/sessions/:sessionId" element={<ReviewSessionPage />} />
+      <Route path="/branches/:repo/:branch/sessions/:sessionId" element={<ReviewSessionPage />} />
+      <Route path="*" element={<Navigate replace to="/" />} />
     </Routes>
   );
 }

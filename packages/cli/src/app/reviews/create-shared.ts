@@ -143,6 +143,29 @@ export function buildStudioReviewRoutePath(options: {
   return `/${options.route}/${reviewId}`;
 }
 
+export function buildStudioSessionRoutePath(options: {
+  sessionId: string;
+  reviewId?: string | null;
+  repo?: string | null;
+  branch?: string | null;
+}): string {
+  const sessionId = encodeURIComponent(options.sessionId);
+  const reviewId = options.reviewId?.trim() ? encodeURIComponent(options.reviewId.trim()) : null;
+  const repo = options.repo?.trim();
+  const branch = options.branch?.trim();
+
+  const basePath =
+    repo && branch
+      ? `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/sessions/${sessionId}`
+      : `/sessions/${sessionId}`;
+
+  if (reviewId) {
+    return `${basePath}/reports/${reviewId}`;
+  }
+
+  return basePath;
+}
+
 export function formatReviewExecutionFailure(
   status: string,
   finalReview: { error?: { code: string; message: string } },

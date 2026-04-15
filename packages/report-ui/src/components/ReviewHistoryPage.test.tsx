@@ -34,126 +34,290 @@ class MockEventSource {
   }
 }
 
+function createReview(reviewId: string, status: string): Record<string, unknown> {
+  return {
+    id: reviewId,
+    workspaceId: 'ws_1',
+    deploymentId: 'dep_1',
+    target: {
+      type: 'workspace_deployment',
+      workspaceId: 'ws_1',
+      deploymentId: 'dep_1',
+    },
+    mode: 'report_only',
+    status,
+    idempotencyKey: `idem_${reviewId}`,
+    attemptCount: 1,
+    createdAt: '2026-04-15T00:00:00.000Z',
+    updatedAt: '2026-04-15T00:00:01.000Z',
+    startedAt: '2026-04-15T00:00:01.000Z',
+    finishedAt: status === 'succeeded' ? '2026-04-15T00:00:10.000Z' : null,
+    findings: [],
+    evidence: [],
+    provenance: {
+      sessionIds: ['session_launch'],
+      promptSummary: null,
+    },
+    summaryText: null,
+    markdownSummary: null,
+  };
+}
+
+function createAggregate(
+  overrides: Partial<{
+    sessionId: string;
+    phase: string;
+    status: string | null;
+    canStream: boolean;
+    detail: string;
+    summary: string;
+  }> = {}
+): Record<string, unknown> {
+  const sessionId = overrides.sessionId ?? 'session_launch';
+  const phase = overrides.phase ?? 'completed';
+  const status = Object.prototype.hasOwnProperty.call(overrides, 'status') ? overrides.status : null;
+  const canStream = overrides.canStream ?? false;
+  const reviewId = 'review_launch';
+
+  return {
+    session: {
+      id: sessionId,
+      workspaceId: 'ws_1',
+      anchorDeploymentId: 'dep_1',
+      repo: 'acme/web',
+      branch: 'main',
+      initialReviewBasis: 'checkpoint',
+      anchorCommitSha: 'abcdef1234567890',
+      anchorCheckpointId: null,
+      sourceProjectRoot: '/tmp/repo',
+      phase,
+      passCount: 1,
+      activeReviewId: canStream ? reviewId : null,
+      latestReviewId: reviewId,
+      currentReviewStatus: status,
+      stopReason: phase === 'completed' ? 'initial_pass_completed' : null,
+      createdAt: '2026-04-15T00:00:00.000Z',
+      updatedAt: '2026-04-15T00:00:10.000Z',
+      finishedAt: phase === 'completed' ? '2026-04-15T00:00:10.000Z' : null,
+      passes: [
+        {
+          reviewId,
+          status: status ?? 'succeeded',
+          reviewBasis: 'checkpoint',
+          createdAt: '2026-04-15T00:00:00.000Z',
+          startedAt: '2026-04-15T00:00:01.000Z',
+          finishedAt: phase === 'completed' ? '2026-04-15T00:00:10.000Z' : null,
+        },
+      ],
+      outcome:
+        phase === 'completed'
+          ? {
+              kind: 'clean',
+              summary: 'Nimbus completed the session.',
+              residualRisk: 'low',
+              recommendation: 'approve',
+              materializeReady: false,
+              reviewed: {
+                contextMode: 'intent_aware',
+                latestReviewBasis: 'checkpoint',
+                passCount: 1,
+              },
+              changes: {
+                applied: false,
+                remediationCount: 0,
+                changedFileCount: 0,
+                summaries: [],
+                environmentRevision: null,
+              },
+              evidence: {
+                passed: 1,
+                failed: 0,
+                warning: 0,
+                info: 0,
+                highlights: [],
+              },
+              unresolved: {
+                findingCount: 0,
+                highestSeverity: null,
+                highlights: [],
+              },
+            }
+          : null,
+    },
+    reviews: [createReview(reviewId, status ?? 'succeeded')],
+    latestReview: createReview(reviewId, status ?? 'succeeded'),
+    activeReview: canStream ? createReview(reviewId, status ?? 'running') : null,
+    findings: {
+      unresolved: [],
+      resolved: [],
+      all: [],
+    },
+    activity: {
+      sessionId,
+      phase,
+      state: phase === 'completed' ? 'terminal' : 'active',
+      currentReviewStatus: status,
+      activeReviewId: canStream ? reviewId : null,
+      latestReviewId: reviewId,
+      passCount: 1,
+      summary: overrides.summary ?? 'Nimbus completed the session.',
+      detail: overrides.detail ?? 'Nimbus completed the session.',
+      canStream,
+      streamPath: `/api/studio/sessions/${sessionId}/activity/events`,
+      updatedAt: '2026-04-15T00:00:10.000Z',
+    },
+    reviewedDiff: {
+      sessionId,
+      reviewId,
+      available: false,
+      status: 'unavailable',
+      reason: 'No diff.',
+      path: `/api/studio/sessions/${sessionId}/reviewed-diff`,
+      environmentRevision: null,
+    },
+    local: {
+      environments: [],
+      hasAny: false,
+    },
+    capabilities: {
+      active: canStream,
+      waitingOnHuman: false,
+      terminal: !canStream,
+      canShowReviewedDiff: false,
+      canAdopt: false,
+      canListLocalEnvironments: true,
+      canShowLocalDiff: false,
+      canMergeBack: false,
+    },
+    paths: {
+      self: `/api/studio/sessions/${sessionId}`,
+      activity: `/api/studio/sessions/${sessionId}/activity`,
+      activityEvents: `/api/studio/sessions/${sessionId}/activity/events`,
+      reviewedDiff: `/api/studio/sessions/${sessionId}/reviewed-diff`,
+      localEnvironments: `/api/studio/local-review-sessions?sessionId=${sessionId}`,
+      adopt: `/api/studio/local-review-sessions/${sessionId}/adopt`,
+    },
+    adopt: {
+      available: false,
+      reason: 'No adoptable changes.',
+      path: `/api/studio/local-review-sessions/${sessionId}/adopt`,
+      modes: ['worktree'],
+    },
+  };
+}
+
 describe('ReviewHistoryPage', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     MockEventSource.instances = [];
+    vi.stubGlobal('EventSource', MockEventSource as unknown as typeof EventSource);
   });
 
   afterEach(() => {
     cleanup();
   });
 
-  it('renders the current-branch empty state when no reviews are present', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/studio/context')) {
-        return {
-          ok: true,
-          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({ reviews: [] }),
-      };
-    }));
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <App />
-      </MemoryRouter>
-    );
-
-    expect(await screen.findByText(/No reviews on this branch yet/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'New Review' })).toBeInTheDocument();
-  });
-
-  it('shows animated preflight progress copy while the new review panel is preparing', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/studio/context')) {
-        return {
-          ok: true,
-          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
-        };
-      }
-      if (url.includes('/api/studio/new-review/preflight')) {
-        return {
-          ok: true,
-          json: async () => new Promise(() => undefined),
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({ reviews: [] }),
-      };
-    }));
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <App />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New Review' })).not.toBeDisabled());
-    fireEvent.click(screen.getByRole('button', { name: 'New Review' }));
-
-    expect(await screen.findByText('Preparing review target…')).toBeInTheDocument();
-    expect(screen.getByText('Resolving checkpoint')).toBeInTheDocument();
-    expect(screen.getByText('Reading session context')).toBeInTheDocument();
-    expect(screen.getByText('Loading related context')).toBeInTheDocument();
-  });
-
-  it('keeps current-branch history separate from browse-only branch history', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/studio/context')) {
-        return {
-          ok: true,
-          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({
-          reviews: [
-            {
-              id: 'rev_current',
-              workspaceId: 'ws_1',
-              deploymentId: 'dep_1',
+  it('shows a basic-mode fallback and resume action for an active session', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/studio/context')) {
+          return {
+            ok: true,
+            json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-04-15T00:00:00.000Z' }),
+          };
+        }
+        if (url.includes('/api/studio/new-review/preflight')) {
+          return {
+            ok: true,
+            json: async () => ({
               repo: 'acme/web',
               branch: 'main',
-              status: 'running',
-              createdAt: '2026-03-01T00:00:04.000Z',
-              updatedAt: '2026-03-01T00:00:04.000Z',
-              startedAt: '2026-03-01T00:00:03.000Z',
-              finishedAt: null,
-              findingCount: 2,
-              riskLevel: 'high',
-              recommendation: 'request_changes',
-              summaryText: 'Potentially unsafe mutation found in request handler.',
-            },
-            {
-              id: 'rev_other',
-              workspaceId: 'ws_2',
-              deploymentId: 'dep_2',
-              repo: 'acme/web',
-              branch: 'feature-x',
-              status: 'succeeded',
-              createdAt: '2026-03-01T00:00:00.000Z',
-              updatedAt: '2026-03-01T00:00:01.000Z',
-              startedAt: '2026-03-01T00:00:00.500Z',
-              finishedAt: '2026-03-01T00:00:01.000Z',
-              findingCount: 0,
-              riskLevel: 'low',
-              recommendation: 'approve',
-              summaryText: 'No issues found.',
-            },
-          ],
-        }),
-      };
-    }));
+              policyMode: 'auto',
+              startability: 'basic',
+              contextMode: 'basic',
+              requestedLastCheckpoints: 1,
+              effectiveLastCheckpoints: 1,
+              lastCheckpoints: 1,
+              checkpointSelectionMode: 'latest',
+              checkpointId: null,
+              commitSha: 'abcdef1234567890',
+              includedCheckpoints: [],
+              ready: true,
+              capabilities: {
+                canStart: true,
+                canStartInBasicMode: true,
+                canStartInIntentAwareMode: false,
+                canReviewPolicy: true,
+              },
+              blockingIssues: [],
+              warnings: [
+                {
+                  code: 'entire_context_unavailable',
+                  message: 'Entire context is unavailable on this commit.',
+                },
+              ],
+              checks: [
+                {
+                  code: 'checkpoint',
+                  label: 'Checkpoint target',
+                  ok: true,
+                  detail: 'Nimbus will review HEAD directly.',
+                },
+                {
+                  code: 'entire_context',
+                  label: 'Entire context',
+                  ok: false,
+                  detail: 'Entire context is unavailable. Falling back to basic mode.',
+                },
+              ],
+            }),
+          };
+        }
+        if (url.includes('/api/review-sessions?limit=5')) {
+          return {
+            ok: true,
+            json: async () => ({
+              sessions: [
+                {
+                  id: 'session_active',
+                  workspaceId: 'ws_1',
+                  anchorDeploymentId: 'dep_1',
+                  repo: 'acme/web',
+                  branch: 'main',
+                  initialReviewBasis: 'checkpoint',
+                  anchorCommitSha: 'abcdef1234567890',
+                  anchorCheckpointId: null,
+                  sourceProjectRoot: '/tmp/repo',
+                  phase: 'reviewing',
+                  passCount: 1,
+                  activeReviewId: 'review_active',
+                  latestReviewId: 'review_active',
+                  currentReviewStatus: 'running',
+                  stopReason: null,
+                  createdAt: '2026-04-15T00:00:00.000Z',
+                  updatedAt: '2026-04-15T00:01:00.000Z',
+                  finishedAt: null,
+                  passes: [
+                    {
+                      reviewId: 'review_active',
+                      status: 'running',
+                      reviewBasis: 'checkpoint',
+                      createdAt: '2026-04-15T00:00:00.000Z',
+                      startedAt: '2026-04-15T00:00:01.000Z',
+                      finishedAt: null,
+                    },
+                  ],
+                  outcome: null,
+                },
+              ],
+            }),
+          };
+        }
+        throw new Error(`Unhandled fetch: ${url}`);
+      })
+    );
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -161,91 +325,71 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    expect(await screen.findByText(/Recent on this branch/i)).toBeInTheDocument();
-    expect(screen.getByText(/Potentially unsafe mutation found in request handler/i)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'Resume active review' })).toBeInTheDocument();
-    expect(screen.getByText(/Browse other branches/i)).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /feature-x/i })).toBeInTheDocument();
+    expect(await screen.findByText('Basic review fallback')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New review session' })).toBeInTheDocument();
+    expect(screen.getAllByRole('button', { name: 'Resume session' })).toHaveLength(1);
+    expect(screen.getByText('session_active')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Learn more about Entire' })).toBeInTheDocument();
   });
 
-  it('does not resume from a different branch when current context has no reviews', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/studio/context')) {
-        return {
-          ok: true,
-          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({
-          reviews: [
-            {
-              id: 'rev_other_branch',
-              workspaceId: 'ws_3',
-              deploymentId: 'dep_3',
-              repo: 'acme/web',
-              branch: 'feature-x',
-              status: 'running',
-              createdAt: '2026-03-01T00:00:04.000Z',
-              updatedAt: '2026-03-01T00:00:04.000Z',
-              startedAt: '2026-03-01T00:00:03.000Z',
-              finishedAt: null,
-              findingCount: 1,
-              riskLevel: 'medium',
-              recommendation: 'comment',
-              summaryText: 'Review in progress.',
-            },
-          ],
-        }),
-      };
-    }));
-
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <App />
-      </MemoryRouter>
-    );
-
-    expect(await screen.findByText('main')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Resume active review' })).not.toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /feature-x/i })).toBeInTheDocument();
-  });
-
-  it('routes policy-stage active reviews to the unified report route', async () => {
-    vi.stubGlobal('fetch', vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/studio/context')) {
-        return {
-          ok: true,
-          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({
-          reviews: [
-            {
-              id: 'rev_policy',
-              workspaceId: 'ws_policy',
-              deploymentId: 'dep_policy',
+  it('streams startup stages and navigates into the session page', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes('/api/studio/context')) {
+          return {
+            ok: true,
+            json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-04-15T00:00:00.000Z' }),
+          };
+        }
+        if (url.includes('/api/studio/new-review/preflight')) {
+          return {
+            ok: true,
+            json: async () => ({
               repo: 'acme/web',
               branch: 'main',
-              status: 'policy_ready',
-              createdAt: '2026-03-01T00:00:04.000Z',
-              updatedAt: '2026-03-01T00:00:04.000Z',
-              startedAt: null,
-              finishedAt: null,
-              findingCount: null,
-              riskLevel: null,
-              recommendation: null,
-              summaryText: 'Policy is ready for approval.',
-            },
-          ],
-        }),
-      };
-    }));
+              policyMode: 'auto',
+              startability: 'intent_aware',
+              contextMode: 'intent_aware',
+              requestedLastCheckpoints: 1,
+              effectiveLastCheckpoints: 1,
+              lastCheckpoints: 1,
+              checkpointSelectionMode: 'latest',
+              checkpointId: 'cp_123',
+              commitSha: 'abcdef1234567890',
+              includedCheckpoints: [],
+              ready: true,
+              capabilities: {
+                canStart: true,
+                canStartInBasicMode: true,
+                canStartInIntentAwareMode: true,
+                canReviewPolicy: true,
+              },
+              blockingIssues: [],
+              warnings: [],
+              checks: [
+                { code: 'checkpoint', label: 'Checkpoint target', ok: true, detail: 'Resolved checkpoint cp_123.' },
+                { code: 'entire_context', label: 'Entire context', ok: true, detail: 'Context is readable.' },
+              ],
+            }),
+          };
+        }
+        if (url.includes('/api/review-sessions?limit=5')) {
+          return {
+            ok: true,
+            json: async () => ({ sessions: [] }),
+          };
+        }
+        if (url.includes('/api/studio/sessions/session_launch')) {
+          return {
+            ok: true,
+            text: async () => JSON.stringify(createAggregate({ sessionId: 'session_launch' })),
+          };
+        }
+        throw new Error(`Unhandled fetch: ${url}`);
+      })
+    );
 
     render(
       <MemoryRouter initialEntries={['/']}>
@@ -253,125 +397,34 @@ describe('ReviewHistoryPage', () => {
       </MemoryRouter>
     );
 
-    const resumeLink = await screen.findByRole('link', { name: 'Resume active review' });
-    expect(resumeLink).toHaveAttribute('href', expect.stringContaining('/branches/acme%2Fweb/main/reports/rev_policy'));
-  });
+    fireEvent.click(await screen.findByRole('button', { name: 'New review session' }));
 
-  it('streams start progress before navigating to the branch-scoped report route', async () => {
-    const fetchMock = vi.fn().mockImplementation(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.includes('/api/studio/context')) {
-        return {
-          ok: true,
-          json: async () => ({ repo: 'acme/web', branch: 'main', detectedAt: '2026-03-01T00:00:00.000Z' }),
-        };
-      }
-      if (url.includes('/api/studio/new-review/preflight')) {
-        return {
-          ok: true,
-          json: async () => ({
-            repo: 'acme/web',
-            branch: 'main',
-            policyMode: 'auto',
-            lastCheckpoints: 2,
-            checkpointSelectionMode: 'last_n',
-            checkpointId: 'cp_123',
-            commitSha: 'abcdef123456',
-            includedCheckpoints: [
-              { checkpointId: 'cp_122', commitSha: 'aaaaaa123456', commitSubject: 'feat: previous' },
-              { checkpointId: 'cp_123', commitSha: 'abcdef123456', commitSubject: 'feat: latest' },
-            ],
-            ready: true,
-            checks: [
-              { code: 'checkpoint', label: 'Checkpoint target', ok: true, detail: 'Resolved checkpoint cp_123.' },
-              { code: 'entire_context', label: 'Entire context', ok: true, detail: 'Context is readable.' },
-            ],
-          }),
-        };
-      }
-      if (url.includes('/api/reviews/rev_new')) {
-        return {
-          ok: true,
-          json: async () => ({
-            review: {
-              id: 'rev_new',
-              workspaceId: 'ws_new',
-              deploymentId: 'dep_new',
-              target: {
-                type: 'workspace_deployment',
-                workspaceId: 'ws_new',
-                deploymentId: 'dep_new',
-              },
-              mode: 'report_only',
-              status: 'queued',
-              idempotencyKey: 'idem_new',
-              attemptCount: 1,
-              createdAt: '2026-03-01T00:00:00.000Z',
-              updatedAt: '2026-03-01T00:00:00.000Z',
-              startedAt: null,
-              finishedAt: null,
-              findings: [],
-              evidence: [],
-              provenance: {
-                sessionIds: [],
-                promptSummary: null,
-              },
-              markdownSummary: null,
-            },
-          }),
-        };
-      }
-      if (url.includes('/api/reviews?limit=100')) {
-        return {
-          ok: true,
-          json: async () => ({ reviews: [] }),
-        };
-      }
-      return {
-        ok: true,
-        json: async () => ({ reviews: [] }),
-      };
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    vi.stubGlobal('EventSource', MockEventSource as unknown as typeof EventSource);
+    const source = MockEventSource.instances[0];
+    expect(source).toBeDefined();
 
-    render(
-      <MemoryRouter initialEntries={['/']}>
-        <App />
-      </MemoryRouter>
-    );
-
-    await waitFor(() => expect(screen.getByRole('button', { name: 'New Review' })).not.toBeDisabled());
-    fireEvent.click(screen.getByRole('button', { name: 'New Review' }));
-    expect(await screen.findByText('Ready for review')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /Last 2/i })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'View technical details' })).toBeInTheDocument();
-    expect(await screen.findByRole('button', { name: 'Start Review' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Start Review' }));
-
-    expect(await screen.findByText('Starting review…')).toBeInTheDocument();
-    expect(MockEventSource.instances[0]?.url).toContain('/api/studio/new-review/start/events?');
-    expect(MockEventSource.instances[0]?.url).toContain('policyMode=auto');
-    expect(MockEventSource.instances[0]?.url).toContain('lastCheckpoints=2');
-
-    MockEventSource.instances[0]?.emit('message', {
+    source.emit('message', {
       type: 'stage',
-      stage: 'workspace',
+      stage: 'checkpoint',
       state: 'active',
-      label: 'Preparing workspace',
-      detail: 'Creating an isolated workspace for the review target.',
+      label: 'Resolving checkpoint',
+      detail: 'Nimbus is resolving the current commit.',
     });
-    expect(await screen.findByText('Preparing workspace')).toBeInTheDocument();
 
-    MockEventSource.instances[0]?.emit('message', {
+    expect(await screen.findByText('Resolving checkpoint')).toBeInTheDocument();
+
+    source.emit('message', {
       type: 'completed',
-      reviewId: 'rev_new',
-      routePath: '/branches/acme%2Fweb/main/reports/rev_new',
+      reviewId: 'review_launch',
+      sessionId: 'session_launch',
+      routePath: '/sessions/session_launch',
       policyMode: 'auto',
+      contextMode: 'intent_aware',
+      requestedLastCheckpoints: 1,
+      effectiveLastCheckpoints: 1,
       status: 'queued',
-      detail: 'Review queued. Opening the live results route.',
+      detail: 'Ready for review.',
     });
 
-    expect(await screen.findByText('Branch main')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'session_launch' })).toBeInTheDocument();
   });
 });

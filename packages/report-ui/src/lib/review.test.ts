@@ -3,12 +3,16 @@ import {
   buildFixPrompt,
   buildFindingText,
   findingCount,
+  parseGetReviewSessionResponse,
   parseGetReviewResponse,
+  parseListReviewSessionsResponse,
   parseListReviewsResponse,
   parseStudioContextResponse,
   parseStudioNewReviewPreflightResponse,
   parseStudioNewReviewStartResponse,
   parseStudioNewReviewStartStreamEvent,
+  parseStudioSessionActivityEvent,
+  parseStudioSessionAggregateResponse,
 } from './review';
 import type { ReviewFinding, ReviewResponse } from '../types';
 
@@ -200,6 +204,10 @@ describe('studio new review payloads', () => {
       repo: 'acme/web',
       branch: 'main',
       policyMode: 'auto',
+      startability: 'intent_aware',
+      contextMode: 'intent_aware',
+      requestedLastCheckpoints: 3,
+      effectiveLastCheckpoints: 2,
       lastCheckpoints: 2,
       checkpointSelectionMode: 'last_n',
       checkpointId: 'cp_123',
@@ -217,6 +225,19 @@ describe('studio new review payloads', () => {
         },
       ],
       ready: true,
+      capabilities: {
+        canStart: true,
+        canStartInBasicMode: true,
+        canStartInIntentAwareMode: true,
+        canReviewPolicy: true,
+      },
+      blockingIssues: [],
+      warnings: [
+        {
+          code: 'branch_context_changed',
+          message: 'Branch context changed since preflight.',
+        },
+      ],
       checks: [
         {
           code: 'checkpoint',
@@ -229,19 +250,30 @@ describe('studio new review payloads', () => {
 
     expect(payload.ready).toBe(true);
     expect(payload.policyMode).toBe('auto');
+    expect(payload.startability).toBe('intent_aware');
+    expect(payload.contextMode).toBe('intent_aware');
+    expect(payload.requestedLastCheckpoints).toBe(3);
+    expect(payload.effectiveLastCheckpoints).toBe(2);
     expect(payload.checks[0]?.code).toBe('checkpoint');
+    expect(payload.warnings[0]?.code).toBe('branch_context_changed');
   });
 
   it('parses start payload', () => {
     const payload = parseStudioNewReviewStartResponse({
       reviewId: 'rev_123',
-      routePath: '/branches/acme%2Fweb/main/reports/rev_123',
+      sessionId: 'ses_123',
+      routePath: '/branches/acme%2Fweb/main/sessions/ses_123',
       policyMode: 'auto',
+      contextMode: 'basic',
+      requestedLastCheckpoints: 1,
+      effectiveLastCheckpoints: 1,
       status: 'queued',
     });
 
     expect(payload.reviewId).toBe('rev_123');
-    expect(payload.routePath).toBe('/branches/acme%2Fweb/main/reports/rev_123');
+    expect(payload.sessionId).toBe('ses_123');
+    expect(payload.routePath).toBe('/branches/acme%2Fweb/main/sessions/ses_123');
+    expect(payload.contextMode).toBe('basic');
   });
 
   it('parses start stream stage payload', () => {
@@ -258,5 +290,369 @@ describe('studio new review payloads', () => {
       expect(payload.stage).toBe('workspace');
       expect(payload.state).toBe('active');
     }
+  });
+});
+
+describe('review session payloads', () => {
+  it('parses list response payload', () => {
+    const payload = parseListReviewSessionsResponse({
+      sessions: [
+        {
+          id: 'ses_1',
+          workspaceId: 'ws_1',
+          anchorDeploymentId: 'dep_1',
+          repo: 'acme/web',
+          branch: 'main',
+          initialReviewBasis: 'checkpoint',
+          anchorCommitSha: 'abcdef123456',
+          anchorCheckpointId: 'cp_123',
+          sourceProjectRoot: '/Users/nickdejesus/Code/nimbus',
+          phase: 'waiting_on_human',
+          passCount: 1,
+          activeReviewId: 'rev_1',
+          latestReviewId: 'rev_1',
+          currentReviewStatus: 'policy_ready',
+          stopReason: null,
+          createdAt: '2026-03-01T00:00:00.000Z',
+          updatedAt: '2026-03-01T00:00:05.000Z',
+          finishedAt: null,
+          passes: [
+            {
+              reviewId: 'rev_1',
+              status: 'policy_ready',
+              reviewBasis: 'checkpoint',
+              createdAt: '2026-03-01T00:00:00.000Z',
+              startedAt: null,
+              finishedAt: null,
+            },
+          ],
+          outcome: null,
+        },
+      ],
+    });
+
+    expect(payload.sessions).toHaveLength(1);
+    expect(payload.sessions[0]?.phase).toBe('waiting_on_human');
+    expect(payload.sessions[0]?.currentReviewStatus).toBe('policy_ready');
+  });
+
+  it('parses studio activity events', () => {
+    const payload = parseStudioSessionActivityEvent({
+      type: 'activity',
+      sessionId: 'ses_live',
+      reviewId: 'rev_live',
+      passIndex: 0,
+      rawType: 'review_finding_emitted',
+      kind: 'finding',
+      label: 'Finding emitted',
+      detail: 'A fallback path can leave the request unresolved.',
+      createdAt: '2026-04-15T00:00:01.000Z',
+      seq: 1,
+      payload: {
+        severity: 'high',
+        title: 'Fallback path can hang',
+        description: 'A fallback path can leave the request unresolved.',
+      },
+    });
+
+    expect(payload.type).toBe('activity');
+    if (payload.type === 'activity') {
+      expect(payload.kind).toBe('finding');
+      expect(payload.reviewId).toBe('rev_live');
+      expect(payload.seq).toBe(1);
+    }
+  });
+
+  it('parses a studio session aggregate with modern finding payloads', () => {
+    const payload = parseStudioSessionAggregateResponse({
+      session: {
+        id: 'ses_aggregate',
+        workspaceId: 'ws_1',
+        anchorDeploymentId: 'dep_1',
+        repo: 'acme/web',
+        branch: 'main',
+        initialReviewBasis: 'checkpoint',
+        anchorCommitSha: 'abcdef1234567890',
+        anchorCheckpointId: null,
+        sourceProjectRoot: '/tmp/repo',
+        phase: 'completed',
+        passCount: 1,
+        activeReviewId: null,
+        latestReviewId: 'rev_1',
+        currentReviewStatus: null,
+        stopReason: 'followup_pass_completed',
+        createdAt: '2026-04-15T00:00:00.000Z',
+        updatedAt: '2026-04-15T00:00:15.000Z',
+        finishedAt: '2026-04-15T00:00:15.000Z',
+        passes: [
+          {
+            reviewId: 'rev_1',
+            status: 'succeeded',
+            reviewBasis: 'checkpoint',
+            createdAt: '2026-04-15T00:00:00.000Z',
+            startedAt: '2026-04-15T00:00:01.000Z',
+            finishedAt: '2026-04-15T00:00:15.000Z',
+          },
+        ],
+        outcome: {
+          kind: 'clean',
+          summary: 'Nimbus completed the session.',
+          residualRisk: 'low',
+          recommendation: 'approve',
+          materializeReady: false,
+          reviewed: {
+            contextMode: 'intent_aware',
+            latestReviewBasis: 'checkpoint',
+            passCount: 1,
+          },
+          changes: {
+            applied: false,
+            remediationCount: 0,
+            changedFileCount: 0,
+            summaries: [],
+            environmentRevision: null,
+          },
+          evidence: {
+            passed: 1,
+            failed: 0,
+            warning: 0,
+            info: 0,
+            highlights: [],
+          },
+          unresolved: {
+            findingCount: 1,
+            highestSeverity: 'high',
+            highlights: [],
+          },
+        },
+      },
+      reviews: [
+        {
+          id: 'rev_1',
+          workspaceId: 'ws_1',
+          deploymentId: 'dep_1',
+          target: {
+            type: 'workspace_deployment',
+            workspaceId: 'ws_1',
+            deploymentId: 'dep_1',
+          },
+          mode: 'report_only',
+          status: 'succeeded',
+          idempotencyKey: 'idem_rev_1',
+          attemptCount: 1,
+          createdAt: '2026-04-15T00:00:00.000Z',
+          updatedAt: '2026-04-15T00:00:15.000Z',
+          startedAt: '2026-04-15T00:00:01.000Z',
+          finishedAt: '2026-04-15T00:00:15.000Z',
+          findings: [
+            {
+              id: 'finding_1',
+              severity: 'high',
+              confidence: 'high',
+              title: 'Fallback path can hang',
+              description: 'A fallback path can leave the request unresolved.',
+              conditions: null,
+              locations: [{ path: 'src/request.ts', line: 48 }],
+              suggestedFix: { kind: 'text', value: 'Normalize terminal transitions.' },
+              evidenceRefs: [],
+            },
+          ],
+          evidence: [],
+          provenance: {
+            sessionIds: ['ses_aggregate'],
+            promptSummary: null,
+          },
+          markdownSummary: null,
+        },
+      ],
+      latestReview: {
+        id: 'rev_1',
+        workspaceId: 'ws_1',
+        deploymentId: 'dep_1',
+        target: {
+          type: 'workspace_deployment',
+          workspaceId: 'ws_1',
+          deploymentId: 'dep_1',
+        },
+        mode: 'report_only',
+        status: 'succeeded',
+        idempotencyKey: 'idem_rev_1',
+        attemptCount: 1,
+        createdAt: '2026-04-15T00:00:00.000Z',
+        updatedAt: '2026-04-15T00:00:15.000Z',
+        startedAt: '2026-04-15T00:00:01.000Z',
+        finishedAt: '2026-04-15T00:00:15.000Z',
+        findings: [
+          {
+            id: 'finding_1',
+            severity: 'high',
+            confidence: 'high',
+            title: 'Fallback path can hang',
+            description: 'A fallback path can leave the request unresolved.',
+            conditions: null,
+            locations: [{ path: 'src/request.ts', line: 48 }],
+            suggestedFix: { kind: 'text', value: 'Normalize terminal transitions.' },
+            evidenceRefs: [],
+          },
+        ],
+        evidence: [],
+        provenance: {
+          sessionIds: ['ses_aggregate'],
+          promptSummary: null,
+        },
+        markdownSummary: null,
+      },
+      activeReview: null,
+      findings: {
+        unresolved: [
+          {
+            id: 'finding_1',
+            severity: 'high',
+            confidence: 'high',
+            title: 'Fallback path can hang',
+            description: 'A fallback path can leave the request unresolved.',
+            conditions: null,
+            locations: [{ path: 'src/request.ts', line: 48 }],
+            suggestedFix: { kind: 'text', value: 'Normalize terminal transitions.' },
+            evidenceRefs: [],
+          },
+        ],
+        resolved: [],
+        all: [],
+      },
+      activity: {
+        sessionId: 'ses_aggregate',
+        phase: 'completed',
+        state: 'terminal',
+        currentReviewStatus: null,
+        activeReviewId: null,
+        latestReviewId: 'rev_1',
+        passCount: 1,
+        summary: 'Nimbus completed the session.',
+        detail: 'Nimbus completed the session.',
+        canStream: false,
+        streamPath: '/api/studio/sessions/ses_aggregate/activity/events',
+        updatedAt: '2026-04-15T00:00:15.000Z',
+      },
+      reviewedDiff: {
+        sessionId: 'ses_aggregate',
+        reviewId: 'rev_1',
+        available: false,
+        status: 'unavailable',
+        reason: 'No reviewed diff.',
+        path: '/api/studio/sessions/ses_aggregate/reviewed-diff',
+        environmentRevision: null,
+      },
+      local: {
+        environments: [],
+        hasAny: false,
+      },
+      capabilities: {
+        active: false,
+        waitingOnHuman: false,
+        terminal: true,
+        canShowReviewedDiff: false,
+        canAdopt: false,
+        canListLocalEnvironments: true,
+        canShowLocalDiff: false,
+        canMergeBack: false,
+      },
+      paths: {
+        self: '/api/studio/sessions/ses_aggregate',
+        activity: '/api/studio/sessions/ses_aggregate/activity',
+        activityEvents: '/api/studio/sessions/ses_aggregate/activity/events',
+        reviewedDiff: '/api/studio/sessions/ses_aggregate/reviewed-diff',
+        localEnvironments: '/api/studio/local-review-sessions?sessionId=ses_aggregate',
+        adopt: '/api/studio/local-review-sessions/ses_aggregate/adopt',
+      },
+      adopt: {
+        available: false,
+        reason: 'No adoptable changes.',
+        path: '/api/studio/local-review-sessions/ses_aggregate/adopt',
+        modes: ['worktree'],
+      },
+    });
+
+    expect(payload.latestReview?.findings[0]?.title).toBe('Fallback path can hang');
+    expect(payload.latestReview?.findings[0]?.locations[0]?.filePath).toBe('src/request.ts');
+    expect(payload.findings.unresolved[0]?.suggestedFix).toBe('Normalize terminal transitions.');
+  });
+
+  it('parses detail payload with outcome metadata', () => {
+    const payload = parseGetReviewSessionResponse({
+      session: {
+        id: 'ses_2',
+        workspaceId: 'ws_2',
+        anchorDeploymentId: 'dep_2',
+        repo: 'acme/web',
+        branch: 'feature-x',
+        initialReviewBasis: 'environment',
+        anchorCommitSha: 'fedcba654321',
+        anchorCheckpointId: null,
+        sourceProjectRoot: '/Users/nickdejesus/Code/nimbus',
+        phase: 'completed',
+        passCount: 2,
+        activeReviewId: null,
+        latestReviewId: 'rev_2',
+        currentReviewStatus: null,
+        stopReason: 'followup_pass_completed',
+        createdAt: '2026-03-01T00:00:00.000Z',
+        updatedAt: '2026-03-01T00:00:05.000Z',
+        finishedAt: '2026-03-01T00:00:05.000Z',
+        passes: [
+          {
+            reviewId: 'rev_1',
+            status: 'succeeded',
+            reviewBasis: 'checkpoint',
+            createdAt: '2026-03-01T00:00:00.000Z',
+            startedAt: '2026-03-01T00:00:01.000Z',
+            finishedAt: '2026-03-01T00:00:02.000Z',
+          },
+          {
+            reviewId: 'rev_2',
+            status: 'succeeded',
+            reviewBasis: 'environment',
+            createdAt: '2026-03-01T00:00:03.000Z',
+            startedAt: '2026-03-01T00:00:03.500Z',
+            finishedAt: '2026-03-01T00:00:05.000Z',
+          },
+        ],
+        outcome: {
+          kind: 'clean',
+          summary: 'No remaining findings after follow-up verification.',
+          residualRisk: 'low',
+          recommendation: 'approve',
+          materializeReady: true,
+          reviewed: {
+            contextMode: 'intent_aware',
+            latestReviewBasis: 'environment',
+            passCount: 2,
+          },
+          changes: {
+            applied: true,
+            remediationCount: 1,
+            changedFileCount: 2,
+            summaries: ['Applied a small null-guard to request parsing.'],
+            environmentRevision: null,
+          },
+          evidence: {
+            passed: 2,
+            failed: 0,
+            warning: 0,
+            info: 1,
+            highlights: [],
+          },
+          unresolved: {
+            findingCount: 0,
+            highestSeverity: null,
+            highlights: [],
+          },
+        },
+      },
+    });
+
+    expect(payload.session.outcome?.materializeReady).toBe(true);
+    expect(payload.session.outcome?.reviewed.latestReviewBasis).toBe('environment');
+    expect(payload.session.outcome?.changes.changedFileCount).toBe(2);
   });
 });

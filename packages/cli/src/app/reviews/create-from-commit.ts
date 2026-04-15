@@ -13,6 +13,7 @@ import {
 } from './context.js';
 import {
   buildStudioReviewRoutePath,
+  buildStudioSessionRoutePath,
   buildIdempotencyKey,
   deriveIdempotencyKey,
   followReviewChain,
@@ -221,12 +222,19 @@ export async function createReviewFromCommitCommand(
   if (options?.openStudio) {
     await startReviewStudioCommand({
       port: options.openStudioPort,
-      routePath: buildStudioReviewRoutePath({
-        reviewId,
-        route: 'reports',
-        repo: resolvedProvenance?.repo,
-        branch: resolvedProvenance?.branch,
-      }),
+      routePath: reviewSessionId
+        ? buildStudioSessionRoutePath({
+            sessionId: reviewSessionId,
+            reviewId,
+            repo: resolvedProvenance?.repo,
+            branch: resolvedProvenance?.branch,
+          })
+        : buildStudioReviewRoutePath({
+            reviewId,
+            route: 'reports',
+            repo: resolvedProvenance?.repo,
+            branch: resolvedProvenance?.branch,
+          }),
       detach: true,
     });
   }
