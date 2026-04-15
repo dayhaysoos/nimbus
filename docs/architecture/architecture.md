@@ -16,6 +16,7 @@ Then use the narrower docs only when you need product-planning or subsystem-spec
 
 - `docs/modules/*` for deep dives into a specific subsystem
 - `docs/architecture/review-session-pivot.md` for the active session-based review redesign direction
+- `docs/architecture/review-session-implementation-handoff.md` for the current implementation-state handoff, validated CLI/session behavior, and next-step UI guidance
 - `docs/architecture/review-studio-experience.md` for the locked Review Studio product spec
 - `docs/architecture/review-studio-implementation-plan.md` for current Review Studio slice status, shipped work, and next-slice guidance
 - `docs/architecture/review-studio-experience-build-plan.md` for historical Review Studio planning context
