@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "aefd63810e30",
+  "session_id": "ses_2705f0149ffeQbH0MjytSESaGT",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-15T20:44:31.570324Z",
+  "branch": "feat/review-experience-ui",
+  "checkpoints_count": 0,
+  "files_touched": [
+    "packages/cli/src/lib/types.ts",
+    "packages/report-ui/src/components/ReviewSessionPage.tsx",
+    "packages/report-ui/src/lib/review.ts",
+    "packages/worker/src/lib/review-runner/deployment-report/output.ts",
+    "packages/worker/src/lib/review-runner/session-finding-memory.ts",
+    "packages/worker/src/lib/review-runner/session-remediation.ts",
+    "packages/worker/src/types.ts",
+    "packages/worker/src/api/reviews/request-shared.ts",
+    "packages/worker/test/lib/review-session-remediation.test.ts",
+    "packages/report-ui/src/components/ReviewSessionPage.test.tsx",
+    "packages/report-ui/src/types.ts",
+    "packages/worker/src/lib/db/review-sessions.ts",
+    "packages/worker/src/lib/review-runner/session-remediation-followup.ts",
+    "packages/worker/src/lib/review-session-pass.ts",
+    "packages/report-ui/src/styles.css",
+    "packages/worker/src/lib/review-runner/deployment-report/provenance.ts"
+  ],
+  "agent": "OpenCode",
+  "model": "gpt-5.3-codex",
+  "turn_id": "641c4a104dea",
+  "initial_attribution": {
+    "calculated_at": "2026-04-15T20:44:31.568394Z",
+    "agent_lines": 925,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 925,
+    "agent_percentage": 100
+  }
+}
