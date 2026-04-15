@@ -1,9 +1,1 @@
-yes make a demo safe change. And to be clear, would I be able to run this multiple times? I want to run it, adopt and all that, then undo before my meeting and run it again. is that possible?
-
----
-
-give me those commands. I'm about to test right now
-
----
-
 It didn't find anything fixable. Can you make random changes that are guaranteed to be considered bad? I really need to see this through.
