@@ -257,9 +257,6 @@ function normalizeSessionFindingMemory(value: unknown): Record<string, unknown> 
     typeof value.sourcePassIndex === 'number' && Number.isFinite(value.sourcePassIndex)
       ? Math.max(1, Math.min(20, Math.floor(value.sourcePassIndex)))
       : 1;
-  if (!remediationSourceReviewId) {
-    return undefined;
-  }
   const normalizeEntries = (entries: unknown): Array<Record<string, unknown>> =>
     Array.isArray(entries)
       ? entries
@@ -306,14 +303,29 @@ function normalizeSessionFindingMemory(value: unknown): Record<string, unknown> 
           .slice(0, 8)
       : [];
 
+  const sourceOpenFindings = normalizeEntries(value.sourceOpenFindings);
+  const remediationTargets = normalizeEntries(value.remediationTargets);
+  const repeatedTargets = normalizeEntries(value.repeatedTargets);
+  const previouslyResolvedFindings = normalizeEntries(value.previouslyResolvedFindings);
+
+  const hasAnyEntries =
+    sourceOpenFindings.length > 0 ||
+    remediationTargets.length > 0 ||
+    repeatedTargets.length > 0 ||
+    previouslyResolvedFindings.length > 0;
+
+  if (!remediationSourceReviewId && !hasAnyEntries) {
+    return undefined;
+  }
+
   return {
     schema: 'v1',
     remediationSourceReviewId,
     sourcePassIndex,
-    sourceOpenFindings: normalizeEntries(value.sourceOpenFindings),
-    remediationTargets: normalizeEntries(value.remediationTargets),
-    repeatedTargets: normalizeEntries(value.repeatedTargets),
-    previouslyResolvedFindings: normalizeEntries(value.previouslyResolvedFindings),
+    sourceOpenFindings,
+    remediationTargets,
+    repeatedTargets,
+    previouslyResolvedFindings,
   };
 }
 

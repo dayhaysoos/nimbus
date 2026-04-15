@@ -177,11 +177,18 @@ function isMemoryEntry(value: unknown): value is SessionFindingMemoryEntry {
   );
 }
 
+function isValidFingerprint(f: string): boolean {
+  return f.split('|').length === 4;
+}
+
 function normalizeMemoryEntries(value: unknown): SessionFindingMemoryEntry[] {
   if (!Array.isArray(value)) {
     return [];
   }
-  return value.filter(isMemoryEntry).slice(0, MAX_MEMORY_ENTRIES);
+  return value
+    .filter(isMemoryEntry)
+    .filter((e) => isValidFingerprint(e.fingerprint))
+    .slice(0, MAX_MEMORY_ENTRIES);
 }
 
 export function readSessionFindingMemory(value: unknown): SessionFindingMemory | null {
