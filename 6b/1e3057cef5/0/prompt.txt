@@ -1,0 +1,43 @@
+It didn't find anything fixable. Can you make random changes that are guaranteed to be considered bad? I really need to see this through.
+
+---
+
+it's remediating which is great! question, instead of doing any git resets or anything, couldn't you just delete the last review that was made or something and it'll start over fresh? Just answer the question, don't do it
+
+---
+
+can you delete this so I can test it out again? session_3ssnixws
+
+---
+
+where are the wrangler files?
+
+---
+
+this seems to be stuck: ss
+Analysis Tool Executed
+Tool: search_code
+
+progress
+Analysis Tool Executed
+Tool: read_batch
+
+progress
+Analysis Provider Request Started
+Analysis Provider Request Started
+
+status
+Retry Scheduled
+Retry Scheduled
+
+status
+Review snapshot
+Review review_a9kwr58l is queued.
+
+---
+
+it's basically broken. It should be hard failing at this point
+
+---
+
+Can you fix this? Here's the session: session_gmh9ts7j Delete it if you have to.
