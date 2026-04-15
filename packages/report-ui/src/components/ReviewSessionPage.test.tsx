@@ -801,8 +801,10 @@ describe('ReviewSessionPage', () => {
       },
     });
 
-    expect(await screen.findByRole('heading', { name: 'Findings materializing during the current session' })).toBeInTheDocument();
-    expect(screen.getByText('Fallback request can hang')).toBeInTheDocument();
-    expect(screen.getByText('src/request.ts:48')).toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Live review console' })).toBeInTheDocument();
+    expect(
+      screen.getByText(/Fallback request can hang \(src\/request\.ts:48\) — A fallback path can leave the request unresolved\./)
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Findings materializing during the current session' })).not.toBeInTheDocument();
   });
 });

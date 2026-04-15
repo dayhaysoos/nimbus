@@ -6,6 +6,29 @@ import { asRecord, mergeProvenance, parseStringArray, readOptionalString, unique
 import { ReviewContextAssemblyError } from '../cochange.js';
 import { LARGE_DIFF_ADVISORY_THRESHOLD, parseBoolean, parsePositiveInteger } from './shared.js';
 
+function formatFindingMemoryEntry(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null;
+  }
+  const entry = value as Record<string, unknown>;
+  if (typeof entry.description !== 'string' || !entry.description.trim()) {
+    return null;
+  }
+  const filePath = typeof entry.filePath === 'string' && entry.filePath.trim() ? entry.filePath.trim() : null;
+  const startLine =
+    typeof entry.startLine === 'number' && Number.isFinite(entry.startLine) && entry.startLine > 0
+      ? Math.floor(entry.startLine)
+      : null;
+  return `${entry.description.trim()}${filePath ? ` (${filePath}${startLine ? `:${startLine}` : ''})` : ''}`;
+}
+
+function readFindingMemoryList(value: unknown, limit = 4): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => formatFindingMemoryEntry(entry)).filter((entry): entry is string => Boolean(entry)).slice(0, limit);
+}
+
 /**
  * Collects provenance, policy, and prompt-history inputs needed to build a deployment review report.
  */
@@ -108,6 +131,11 @@ export async function buildDeploymentReportInputs(
       ? [`Large diff detected (${reviewContextFilesConsidered} files). Consider smaller, focused commits for higher quality reviews.`]
       : [];
   const reviewBasis = payload.reviewBasis === 'environment' ? 'environment' : 'checkpoint';
+  const sessionFindingMemory = asRecord(requestProvenance.sessionFindingMemory);
+  const remediationTargetSummaries = readFindingMemoryList(sessionFindingMemory.remediationTargets, 6);
+  const repeatedTargetSummaries = readFindingMemoryList(sessionFindingMemory.repeatedTargets, 4);
+  const previouslyResolvedSummaries = readFindingMemoryList(sessionFindingMemory.previouslyResolvedFindings, 4);
+  const hasRemediationFindingMemory = remediationTargetSummaries.length > 0;
 
   const baseGoal =
     typeof provenanceTask?.prompt === 'string' && provenanceTask.prompt.trim()
@@ -115,7 +143,9 @@ export async function buildDeploymentReportInputs(
       : typeof requestProvenance.note === 'string' && requestProvenance.note.trim()
         ? requestProvenance.note.trim()
         : reviewBasis === 'environment'
-          ? `Assess the current mutable workspace state for session ${review.sessionId ?? 'unknown'} against the anchor deployment ${review.deploymentId}.`
+          ? hasRemediationFindingMemory
+            ? `Verify whether the latest remediation for session ${review.sessionId ?? 'unknown'} actually resolved the targeted findings in the current workspace state.`
+            : `Assess the current mutable workspace state for session ${review.sessionId ?? 'unknown'} against the anchor deployment ${review.deploymentId}.`
           : reviewContextMode === 'basic'
             ? `Assess workspace deployment ${review.deploymentId} for correctness and regressions using the diff, changed files, and repository conventions only.`
             : `Assess workspace deployment ${review.deploymentId} for review-first handoff readiness.`;
@@ -131,6 +161,12 @@ export async function buildDeploymentReportInputs(
     reviewContextMode === 'basic'
       ? 'Entire intent context was unavailable for this review; product intent must not be inferred beyond code and validation evidence.'
       : 'Entire intent context was available for this review.',
+    hasRemediationFindingMemory
+      ? 'This is a remediation follow-up review. Treat targeted findings as verification targets; do not restate them as novel unless they are still present in the remediated workspace.'
+      : '',
+    previouslyResolvedSummaries.length > 0
+      ? 'Earlier session findings were already resolved in prior passes. Only mention them again if the current workspace truly reintroduced them.'
+      : '',
   ];
   const baseDecisions = [
     reviewBasis === 'environment'
@@ -148,6 +184,18 @@ export async function buildDeploymentReportInputs(
       : '',
     intentSessionContext.length > 0 ? `Prompt-history context excerpts provided: ${intentSessionContext.length}.` : '',
     reviewContextMode === 'basic' ? 'Review context mode: basic code-aware review.' : 'Review context mode: Entire intent-aware review.',
+    hasRemediationFindingMemory
+      ? `Remediation verification targets: ${remediationTargetSummaries.join('; ')}.`
+      : '',
+    repeatedTargetSummaries.length > 0
+      ? `Persistent targets from earlier passes: ${repeatedTargetSummaries.join('; ')}.`
+      : '',
+    previouslyResolvedSummaries.length > 0
+      ? `Previously resolved session findings: ${previouslyResolvedSummaries.join('; ')}.`
+      : '',
+    hasRemediationFindingMemory
+      ? 'If a targeted finding remains, call it out as persisting after remediation. If it disappeared, treat that as resolved and focus on any remaining or new issues.'
+      : '',
   ];
   const promptGoal = approvedPolicy?.goal?.trim() || provenanceTask?.prompt?.trim() || baseGoal;
   const promptConstraints = approvedPolicy ? Array.from(new Set([...approvedPolicy.constraints, ...baseConstraints])) : baseConstraints;

@@ -136,6 +136,7 @@ function readStopReason(value: unknown): ReviewSessionResponse['stopReason'] {
     value === 'risky_fix_requires_approval' ||
     value === 'no_safe_fixes' ||
     value === 'no_progress' ||
+    value === 'no_progress_after_remediation' ||
     value === 'max_repair_cycles_reached' ||
     value === 'auto_remediation_failed' ||
     value === 'cancelled'

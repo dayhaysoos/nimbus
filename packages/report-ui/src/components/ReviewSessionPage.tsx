@@ -54,6 +54,14 @@ interface StreamedFinding {
   location: string | null;
 }
 
+interface ActivityConsoleEntry {
+  id: string;
+  kind: StudioSessionActivityEntry['kind'] | 'snapshot';
+  createdAt: string | null;
+  passIndex: number | null;
+  line: string;
+}
+
 function buildSessionPath(session: Pick<ReviewSessionResponse, 'id' | 'repo' | 'branch'>): string {
   return `/branches/${encodeURIComponent(session.repo)}/${encodeURIComponent(session.branch)}/sessions/${encodeURIComponent(
     session.id
@@ -252,6 +260,64 @@ function groupEventsByReview(events: StudioSessionActivityEntry[]): Map<string, 
   return grouped;
 }
 
+function formatActivityConsoleTime(value: string | null): string {
+  if (!value) {
+    return '--:--:--';
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+  return date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  });
+}
+
+function activityConsoleKindLabel(kind: ActivityConsoleEntry['kind']): string {
+  if (kind === 'snapshot') {
+    return 'snapshot';
+  }
+  return kind.replace(/_/g, ' ');
+}
+
+function buildActivityConsoleEntry(event: StudioSessionActivityEntry, index: number): ActivityConsoleEntry {
+  const finding = buildStreamedFinding(event, index);
+  const line = finding
+    ? `${finding.title}${finding.location ? ` (${finding.location})` : ''}${finding.description !== finding.title ? ` — ${finding.description}` : ''}`
+    : event.detail.trim() === event.label.trim()
+      ? event.detail
+      : `${event.label}: ${event.detail}`;
+  return {
+    id: `${event.reviewId}-${event.seq ?? index}-${event.rawType}-${index}`,
+    kind: event.kind,
+    createdAt: event.createdAt,
+    passIndex: event.passIndex,
+    line,
+  };
+}
+
+function buildActivitySnapshotEntry(activity: StudioSessionActivitySnapshot | null): ActivityConsoleEntry {
+  if (!activity) {
+    return {
+      id: 'snapshot-empty',
+      kind: 'snapshot',
+      createdAt: null,
+      passIndex: null,
+      line: 'Waiting for session activity.',
+    };
+  }
+  return {
+    id: `snapshot-${activity.updatedAt}-${activity.state}-${activity.currentReviewStatus ?? 'none'}`,
+    kind: 'snapshot',
+    createdAt: activity.updatedAt,
+    passIndex: activity.passCount > 0 ? Math.max(0, activity.passCount - 1) : null,
+    line: activity.detail,
+  };
+}
+
 function FindingList(props: {
   title: string;
   findings: ReviewFinding[];
@@ -300,6 +366,7 @@ function FindingList(props: {
 export function ReviewSessionPage(): JSX.Element {
   const { sessionId } = useParams();
   const streamRef = useRef<EventSource | null>(null);
+  const activityConsoleRef = useRef<HTMLDivElement | null>(null);
   const [aggregate, setAggregate] = useState<StudioSessionAggregateResponse | null>(null);
   const [activity, setActivity] = useState<StudioSessionActivitySnapshot | null>(null);
   const [events, setEvents] = useState<StudioSessionActivityEntry[]>([]);
@@ -444,13 +511,6 @@ export function ReviewSessionPage(): JSX.Element {
   const currentActivity = activity ?? aggregate?.activity ?? null;
   const reviewsById = useMemo(() => new Map((aggregate?.reviews ?? []).map((review) => [review.id, review])), [aggregate?.reviews]);
   const eventsByReview = useMemo(() => groupEventsByReview(events), [events]);
-  const streamedFindings = useMemo(
-    () =>
-      events
-        .map((event, index) => buildStreamedFinding(event, index))
-        .filter((finding): finding is StreamedFinding => Boolean(finding)),
-    [events]
-  );
   const contextMode = resolveContextMode(aggregate);
   const latestReview = aggregate?.latestReview ?? null;
   const activeReview = aggregate?.activeReview ?? null;
@@ -463,6 +523,28 @@ export function ReviewSessionPage(): JSX.Element {
     () => (aggregate?.findings.resolved ?? []).map((entry) => entry.finding),
     [aggregate?.findings.resolved]
   );
+  const activityConsoleEntries = useMemo(() => {
+    const liveEntries = events.map((event, index) => buildActivityConsoleEntry(event, index));
+    const snapshotEntry = buildActivitySnapshotEntry(currentActivity);
+    if (liveEntries.length === 0) {
+      return [snapshotEntry];
+    }
+    if (isTerminal || isWaitingOnHuman) {
+      const lastEntry = liveEntries[liveEntries.length - 1];
+      if (lastEntry.line !== snapshotEntry.line || lastEntry.kind !== snapshotEntry.kind) {
+        return [...liveEntries, snapshotEntry];
+      }
+    }
+    return liveEntries;
+  }, [currentActivity, events, isTerminal, isWaitingOnHuman]);
+
+  useEffect(() => {
+    const consoleNode = activityConsoleRef.current;
+    if (!consoleNode) {
+      return;
+    }
+    consoleNode.scrollTop = consoleNode.scrollHeight;
+  }, [activityConsoleEntries.length, currentActivity?.updatedAt]);
 
   const handleApprovePolicy = useCallback(async () => {
     if (!activeReview) {
@@ -705,33 +787,44 @@ export function ReviewSessionPage(): JSX.Element {
         </motion.section>
       ) : null}
 
-      {streamedFindings.length > 0 && !isTerminal ? (
-        <section className="flow-section">
-          <div className="section-header">
+      <section className="flow-section">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Session activity</p>
+            <h2>Live review console</h2>
+          </div>
+        </div>
+        <div className="activity-console-card">
+          <div className="activity-console-toolbar">
             <div>
-              <p className="eyebrow">Live findings</p>
-              <h2>Findings materializing during the current session</h2>
+              <strong>Review stream</strong>
+              <p className="panel-subtle">
+                {currentActivity.canStream && !isTerminal
+                  ? 'New SSE events stream into this pane. Scroll stays inside the console, not the page.'
+                  : 'Recent session output for this browser session.'}
+              </p>
+            </div>
+            <div className="activity-console-toolbar-meta">
+              <span>{activityConsoleEntries.length} line(s)</span>
+              <span className={`status-pill ${currentActivity.canStream && !isTerminal ? 'live' : 'muted'}`}>
+                {currentActivity.canStream && !isTerminal ? 'live tail' : 'snapshot'}
+              </span>
             </div>
           </div>
-          <div className="finding-list">
-            {streamedFindings.map((finding) => (
-              <motion.article
-                key={finding.id}
-                className="finding-card"
-                initial={{ opacity: 0, y: 12 }}
-                animate={{ opacity: 1, y: 0 }}
-              >
-                <div className="finding-header">
-                  <span className={severityClass(finding.severity)}>{finding.severity}</span>
-                  {finding.location ? <span className="finding-location">{finding.location}</span> : null}
+          <div className="activity-console-window" ref={activityConsoleRef} aria-live="polite">
+            {activityConsoleEntries.map((entry) => (
+              <div key={entry.id} className={`activity-console-line ${entry.kind}`}>
+                <div className="activity-console-meta">
+                  <span>{formatActivityConsoleTime(entry.createdAt)}</span>
+                  {entry.passIndex !== null ? <span>{`pass ${entry.passIndex + 1}`}</span> : null}
+                  <span>{activityConsoleKindLabel(entry.kind)}</span>
                 </div>
-                <strong>{finding.title}</strong>
-                <p>{finding.description}</p>
-              </motion.article>
+                <div className="activity-console-body">{entry.line}</div>
+              </div>
             ))}
           </div>
-        </section>
-      ) : null}
+        </div>
+      </section>
 
       <section className="flow-section">
         <div className="section-header">
@@ -798,29 +891,11 @@ export function ReviewSessionPage(): JSX.Element {
                         </div>
                       ) : null}
 
-                      {passEvents.length ? (
-                        <ol className="timeline-list">
-                          {passEvents.map((event, eventIndex) => (
-                            <motion.li
-                              key={`${event.reviewId}-${event.seq ?? eventIndex}-${event.rawType}`}
-                              className="timeline-item"
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: Math.min(eventIndex * 0.02, 0.14) }}
-                            >
-                              <span className={`timeline-state ${event.kind === 'finding' ? 'warning' : 'completed'}`}>
-                                {event.kind}
-                              </span>
-                              <div>
-                                <strong>{event.label}</strong>
-                                <p>{event.detail}</p>
-                              </div>
-                            </motion.li>
-                          ))}
-                        </ol>
-                      ) : (
-                        <div className="empty-card">Nimbus has not streamed live events for this pass in this browser session yet.</div>
-                      )}
+                      <div className="pass-stream-note">
+                        {passEvents.length
+                          ? `${passEvents.length} streamed event(s) for this pass are shown in the live review console above.`
+                          : 'Nimbus has not streamed live events for this pass in this browser session yet.'}
+                      </div>
                     </motion.div>
                   ) : null}
                 </AnimatePresence>

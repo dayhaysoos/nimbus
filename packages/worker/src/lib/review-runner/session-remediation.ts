@@ -1,17 +1,25 @@
-import type { Env, ReviewFinding, ReviewReport, ReviewRunResponse, ReviewSessionStopReason } from '../../types.js';
+import type { Env, ReviewFinding, ReviewReport, ReviewRunRecord, ReviewRunResponse, ReviewSessionFindingMemory, ReviewSessionStopReason } from '../../types.js';
 import {
   appendReviewEvent,
   appendWorkspaceTaskEvent,
   createWorkspaceTask,
   finalizeReviewSession,
   generateWorkspaceTaskId,
+  getReviewRunRequestPayload,
   getReviewSession,
   getWorkspace,
 } from '../db.js';
+import { toReviewRunResponse } from '../db/reviews/shared.js';
 import { loadRuntimeFlags } from '../flags.js';
 import { captureWorkspaceEnvironmentSnapshot } from './environment.js';
 import { runWorkspaceTaskInlineWithRetries } from '../workspace-task-runner.js';
 import { readWorkspaceFilesFromSandbox } from '../review-analysis.js';
+import {
+  buildSessionFindingMemory,
+  deriveSessionFindingProgress,
+  readSessionFindingMemory,
+  type SessionFindingMemoryEntry,
+} from './session-finding-memory.js';
 import { buildReviewSessionRemediationTaskPayload, continueReviewSessionAfterRemediationTask } from './session-remediation-followup.js';
 import { createWorkspaceTaskQueueMessage } from '../workspace-task-queue.js';
 
@@ -67,6 +75,7 @@ function buildRemediationPrompt(input: {
   safeFindings: ReviewFinding[];
   riskyFindingCount: number;
   fileSnapshots: Array<{ path: string; content: string | null; truncated: boolean }>;
+  findingMemory?: ReviewSessionFindingMemory | null;
 }): string {
   const lines: string[] = [
     'Apply the smallest safe code changes needed to address the review findings below.',
@@ -82,6 +91,24 @@ function buildRemediationPrompt(input: {
 
   if (input.riskyFindingCount > 0) {
     lines.push(`Separate risky findings remain unresolved: ${input.riskyFindingCount}. Do not attempt those.`);
+  }
+
+  if (input.findingMemory?.repeatedTargets.length) {
+    lines.push(
+      `Persistent targets from earlier session passes: ${input.findingMemory.repeatedTargets.length}. Treat these as still-unresolved bugs that need a concrete code fix, not a superficial rewrite.`
+    );
+    for (const entry of input.findingMemory.repeatedTargets) {
+      lines.push(`- Persistent target: ${formatFindingMemoryEntry(entry)}`);
+    }
+  }
+
+  if (input.findingMemory?.previouslyResolvedFindings.length) {
+    lines.push(
+      `Previously resolved session findings to avoid reintroducing: ${input.findingMemory.previouslyResolvedFindings.length}.`
+    );
+    for (const entry of input.findingMemory.previouslyResolvedFindings.slice(0, 4)) {
+      lines.push(`- Avoid regression: ${formatFindingMemoryEntry(entry)}`);
+    }
   }
 
   for (const [index, finding] of input.safeFindings.entries()) {
@@ -125,6 +152,29 @@ function buildRemediationPrompt(input: {
   lines.push('');
   lines.push('When finished, return a concise summary of what changed.');
   return lines.join('\n');
+}
+
+function formatFindingMemoryEntry(entry: SessionFindingMemoryEntry): string {
+  const location = entry.filePath ? `${entry.filePath}${entry.startLine ? `:${entry.startLine}` : ''}` : 'unknown location';
+  return `${entry.description} (${location}, seen ${entry.occurrenceCount} time${entry.occurrenceCount === 1 ? '' : 's'})`;
+}
+
+async function listSessionReviewHistory(db: D1Database, sessionId: string): Promise<ReviewRunResponse[]> {
+  const passRows = await db
+    .prepare(
+      `SELECT *
+       FROM review_runs
+       WHERE session_id = ?
+       ORDER BY created_at ASC, id ASC`
+    )
+    .bind(sessionId)
+    .all<ReviewRunRecord>();
+
+  return passRows.results.map((record) => toReviewRunResponse(record));
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
 }
 
 async function sha256Hex(input: string): Promise<string> {
@@ -252,6 +302,30 @@ export async function continueReviewSessionAfterSuccessfulPass(
       return { nextReviewId: null };
     }
 
+    const currentRequestPayload = await getReviewRunRequestPayload(env.DB, review.id);
+    const currentRequestProvenance = asRecord(currentRequestPayload?.provenance);
+    const currentFindingMemory = readSessionFindingMemory(currentRequestProvenance.sessionFindingMemory);
+    if (currentFindingMemory) {
+      const findingProgress = deriveSessionFindingProgress(currentFindingMemory, report.findings);
+      if (findingProgress.noProgressAfterRemediation) {
+        terminalStopReasonApplied = (await finalizeIfCurrent('no_progress_after_remediation')) || terminalStopReasonApplied;
+        await appendReviewEventBestEffort(env, {
+          reviewId: review.id,
+          eventType: 'review_auto_remediation_skipped',
+          payload: {
+            reason: 'no_progress_after_remediation',
+            remediationSourceReviewId: currentFindingMemory.remediationSourceReviewId,
+            remediationTargetCount: findingProgress.remediationTargetCount,
+            repeatedTargetCount: findingProgress.repeatedTargetCount,
+            resolvedTargetCount: findingProgress.resolvedTargetCount,
+            currentFindingCount: findingProgress.currentFindingCount,
+            newFindingCount: findingProgress.newFindingCount,
+          },
+        });
+        return { nextReviewId: null };
+      }
+    }
+
     const followUpReviewScore = readFollowUpReviewScore(report);
     const safeFindings = report.findings.filter(isSafeAutoFixFinding);
     const stopReason = resolveStopReason({
@@ -326,15 +400,34 @@ export async function continueReviewSessionAfterSuccessfulPass(
         content:
           entry.truncated || (entry.content ?? '').length > MAX_REMEDIATION_FILE_CHARS
             ? null
-            : (entry.content ?? ''),
+          : (entry.content ?? ''),
         truncated: entry.truncated || (entry.content ?? '').length > MAX_REMEDIATION_FILE_CHARS,
       }));
+
+    let findingMemory: ReviewSessionFindingMemory | null = null;
+    try {
+      const sessionReviews = await listSessionReviewHistory(env.DB, session.id);
+      const existingReviewIndex = sessionReviews.findIndex((entry) => entry.id === review.id);
+      if (existingReviewIndex >= 0) {
+        sessionReviews[existingReviewIndex] = review;
+      } else {
+        sessionReviews.push(review);
+      }
+      findingMemory = buildSessionFindingMemory({
+        sessionReviews,
+        remediationSourceReviewId: review.id,
+        remediationTargets: safeFindings,
+      });
+    } catch {
+      findingMemory = null;
+    }
 
     const prompt = buildRemediationPrompt({
       reviewId: review.id,
       safeFindings,
       riskyFindingCount: report.findings.filter((finding) => !safeFindings.includes(finding)).length,
       fileSnapshots,
+      findingMemory,
     });
     const preTaskWorkspaceSnapshot = await captureWorkspaceEnvironmentSnapshot(env, {
       id: session.workspaceId,
@@ -357,6 +450,7 @@ export async function continueReviewSessionAfterSuccessfulPass(
       sessionId: session.id,
       sourceReviewId: review.id,
       preTaskEnvironmentRevision: preTaskWorkspaceSnapshot.revision,
+      findingMemory,
     });
     const createdTask = await createWorkspaceTask(env.DB, {
       id: generateWorkspaceTaskId(),

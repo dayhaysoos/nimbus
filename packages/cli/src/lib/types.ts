@@ -327,6 +327,7 @@ export type ReviewSessionStopReason =
   | 'risky_fix_requires_approval'
   | 'no_safe_fixes'
   | 'no_progress'
+  | 'no_progress_after_remediation'
   | 'max_repair_cycles_reached'
   | 'auto_remediation_failed'
   | 'cancelled';

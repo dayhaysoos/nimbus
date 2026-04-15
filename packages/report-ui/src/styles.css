@@ -401,6 +401,104 @@ pre {
   gap: 0.7rem;
 }
 
+.activity-console-card {
+  border: 1px solid rgba(20, 16, 12, 0.55);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, rgba(24, 19, 14, 0.98), rgba(16, 13, 10, 0.98));
+  box-shadow: var(--shadow);
+  color: #f7eddf;
+  overflow: hidden;
+}
+
+.activity-console-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: flex-start;
+  padding: 0.78rem 0.9rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.activity-console-toolbar strong {
+  display: block;
+  margin-bottom: 0.18rem;
+}
+
+.activity-console-toolbar .panel-subtle {
+  color: rgba(232, 218, 197, 0.72);
+}
+
+.activity-console-toolbar-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+  color: rgba(232, 218, 197, 0.72);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.activity-console-window {
+  max-height: 21rem;
+  min-height: 14rem;
+  overflow: auto;
+  padding: 0.5rem 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  scroll-behavior: smooth;
+}
+
+.activity-console-line {
+  display: grid;
+  grid-template-columns: minmax(10rem, auto) minmax(0, 1fr);
+  gap: 0.8rem;
+  align-items: flex-start;
+  padding: 0.34rem 0.2rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-family: "SFMono-Regular", "SF Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.activity-console-line:last-child {
+  border-bottom: 0;
+}
+
+.activity-console-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.38rem;
+  color: rgba(232, 218, 197, 0.62);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.activity-console-body {
+  min-width: 0;
+  color: #f7eddf;
+  word-break: break-word;
+}
+
+.activity-console-line.finding .activity-console-body {
+  color: #ffdbab;
+}
+
+.activity-console-line.remediation .activity-console-body {
+  color: #d6f6e2;
+}
+
+.activity-console-line.terminal .activity-console-body,
+.activity-console-line.snapshot .activity-console-body {
+  color: #fff8ef;
+}
+
+.activity-console-line.policy .activity-console-body {
+  color: #d5e6ff;
+}
+
 .timeline-list,
 .finding-list,
 .pass-stack,
@@ -493,6 +591,16 @@ pre {
   display: flex;
   flex-direction: column;
   gap: 0.38rem;
+}
+
+.pass-stream-note {
+  padding: 0.72rem 0.82rem;
+  border: 1px solid rgba(31, 26, 20, 0.08);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.62);
+  color: var(--muted);
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .inline-findings ul {
@@ -595,6 +703,21 @@ pre {
   .inline-session-card {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .activity-console-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .activity-console-window {
+    min-height: 12rem;
+    max-height: 18rem;
+  }
+
+  .activity-console-line {
+    grid-template-columns: 1fr;
+    gap: 0.25rem;
   }
 
   .timeline-item {

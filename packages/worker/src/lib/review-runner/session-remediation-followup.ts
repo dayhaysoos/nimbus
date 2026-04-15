@@ -4,6 +4,7 @@ import type {
   ReviewEnvironmentRevision,
   ReviewReport,
   ReviewRunResponse,
+  ReviewSessionFindingMemory,
   ReviewSessionStopReason,
 } from '../../types.js';
 import {
@@ -20,12 +21,14 @@ import { createReviewQueueMessage } from '../review-queue.js';
 import { createReviewSessionPass } from '../review-session-pass.js';
 import { readOptionalNumber, readOptionalString } from './context-helpers.js';
 import { captureWorkspaceEnvironmentSnapshot } from './environment.js';
+import { readSessionFindingMemory } from './session-finding-memory.js';
 
 interface ReviewSessionRemediationTaskPayload {
   type: 'review_session';
   sessionId: string;
   sourceReviewId: string;
   preTaskEnvironmentRevision: ReviewEnvironmentRevision;
+  findingMemory: ReviewSessionFindingMemory | null;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {
@@ -87,6 +90,7 @@ function readRemediationTaskPayload(value: Record<string, unknown> | null): Revi
       changedFileCount: Math.max(0, Math.floor(revision.changedFileCount)),
       generatedAt: revision.generatedAt.trim(),
     },
+    findingMemory: readSessionFindingMemory(remediation.findingMemory),
   };
 }
 
@@ -258,6 +262,7 @@ export function buildReviewSessionRemediationTaskPayload(input: {
   sessionId: string;
   sourceReviewId: string;
   preTaskEnvironmentRevision: ReviewEnvironmentRevision;
+  findingMemory?: ReviewSessionFindingMemory | null;
 }): Record<string, unknown> {
   return {
     prompt: input.prompt,
@@ -270,6 +275,7 @@ export function buildReviewSessionRemediationTaskPayload(input: {
       sessionId: input.sessionId,
       sourceReviewId: input.sourceReviewId,
       preTaskEnvironmentRevision: input.preTaskEnvironmentRevision,
+      findingMemory: input.findingMemory ?? null,
     },
   };
 }
@@ -412,6 +418,7 @@ export async function continueReviewSessionAfterRemediationTask(
       trigger: 'session_auto_remediation',
       remediationSourceReviewId: remediation.sourceReviewId,
       remediationTaskId: task.id,
+      ...(remediation.findingMemory ? { sessionFindingMemory: remediation.findingMemory } : {}),
       ...(followupLocalCochange ? { localCochange: followupLocalCochange } : {}),
       remediationTaskSummary:
         task.result &&

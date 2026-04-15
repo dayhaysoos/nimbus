@@ -377,6 +377,9 @@ function summarizeOutcomeText(input: {
       if (input.stopReason === 'no_progress') {
         return 'Nimbus stopped because remediation did not materially change the workspace state.';
       }
+      if (input.stopReason === 'no_progress_after_remediation') {
+        return 'Nimbus stopped because the follow-up pass reproduced the same targeted findings after remediation.';
+      }
       if (input.stopReason === 'max_repair_cycles_reached') {
         return 'Nimbus stopped after reaching the configured remediation budget.';
       }
