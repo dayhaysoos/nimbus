@@ -1,0 +1,144 @@
+.launch-shell {
+  max-width: 700px;
+  padding-top: 0.85rem;
+  gap: 0.6rem;
+}
+
+.launch-panel {
+  gap: 0.72rem;
+  padding: 0.92rem 0.96rem;
+  border-radius: 6px;
+}
+
+.launch-control-panel {
+  display: grid;
+  gap: 0.68rem;
+}
+
+.launch-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 2vw, 1.56rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.launch-subline {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.9rem;
+  letter-spacing: 0.02em;
+  opacity: 0.92;
+}
+
+.launch-state-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.9rem;
+}
+
+.launch-status {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 0.94rem;
+  font-weight: 700;
+  letter-spacing: 0;
+  text-transform: none;
+  border: 0;
+}
+
+.launch-status.checking,
+.launch-status.starting {
+  color: var(--brand);
+}
+
+.launch-status.ready {
+  color: var(--success);
+}
+
+.launch-status.basic {
+  color: var(--warning);
+}
+
+.launch-status.blocked {
+  color: var(--danger);
+}
+
+.launch-primary-button {
+  padding: 0.62rem 0.92rem;
+  font-size: 0.94rem;
+  white-space: nowrap;
+}
+
+.launch-signal-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+}
+
+.launch-signal {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.52rem;
+  padding: 0.52rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: rgba(24, 24, 24, 0.94);
+}
+
+.launch-signal span {
+  color: var(--muted);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.launch-signal strong {
+  font-size: 0.86rem;
+  letter-spacing: 0.01em;
+}
+
+.launch-signal.ready {
+  border-color: rgba(22, 101, 52, 0.18);
+}
+
+.launch-signal.basic {
+  border-color: rgba(180, 83, 9, 0.2);
+}
+
+.launch-signal.blocked {
+  border-color: rgba(185, 28, 28, 0.2);
+}
+
+.launch-inline-note {
+  margin: 0;
+  color: #d6b89c;
+  font-size: 0.9rem;
+  line-height: 1.48;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid rgba(185, 132, 79, 0.16);
+  border-radius: 4px;
+  background: rgba(185, 132, 79, 0.05);
+}
+
+.launch-progress {
+  border: 1px solid var(--border);
+  background: rgba(24, 24, 24, 0.9);
+  border-radius: 6px;
+}
+
+@media (max-width: 860px) {
+  .launch-shell {
+    padding-top: 0.6rem;
+  }
+
+  .launch-state-actions,
+  .launch-signal-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

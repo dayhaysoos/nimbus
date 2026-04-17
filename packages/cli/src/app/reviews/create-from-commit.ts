@@ -12,7 +12,6 @@ import {
   type ReviewContextFlowOverrides,
 } from './context.js';
 import {
-  buildStudioReviewRoutePath,
   buildStudioSessionRoutePath,
   buildIdempotencyKey,
   deriveIdempotencyKey,
@@ -222,15 +221,9 @@ export async function createReviewFromCommitCommand(
   if (options?.openStudio) {
     await startReviewStudioCommand({
       port: options.openStudioPort,
-      // Demo bug: session-backed launches should open the session route, not reset the browser to Studio home.
       routePath: reviewSessionId
-        ? '/'
-        : buildStudioReviewRoutePath({
-            reviewId,
-            route: 'reports',
-            repo: resolvedProvenance?.repo,
-            branch: resolvedProvenance?.branch,
-          }),
+        ? buildStudioSessionRoutePath({ sessionId: reviewSessionId })
+        : '/',
       detach: true,
     });
   }

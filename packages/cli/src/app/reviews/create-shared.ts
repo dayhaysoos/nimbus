@@ -126,23 +126,6 @@ export function resolveReviewGitProvenance(cwd = process.cwd()): { repo: string;
   return { repo: repo.trim(), branch };
 }
 
-export function buildStudioReviewRoutePath(options: {
-  reviewId: string;
-  route: 'policy' | 'reports';
-  repo?: string | null;
-  branch?: string | null;
-}): string {
-  const reviewId = encodeURIComponent(options.reviewId);
-  const repo = options.repo?.trim();
-  const branch = options.branch?.trim();
-
-  if (repo && branch) {
-    return `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/${options.route}/${reviewId}`;
-  }
-
-  return `/${options.route}/${reviewId}`;
-}
-
 export function buildStudioSessionRoutePath(options: {
   sessionId: string;
   reviewId?: string | null;
@@ -150,14 +133,7 @@ export function buildStudioSessionRoutePath(options: {
   branch?: string | null;
 }): string {
   const sessionId = encodeURIComponent(options.sessionId);
-  const repo = options.repo?.trim();
-  const branch = options.branch?.trim();
-
-  return (
-    repo && branch
-      ? `/branches/${encodeURIComponent(repo)}/${encodeURIComponent(branch)}/sessions/${sessionId}`
-      : `/sessions/${sessionId}`
-  );
+  return `/sessions/${sessionId}`;
 }
 
 export function formatReviewExecutionFailure(

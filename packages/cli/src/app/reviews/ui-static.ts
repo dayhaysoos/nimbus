@@ -48,7 +48,7 @@ export function resolveStaticEntry(distDir: string, rawPathname: string): string
   }
 
   const indexPath = join(distDir, 'index.html');
-  if (pathname === '/' || pathname.startsWith('/reports/')) {
+  if (pathname === '/') {
     return fileExists(indexPath) ? indexPath : null;
   }
 

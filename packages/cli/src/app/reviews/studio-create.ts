@@ -8,7 +8,7 @@ import {
 } from '../../commands/review/preflight.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import { resolveReviewContext, type ResolveReviewContextProgressEvent } from './context.js';
-import { buildStudioReviewRoutePath, buildStudioSessionRoutePath, resolveReviewGitProvenance } from './create-shared.js';
+import { buildStudioSessionRoutePath, resolveReviewGitProvenance } from './create-shared.js';
 import { readStudioPreferences, updateStudioPolicyMode } from './session.js';
 
 export type StudioReviewPolicyMode = 'auto' | 'review';
@@ -534,18 +534,8 @@ export async function startStudioNewReview(options: {
       reviewId: derived.reviewId,
       sessionId: derived.sessionId ?? null,
       routePath: derived.sessionId
-        ? buildStudioSessionRoutePath({
-            sessionId: derived.sessionId,
-            reviewId: derived.reviewId,
-            repo: resolved.resolvedProvenance.repo,
-            branch: resolved.resolvedProvenance.branch,
-          })
-        : buildStudioReviewRoutePath({
-            reviewId: derived.reviewId,
-            route: 'reports',
-            repo: resolved.resolvedProvenance.repo,
-            branch: resolved.resolvedProvenance.branch,
-          }),
+        ? buildStudioSessionRoutePath({ sessionId: derived.sessionId })
+        : '/',
       policyMode,
       contextMode: resolved.resolvedProvenance.reviewContextMode === 'intent_aware' ? 'intent_aware' : 'basic',
       requestedLastCheckpoints: lastCheckpoints,
@@ -599,18 +589,8 @@ export async function startStudioNewReview(options: {
     reviewId: derived.reviewId,
     sessionId: derived.sessionId ?? null,
     routePath: derived.sessionId
-      ? buildStudioSessionRoutePath({
-          sessionId: derived.sessionId,
-          reviewId: derived.reviewId,
-          repo: resolved.resolvedProvenance.repo,
-          branch: resolved.resolvedProvenance.branch,
-        })
-      : buildStudioReviewRoutePath({
-          reviewId: derived.reviewId,
-          route: 'reports',
-          repo: resolved.resolvedProvenance.repo,
-          branch: resolved.resolvedProvenance.branch,
-        }),
+      ? buildStudioSessionRoutePath({ sessionId: derived.sessionId })
+      : '/',
     policyMode,
     contextMode: resolved.resolvedProvenance.reviewContextMode === 'intent_aware' ? 'intent_aware' : 'basic',
     requestedLastCheckpoints: lastCheckpoints,

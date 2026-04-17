@@ -919,6 +919,16 @@ These do not need to be solved before work starts, but they do need explicit ans
 4. Should worktree or branch be the first local materialization default?
 5. Which verification signals are required for a session to count as "clean"?
 6. How much of the current `ReportPage.tsx` should survive the session pivot versus be replaced outright?
+7. What first-class pause-reason contract should back `waiting_on_human` so the UI can explain:
+   - why Nimbus paused
+   - what specific action it wants approved
+   - what risk or safeguard triggered the pause
+   - what Nimbus will do next if the user approves
+   The current policy-ready path can show a derived policy, but that is not a complete long-term answer for all human-step states.
+8. Should Review Studio eventually support operator-authored notes or questions about findings/remediation during a session?
+   - If yes, decide whether those notes are local-only, session-persisted, or part of worker-side session state.
+   - Decide whether Nimbus can answer them inline, whether they are just annotations, or whether they can actively steer follow-up remediation.
+   - Treat this as explicitly deferred until the core launch -> live session -> terminal result -> adopt flow is solid, because it is likely a larger product and contract investment than the current slices.
 
 ## Suggested file map for future sessions
 

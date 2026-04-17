@@ -1,0 +1,263 @@
+.session-shell {
+  max-width: none;
+  width: 100%;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+  gap: 0.85rem;
+}
+
+.session-stage-card,
+.session-human-step-card {
+  border-top: 3px solid rgba(185, 132, 79, 0.58);
+}
+
+.session-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: clamp(1.24rem, 2vw, 1.62rem);
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+}
+
+.session-stage-header {
+  align-items: center;
+}
+
+.session-stage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.session-live-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(280px, 0.95fr);
+  gap: 0.9rem;
+  align-items: start;
+}
+
+.session-console-section,
+.session-findings-section {
+  gap: 0.62rem;
+}
+
+.session-findings-scroll {
+  max-height: 21rem;
+  overflow: auto;
+  padding-right: 0.12rem;
+}
+
+.session-human-step-card {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.session-diff-card {
+  border: 1px solid var(--border);
+  background: rgba(18, 18, 18, 0.96);
+}
+
+.session-diff-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  margin-bottom: 0.72rem;
+}
+
+.session-diff-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.session-diff-control,
+.session-diff-toggle {
+  border: 1px solid rgba(173, 128, 88, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+  padding: 0.38rem 0.62rem;
+  cursor: pointer;
+  transition: background-color 140ms ease, border-color 140ms ease, opacity 140ms ease;
+}
+
+.session-diff-control:hover,
+.session-diff-toggle:hover {
+  border-color: rgba(185, 132, 79, 0.35);
+  background: rgba(185, 132, 79, 0.08);
+}
+
+.session-diff-control:disabled,
+.session-diff-toggle:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.session-diff-control:disabled:hover,
+.session-diff-toggle:disabled:hover {
+  border-color: rgba(173, 128, 88, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.session-diff-sections {
+  display: grid;
+  gap: 0.72rem;
+}
+
+.session-diff-section {
+  border: 1px solid rgba(173, 128, 88, 0.12);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.session-diff-section-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.68rem 0.82rem;
+  background: rgba(185, 132, 79, 0.05);
+}
+
+.session-diff-section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.55rem;
+  min-width: 0;
+}
+
+.session-diff-section-path {
+  min-width: 0;
+  font-family: var(--font-code);
+  font-size: 0.82rem;
+  color: #f2e6d6;
+  word-break: break-word;
+}
+
+.session-patch-view {
+  overflow: auto;
+  background: #0f1113;
+}
+
+.session-diff-section .session-patch-view {
+  border-top: 1px solid rgba(173, 128, 88, 0.1);
+}
+
+.session-patch-line {
+  display: grid;
+  grid-template-columns: 1.8rem minmax(0, 1fr);
+  align-items: start;
+  column-gap: 0.7rem;
+  padding: 0.18rem 0.75rem 0.18rem 0.45rem;
+  font-family: var(--font-code);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  white-space: pre;
+}
+
+.session-patch-line + .session-patch-line {
+  border-top: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.session-patch-marker {
+  display: inline-flex;
+  justify-content: center;
+  color: rgba(239, 230, 220, 0.44);
+  user-select: none;
+}
+
+.session-patch-content {
+  min-width: 0;
+  color: #e9dccd;
+}
+
+.session-patch-line.file {
+  background: rgba(185, 132, 79, 0.09);
+}
+
+.session-patch-line.file .session-patch-content {
+  color: #f2e6d6;
+}
+
+.session-patch-line.meta .session-patch-content {
+  color: rgba(233, 220, 205, 0.72);
+}
+
+.session-patch-line.hunk {
+  background: rgba(104, 144, 255, 0.11);
+}
+
+.session-patch-line.hunk .session-patch-marker,
+.session-patch-line.hunk .session-patch-content {
+  color: #b8d0ff;
+}
+
+.session-patch-line.added {
+  background: rgba(74, 222, 128, 0.12);
+}
+
+.session-patch-line.added .session-patch-marker,
+.session-patch-line.added .session-patch-content {
+  color: #bbf7d0;
+}
+
+.session-patch-line.removed {
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.session-patch-line.removed .session-patch-marker,
+.session-patch-line.removed .session-patch-content {
+  color: #fecaca;
+}
+
+.session-finding-list .finding-card {
+  padding: 0.78rem 0.82rem;
+}
+
+.session-file-button {
+  cursor: pointer;
+  transition: border-color 140ms ease, background-color 140ms ease, transform 140ms ease;
+}
+
+.session-file-button:hover {
+  border-color: rgba(185, 132, 79, 0.34);
+  background: rgba(185, 132, 79, 0.1);
+  transform: translateY(-1px);
+}
+
+.session-file-chip-static {
+  border-radius: 999px;
+  background: rgba(185, 132, 79, 0.12);
+  color: #f3dfc7;
+}
+
+@media (max-width: 860px) {
+  .session-shell {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+
+  .session-live-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .session-findings-scroll {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .session-stage-actions {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .session-diff-toolbar,
+  .session-diff-section-header {
+    align-items: flex-start;
+  }
+}
