@@ -448,3 +448,7 @@ go ahead
 ---
 
 I actually don't want any of the ui-ux pro stuff to be included in the review so I'd rather that be a commit that stands by itself. does that change anything else?
+
+---
+
+run all those git commands for me. Leave the testing stuff for me. I want to add the ui-ui-pro-max stuff back later.
