@@ -1,0 +1,162 @@
+You are continuing Nimbus on the `codex/studio-launch-rebuild` branch.
+
+This is a planning-only cleanup session. Do not make code changes yet. Do not patch, refactor, move, or delete anything yet.
+
+Context:
+- We rebuilt the first Studio experiences quickly to explore the product shape.
+- The product direction is mostly in a better place now.
+- The code hygiene is not acceptable.
+- The current `packages/report-ui` implementation is too large, too mixed, and too hard to reason about.
+- In particular, the mock experience was implemented poorly: instead of fake data flowing through the app’s real UI architecture, large React files now mix mock data, mock flow orchestration, and real UI rendering in the same places.
+- We want to step back and make a proper cleanup/refactor plan before touching code again.
+
+What I want from this session:
+1. Audit the current UI implementation and identify the major code hygiene problems.
+2. Propose a better frontend architecture for this package that is:
+   - human-readable
+   - first-principles driven
+   - pragmatic
+   - composable
+   - extensible
+   - not over-engineered
+3. Give me a concrete cleanup plan that breaks the work into safe, reviewable slices.
+4. Specifically address how mocks should work in a healthier system.
+5. Do not implement yet.
+
+Design/product constraints to preserve:
+- Preserve the session-first model.
+- Preserve `adopt` as the user-facing term.
+- Preserve the human-in-the-loop at adopt/merge-back time.
+- Do not silently mutate the current checkout.
+- Keep the UI honest about active vs terminal state.
+- Keep the current product direction:
+  - compact launch page
+  - live session page
+  - terminal reviewed-diff/adopt/merge-back on the same session route
+- Do not drift back into a report-centric model.
+- Do not propose broad navigation, history browsing, or app-shell expansion.
+- The goal is not to restore the old structure. The goal is to make the new direction cleanly implemented.
+
+Read these docs first:
+1. `docs/architecture/architecture.md`
+2. `docs/architecture/review-session-pivot.md`
+3. `docs/architecture/review-session-implementation-handoff.md`
+
+Then inspect these files at minimum:
+- `packages/report-ui/src/components/ReviewHistoryPage.tsx`
+- `packages/report-ui/src/components/ReviewSessionPage.tsx`
+- `packages/report-ui/src/App.tsx`
+- `packages/report-ui/src/lib/review.ts`
+- `packages/report-ui/src/types.ts`
+- `packages/report-ui/src/styles.css`
+- any test files that cover the new Studio/session UI
+- any mock-related logic introduced for `VITE_STUDIO_MOCK`
+
+What I want you to evaluate explicitly:
+- where routing concerns are mixed with view concerns
+- where mock concerns are mixed with product concerns
+- where data loading/parsing/state transitions are mixed directly into page components
+- where UI duplication exists between mock and real paths
+- where large files should be decomposed
+- whether the current component boundaries make sense
+- whether there should be a session view model / adapter layer
+- how to structure live data vs mock data so they share the same rendering path
+- how to make the system testable without turning components into giant orchestration files
+- how to keep CSS maintainable without introducing unnecessary complexity
+
+Strong preference:
+- mock data should flow through the same component model as real data whenever possible
+- fake state progression should be implemented as a thin data source or adapter, not as a second UI
+- avoid building an elaborate architecture astronaut system
+- prefer boring, readable patterns over cleverness
+
+Please deliver:
+1. A blunt audit of the current problems.
+2. A proposed target architecture for `packages/report-ui`.
+3. A recommended file/module breakdown.
+4. A mock-data strategy that is materially better than the current one.
+5. A phased cleanup plan with ordering, scope, and acceptance criteria for each slice.
+6. Any real blockers or contract gaps, only if they are real.
+7. A short “what I would do first” recommendation.
+
+Important:
+- Stay opinionated.
+- Be specific.
+- Do not give me vague frontend best practices.
+- Do not implement.
+- Do not give me a generic changelog-style answer.
+- I want a concrete planning artifact I can approve and then hand off for execution.
+
+---
+
+PLEASE IMPLEMENT THIS PLAN:
+# `packages/report-ui` Cleanup Plan
+
+## Summary
+- The main problem is not “too few abstractions.” It is that the package has no clean seam between routes, data sources, session-state derivation, and rendering.
+- `ReviewSessionPage.tsx` is the worst offender: it currently behaves like two apps jammed into one file, with a mock app and a real app sharing names but not architecture.
+- The package is also still carrying dead report-era UI and a second styling approach, which keeps the current Studio direction harder to reason about than it should be.
+
+## Blunt Audit
+- Routing is mixed with view logic. The launch page owns redirects, current-session handoff, and start-event navigation inside the page component. The session page switches mock vs real at the top-level export instead of below a stable route boundary.
+- Mock concerns are mixed with product concerns. `VITE_STUDIO_MOCK` reaches deep into page files, and large mock builders plus fake progression logic live beside real JSX.
+- Data loading and state transitions are mixed directly into page components. The session page owns aggregate fetch, activity subscription, policy approval, adopt, local diff loading, merge-back, and terminal-state derivation.
+- UI duplication exists between mock and real paths. The stage/status UI, findings, console, reviewed diff, adopt, local changes, merge-back, and outcome sections are effectively rendered twice.
+- File boundaries are wrong. `ReviewSessionPage.tsx`, `ReviewHistoryPage.tsx`, `lib/review.ts`, `types.ts`, and `styles.css` are all acting as dumping grounds.
+- Current component boundaries do not make sense. `App.tsx` is fine; the page files are not. They are route, controller, adapter, and screen all at once.
+- The package still contains dead report-era surfaces and tests. Since the desired direction is session-first Studio, that dead surface should be removed, not preserved.
+
+## Target Architecture
+- Keep `App.tsx` as a two-route table only: compact launch route and session route. No app-shell expansion, no broad history browser, no drift back to reports.
+- For each route, split into three layers: a thin route/container, a controller hook, and a pure screen component.
+- Add a thin `StudioDataSource` interface for product-level operations. Real and mock implementations must both satisfy it. `VITE_STUDIO_MOCK` should only choose the default implementation at bootstrap.
+- Add a thin `SessionViewModel` adapter. Yes, there should be an adapter layer, but it should be boring and one-way: raw session domain state in, exact screen model out.
+- Keep one rendering path for live and mock. A mocked session should render through the exact same screen tree as a live session.
+- Rename the page concepts to match the product: `StudioLaunchPage` and `StudioSessionPage`. `ReviewHistoryPage` is a misleading name for the current direction.
+
+## Recommended Module Breakdown
+- `src/features/studio-launch/`: route/container, controller hook, pure screen, launch-specific leaf UI.
+- `src/features/studio-session/`: route/container, controller hook, `sessionViewModel`, and focused panels for stage, activity, findings, reviewed diff, adopt, local changes, merge-back, and terminal outcome.
+- `src/data/studio/`: `StudioDataSource`, `realStudioDataSource`, `mockStudioDataSource`, and small scripted mock scenarios.
+- `src/domain/studio/`: contracts and parsers split by concern: launch, session aggregate, activity, diff/local changes, adopt/merge-back.
+- `src/styles/`: `base.css`, `studio-launch.css`, `studio-session.css`. Keep plain CSS; do not introduce a new styling system.
+
+## Interface Changes
+- Add `StudioDataSource` with methods equivalent to: load launch context, start session, load session, subscribe to session activity, approve policy, load local diff, adopt, merge-back.
+- Add `buildSessionViewModel(domainState)` to centralize active vs terminal truth, action availability, panel visibility, and user-facing session status text.
+- Keep backend contract parsing out of JSX. Raw API shapes should stop leaking directly into page render code.
+
+## Mock Strategy
+- Delete the idea of a “mock page.” Keep only a mock data source.
+- Mock progression should be a scripted timeline in the data source, not JSX-side orchestration.
+- Mock and real should share the same controller and the same screen components.
+- Tests should inject a data source directly. `VITE_STUDIO_MOCK` should be app-start wiring only, not a component-level branch.
+- Keep the mock catalog intentionally small: happy path, human-approval gate, terminal failure, merge-back complete.
+
+## Phased Cleanup Plan
+1. Establish the seam: introduce `StudioDataSource`, move `VITE_STUDIO_MOCK` selection to bootstrap, and make mock and real session flows render through one shared session screen. Acceptance: no page component branches on `VITE_STUDIO_MOCK`.
+2. Extract the session controller and view model: move fetch/subscription/actions out of the session screen, centralize active/terminal/adopt/merge-back rules in `buildSessionViewModel`, and split the session screen into focused panels. Acceptance: session JSX reads like layout code, not orchestration code.
+3. Clean up the launch route: rename it to match the product, move preflight/start/current-session/navigation logic into a controller, and keep the route compact. Acceptance: the launch screen is small, readable, and no longer mixes routing with rendering.
+4. Break up contracts and tests: split `lib/review.ts` and `types.ts` by Studio concern, add focused parser and view-model tests, and replace stale page tests with behavior-driven tests against controllers/screens. Acceptance: basic session behavior no longer requires giant page-level fetch/EventSource mocks.
+5. Clean the CSS the boring way: split feature CSS, tighten selector naming, and remove generic cross-feature styles. Acceptance: launch/session styling is obviously scoped and there is one surviving styling approach.
+6. Delete the old report world: remove dead report-era components, tests, and style residue, then clean up adjacent route leftovers in CLI/static serving. Acceptance: `report-ui` contains only the current Studio product surface.
+
+## Test Plan
+- Parser tests for each Studio contract group.
+- `SessionViewModel` tests for active, policy-pending, failed, adopt-ready, and merge-back-complete states.
+- Data-source contract tests proving real and mock expose the same behavior shape.
+- Route/controller integration tests for launch, session resume, session subscribe/refresh, and start-session navigation.
+- Pure screen tests using injected view models instead of page-level network orchestration.
+
+## Real Blockers / Contract Gaps
+- Some CLI Studio entrypoints still open `/` instead of the concrete session route for session-backed launches. That is real adjacent cleanup and should be fixed before calling the old report path fully dead.
+- Static UI serving still special-cases `/reports/`. Remove that only when all callers are updated.
+- There is no obvious backend schema blocker inside `report-ui`; the current Studio responses are sufficient once normalized in one place.
+
+## What I Would Do First
+- First slice: add `StudioDataSource` and `buildSessionViewModel`, then force both mock and real session flows through one shared `StudioSessionScreen`. That is the highest-leverage cut in the whole package.
+
+## Assumptions / Defaults
+- Keep the package name for now; clean the internals before debating package renames.
+- Preserve the session-first model, the `adopt` term, explicit human approval at adopt/merge-back, and honesty about active vs terminal state.
+- Delete legacy report-era surfaces rather than preserving them behind dead code.
