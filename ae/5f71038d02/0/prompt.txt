@@ -1,0 +1,618 @@
+You are continuing Nimbus on the post-review-session-redesign branch.
+
+This is a planning-only session. Do not make code changes yet. Do not implement, patch, delete, or refactor anything yet. I want to carefully plan the UI one page/experience at a time before we touch code.
+
+Use `ui-ux-pro-max` for the design thinking and UI planning.
+
+Context:
+- The backend/CLI session-based review flow now works end to end.
+- Nimbus can create a review session, run passes, remediate in the cloud, produce a reviewed diff, allow local adopt, and merge back.
+- The current UI implementation is not acceptable and should not be incrementally polished.
+- The frontend should be treated as disposable.
+- Preserve the session-first model.
+- Preserve `adopt` as the user-facing term.
+- Preserve the human-in-the-loop at adopt/merge-back time.
+- Do not default to silently mutating the current checkout.
+- Keep the UI honest about active vs terminal session state.
+
+Read these docs first, in order:
+1. `docs/architecture/architecture.md`
+2. `docs/architecture/review-session-pivot.md`
+3. `docs/architecture/review-session-implementation-handoff.md`
+
+Also inspect these implementation points:
+- `packages/cli/src/app/reviews/studio-create.ts`
+- `packages/cli/src/app/reviews/ui-proxy.ts`
+- `packages/cli/src/app/reviews/materialize.ts`
+- `packages/report-ui/src/lib/review.ts`
+- `packages/report-ui/src/types.ts`
+
+Product direction:
+- Rebuild the UI one experience at a time.
+- Do not try to recreate a broad multi-page Studio immediately.
+- Do not optimize for history browsing, branch exploration, or report artifact navigation yet.
+- Focus on the current-state workflow only.
+- Prefer a small, reliable operator-console feel over a broad app shell.
+- Keep design minimal, deliberate, and honest.
+- Use the installed motion library, but keep motion restrained and meaningful.
+
+Target product shape:
+- User starts Studio for the current repo/branch.
+- Studio reflects only the current `HEAD` state.
+- If the current commit is ready for review, show a minimal launch screen.
+- If there is already a session for the current commit, route/focus directly into that session instead of offering another “new review” path.
+- Entire should be preflight-checked, but if Entire context is unavailable, the UI must clearly fall back to `basic` mode and still allow the review to start. Include a learn-more link for Entire.
+- Once a session starts, the user should primarily see:
+  - current phase/status
+  - a bounded terminal-style live event log
+  - findings appearing as they materialize
+- Once the session completes:
+  - if Nimbus produced a reviewed diff, show it with a proper diff viewer
+  - if Nimbus produced no remediated result, be explicit that there is nothing to adopt
+- If adopt is available:
+  - allow `Adopt locally`
+  - clearly explain that Nimbus creates an isolated local worktree and switches the user into that testable local result
+- After adoption:
+  - allow inspecting local diff
+  - allow `Merge back into current branch`
+- Ignore PR creation for now.
+
+Recommended implementation order:
+1. Current-state launch page only
+2. Live session page only
+3. Reviewed diff experience only
+4. Adopt/merge-back experience only
+
+Non-goals:
+- branch history
+- review history browsing
+- report-first IA
+- PR flows
+- broad navigation systems
+- preserving old component structure for its own sake
+
+What I want from you in this session:
+1. Confirm which backend/session/proxy contracts can be reused unchanged.
+2. Propose a very small rebuild plan centered on the first experience only.
+3. For that first experience, give me a detailed product/UX plan, not code:
+   - page purpose
+   - required data
+   - exact states
+   - transition rules
+   - routing behavior
+   - copy tone
+   - layout structure
+   - visual system direction
+   - restrained motion plan
+   - what to omit on purpose
+4. Then outline the next 3 experiences at a high level so we can sequence them cleanly.
+5. Call out any contract gaps or blockers only if they are real.
+
+Important:
+- Stay opinionated and pragmatic.
+- Do not drift back into a report-centric model.
+- Do not propose broad navigation or history surfaces.
+- Do not implement yet.
+- Do not give me a generic changelog-style answer.
+- Optimize for a concrete, page-by-page planning artifact I can approve before build work starts.
+
+---
+
+On your note about the current branch, I'd like for you to create a new branch before work begins. Make sure that's included in the plan.
+
+As far as the questions you're asking me, do you have an interview tool or ask user questions tool to walk me through this instead of giving me a giant list to answer? If not I will just use the list
+
+---
+
+PLEASE IMPLEMENT THIS PLAN:
+# Nimbus Review Studio Rebuild: Slice 1 Launch Experience
+
+## Summary
+Before any implementation work, create and switch to a fresh branch from `main`. Default branch name: `codex/studio-launch-rebuild` unless you rename it before coding starts.
+
+Slice 1 rebuilds Nimbus Studio around one page only: the current-state launch experience at `/`. This page is not a dashboard and not a history browser. Its only responsibility is to resolve the current repo/branch/`HEAD`, determine whether the current commit is launchable, and either:
+
+- immediately route into the existing session for that commit, or
+- present a minimal launch surface for starting a new session, or
+- clearly explain why launch is blocked
+
+This slice should remove the old broad Studio/history/report route structure aggressively rather than preserving it as product UI.
+
+## Key Changes
+### Branch and implementation start
+- Create a fresh branch from `main` before touching code.
+- Use `codex/studio-launch-rebuild` as the default branch name.
+- Do not implement on top of the current checked-out branch directly.
+
+### Product behavior for `/`
+- Make `/` a current-state resolver, not a home screen.
+- Load current repo/branch context and preflight for `HEAD`.
+- Query current branch sessions and detect whether one already exists for `preflight.commitSha`.
+- If a matching session exists, immediately `replace`-route to `/sessions/:sessionId`.
+- If no matching session exists:
+  - show a startable launch card for `intent_aware` mode
+  - show the same launch card in downgraded `basic` mode when Entire is unavailable
+  - show a blocked state when review cannot start
+- Launching a review uses the existing start SSE flow and routes to the returned `routePath` on completion.
+
+### Reused contracts and interfaces
+No backend or CLI contract changes are required for slice 1. Reuse these as-is:
+- Studio context and preflight
+- Studio start action and start-event stream
+- review session list lookup for current repo/branch
+- canonical session route returned by the start contract
+
+UI-facing route and interface expectations for slice 1:
+- `/` becomes the primary launch resolver
+- `/sessions/:sessionId` remains the primary session destination
+- older broad routes/components are removed or replaced in this slice rather than kept as first-class UI
+
+### Launch page UX spec
+- Single-column layout, narrow operator-console feel, no app shell nav.
+- Top facts row: repo, branch, current commit.
+- Main state card:
+  - `Checking current state`
+  - `Ready to review`
+  - `Starting review`
+  - `Basic mode fallback`
+  - `Blocked`
+- Secondary facts card:
+  - checkpoint target result
+  - Entire context result
+  - explicit fallback note when in `basic`
+  - learn-more link for Entire
+- Primary CTA when startable and no existing session: `Start review session`
+- No history list, report links, pass summaries, policy controls, or artifact navigation on this page.
+
+### Copy and visual direction
+- Tone: plainspoken, operational, honest.
+- Use `adopt` terminology nowhere on this page unless an existing session is found and routed away; adoption belongs to later slices.
+- Visual direction: minimal, deliberate, technical, with IBM Plex Sans for UI/body and JetBrains Mono for labels, IDs, and state rows.
+- Color system: neutral shell, green for ready, amber for `basic`, red for blocked/error.
+- Motion: restrained only.
+  - small page settle on load
+  - small card/state transitions
+  - live stage rows appear only when real launch events arrive
+  - respect `prefers-reduced-motion`
+
+## Implementation Notes
+- Keep the current backend truth model: session-first, current `HEAD` only, no silent mutation of current checkout.
+- Treat “existing session for current commit” as `anchorCommitSha === preflight.commitSha` on the current repo/branch session list.
+- If repo/branch context changes during launch, fail visibly and force fresh resolution instead of continuing optimistically.
+- For `basic` mode, launch must remain fully enabled; the downgrade is explanatory, not blocking.
+- Remove old route structures/components aggressively in the same implementation slice so the new shape is the actual product, not a thin layer over the previous IA.
+
+## Test Plan
+- Repo context detected, no existing session, `intent_aware` preflight:
+  - launch page renders
+  - start CTA enabled
+  - start stream shows bounded stage progress
+  - completion routes to returned session path
+- Repo context detected, no checkpoint / no Entire context:
+  - page shows `basic` fallback state
+  - Entire learn-more link present
+  - start CTA still enabled
+- Repo context detected, matching session already exists for current commit:
+  - `/` immediately replace-routes into that session
+  - no alternate “new review” path is presented first
+- Preflight blocked:
+  - no start CTA
+  - blocking reason shown clearly
+- Repo/branch drift while launch stream is active:
+  - launch aborts with visible context-changed error
+  - user must retry from fresh current state
+- Reduced motion enabled:
+  - no non-essential animated transitions
+- Removed legacy route shape:
+  - app no longer presents old history/report-first Studio surfaces as active product UI
+
+## Assumptions
+- Implementation starts from `main`, not from an older redesign branch checkout.
+- Default branch name is `codex/studio-launch-rebuild`.
+- No new backend endpoint is needed for slice 1; client-side matching of current commit to current-branch sessions is acceptable.
+- Session page, reviewed diff, adopt, and merge-back experiences are intentionally deferred to later slices except for preserving `/sessions/:sessionId` as the destination.
+
+---
+
+give me the pnpm --filter version of the commands so I can run and test
+
+---
+
+Is this failing because the HEAD of thisbranch doesn't have a valid commit? 
+  ➜  Local:   http://localhost:5173/
+  ➜  press h + enter to show help
+10:26:52 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16)
+10:26:52 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x2)
+10:26:52 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x3)
+10:26:55 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x4)
+10:26:58 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x5)
+10:27:03 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x6)
+10:27:05 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x7)
+10:27:05 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x8)
+10:27:07 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x9)
+10:27:10 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x10)
+10:27:15 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x11)
+10:27:16 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x12)
+10:27:19 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x13)
+10:27:22 PM [vite] http proxy error: /api/review-sessions?limit=20&repo=dayhaysoos%2Fnimbus&branch=codex%2Fstudio-launch-rebuild
+Error: connect ECONNREFUSED 127.0.0.1:8787
+    at TCPConnectWrap.afterConnect [as oncomplete] (node:net:1611:16) (x14)
+
+---
+
+I think this is a poor experience. This will eventually be an npm package. We shouldn't have peopel spin up 2 servers just to experience this.
+
+---
+
+one thing I hate about this current design is how not all the information is on the screen immediately. Everything is so huge. I want things to be a little more compact so that I don't have to scroll down just to see the buttons to kick off a review.
+
+---
+
+it's honestly still visually noisey. There's so much data about Entire Checkpoints and what not. I think all we need to know is when a preflight is running and if an Entire checkpoint was found or not. We don't need to know the commit IDs, check point ids, detected at times..it's too much. For the current state, we can just rename that status and share information from there. The messaging about nimbus being pinned to the repo branch and head that can stay, but those cards to the right of it take up so much space just to tell us what repo, branch and if a head or mode is available or not. I feel like those can fit cleanly underneath the review studio card or even status in a subtle way. This should be a brief, informational control panel for kicking of an agentic code review loop. design that with [$ui-ux-pro-max](/Users/nickdejesus/Code/nimbus/.codex/skills/ui-ux-pro-max/SKILL.md)
+
+---
+
+yes make that extra pass. we need a color theme too. The smaller text under the main card should have some kinda different shade to make it easier to see and give some contrast. This is being built on cloudflare infra so maybe use similar cloudflare colors like Black and orange or something. [$ui-ux-pro-max](/Users/nickdejesus/Code/nimbus/.codex/skills/ui-ux-pro-max/SKILL.md)
+
+---
+
+[$ui-ux-pro-max](/Users/nickdejesus/Code/nimbus/.codex/skills/ui-ux-pro-max/SKILL.md) default this to dark mode
+
+---
+
+I kinda hate all the borer radius on these cards. Show me what it looks like with sharper borders
+
+---
+
+Can we use a sort of off-white for the whtie text? It doesn't feel like it contrasts well having white bold text [$ui-ux-pro-max](/Users/nickdejesus/Code/nimbus/.codex/skills/ui-ux-pro-max/SKILL.md)
+
+---
+
+I know the font is terminal-like but it feels kinda hard to read. Can we get rid of that for something easier on the eyes? [$ui-ux-pro-max](/Users/nickdejesus/Code/nimbus/.codex/skills/ui-ux-pro-max/SKILL.md)
+
+---
+
+I'll leave it as is for now. so if I wanted to test this right now, I have to commit this current unstaged code yeah?
+
+---
+
+what do you mean?
+
+---
+
+how can I run the UI without a commit tho? or is there a way you can scaffold some test UI only for development?
+
+---
+
+make a dev-only mock with the env variable so I can see what it would look like before I hit the review button
+
+---
+
+okay that bright orange is really bad. We need something that plays better with the current theme. Can we get rid of the padding around the "read to review text"? It's all so close to gether. And why does the overall text seem way smaller? Maybe you went too far, it should be easier to read
+
+---
+
+the mock preview card looks horrible, it's bnasically white on white. Fix
+
+---
+
+I honestly can't help but feel like it's way too much text on the screen. I think we need to further minimize. The whole card at the top that describes everything... maybe we should just get rid of that. Also, what if we just said "review last commit" instead of current..last commit makes more sense right? If the last commit can't be reviewed then we display text explaining they need to make a commit. IF they make the commit it should update in real time. It really just be as simple as possible. Do you want to push back on anything? Do you have any questions? The end goal is to get to that review button as soon as possible with less noise on the screen.
+
+---
+
+I think that should at least stay so people will know what branch they're on before reviewing
+
+---
+
+okay, I thnk I'm okay with this initial page. I'm wondering what the real experience of a review would look like. We can test it on the current unstaged changes now right?
+
+---
+
+I guess what I'm trying to get at is that I want to test the next phase. The next page. Right now we see what it looks like when we hit the review button, but we don't see what it looks like after that runs and the review finally kicks off. You need to build that out next, right?
+
+---
+
+go ahead and build out the mock version of it
+
+---
+
+I'm happy with is so far, however I don't like how small the width is on these. Can you make it go full screen width? It'll look better for each left and right panel.
+
+---
+
+Just to be clear, when nimbus comes across findings, will there be an overscroll point for the right panel so that we don't have to scroll tot he bottom of the screen? Same for the SSE live stream panel?
+
+---
+
+okay sounds good. Now walk me through what happen. Let's say review in progress is happening. Nimbus decides it wants to remediate a branch then run another review. we stay on this page right?
+
+---
+
+I have to see what it looks like for those human in the loop states. `waiting_on_human` ..is that in this UI right now or you didn't flesh that out in the mock?
+
+---
+
+Let's go for the happy path on non-policy editing/approval controls. That feature is locked into Entire, however we should be keeping that experience in mind as we scaffold out the core product. I just ran the server with the waiting state but I don't see the human approval UI (you said it wasn't read). Go ahead and implement what that would look like.
+
+---
+
+btw what do you think of configurations for nimbus? What if a user ALWAYS wants to approve before the next review process? or they trust nimbusenough to run in a loop? Should these types of considerations be worked into the product right now or should we see this UI experience through first/.
+
+---
+
+okay, so I guess the next screen will be what the finalized results look like after review sessions?
+
+---
+
+go ahead and build it out then and let's see
+
+---
+
+these are in a decent place. what's next?
+
+---
+
+Wait a sec, I thought the terminal already handled diff viewing? Can you confirm?
+
+---
+
+Okay, well goahead and implement everything you mentioned and I'll review after.
+
+---
+
+# Files mentioned by the user:
+
+## Screenshot 2026-04-16 at 2.32.29 PM.png: /var/folders/gr/00djkpxs7ngdwdnbx719gjg80000gn/T/TemporaryItems/NSIRD_screencaptureui_ft8jH2/Screenshot 2026-04-16 at 2.32.29 PM.png
+
+## My request for Codex:
+just FYI from this command:
+
+VITE_STUDIO_MOCK=1 VITE_STUDIO_MOCK_SESSION_STATE=waiting pnpm --filter @dayhaysoos/nimbus-report-ui dev
+
+When I hit the button to start a review, I get the expected output, however, when it transitions to the next page, it immedaitely shows a complete version of the live review before the SSE streaming happens.  Can you see from the screenshot? Is that expected because it's in the "waiting" mock? I was hoping to see what it would look like forf the results to populate and THEN it needs approval
+
+---
+
+sure why don't you see that through
+
+---
+
+to be clear, when things are live, will there be higher quality information on WHY the human step is needed?
+
+---
+
+can you make a note about this in the docs directory? We should def be thinking these things through. I also think we should consider the ability for the user to add notes or ask questions about the findings or remediation process, however that's prob going to take a lot of work
+
+---
+
+okay where do we go from here? Are we ready for a live test? I haven't seen the adopting ability yet
+
+---
+
+before we commit anything, I'm now looking over the code and this looks horrible. When I asked you to create mock data, I was expecting some kinda system where fake data was propagated through the app's real UI. Instead, you made these massive React files with mock data and real ui inside of it. I want to start a session with a new agent that'll put together a plan on having way higher quality code hygene. We should be striving towards making the codebase more human readable, falling back on first principles, having pragmatic, composoble and extensible practices within the UI package. Give me a prompt for the next clean up agent to handle making a plan and breaking down all of this work in a better way.
+
+---
+
+is there anything we can do to make the git diff quality better? It's kinda hard to tell when you look at the diff..everything is the same color with the "-" or "+" would be nice for those rows to be highlighted with red/green
+
+---
+
+how would we see diffs across multiple files?
+
+---
+
+I don't see multiple files tbh. Can you update the mock so I can see what it'd look like?
+
+---
+
+what do you meanper file blocks with jump links? Also can we make them colapsible? With options to expand/collapse all?
+
+---
+
+go ahead and implement them then
+
+---
+
+I think I'm ready to test this live. We have a ton of unstaged changes. Perhaps this would be a good case for remediated sessions yeah?
+
+---
+
+go ahead
+
+---
+
+I actually don't want any of the ui-ux pro stuff to be included in the review so I'd rather that be a commit that stands by itself. does that change anything else?
+
+---
+
+run all those git commands for me. Leave the testing stuff for me. I want to add the ui-ui-pro-max stuff back later.
+
+---
+
+so this means I should run the tool without the env variables for mocking right?
+
+---
+
+I'm gonna be making note son the experience:
+
+- it says nimbus is resolving context and creating the review and stays still, there's no indication anything is actually happening, it should probably have some kinda indicator, like a loading one or osmething
+- for some reason the live session stream disconnected, I had to refresh to reconnect, however it says "completed"
+
+It also says it found nothing, which I think is kinda crazy because we had so many changes:
+
+Review session
+
+Review complete
+dayhaysoos/nimbus · codex/studio-launch-rebuild
+
+completed
+Back to launch
+Diff pivots Studio routing to a session-first model, simplifies route construction, and narrows the UI static handler and React routes. Overall risk: low. No concrete, provable correctness issues were identified in the changed code paths that merit blocking merge. Additional review beyond this pass is likely low-yield.
+
+Outcome
+
+Session result
+Outcome
+clean
+Diff pivots Studio routing to a session-first model, simplifies route construction, and narrows the UI static handler and React routes. Overall risk: low. No concrete, provable correctness issues were identified in the changed code paths that merit blocking merge. Additional review beyond this pass is likely low-yield.
+
+Recommendation
+approve
+0 unresolved finding(s) remain.
+
+Changed files
+0
+Nimbus did not publish a remediation summary.
+
+Reviewed diff
+
+What Nimbus changed
+Session did not produce a remediated worktree diff.
+Next step
+
+No reviewed result to adopt
+No reviewed result to adopt
+Session did not produce a remediated worktree diff.
+
+Nimbus can only adopt reviewed changes once a session reaches an adoptable outcome.
+
+Findings
+
+Still open
+Nimbus finished without unresolved findings.
+Findings
+
+Resolved during this session
+Nimbus did not resolve any previously emitted findings in this session.
+Session activity
+
+Final session output
+Review stream
+Recent session output for this browser session.
+
+1 pass
+Intent-aware
+snapshot
+11:14:51
+pass 1
+snapshot
+Diff pivots Studio routing to a session-first model, simplifies route construction, and narrows the UI static handler and React routes. Overall risk: low. No concrete, provable correctness issues were identified in the changed code paths that merit blocking merge. Additional review beyond this pass is likely low-yield.
+
+
+
+If I were to run the review command with you on the last commit, you'd probably find bugs
+
+---
+
+So I'm thinking of running a review pass with you for the last commit, if you come up with results then we can work backwards from there to try to figure out why nimbus didn't
+
+---
+
+no, I'll use the review command, just let me know if you think this is a good idea or not
+
+---
+
+I just ran a review with the review command in codex CLI and it came up with these errors: he patch introduces two launch-flow regressions in the new Studio UI and also breaks the CLI package's test compilation by removing an exported helper without updating downstream
+  tests. As-is, the change is not safe to consider correct.
+
+  Full review comments:
+
+  - [P1] Respect saved review policy mode when starting from launch — /Users/nickdejesus/Code/nimbus/packages/report-ui/src/features/studio-launch/useStudioLaunchController.ts:111-116
+    If Studio preferences are set to review, loadLaunchState() surfaces that in preflight.policyMode, but this start request always sends policyMode: 'auto'. Starting a session from
+    Home will therefore skip the expected policy-approval pause and also persist the wrong preference back to the CLI side, which changes review behavior for anyone relying on manual
+    policy review.
+  - [P2] Preserve backend launch failures instead of replacing them with disconnects — /Users/nickdejesus/Code/nimbus/packages/report-ui/src/features/studio-launch/
+    useStudioLaunchController.ts:139-145
+    When /api/studio/new-review/start/events emits type: "error", this branch records the real failure message but leaves the EventSource open. The proxy closes the SSE immediately
+    after sending that error, so onError then fires and overwrites the actionable backend message with the generic "launch stream disconnected" text; users who hit a start failure
+    lose the actual reason they need to fix.
+  - [P1] Keep the CLI test suite building after removing review-route helpers — /Users/nickdejesus/Code/nimbus/packages/cli/src/app/reviews/create-shared.ts:129-136
+    Removing the report-route helper here leaves packages/cli/test/app/reviews/studio-create.test.ts importing a symbol that no longer exists, so pnpm --filter @dayhaysoos/nimbus test
+    now fails during TypeScript compilation before any tests run. If the helper is intentionally gone, the tests need to be updated in the same change.
+
+
+Nimbus wasn't able to find anything at all. We need to figure out why that happened. I wonder if nimbus would have found bugs via CLI? is the UI experience that much different?
+
+---
+
+I want you to run the command yourself and report back
+
+---
+
+we don't need to do source .env, everything should work just fine. Redo this command without source .env
+
+---
+
+Can you try again? CF says they seemed to have fixed the issue
+
+---
+
+look through the prompt / rubric, figure out how context is gathered and give me a report on the current state of things and what we can do to try to fix this.
+
+---
+
+hmm, let's use a gpt-5.3 model with medium reasoning. Let's increase the amount of max steps to like..32. 
+
+and let's turn lightweight validation on. Make sure you push to the worker using wrangler if you have to. Let's just see what happens. Report back when you're done.
+
+---
+
+can you fix it and deploy?
+
+---
+
+well if it's broken maybe we can justignore that review in particular? and start a new one with the real gtp model id that open router provides?
+
+---
+
+can you check now if it's finished? then we try again?
+
+---
+
+what are the results? did we actually find bugs and get remediation and what not?
+
+---
+
+okay, I think the issuehere is long running tasks on open router. We may have to switch to more cloudflare native tech. This whole thing is fully cloudflare except for the inference itself. what do you think?
+
+---
+
+okay so as far as doing this work. I think we should make a separate branch. I will also start a new agent session. I want you to give me a prompt to send to the next agent. Include that it should be operating on its own as far as deploying the worker, running the CLI tool, trying to get successful results with gpt-5.3. Provide reference docs and context thorough enough for it to complete the tasks on its own. Do you have any push back on this at all? are there things you'lll need from me first for this to work? like certain CF api keys and what not?
+
+---
+
+yeah give me the hard-executor version. Also what should we do about the current unstaged changes? commit them?
+
+---
+
+yeah do that, also do you think it'd be worth it telling the next agent to spawn sub agents? Do the tasks need to be broken up even further?
+
+---
+
+Okay, well, give me the executor prompt that you told me you were gonna give me, or did you already give me that, and I just need to scroll up? I can't remember.

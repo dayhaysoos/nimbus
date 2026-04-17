@@ -1,0 +1,31 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "ae5f71038d02",
+  "strategy": "manual-commit",
+  "branch": "codex/gpt53-review-reliability",
+  "checkpoints_count": 11,
+  "files_touched": [
+    "packages/cli/src/app/reviews/context.ts",
+    "packages/cli/test/app/reviews/studio-create.test.ts",
+    "packages/worker/src/lib/review-analysis.ts",
+    "packages/worker/src/lib/review-runner/context-helpers.ts",
+    "packages/worker/test/lib/review-analysis.test.ts",
+    "packages/worker/test/lib/review-prompt.test.ts",
+    "packages/worker/wrangler.toml"
+  ],
+  "sessions": [
+    {
+      "metadata": "/ae/5f71038d02/0/metadata.json",
+      "transcript": "/ae/5f71038d02/0/full.jsonl",
+      "content_hash": "/ae/5f71038d02/0/content_hash.txt",
+      "prompt": "/ae/5f71038d02/0/prompt.txt"
+    }
+  ],
+  "token_usage": {
+    "input_tokens": 69808652,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 65104512,
+    "output_tokens": 345512,
+    "api_call_count": 586
+  }
+}
