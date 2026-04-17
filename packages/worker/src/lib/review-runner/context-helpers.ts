@@ -178,7 +178,7 @@ export function resolveReviewAnalysisModel(payload: Record<string, unknown>, env
   if (agentModel) {
     return agentModel;
   }
-  return 'gpt-5.1';
+  return 'openai/gpt-5.3-codex';
 }
 
 export function mergeProvenance(

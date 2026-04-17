@@ -16,6 +16,10 @@ export function runReviewAnalysisTests(): void {
     deterministicMaxSteps: 12,
     providerMaxSteps: 6,
   });
+  assert.deepEqual(computeReviewStepBudgetsForTests(32), {
+    deterministicMaxSteps: 26,
+    providerMaxSteps: 6,
+  });
 
   const queries = extractDeterministicSearchQueriesForTests([
     {

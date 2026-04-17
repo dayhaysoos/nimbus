@@ -588,8 +588,8 @@ export async function resolveReviewContext(
         );
     const deployment = await deployWorkspaceForCommitFlow(workspaceId, {
       idempotencyKey: deploymentIdempotencyKey,
-      runTestsIfPresent: false,
-      runBuildIfPresent: false,
+      runTestsIfPresent: true,
+      runBuildIfPresent: true,
       autoFix: false,
       pollIntervalMs: options?.pollIntervalMs,
       reporter: {

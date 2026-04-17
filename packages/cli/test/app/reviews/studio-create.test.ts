@@ -7,7 +7,7 @@ import {
   preserveResolveReviewAbortForTests,
   throwIfResolveReviewAbortedForTests,
 } from '../../../src/app/reviews/context.js';
-import { buildStudioReviewRoutePath } from '../../../src/app/reviews/create-shared.js';
+import { buildStudioSessionRoutePath } from '../../../src/app/reviews/create-shared.js';
 import {
   emitStudioStartEventForTests,
   resolveStudioCheckpointWindowForTests,
@@ -25,31 +25,31 @@ export async function runStudioCreateTests(): Promise<void> {
   const repoRoot = await mkdtemp(join(tmpdir(), 'nimbus-studio-create-'));
   try {
     assert.equal(
-      buildStudioReviewRoutePath({
+      buildStudioSessionRoutePath({
+        sessionId: 'sess_123',
         reviewId: 'rev_123',
-        route: 'reports',
         repo: 'acme/web',
         branch: 'feature/home',
       }),
-      '/branches/acme%2Fweb/feature%2Fhome/reports/rev_123'
+      '/sessions/sess_123'
     );
 
     assert.equal(
-      buildStudioReviewRoutePath({
+      buildStudioSessionRoutePath({
+        sessionId: 'sess_456',
         reviewId: 'rev_456',
-        route: 'policy',
         repo: 'acme/web',
         branch: 'feature/home',
       }),
-      '/branches/acme%2Fweb/feature%2Fhome/policy/rev_456'
+      '/sessions/sess_456'
     );
 
     assert.equal(
-      buildStudioReviewRoutePath({
+      buildStudioSessionRoutePath({
+        sessionId: 'sess_789',
         reviewId: 'rev_789',
-        route: 'reports',
       }),
-      '/reports/rev_789'
+      '/sessions/sess_789'
     );
 
     assert.equal(

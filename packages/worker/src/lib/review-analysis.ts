@@ -46,12 +46,13 @@ import {
   type ReviewAgentHistoryEntry,
 } from './review-analysis/provider.js';
 
-const DEFAULT_REVIEW_AGENT_MAX_STEPS = 8;
-const MAX_REVIEW_AGENT_MAX_STEPS = 24;
+const DEFAULT_REVIEW_AGENT_MAX_STEPS = 32;
+const MAX_REVIEW_AGENT_MAX_STEPS = 32;
 const DEFAULT_REVIEW_MAX_FILE_BYTES = 48_000;
 const DEFAULT_REVIEW_MAX_OUTPUT_BYTES = 96_000;
 const MAX_COMMAND_TIMEOUT_MS = 2 * 60_000;
-const DEFAULT_REVIEW_MODEL = 'gpt-5.1';
+const DEFAULT_REVIEW_MODEL = 'openai/gpt-5.3-codex';
+const DEFAULT_REVIEW_REASONING_EFFORT: ReviewReasoningEffort = 'medium';
 const MAX_VALIDATION_REPAIR_ATTEMPTS = 1;
 const MIN_PROVIDER_REASONING_STEPS = 6;
 const MAX_DIRECT_CHANGED_FILE_COVERAGE_REQUIREMENT = 8;
@@ -946,7 +947,8 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     readOptionalString(env.REVIEW_MODEL) ??
     readOptionalString(env.AGENT_MODEL) ??
     DEFAULT_REVIEW_MODEL;
-  const reasoningEffort = parseReviewReasoningEffort(readOptionalString(env.REVIEW_REASONING_EFFORT));
+  const reasoningEffort =
+    parseReviewReasoningEffort(readOptionalString(env.REVIEW_REASONING_EFFORT)) ?? DEFAULT_REVIEW_REASONING_EFFORT;
   const authToken = (env.AGENT_SDK_AUTH_TOKEN ?? '').trim() || null;
   let endpointHost: string | null = null;
   let endpointPath: string | null = null;
