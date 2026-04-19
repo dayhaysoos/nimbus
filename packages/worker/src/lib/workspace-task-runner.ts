@@ -84,7 +84,7 @@ function isWorkerToWorkerFetchRestriction(status: number, responseBody: string):
 }
 
 function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `"'"'`)}'`;
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function assertWorkspacePath(pathInput: string, policy: TaskToolPolicy): string {

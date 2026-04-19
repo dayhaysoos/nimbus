@@ -7,7 +7,7 @@ interface SandboxCommandResult {
 }
 
 export function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `"'"'`)}'`;
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 export async function executeSandboxCommand(

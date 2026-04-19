@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict';
-import { hydrateReviewSandbox, runSandboxCommand, type SandboxClient } from '../../src/lib/review-analysis/sandbox.js';
+import { hydrateReviewSandbox, runSandboxCommand, shellQuote, type SandboxClient } from '../../src/lib/review-analysis/sandbox.js';
 
 export async function runReviewAnalysisSandboxTests(): Promise<void> {
+  assert.equal(shellQuote("a'b"), `'a'"'"'b'`);
+
   {
     const capturedTimeouts: Array<number | undefined> = [];
     const sandbox: SandboxClient = {

@@ -25,7 +25,7 @@ export interface SandboxClient {
 }
 
 export function shellQuote(value: string): string {
-  return `'${value.replace(/'/g, `"'"'`)}'`;
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
 }
 
 function toBase64(buffer: ArrayBuffer): string {
