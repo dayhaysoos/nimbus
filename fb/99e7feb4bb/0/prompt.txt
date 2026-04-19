@@ -1,0 +1,28 @@
+Here are the results:
+
+
+  - [P1] Keep the fallback review model runnable outside Workers AI — /Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-runner/
+    context-helpers.ts:181-181
+    If a deployment has no explicit REVIEW_MODEL/AGENT_MODEL and relies on either AGENT_SDK_URL or OPENROUTER_API_KEY, this new @cf/...
+    default now gets forwarded into selectReviewAgentProvider() and then on to the agent endpoint/OpenRouter. Those providers do not
+    understand Workers AI model IDs, so review analysis regresses from "works with defaults" to provider errors unless every install also
+    updates its model config. The previous default was provider-agnostic, so this is a compatibility break for existing self-hosted setups.
+  - [P2] Consider the AGENT_ENDPOINT binding when enabling analysis — /Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-runner/
+    deployment-report/analysis.ts:79-79
+    This availability check only passes AGENT_SDK_URL into selectReviewAgentProvider(), but runWorkspaceDeploymentAgentAnalysis() now
+    supports a service-binding-only setup via env.AGENT_ENDPOINT. In an install that uses only the internal binding (no public SDK URL),
+    reviewProviderSelection stays null here and the entire model-backed analysis stage is skipped even though the lower-level runner can
+    execute it.
+  - [P2] Restore retry attempts for direct OpenRouter review calls — /Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-analysis/
+    provider.ts:741-741
+    For deployments using the direct OpenRouter provider, this loop now caps attempts at REVIEW_AGENT_ENDPOINT_MAX_ATTEMPTS (1) instead of
+    REVIEW_PROVIDER_MAX_ATTEMPTS (2). That means transient 429/5xx/timeout failures are no longer retried; the catch path still sleeps and
+    continues, but the for loop has already exhausted its single iteration and exits with a generic failure. This is a reliability regression
+    from the previous behavior.
+
+
+So now I want you to commit the current unstaged changes, then run the CLI version of nimbus
+
+---
+
+fix thebuld break and then do the apples-toapples comparison
