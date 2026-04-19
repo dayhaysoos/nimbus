@@ -9,7 +9,8 @@ import { canAccessAccount } from '../../lib/authz.js';
 export const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Openrouter-Api-Key, X-Nimbus-Api-Key',
+  'Access-Control-Allow-Headers':
+    'Content-Type, Idempotency-Key, X-Review-Github-Token, X-Provider-Api-Key, X-Openrouter-Api-Key, X-Nimbus-Api-Key',
 };
 
 export const REVIEW_STREAM_POLL_INTERVAL_MS = 1000;
@@ -101,6 +102,10 @@ export function isSeverityThreshold(value: unknown): value is 'low' | 'medium' |
 
 export function readReviewGithubTokenHeader(request: Request): string | null {
   return readTrimmedHeader(request, 'X-Review-Github-Token');
+}
+
+export function readProviderApiKeyHeader(request: Request): string | null {
+  return readTrimmedHeader(request, 'X-Provider-Api-Key');
 }
 
 export function readOpenrouterApiKeyHeader(request: Request): string | null {

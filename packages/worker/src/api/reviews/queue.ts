@@ -17,6 +17,7 @@ export async function enqueueReviewRunIfNeeded(
   options: {
     reused: boolean;
     reviewGithubToken: string | null;
+    providerApiKey: string | null;
     openrouterApiKey: string | null;
   }
 ): Promise<Response | null> {
@@ -28,6 +29,7 @@ export async function enqueueReviewRunIfNeeded(
   const shouldReenqueueRecoveredReview =
     options.reused && (review.error?.code === 'retry_scheduled' || review.attemptCount > 0);
   const requiresOpenrouterRetryKey = review.error?.code === 'missing_openrouter_api_key';
+  const requiresProviderRetryKey = review.error?.code === 'missing_provider_api_key';
 
   if (alreadyEnqueued && !shouldReenqueueRecoveredReview) {
     return null;
@@ -52,8 +54,19 @@ export async function enqueueReviewRunIfNeeded(
       409
     );
   }
+  if (shouldReenqueueRecoveredReview && requiresProviderRetryKey && !options.providerApiKey) {
+    return jsonResponse(
+      {
+        error: 'Provider API key required for retry',
+        code: 'missing_provider_api_key',
+      },
+      409
+    );
+  }
 
-  await env.REVIEWS_QUEUE?.send(createReviewQueueMessage(review.id, options.reviewGithubToken, options.openrouterApiKey));
+  await env.REVIEWS_QUEUE?.send(
+    createReviewQueueMessage(review.id, options.reviewGithubToken, options.providerApiKey, options.openrouterApiKey)
+  );
   await appendReviewEvent(env.DB, {
     reviewId: review.id,
     eventType: 'review_enqueued',
@@ -71,9 +84,10 @@ export async function enqueueApprovedReviewRun(
   env: Env,
   reviewId: string,
   reviewGithubToken: string | null,
+  providerApiKey: string | null,
   openrouterApiKey: string | null
 ): Promise<void> {
-  await env.REVIEWS_QUEUE?.send(createReviewQueueMessage(reviewId, reviewGithubToken, openrouterApiKey));
+  await env.REVIEWS_QUEUE?.send(createReviewQueueMessage(reviewId, reviewGithubToken, providerApiKey, openrouterApiKey));
   await appendReviewEvent(env.DB, {
     reviewId,
     eventType: 'review_enqueued',

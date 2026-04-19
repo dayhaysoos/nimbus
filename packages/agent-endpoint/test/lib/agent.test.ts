@@ -11,6 +11,87 @@ const handler = worker as WorkerModule;
 export async function runAgentTests(): Promise<void> {
   {
     const originalFetch = globalThis.fetch;
+    let capturedUrl = '';
+    let capturedBody = '';
+    let capturedGatewayAuth = '';
+    let capturedProviderAuth = '';
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      capturedUrl = String(input);
+      capturedBody = typeof init?.body === 'string' ? init.body : '';
+      const headers = new Headers(init?.headers);
+      capturedGatewayAuth = headers.get('cf-aig-authorization') ?? '';
+      capturedProviderAuth = headers.get('Authorization') ?? '';
+      return new Response(
+        JSON.stringify({
+          output: [
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [
+                {
+                  type: 'output_text',
+                  text: JSON.stringify({
+                    type: 'complete',
+                    tool: null,
+                    args: null,
+                    summary: null,
+                    finalOutput: {
+                      findings: [],
+                      summary: 'No actionable findings identified.',
+                      furtherPassesLowYield: true,
+                    },
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+
+    try {
+      const action = await nextAgentActionWithInference(
+        {
+          mode: 'review_analysis',
+          prompt: 'You are Nimbus Review. Investigate the current diff for concrete correctness issues.',
+          model: 'openai/gpt-5.3-codex',
+          reasoningEffort: 'medium',
+          step: 2,
+          maxSteps: 8,
+          history: [
+            { role: 'assistant', content: 'analysis_focus: inspect queue retry behavior.' },
+            { role: 'tool', tool: 'read_file', output: { request: { path: 'src/retry.ts' }, result: { content: 'export const retry = true;' } } },
+          ],
+        },
+        {
+          AI_GATEWAY_ACCOUNT_ID: 'cf-account',
+          AI_GATEWAY_ID: 'default',
+          AI_GATEWAY_COLLECT_LOG_PAYLOAD: 'false',
+        },
+        {
+          providerApiKey: 'provider_request_key',
+          aiGatewayAuthToken: 'cf_gateway_token',
+        }
+      );
+
+      assert.equal(action.type, 'complete');
+      assert.equal(capturedUrl, 'https://gateway.ai.cloudflare.com/v1/cf-account/default/openai/responses');
+      assert.equal(capturedGatewayAuth, 'Bearer cf_gateway_token');
+      assert.equal(capturedProviderAuth, 'Bearer provider_request_key');
+      const requestBody = JSON.parse(capturedBody) as Record<string, unknown>;
+      assert.equal(requestBody.model, 'gpt-5.3-codex');
+      assert.deepEqual(requestBody.reasoning, { effort: 'medium' });
+      assert.equal((requestBody.text as { format?: { type?: string } } | undefined)?.format?.type, 'json_schema');
+      assert.equal(typeof requestBody.input, 'string');
+      assert.equal(String(requestBody.input).includes('Agent loop instructions:'), true);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
     let capturedBody = '';
     let capturedReferer = '';
     let capturedTitle = '';

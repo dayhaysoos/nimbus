@@ -1,5 +1,6 @@
 import type { Env, ReviewContext, ReviewRunResponse } from '../../../types.js';
 import { appendReviewEvent, getWorkspace, getWorkspaceDeployment, getWorkspaceDeploymentRequestPayload } from '../../db.js';
+import { selectReviewAgentProvider } from '../../review-analysis/provider.js';
 import { runWorkspaceDeploymentAgentAnalysis } from '../../review-analysis.js';
 import { asRecord, readOptionalString, resolveReviewAnalysisModel } from '../context-helpers.js';
 import { loadAuthoritativeDeploymentDiff } from '../context-diff.js';
@@ -70,9 +71,17 @@ export async function runDeploymentReviewAnalysisStage(
   }
   const reviewAnalysisModel = resolveReviewAnalysisModel(payload, env);
   let agentAnalysis: Awaited<ReturnType<typeof runWorkspaceDeploymentAgentAnalysis>> = null;
+  const requestProviderApiKey = readOptionalString(options?.providerApiKey);
   const requestOpenrouterApiKey = readOptionalString(options?.openrouterApiKey);
-  const reviewAgentEnabled = Boolean((env.AGENT_SDK_URL ?? '').trim()) || Boolean((requestOpenrouterApiKey ?? env.OPENROUTER_API_KEY ?? '').trim());
-  const reviewAnalysisProvider = (requestOpenrouterApiKey ?? env.OPENROUTER_API_KEY ?? '').trim() ? 'openrouter' : 'cloudflare_agents_sdk';
+  const reviewProviderSelection = selectReviewAgentProvider({
+    env,
+    model: reviewAnalysisModel,
+    endpoint: (env.AGENT_SDK_URL ?? '').trim(),
+    providerApiKey: requestProviderApiKey,
+    openrouterApiKey: requestOpenrouterApiKey,
+  });
+  const reviewAgentEnabled = reviewProviderSelection !== null;
+  const reviewAnalysisProvider = reviewProviderSelection?.providerName ?? 'openrouter';
   const deploymentSourceBundleKey =
     typeof inputs.resultArtifact.sourceBundleKey === 'string' && inputs.resultArtifact.sourceBundleKey.trim()
       ? inputs.resultArtifact.sourceBundleKey.trim()
@@ -86,13 +95,14 @@ export async function runDeploymentReviewAnalysisStage(
     });
 
     const analysisTimeoutMs = parseTimeoutMs(env.REVIEW_ANALYSIS_TIMEOUT_MS, DEFAULT_REVIEW_ANALYSIS_TIMEOUT_MS);
+    const deploymentSandboxId = `review-snapshot-${review.id}-attempt-${Math.max(0, review.attemptCount ?? 0)}`;
     try {
       agentAnalysis = await withTimeout(
         runWorkspaceDeploymentAgentAnalysis(env, {
           reviewId: review.id,
           workspaceId: review.workspaceId,
           deploymentId: review.deploymentId,
-          deploymentSandboxId: `review-snapshot-${review.id}`,
+          deploymentSandboxId,
           workspaceSandboxId: reviewBasis === 'environment' ? environmentWorkspaceSandboxId ?? undefined : undefined,
           sourceBundleKey: deploymentSourceBundleKey ?? '',
           modelOverride: reviewAnalysisModel,
@@ -121,6 +131,7 @@ export async function runDeploymentReviewAnalysisStage(
                 payload: eventPayload,
               });
             },
+            providerApiKey: requestProviderApiKey,
             openrouterApiKey: requestOpenrouterApiKey,
           }),
         analysisTimeoutMs,

@@ -10,3 +10,6 @@ workers_dev = true
 DEFAULT_MODEL = "anthropic/claude-sonnet-4-5"
 OPENROUTER_HTTP_REFERER = "https://nimbus-worker.ndejesus1227.workers.dev"
 OPENROUTER_X_TITLE = "Nimbus Review"
+AI_GATEWAY_ACCOUNT_ID = "c69349b17b216e01346e94a2511004d1"
+AI_GATEWAY_ID = "default"
+AI_GATEWAY_COLLECT_LOG_PAYLOAD = "false"

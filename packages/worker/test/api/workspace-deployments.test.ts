@@ -20,6 +20,8 @@ function createWorkspaceDeploymentApiEnv(options?: {
   state: {
     deploymentExists: boolean;
     deploymentStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    deploymentStartedAt: string | null;
+    deploymentUpdatedAt: string;
     cancelRequestedAt: string | null;
     deploymentErrorCode: string | null;
     eventTypes: Set<string>;
@@ -30,6 +32,8 @@ function createWorkspaceDeploymentApiEnv(options?: {
   const state: {
     deploymentExists: boolean;
     deploymentStatus: 'queued' | 'running' | 'succeeded' | 'failed' | 'cancelled';
+    deploymentStartedAt: string | null;
+    deploymentUpdatedAt: string;
     cancelRequestedAt: string | null;
     deploymentErrorCode: string | null;
     eventTypes: Set<string>;
@@ -38,6 +42,8 @@ function createWorkspaceDeploymentApiEnv(options?: {
   } = {
     deploymentExists: false,
     deploymentStatus: options?.reuseFailed ? 'failed' : 'queued',
+    deploymentStartedAt: null,
+    deploymentUpdatedAt: '2026-03-08T00:00:00.000Z',
     cancelRequestedAt: null,
     deploymentErrorCode: options?.reuseFailed ? 'provider_auth_failed' : options?.reuseRetryScheduled ? 'retry_scheduled' : null,
     eventTypes: options?.reuseRetryScheduled ? new Set<string>(['deployment_enqueued']) : new Set<string>(),
@@ -180,12 +186,54 @@ function createWorkspaceDeploymentApiEnv(options?: {
           };
         }
 
-        if (/UPDATE workspace_deployments SET last_event_seq = last_event_seq \+ 1/i.test(sql)) {
+        if (/UPDATE\s+workspace_deployments\s+SET\s+last_event_seq\s*=\s*last_event_seq\s*\+\s*1/i.test(sql)) {
           return {
             bind() {
               return {
                 async first<T>() {
                   return { last_event_seq: 1 } as T;
+                },
+              };
+            },
+          };
+        }
+
+        if (
+          /UPDATE workspace_deployments\s+SET status = 'queued'/i.test(sql) &&
+          /error_code = 'retry_scheduled'/i.test(sql)
+        ) {
+          return {
+            bind(_errorMessage: string, updatedAt: string) {
+              return {
+                async run() {
+                  if (state.deploymentStatus !== 'running' || state.cancelRequestedAt !== null) {
+                    return { success: true, meta: { changes: 0 } };
+                  }
+                  state.deploymentStatus = 'queued';
+                  state.deploymentStartedAt = null;
+                  state.deploymentUpdatedAt = updatedAt;
+                  state.deploymentErrorCode = 'retry_scheduled';
+                  return { success: true, meta: { changes: 1 } };
+                },
+              };
+            },
+          };
+        }
+
+        if (
+          /UPDATE workspace_deployments\s+SET updated_at = \?/i.test(sql) &&
+          /status = 'queued'/i.test(sql) &&
+          /error_code = 'retry_scheduled'/i.test(sql)
+        ) {
+          return {
+            bind(updatedAt: string) {
+              return {
+                async run() {
+                  if (state.deploymentStatus !== 'queued' || state.deploymentErrorCode !== 'retry_scheduled') {
+                    return { success: true, meta: { changes: 0 } };
+                  }
+                  state.deploymentUpdatedAt = updatedAt;
+                  return { success: true, meta: { changes: 1 } };
                 },
               };
             },
@@ -264,7 +312,7 @@ function createWorkspaceDeploymentApiEnv(options?: {
                     deployed_url: null,
                     last_event_seq: 1,
                     cancel_requested_at: state.cancelRequestedAt,
-                    started_at: null,
+                    started_at: state.deploymentStartedAt,
                     finished_at: null,
                     duration_ms: null,
                     result_json: null,
@@ -276,7 +324,7 @@ function createWorkspaceDeploymentApiEnv(options?: {
                           ? 'provider auth failed'
                           : null,
                     created_at: '2026-03-08T00:00:00.000Z',
-                    updated_at: '2026-03-08T00:00:00.000Z',
+                    updated_at: state.deploymentUpdatedAt,
                   } as T;
                 },
               };
@@ -612,6 +660,19 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
   }
 
   {
+    const { env, state } = createWorkspaceDeploymentApiEnv();
+    state.deploymentExists = true;
+    state.deploymentStatus = 'running';
+    state.deploymentStartedAt = '2020-01-01T00:00:00.000Z';
+    const response = await handleGetWorkspaceDeployment('ws_abc12345', 'dep_abcd1234', env as never, undefined);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 1);
+    assert.equal(state.deploymentStatus, 'queued');
+    assert.equal(state.deploymentErrorCode, 'retry_scheduled');
+    assert.equal(state.eventTypes.has('deployment_retry_scheduled'), true);
+  }
+
+  {
     const { env } = createWorkspaceDeploymentApiEnv();
     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deploy/preflight', {
       method: 'POST',
@@ -754,6 +815,17 @@ export async function runWorkspaceDeploymentApiTests(): Promise<void> {
     const request = new Request('https://example.com/api/workspaces/ws_abc12345/deployments/dep_abcd1234/events?from=0');
     const response = await handleGetWorkspaceDeploymentEvents('ws_abc12345', 'dep_abcd1234', request, env as never);
     assert.equal(response.status, 200);
+  }
+
+  {
+    const { env, state } = createWorkspaceDeploymentApiEnv({ reuseRetryScheduled: true });
+    state.deploymentExists = true;
+    state.deploymentUpdatedAt = '2020-01-01T00:00:00.000Z';
+    const request = new Request('https://example.com/api/workspaces/ws_abc12345/deployments/dep_abcd1234/events?from=0');
+    const response = await handleGetWorkspaceDeploymentEvents('ws_abc12345', 'dep_abcd1234', request, env as never);
+    assert.equal(response.status, 200);
+    assert.equal(state.queueSendCount, 1);
+    assert.equal(state.eventTypes.has('deployment_reenqueue_recovered'), true);
   }
 
   {

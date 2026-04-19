@@ -1,5 +1,9 @@
 import type { Sandbox } from '@cloudflare/sandbox';
 
+export interface WorkersAiBinding {
+  run(model: string, inputs: Record<string, unknown>, options?: Record<string, unknown>): Promise<unknown>;
+}
+
 // Environment bindings
 export interface Env {
   Sandbox: DurableObjectNamespace<Sandbox>;
@@ -72,6 +76,13 @@ export interface Env {
   NIMBUS_HOSTED?: string;
   NIMBUS_TOKEN_SECRET?: string;
   OPENROUTER_API_KEY?: string;
+  AI_GATEWAY_ACCOUNT_ID?: string;
+  AI_GATEWAY_ID?: string;
+  AI_GATEWAY_AUTH_TOKEN?: string;
+  AI_GATEWAY_BASE_URL?: string;
+  AI_GATEWAY_BYOK_ALIAS?: string;
+  AI_GATEWAY_COLLECT_LOG_PAYLOAD?: string;
+  AI?: WorkersAiBinding;
 }
 
 export interface AuthContext {

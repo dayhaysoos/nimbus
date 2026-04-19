@@ -10,6 +10,7 @@ async function startStaticServer(options: {
   workerUrl: string;
   apiKey: string | null;
   reviewGithubToken: string | null;
+  providerApiKey: string | null;
   openrouterApiKey: string | null;
   port: number;
 }): Promise<Server> {
@@ -17,6 +18,7 @@ async function startStaticServer(options: {
     workerUrl: options.workerUrl,
     apiKey: options.apiKey,
     reviewGithubToken: options.reviewGithubToken,
+    providerApiKey: options.providerApiKey,
     openrouterApiKey: options.openrouterApiKey,
   });
 
@@ -27,6 +29,7 @@ async function startStaticServer(options: {
       workerUrl: options.workerUrl,
       apiKey: options.apiKey,
       reviewGithubToken: options.reviewGithubToken,
+      providerApiKey: options.providerApiKey,
       openrouterApiKey: options.openrouterApiKey,
     });
   });
@@ -52,6 +55,7 @@ export async function startStaticServerSession(options: {
   workerUrl: string;
   apiKey: string | null;
   reviewGithubToken: string | null;
+  providerApiKey: string | null;
   openrouterApiKey: string | null;
   port: number;
 }): Promise<UiServerSession> {
@@ -61,6 +65,7 @@ export async function startStaticServerSession(options: {
     workerUrl: options.workerUrl,
     apiKey: options.apiKey,
     reviewGithubToken: options.reviewGithubToken,
+    providerApiKey: options.providerApiKey,
     openrouterApiKey: options.openrouterApiKey,
     port: options.port,
   });

@@ -14,6 +14,7 @@ import {
   formatSseDataWithId,
   isRecord,
   isReviewStatusActive,
+  readProviderApiKeyHeader,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   sleep,
@@ -109,6 +110,7 @@ export function createReviewEventsStream(
               reviewId,
               latest,
               readReviewGithubTokenHeader(request),
+              readProviderApiKeyHeader(request),
               readOpenrouterApiKeyHeader(request),
               { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
             );

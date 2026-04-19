@@ -6,7 +6,7 @@ import {
   preflightWorkspaceDeployment,
 } from '../../clients/worker/deployments.js';
 import { getWorkerUrl } from '../../clients/worker/shared.js';
-import { getWorkspace } from '../../clients/worker/workspaces.js';
+import { getWorkspace, resetWorkspace } from '../../clients/worker/workspaces.js';
 import { resolveEntireIntentContextForCommit } from '../../lib/entire/context.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import type { WorkspaceDeploymentResponse } from '../../lib/types.js';
@@ -185,6 +185,17 @@ function isFailedReusableDeploymentStatus(status: string | null | undefined): bo
   return status === 'failed' || status === 'cancelled';
 }
 
+function shouldResetWorkspaceAfterFailedBaselineAutofix(input: {
+  autoFixEnabled: boolean;
+  failedCheckCode?: string;
+  remediations: Array<{ code?: string; applied?: boolean }>;
+}): boolean {
+  if (!input.autoFixEnabled || input.failedCheckCode !== 'git_baseline') {
+    return false;
+  }
+  return input.remediations.some((remediation) => remediation.code === 'baseline_rehydrated' && remediation.applied === false);
+}
+
 async function createWorkspaceDeploymentWithFreshRetryOnFailedReuse(
   workerUrl: string,
   workspaceId: string,
@@ -353,9 +364,8 @@ export async function workspaceDeployCommand(
   const outputDir = options?.outputDir?.trim() || null;
   const idempotencyKey = options?.idempotencyKey?.trim() || buildIdempotencyKey(workspaceId);
 
-  let preflight;
-  try {
-    preflight = await preflightWorkspaceDeployment(workerUrl, workspaceId, {
+  const runPreflight = () =>
+    preflightWorkspaceDeployment(workerUrl, workspaceId, {
       validation,
       autoFix: {
         rehydrateBaseline: autoFixEnabled,
@@ -366,6 +376,10 @@ export async function workspaceDeployCommand(
         outputDir,
       },
     });
+
+  let preflight;
+  try {
+    preflight = await runPreflight();
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     if (message.includes('Worker error (404)')) {
@@ -383,25 +397,49 @@ export async function workspaceDeployCommand(
   const remediations = Array.isArray(preflight.preflight.remediations)
     ? preflight.preflight.remediations
     : [];
+  const failedCheck = checks.find((check) => !check.ok);
+
+  if (
+    !preflight.preflight.ok &&
+    shouldResetWorkspaceAfterFailedBaselineAutofix({
+      autoFixEnabled,
+      failedCheckCode: failedCheck?.code,
+      remediations,
+    })
+  ) {
+    reporter.warning('Baseline auto-fix could not repair this workspace in place; resetting workspace to rebuild baseline.');
+    const reset = await resetWorkspace(workerUrl, workspaceId);
+    if (reset.warning) {
+      reporter.warning(reset.warning);
+    }
+    reporter.success('Workspace reset completed; retrying deploy preflight once.');
+    preflight = await runPreflight();
+  }
+
+  const effectiveChecks = Array.isArray(preflight.preflight.checks) ? preflight.preflight.checks : [];
+  const effectiveToolchain = preflight.preflight.toolchain ?? null;
+  const effectiveRemediations = Array.isArray(preflight.preflight.remediations)
+    ? preflight.preflight.remediations
+    : [];
   reporter.message('Preflight checks:');
-  for (const check of checks) {
+  for (const check of effectiveChecks) {
     reporter.message(`- ${check.code}: ${check.ok ? 'ok' : check.details ?? 'failed'}`);
   }
-  if (toolchain) {
+  if (effectiveToolchain) {
     reporter.message(
-      `Toolchain: ${toolchain.manager}${toolchain.version ? '@' + toolchain.version : ''} (${toolchain.detectedFrom})`
+      `Toolchain: ${effectiveToolchain.manager}${effectiveToolchain.version ? '@' + effectiveToolchain.version : ''} (${effectiveToolchain.detectedFrom})`
     );
   }
-  if (remediations.length > 0) {
+  if (effectiveRemediations.length > 0) {
     reporter.message('Remediations:');
-    for (const remediation of remediations) {
+    for (const remediation of effectiveRemediations) {
       reporter.message(`- ${remediation.code}: ${remediation.applied ? 'applied' : remediation.details ?? 'not applied'}`);
     }
   }
 
   if (!preflight.preflight.ok) {
     reporter.error('Workspace deployment preflight failed');
-    const failedCheck = checks.find((check) => !check.ok);
+    const failedCheck = effectiveChecks.find((check) => !check.ok);
     if (failedCheck?.code === 'git_baseline' && !autoFixEnabled) {
       reporter.warning('Tip: rerun with `--auto-fix` to allow safe baseline rehydrate remediation.');
     }

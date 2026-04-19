@@ -78,7 +78,7 @@ export function runReviewPromptTests(): void {
   }
 
   {
-    assert.equal(resolveReviewAnalysisModel({}, {} as never), 'openai/gpt-5.3-codex');
+    assert.equal(resolveReviewAnalysisModel({}, {} as never), '@cf/qwen/qwen2.5-coder-32b-instruct');
     assert.equal(resolveReviewAnalysisModel({}, { REVIEW_MODEL: 'review-model' } as never), 'review-model');
     assert.equal(resolveReviewAnalysisModel({}, { REVIEW_MODEL: '   ', AGENT_MODEL: 'agent-model' } as never), 'agent-model');
     assert.equal(resolveReviewAnalysisModel({ model: ' request-model ' }, { REVIEW_MODEL: 'review-model' } as never), 'request-model');

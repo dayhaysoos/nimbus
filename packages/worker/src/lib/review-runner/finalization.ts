@@ -7,7 +7,7 @@ import {
   updateReviewRunStatus,
 } from '../db.js';
 import { stripSensitiveTokenFields } from '../db/reviews/shared.js';
-import { scheduleReviewRetryIfCurrent, transientReviewFailure } from './retry.js';
+import { enqueueScheduledReviewRetry, scheduleReviewRetryIfCurrent, transientReviewFailure } from './retry.js';
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : {};
@@ -61,6 +61,9 @@ async function finalizeSuccessfulReviewPersistenceFailure(input: {
   expectedAttemptCount?: number;
   allowRetryScheduling?: boolean;
   phase?: 'running' | 'succeeded';
+  cochangeGithubToken?: string | null;
+  providerApiKey?: string | null;
+  openrouterApiKey?: string | null;
 }): Promise<void> {
   if (
     input.allowRetryScheduling !== false &&
@@ -72,6 +75,9 @@ async function finalizeSuccessfulReviewPersistenceFailure(input: {
         attemptCount: input.expectedAttemptCount,
         message: input.message,
         reason: 'success_persistence_retry',
+        cochangeGithubToken: input.cochangeGithubToken,
+        providerApiKey: input.providerApiKey,
+        openrouterApiKey: input.openrouterApiKey,
       });
       if (scheduled) {
         return;
@@ -111,6 +117,11 @@ async function finalizeSuccessfulReviewPersistenceFailure(input: {
             maxRetries: 2,
             reason: 'success_persistence_retry',
           },
+        });
+        await enqueueScheduledReviewRetry(input.env, input.reviewId, {
+          cochangeGithubToken: input.cochangeGithubToken,
+          providerApiKey: input.providerApiKey,
+          openrouterApiKey: input.openrouterApiKey,
         });
       } catch {
         // Best-effort retry event only.
@@ -225,6 +236,9 @@ export async function finalizeSuccessfulReview(
   options?: {
     expectedAttemptCount?: number;
     allowRetryScheduling?: boolean;
+    cochangeGithubToken?: string | null;
+    providerApiKey?: string | null;
+    openrouterApiKey?: string | null;
   }
 ): Promise<void> {
   const latest = await getReviewRun(env.DB, reviewId);
@@ -280,6 +294,9 @@ export async function finalizeSuccessfulReview(
       expectedAttemptCount: options?.expectedAttemptCount,
       allowRetryScheduling: options?.allowRetryScheduling,
       phase: 'running',
+      cochangeGithubToken: options?.cochangeGithubToken,
+      providerApiKey: options?.providerApiKey,
+      openrouterApiKey: options?.openrouterApiKey,
     });
     return;
   }

@@ -170,6 +170,8 @@ export function stripSensitiveTokenFields(value: unknown): unknown {
     if (
       normalizedKey === 'x-review-github-token' ||
       normalizedKey === 'review_context_github_token' ||
+      normalizedKey === 'x-provider-api-key' ||
+      normalizedKey === 'provider_api_key' ||
       normalizedKey === 'x-openrouter-api-key' ||
       normalizedKey === 'openrouter_api_key' ||
       normalizedKey === 'authorization'

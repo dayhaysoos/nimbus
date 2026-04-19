@@ -140,6 +140,7 @@ export async function recoverStaleRunningReviewIfNeeded(
   reviewId: string,
   review: { status: ReviewRunStatus; startedAt: string | null; updatedAt: string; createdAt: string; attemptCount: number },
   cochangeGithubToken?: string | null,
+  providerApiKey?: string | null,
   openrouterApiKey?: string | null,
   options?: { markFailedWhenRetryUnavailable?: boolean; noAuthTerminalGraceMs?: number }
 ): Promise<void> {
@@ -183,7 +184,7 @@ export async function recoverStaleRunningReviewIfNeeded(
         authMode: scopedGithubToken ? 'scoped_request_token' : 'local_cochange_only',
       },
     });
-    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, scopedGithubToken, openrouterApiKey));
+    await env.REVIEWS_QUEUE.send(createReviewQueueMessage(reviewId, scopedGithubToken, providerApiKey, openrouterApiKey));
     return;
   }
 
@@ -265,6 +266,7 @@ export async function manuallyRecoverReviewRun(
   env: Env,
   reviewId: string,
   reviewGithubToken: string | null,
+  providerApiKey: string | null,
   openrouterApiKey: string | null
 ): Promise<{ action: 'requeued' | 'failed'; review: Awaited<ReturnType<typeof getReviewRun>> }> {
   const review = await getReviewRun(env.DB, reviewId);
@@ -316,7 +318,7 @@ export async function manuallyRecoverReviewRun(
         authMode: scopedGithubToken ? 'scoped_request_token' : 'local_cochange_only',
       },
     });
-    await env.REVIEWS_QUEUE?.send(createReviewQueueMessage(reviewId, scopedGithubToken, openrouterApiKey));
+    await env.REVIEWS_QUEUE?.send(createReviewQueueMessage(reviewId, scopedGithubToken, providerApiKey, openrouterApiKey));
     return {
       action: 'requeued',
       review: await getReviewRun(env.DB, reviewId),

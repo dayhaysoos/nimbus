@@ -33,6 +33,7 @@ import { enqueueApprovedReviewRun } from './queue.js';
 import {
   isRecord,
   jsonResponse,
+  readProviderApiKeyHeader,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   requireReviewAccess,
@@ -233,6 +234,7 @@ export async function handleDeriveReviewPolicy(
       ? await summarizeReviewIntentPolicy(env, {
           rawSessionPrompts,
           intentSessionContext,
+          providerApiKey: readProviderApiKeyHeader(request),
           openrouterApiKey: readOpenrouterApiKeyHeader(request),
           intentSummaryModel,
         })
@@ -376,8 +378,9 @@ export async function handleApproveReviewPolicy(
       },
     });
 
+    const providerApiKey = readProviderApiKeyHeader(request);
     const openrouterApiKey = readOpenrouterApiKeyHeader(request);
-    await enqueueApprovedReviewRun(env, reviewId, readReviewGithubTokenHeader(request), openrouterApiKey);
+    await enqueueApprovedReviewRun(env, reviewId, readReviewGithubTokenHeader(request), providerApiKey, openrouterApiKey);
 
     return jsonResponse(
       {
@@ -431,11 +434,13 @@ export async function handleCreateReviewPolicy(
         .slice(0, 50)
     : [];
   const intentSummaryModel = normalizeIntentSummaryModel(payload.model) ?? normalizeIntentSummaryModel(payload.intentSummaryModel);
+  const providerApiKey = readProviderApiKeyHeader(request);
   const openrouterApiKey = readOpenrouterApiKeyHeader(request);
 
   const summary = await summarizeReviewIntentPolicy(env, {
     rawSessionPrompts,
     intentSessionContext,
+    providerApiKey,
     openrouterApiKey,
     intentSummaryModel,
   });

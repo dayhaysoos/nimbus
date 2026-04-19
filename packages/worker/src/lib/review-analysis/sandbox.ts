@@ -6,6 +6,8 @@ const BUNDLE_BASE64_PATH = '/tmp/review-source.tar.gz.base64';
 const BUNDLE_PATH = '/tmp/review-source.tar.gz';
 const BUNDLE_BASE64_PART_PREFIX = '/tmp/review-source.tar.gz.base64.part';
 const BUNDLE_BASE64_CHUNK_BYTES = 510 * 1024;
+const DEFAULT_SANDBOX_COMMAND_TIMEOUT_MS = 30_000;
+const REVIEW_SANDBOX_ARCHIVE_TIMEOUT_MS = 2 * 60_000;
 
 export interface SandboxClient {
   exec(
@@ -38,7 +40,7 @@ function toBase64(buffer: ArrayBuffer): string {
 export async function runSandboxCommand(
   sandbox: SandboxClient,
   command: string,
-  timeout?: number
+  timeout = DEFAULT_SANDBOX_COMMAND_TIMEOUT_MS
 ): Promise<{ stdout: string; stderr: string }> {
   const result = await sandbox.exec(command, { timeout });
   if (result.exitCode !== 0) {
@@ -61,19 +63,29 @@ async function writeBundleBase64InChunks(sandbox: SandboxClient, bundleBytes: Ar
     partIndex += 1;
   }
 
-  await runSandboxCommand(sandbox, `cat ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}.* > ${shellQuote(BUNDLE_BASE64_PATH)}`);
+  await runSandboxCommand(
+    sandbox,
+    `cat ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}.* > ${shellQuote(BUNDLE_BASE64_PATH)}`,
+    REVIEW_SANDBOX_ARCHIVE_TIMEOUT_MS
+  );
 }
 
 export async function hydrateReviewSandbox(sandbox: SandboxClient, sourceBytes: ArrayBuffer): Promise<void> {
-  await runSandboxCommand(sandbox, `rm -rf ${shellQuote(WORKSPACE_ROOT)} && mkdir -p ${shellQuote(WORKSPACE_ROOT)}`);
+  await runSandboxCommand(
+    sandbox,
+    `rm -rf ${shellQuote(WORKSPACE_ROOT)} && mkdir -p ${shellQuote(WORKSPACE_ROOT)}`,
+    REVIEW_SANDBOX_ARCHIVE_TIMEOUT_MS
+  );
   await writeBundleBase64InChunks(sandbox, sourceBytes);
   await runSandboxCommand(
     sandbox,
-    `base64 -d ${shellQuote(BUNDLE_BASE64_PATH)} > ${shellQuote(BUNDLE_PATH)} && tar -xzf ${shellQuote(BUNDLE_PATH)} -C ${shellQuote(WORKSPACE_ROOT)}`
+    `base64 -d ${shellQuote(BUNDLE_BASE64_PATH)} > ${shellQuote(BUNDLE_PATH)} && tar -xzf ${shellQuote(BUNDLE_PATH)} -C ${shellQuote(WORKSPACE_ROOT)}`,
+    REVIEW_SANDBOX_ARCHIVE_TIMEOUT_MS
   );
   await runSandboxCommand(
     sandbox,
-    `rm -f ${shellQuote(BUNDLE_BASE64_PATH)} ${shellQuote(BUNDLE_PATH)} ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}*`
+    `rm -f ${shellQuote(BUNDLE_BASE64_PATH)} ${shellQuote(BUNDLE_PATH)} ${shellQuote(BUNDLE_BASE64_PART_PREFIX)}*`,
+    REVIEW_SANDBOX_ARCHIVE_TIMEOUT_MS
   );
 }
 

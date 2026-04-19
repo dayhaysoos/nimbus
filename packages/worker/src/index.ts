@@ -302,7 +302,7 @@ export default {
     // Route: GET /api/workspaces/:id/deployments/:deploymentId - Poll deployment status
     const workspaceDeploymentGetMatch = url.pathname.match(/^\/api\/workspaces\/([a-z0-9_]+)\/deployments\/([a-z0-9_]+)$/);
     if (workspaceDeploymentGetMatch && request.method === 'GET') {
-      return handleGetWorkspaceDeployment(workspaceDeploymentGetMatch[1], workspaceDeploymentGetMatch[2], env, authContext);
+      return handleGetWorkspaceDeployment(workspaceDeploymentGetMatch[1], workspaceDeploymentGetMatch[2], env, ctx, authContext);
     }
 
     // Route: GET /api/workspaces/:id/deployments/:deploymentId/events - Poll deployment events
@@ -315,6 +315,7 @@ export default {
         workspaceDeploymentEventsMatch[2],
         request,
         env,
+        ctx,
         authContext
       );
     }

@@ -39,6 +39,7 @@ export async function buildDeploymentReportInputs(
   deploymentRequest: Record<string, unknown>,
   deploymentResult: Record<string, unknown>,
   reviewContextFilesConsidered: number,
+  providerApiKey?: string | null,
   openrouterApiKey?: string | null
 ): Promise<{
   reviewPolicy: Record<string, unknown>;
@@ -109,6 +110,7 @@ export async function buildDeploymentReportInputs(
       ? await summarizeReviewIntentPolicy(env, {
           rawSessionPrompts: rawSessionPrompts ?? '',
           intentSessionContext,
+          providerApiKey: readOptionalString(providerApiKey),
           openrouterApiKey: readOptionalString(openrouterApiKey),
           intentSummaryModel,
         })

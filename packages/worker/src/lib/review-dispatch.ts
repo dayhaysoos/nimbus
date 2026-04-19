@@ -14,6 +14,7 @@ export async function dispatchReviewToRunner(env: Env, payload: ReviewQueueMessa
     body: JSON.stringify({
       reviewId: payload.reviewId,
       cochangeGithubToken: payload.cochangeGithubToken,
+      providerApiKey: payload.providerApiKey,
       openrouterApiKey: payload.openrouterApiKey,
     }),
   });

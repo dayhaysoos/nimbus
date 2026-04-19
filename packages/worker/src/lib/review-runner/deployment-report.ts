@@ -30,6 +30,7 @@ export async function buildWorkspaceDeploymentReport(
     (await import('../db.js').then((m) => m.getWorkspaceDeploymentRequestPayload(env.DB, review.deploymentId))) ?? {},
     result,
     reviewContext.retrieval.coChange.filesConsidered,
+    readOptionalString(options?.providerApiKey),
     readOptionalString(options?.openrouterApiKey)
   );
   const analysisStage = await runDeploymentReviewAnalysisStage(env, review, payload, reviewContext, {

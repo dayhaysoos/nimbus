@@ -77,6 +77,7 @@ export async function handleStaticRequest(
     workerUrl: string;
     apiKey: string | null;
     reviewGithubToken: string | null;
+    providerApiKey: string | null;
     openrouterApiKey: string | null;
   }
 ): Promise<void> {
@@ -92,6 +93,7 @@ export async function handleStaticRequest(
       options.workerUrl,
       options.apiKey,
       options.reviewGithubToken,
+      options.providerApiKey,
       options.openrouterApiKey
     );
     if (proxied) {

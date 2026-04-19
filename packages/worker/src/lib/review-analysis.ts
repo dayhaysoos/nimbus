@@ -41,8 +41,12 @@ import {
   type ReviewCommandPolicy,
 } from './review-analysis/tools.js';
 import {
+  CloudflareAiGatewayReviewProvider,
+  CloudflareWorkersAiReviewProvider,
   CloudflareAgentSdkReviewProvider,
+  DEFAULT_CLOUDFLARE_REVIEW_MODEL,
   OpenRouterReviewProvider,
+  selectReviewAgentProvider,
   type ReviewAgentHistoryEntry,
 } from './review-analysis/provider.js';
 
@@ -51,10 +55,12 @@ const MAX_REVIEW_AGENT_MAX_STEPS = 32;
 const DEFAULT_REVIEW_MAX_FILE_BYTES = 48_000;
 const DEFAULT_REVIEW_MAX_OUTPUT_BYTES = 96_000;
 const MAX_COMMAND_TIMEOUT_MS = 2 * 60_000;
-const DEFAULT_REVIEW_MODEL = 'openai/gpt-5.3-codex';
+const DEFAULT_REVIEW_MODEL = DEFAULT_CLOUDFLARE_REVIEW_MODEL;
 const DEFAULT_REVIEW_REASONING_EFFORT: ReviewReasoningEffort = 'medium';
 const MAX_VALIDATION_REPAIR_ATTEMPTS = 1;
 const MIN_PROVIDER_REASONING_STEPS = 6;
+const MAX_PROVIDER_LOOP_STEPS = 6;
+const PREFERRED_PROVIDER_COMPLETION_STEP = 4;
 const MAX_DIRECT_CHANGED_FILE_COVERAGE_REQUIREMENT = 8;
 const MIN_DIRECT_CHANGED_FILE_COVERAGE = 3;
 const MAX_DETERMINISTIC_READ_PATHS = 8;
@@ -936,24 +942,46 @@ export async function runWorkspaceDeploymentAgentAnalysis(
     abortSignal?: AbortSignal;
   }
 ): Promise<ReviewAgentAnalysisResult | null> {
-  const endpoint = (env.AGENT_SDK_URL ?? '').trim();
-  const openrouterApiKey = readOptionalString(input.openrouterApiKey) ?? readOptionalString(env.OPENROUTER_API_KEY);
-  if (!endpoint && !openrouterApiKey) {
-    return null;
-  }
+  const endpoint = (env.AGENT_SDK_URL ?? '').trim() || (env.AGENT_ENDPOINT ? 'https://nimbus-agent-endpoint.internal' : '');
+  const requestProviderApiKey = readOptionalString((input as { providerApiKey?: string | null }).providerApiKey);
+  const requestOpenrouterApiKey = readOptionalString(input.openrouterApiKey);
 
-  const model =
+  const configuredModel =
     readOptionalString(input.modelOverride) ??
     readOptionalString(env.REVIEW_MODEL) ??
     readOptionalString(env.AGENT_MODEL) ??
     DEFAULT_REVIEW_MODEL;
+  const providerSelection = selectReviewAgentProvider({
+    env,
+    model: configuredModel,
+    endpoint,
+    providerApiKey: requestProviderApiKey,
+    openrouterApiKey: requestOpenrouterApiKey,
+  });
+  if (!providerSelection) {
+    return null;
+  }
+  const model = providerSelection.model;
   const reasoningEffort =
     parseReviewReasoningEffort(readOptionalString(env.REVIEW_REASONING_EFFORT)) ?? DEFAULT_REVIEW_REASONING_EFFORT;
   const authToken = (env.AGENT_SDK_AUTH_TOKEN ?? '').trim() || null;
+  const useAgentEndpointForGatewayReview =
+    providerSelection.providerName === 'cloudflare_ai_gateway' && Boolean(endpoint) && Boolean(authToken);
+  const effectiveProviderSelection = useAgentEndpointForGatewayReview
+    ? {
+        ...providerSelection,
+        providerName: 'cloudflare_agents_sdk' as const,
+        endpoint,
+      }
+    : providerSelection;
+  const lifecycleEndpoint =
+    effectiveProviderSelection.providerName === 'cloudflare_ai_gateway'
+      ? `${effectiveProviderSelection.gatewayConfig?.baseUrl ?? ''}/chat/completions`
+      : endpoint;
   let endpointHost: string | null = null;
   let endpointPath: string | null = null;
   try {
-    const parsedEndpoint = new URL(endpoint);
+    const parsedEndpoint = new URL(lifecycleEndpoint);
     endpointHost = parsedEndpoint.host;
     endpointPath = parsedEndpoint.pathname;
   } catch {
@@ -1002,16 +1030,32 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       });
     }
 
-    const provider = openrouterApiKey
-      ? new OpenRouterReviewProvider(openrouterApiKey, validateReviewAgentAction, 'https://nimbus.dayhaysoos.com', 'Nimbus Review Harness')
-      : new CloudflareAgentSdkReviewProvider(
-          endpoint,
-          authToken,
-          env.AGENT_ENDPOINT ?? null,
-          readOptionalString(input.openrouterApiKey),
-          validateReviewAgentAction
-        );
-    const providerName = openrouterApiKey ? 'openrouter' : 'cloudflare_agents_sdk';
+    const provider =
+      effectiveProviderSelection.providerName === 'cloudflare_workers_ai'
+        ? new CloudflareWorkersAiReviewProvider(effectiveProviderSelection.aiBinding!, validateReviewAgentAction)
+        : effectiveProviderSelection.providerName === 'cloudflare_ai_gateway'
+          ? new CloudflareAiGatewayReviewProvider(
+              effectiveProviderSelection.gatewayConfig!,
+              effectiveProviderSelection.providerApiKey,
+              validateReviewAgentAction
+            )
+          : effectiveProviderSelection.providerName === 'cloudflare_agents_sdk'
+            ? new CloudflareAgentSdkReviewProvider(
+                effectiveProviderSelection.endpoint ?? endpoint,
+                authToken,
+                env.AGENT_ENDPOINT ?? null,
+                effectiveProviderSelection.providerApiKey,
+                effectiveProviderSelection.openrouterApiKey,
+                effectiveProviderSelection.gatewayConfig?.authToken ?? null,
+                validateReviewAgentAction
+              )
+            : new OpenRouterReviewProvider(
+                effectiveProviderSelection.openrouterApiKey ?? '',
+                validateReviewAgentAction,
+                'https://nimbus.dayhaysoos.com',
+                'Nimbus Review Harness'
+              );
+    const providerName = effectiveProviderSelection.providerName;
     const policy: ReviewCommandPolicy = {
       commandAllow: [],
       commandDeny: ['git ', 'rm ', 'npm ', 'pnpm ', 'yarn ', 'bun ', 'mkdir ', 'mv ', 'cp ', 'touch '],
@@ -1053,7 +1097,10 @@ export async function runWorkspaceDeploymentAgentAnalysis(
       maxDeterministicSteps: deterministicMaxSteps,
       onLifecycleEvent: input.onLifecycleEvent,
     });
-    const providerLoopMaxSteps = Math.max(providerMaxSteps, maxSteps - deterministicExecutedSteps);
+    const providerLoopMaxSteps = Math.min(
+      MAX_PROVIDER_LOOP_STEPS,
+      Math.max(providerMaxSteps, maxSteps - deterministicExecutedSteps)
+    );
     const sensitiveChangedPaths = changedPaths.filter((path) => isSensitiveChangedPath(path));
     if (sensitiveChangedPaths.length > 0) {
       history.push({
@@ -1065,14 +1112,25 @@ export async function runWorkspaceDeploymentAgentAnalysis(
 
     for (let step = 1; step <= providerLoopMaxSteps; step += 1) {
       throwIfReviewAnalysisAborted(input.abortSignal);
+      const missingEvidenceBeforeStep = collectMissingEvidenceRequirements({
+        evidence,
+        changedPaths,
+        requiresCrossFileIntegrationEvidence: integrationSearchQueries.length > 0,
+      });
+      const forceCompleteThisStep =
+        forceCompleteNextStep ||
+        step === providerLoopMaxSteps ||
+        (step >= PREFERRED_PROVIDER_COMPLETION_STEP && missingEvidenceBeforeStep.length === 0);
       if (input.onLifecycleEvent) {
         await input.onLifecycleEvent('review_analysis_provider_request_started', {
           step,
           endpointHost,
           endpointPath,
           hasAuthToken: Boolean(authToken),
-          hasOpenrouterApiKey: Boolean(openrouterApiKey),
+          hasProviderApiKey: Boolean(effectiveProviderSelection.providerApiKey),
+          hasOpenrouterApiKey: Boolean(effectiveProviderSelection.openrouterApiKey),
           provider: providerName,
+          forceComplete: forceCompleteThisStep,
         });
       }
 
@@ -1083,7 +1141,7 @@ export async function runWorkspaceDeploymentAgentAnalysis(
         maxSteps: providerLoopMaxSteps,
         step,
         history,
-        forceComplete: forceCompleteNextStep,
+        forceComplete: forceCompleteThisStep,
         abortSignal: input.abortSignal,
       });
       forceCompleteNextStep = false;
@@ -1277,7 +1335,10 @@ export async function runWorkspaceDeploymentAgentAnalysis(
 /**
  * Redacts sensitive provider details from analysis errors before they are persisted or surfaced.
  */
-export function formatReviewAnalysisError(error: unknown, options?: { openrouterApiKey?: string | null }): string {
+export function formatReviewAnalysisError(
+  error: unknown,
+  options?: { providerApiKey?: string | null; openrouterApiKey?: string | null }
+): string {
   const message = error instanceof Error ? error.message : String(error);
   return sanitizeErrorMessage(message, options);
 }

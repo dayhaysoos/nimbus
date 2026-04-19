@@ -28,6 +28,7 @@ export interface ReviewAgentPromptInput {
   rootListing: unknown;
   diffSnapshot: unknown;
   onLifecycleEvent?: (eventType: string, payload: Record<string, unknown>) => Promise<void> | void;
+  providerApiKey?: string | null;
   openrouterApiKey?: string | null;
 }
 

@@ -12,6 +12,7 @@ import {
 import {
   corsHeaders,
   jsonResponse,
+  readProviderApiKeyHeader,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   requireReviewAccess,
@@ -42,6 +43,7 @@ export async function handleGetReview(
     reviewId,
     review,
     readReviewGithubTokenHeader(request),
+    readProviderApiKeyHeader(request),
     readOpenrouterApiKeyHeader(request),
     { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
   );
@@ -190,6 +192,7 @@ export async function handleGetReviewEvents(
       reviewId,
       review,
       readReviewGithubTokenHeader(request),
+      readProviderApiKeyHeader(request),
       readOpenrouterApiKeyHeader(request),
       { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
     );
@@ -240,6 +243,7 @@ export async function handleRecoverReview(
       env,
       reviewId,
       readReviewGithubTokenHeader(request),
+      readProviderApiKeyHeader(request),
       readOpenrouterApiKeyHeader(request)
     );
     if (!result.review) {

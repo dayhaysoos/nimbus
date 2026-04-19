@@ -57,15 +57,9 @@ function sanitizeErrorDetails(details: Record<string, unknown> | undefined): Rec
     return null;
   }
 
-  const message = details.message;
-  if (typeof message !== 'string') {
-    return details;
-  }
-
-  return {
-    ...details,
-    message: sanitizeErrorMessage(message),
-  };
+  return Object.fromEntries(
+    Object.entries(details).map(([key, value]) => [key, typeof value === 'string' ? sanitizeErrorMessage(value) : value])
+  );
 }
 
 export default {
@@ -98,8 +92,12 @@ export default {
 
     try {
       const openrouterApiKeyHeader = request.headers.get('X-Openrouter-Api-Key');
+      const providerApiKeyHeader = request.headers.get('X-Provider-Api-Key');
+      const aiGatewayAuthTokenHeader = request.headers.get('X-AI-Gateway-Auth-Token');
       const action = await nextAgentActionWithInference(payload, env, {
         openrouterApiKey: typeof openrouterApiKeyHeader === 'string' ? openrouterApiKeyHeader : null,
+        providerApiKey: typeof providerApiKeyHeader === 'string' ? providerApiKeyHeader : null,
+        aiGatewayAuthToken: typeof aiGatewayAuthTokenHeader === 'string' ? aiGatewayAuthTokenHeader : null,
       });
       return new Response(JSON.stringify({ action }), {
         status: 200,

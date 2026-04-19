@@ -12,6 +12,7 @@ export function createProxyHeaders(
   options: {
     apiKey: string | null;
     reviewGithubToken: string | null;
+    providerApiKey: string | null;
     openrouterApiKey: string | null;
   }
 ): Headers {
@@ -32,6 +33,9 @@ export function createProxyHeaders(
   }
   if (options.reviewGithubToken) {
     headers.set('X-Review-Github-Token', options.reviewGithubToken);
+  }
+  if (options.providerApiKey) {
+    headers.set('X-Provider-Api-Key', options.providerApiKey);
   }
   if (options.openrouterApiKey) {
     headers.set('X-Openrouter-Api-Key', options.openrouterApiKey);
@@ -60,6 +64,7 @@ export function createReviewEventsFanout(options: {
   workerUrl: string;
   apiKey: string | null;
   reviewGithubToken: string | null;
+  providerApiKey: string | null;
   openrouterApiKey: string | null;
 }): ReviewEventsFanout {
   const channels = new Map<string, ReviewEventsChannel>();
@@ -231,6 +236,7 @@ export function createReviewEventsFanout(options: {
           {
             apiKey: options.apiKey,
             reviewGithubToken: options.reviewGithubToken,
+            providerApiKey: options.providerApiKey,
             openrouterApiKey: options.openrouterApiKey,
           }
         ),

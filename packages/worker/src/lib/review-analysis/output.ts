@@ -91,8 +91,15 @@ export function isGenericProviderCompletionSummary(summary: string): boolean {
   return /completed by .*agent endpoint/i.test(summary.trim());
 }
 
-export function sanitizeErrorMessage(input: string, options?: { openrouterApiKey?: string | null }): string {
+export function sanitizeErrorMessage(
+  input: string,
+  options?: { openrouterApiKey?: string | null; providerApiKey?: string | null }
+): string {
   let sanitized = redactReviewText(input) ?? '';
+  const providerApiKey = options?.providerApiKey?.trim();
+  if (providerApiKey) {
+    sanitized = sanitized.split(providerApiKey).join('[REDACTED_PROVIDER_API_KEY]');
+  }
   const openrouterApiKey = options?.openrouterApiKey?.trim();
   if (openrouterApiKey) {
     sanitized = sanitized.split(openrouterApiKey).join('[REDACTED_OPENROUTER_API_KEY]');

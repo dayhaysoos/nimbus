@@ -64,6 +64,7 @@ export async function runUiProxyTests(): Promise<void> {
       'https://worker.example.com',
       null,
       null,
+      null,
       null
     );
 
@@ -109,6 +110,7 @@ export async function runUiProxyTests(): Promise<void> {
       request,
       response,
       'https://worker.example.com',
+      null,
       null,
       null,
       null
@@ -313,6 +315,7 @@ export async function runUiProxyTests(): Promise<void> {
       'https://worker.example.com',
       null,
       null,
+      null,
       null
     );
 
@@ -426,6 +429,7 @@ export async function runUiProxyTests(): Promise<void> {
       request,
       response,
       'https://worker.example.com',
+      null,
       null,
       null,
       null

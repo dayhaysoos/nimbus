@@ -235,7 +235,11 @@ export async function executeReviewTool(
 ): Promise<ReviewToolContext> {
   if (action.tool === 'list_files') {
     const absolutePath = assertWorkspacePath(action.args.path ?? '.', policy);
-    const output = await runSandboxCommand(sandbox, buildListFilesCommand(absolutePath, policy.rootPath));
+    const output = await runSandboxCommand(
+      sandbox,
+      buildListFilesCommand(absolutePath, policy.rootPath),
+      policy.maxCommandTimeoutMs
+    );
     return { request: { path: action.args.path ?? '.' }, result: JSON.parse(output.stdout || '{}') };
   }
 
@@ -244,7 +248,11 @@ export async function executeReviewTool(
     const maxBytes = typeof action.args.maxBytes === 'number' && Number.isFinite(action.args.maxBytes)
       ? Math.max(1, Math.min(maxFileBytes, Math.floor(action.args.maxBytes)))
       : maxFileBytes;
-    const output = await runSandboxCommand(sandbox, buildReadFileCommand(absolutePath, maxBytes, policy.rootPath));
+    const output = await runSandboxCommand(
+      sandbox,
+      buildReadFileCommand(absolutePath, maxBytes, policy.rootPath),
+      policy.maxCommandTimeoutMs
+    );
     return { request: { path: action.args.path, maxBytes }, result: JSON.parse(output.stdout || '{}') };
   }
 
@@ -255,7 +263,11 @@ export async function executeReviewTool(
     const files: Array<Record<string, unknown>> = [];
     for (const requestedPath of action.args.paths) {
       const absolutePath = assertWorkspacePath(requestedPath, policy);
-      const output = await runSandboxCommand(sandbox, buildReadFileCommand(absolutePath, maxBytes, policy.rootPath));
+      const output = await runSandboxCommand(
+        sandbox,
+        buildReadFileCommand(absolutePath, maxBytes, policy.rootPath),
+        policy.maxCommandTimeoutMs
+      );
       const parsed = JSON.parse(output.stdout || '{}') as Record<string, unknown>;
       files.push({
         path: requestedPath,
@@ -292,7 +304,8 @@ export async function executeReviewTool(
         maxBytesPerFile,
         rootPath: policy.rootPath,
         caseSensitive,
-      })
+      }),
+      policy.maxCommandTimeoutMs
     );
     return {
       request: { query, path: action.args.path ?? '.', maxResults, maxBytesPerFile, caseSensitive },

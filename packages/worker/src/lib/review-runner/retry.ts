@@ -5,6 +5,7 @@ import {
   replaceReviewFindings,
   updateReviewRunStatus,
 } from '../db.js';
+import { createReviewQueueMessage } from '../review-queue.js';
 
 export class QueueRetryError extends Error {
   constructor(message: string) {
@@ -40,6 +41,23 @@ export function transientReviewFailure(message: string): boolean {
   return /(d1|database is locked|sqlite_busy|temporarily unavailable|connection reset|timed out|timeout|aborted|fetch failed|network)/i.test(message);
 }
 
+async function enqueueScheduledReviewRetry(
+  env: Env,
+  reviewId: string,
+  input?: {
+    cochangeGithubToken?: string | null;
+    providerApiKey?: string | null;
+    openrouterApiKey?: string | null;
+  }
+): Promise<void> {
+  if (!env.REVIEWS_QUEUE) {
+    return;
+  }
+  await env.REVIEWS_QUEUE.send(
+    createReviewQueueMessage(reviewId, input?.cochangeGithubToken, input?.providerApiKey, input?.openrouterApiKey)
+  );
+}
+
 /**
  * Moves a review back to queued state with a retry marker and clears any partial persisted output.
  */
@@ -52,6 +70,9 @@ export async function scheduleReviewRetry(
     reason: string;
     extraPayload?: Record<string, unknown>;
     throwMessage?: string;
+    cochangeGithubToken?: string | null;
+    providerApiKey?: string | null;
+    openrouterApiKey?: string | null;
   }
 ): Promise<never> {
   await replaceReviewFindings(env.DB, reviewId, []);
@@ -73,6 +94,11 @@ export async function scheduleReviewRetry(
       ...(input.extraPayload ?? {}),
     },
   });
+  await enqueueScheduledReviewRetry(env, reviewId, {
+    cochangeGithubToken: input.cochangeGithubToken,
+    providerApiKey: input.providerApiKey,
+    openrouterApiKey: input.openrouterApiKey,
+  });
   throw new QueueRetryError(input.throwMessage ?? 'Review retry requested');
 }
 
@@ -89,6 +115,9 @@ export async function scheduleReviewRetryIfCurrent(
     reason: string;
     extraPayload?: Record<string, unknown>;
     throwMessage?: string;
+    cochangeGithubToken?: string | null;
+    providerApiKey?: string | null;
+    openrouterApiKey?: string | null;
   }
 ): Promise<boolean> {
   const now = new Date().toISOString();
@@ -122,6 +151,11 @@ export async function scheduleReviewRetryIfCurrent(
       ...(input.extraPayload ?? {}),
     },
   });
+  await enqueueScheduledReviewRetry(env, reviewId, {
+    cochangeGithubToken: input.cochangeGithubToken,
+    providerApiKey: input.providerApiKey,
+    openrouterApiKey: input.openrouterApiKey,
+  });
   return true;
 }
 
@@ -133,7 +167,12 @@ export async function handleUnclaimedReviewRun(
   env: Env,
   reviewId: string,
   existing: ReviewRunResponse,
-  allowRetryScheduling: boolean
+  allowRetryScheduling: boolean,
+  options?: {
+    cochangeGithubToken?: string | null;
+    providerApiKey?: string | null;
+    openrouterApiKey?: string | null;
+  }
 ): Promise<void> {
   if (existing.status !== 'running') {
     return;
@@ -158,6 +197,9 @@ export async function handleUnclaimedReviewRun(
       reason: 'stale_running_timeout',
       extraPayload: { staleForSeconds },
       throwMessage: 'Review stale-running recovery requested',
+      cochangeGithubToken: options?.cochangeGithubToken,
+      providerApiKey: options?.providerApiKey,
+      openrouterApiKey: options?.openrouterApiKey,
     });
   }
 
@@ -210,3 +252,5 @@ export function shouldRetryReviewError(error: unknown): boolean {
   const message = error instanceof Error ? error.message : String(error);
   return transientReviewFailure(message);
 }
+
+export { enqueueScheduledReviewRetry };

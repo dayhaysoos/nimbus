@@ -34,6 +34,7 @@ export async function startReportUiSession(options: {
   workerUrl: string;
   apiKey: string | null;
   reviewGithubToken: string | null;
+  providerApiKey: string | null;
   openrouterApiKey: string | null;
   preferDevServer?: boolean;
   repoRoot?: string;
@@ -66,6 +67,7 @@ export async function startReportUiSession(options: {
       workerUrl: options.workerUrl,
       apiKey: options.apiKey,
       reviewGithubToken: options.reviewGithubToken,
+      providerApiKey: options.providerApiKey,
       openrouterApiKey: options.openrouterApiKey,
       port: options.port,
     });

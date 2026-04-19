@@ -18,6 +18,7 @@ import {
   isRecord,
   isSeverityThreshold,
   jsonResponse,
+  readProviderApiKeyHeader,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   requireWorkspaceAccess,
@@ -61,6 +62,7 @@ export async function handleCreateReview(
       return jsonResponse({ error: 'Hosted review requests must use HTTPS' }, 400);
     }
     const reviewGithubToken = readReviewGithubTokenHeader(request);
+    const providerApiKey = readProviderApiKeyHeader(request);
     const openrouterApiKey = readOpenrouterApiKeyHeader(request);
 
     const payloadRaw = await request.text();
@@ -191,6 +193,7 @@ export async function handleCreateReview(
       const enqueueError = await enqueueReviewRunIfNeeded(env, created.review, {
         reused: created.reused,
         reviewGithubToken,
+        providerApiKey,
         openrouterApiKey,
       });
       if (enqueueError) {
@@ -296,6 +299,7 @@ export async function handleCreateReview(
     const enqueueError = await enqueueReviewRunIfNeeded(env, created.review, {
       reused: created.reused,
       reviewGithubToken,
+      providerApiKey,
       openrouterApiKey,
     });
     if (enqueueError) {

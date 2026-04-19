@@ -14,9 +14,86 @@ function readNimbusApiKey(): string | null {
   return typeof value === 'string' && value.trim() ? value.trim() : null;
 }
 
-function readOpenrouterApiKey(): string | null {
+export function readOpenrouterApiKey(): string | null {
   const value = process.env.OPENROUTER_API_KEY;
   return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function readReviewModelHint(): string | null {
+  const value = process.env.REVIEW_MODEL ?? process.env.NIMBUS_REVIEW_MODEL;
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function readEnvKey(name: string): string | null {
+  const value = process.env[name];
+  return typeof value === 'string' && value.trim() ? value.trim() : null;
+}
+
+function providerEnvVarForModel(model: string): string | null {
+  const normalized = model.trim().toLowerCase();
+  if (!normalized) {
+    return null;
+  }
+  if (normalized.startsWith('openai/')) {
+    return 'OPENAI_API_KEY';
+  }
+  if (normalized.startsWith('anthropic/')) {
+    return 'ANTHROPIC_API_KEY';
+  }
+  if (normalized.startsWith('google/') || normalized.startsWith('gemini/') || normalized.startsWith('vertex/')) {
+    return 'GOOGLE_API_KEY';
+  }
+  if (normalized.startsWith('groq/')) {
+    return 'GROQ_API_KEY';
+  }
+  if (normalized.startsWith('grok/') || normalized.startsWith('xai/')) {
+    return 'XAI_API_KEY';
+  }
+  if (normalized.startsWith('mistral/')) {
+    return 'MISTRAL_API_KEY';
+  }
+  if (normalized.startsWith('cohere/')) {
+    return 'COHERE_API_KEY';
+  }
+  if (normalized.startsWith('deepseek/')) {
+    return 'DEEPSEEK_API_KEY';
+  }
+  if (normalized.startsWith('perplexity/')) {
+    return 'PERPLEXITY_API_KEY';
+  }
+  return null;
+}
+
+export function readProviderApiKey(): string | null {
+  const explicit = readEnvKey('REVIEW_PROVIDER_API_KEY');
+  if (explicit) {
+    return explicit;
+  }
+
+  const modelHint = readReviewModelHint();
+  if (modelHint) {
+    const hintedEnvVar = providerEnvVarForModel(modelHint);
+    if (hintedEnvVar) {
+      const hintedValue = readEnvKey(hintedEnvVar);
+      if (hintedValue) {
+        return hintedValue;
+      }
+    }
+  }
+
+  const candidates = [
+    readEnvKey('OPENAI_API_KEY'),
+    readEnvKey('ANTHROPIC_API_KEY'),
+    readEnvKey('GOOGLE_API_KEY'),
+    readEnvKey('GROQ_API_KEY'),
+    readEnvKey('XAI_API_KEY'),
+    readEnvKey('MISTRAL_API_KEY'),
+    readEnvKey('COHERE_API_KEY'),
+    readEnvKey('DEEPSEEK_API_KEY'),
+    readEnvKey('PERPLEXITY_API_KEY'),
+  ].filter((value): value is string => Boolean(value));
+
+  return candidates.length === 1 ? candidates[0] : null;
 }
 
 function readReviewGithubToken(): string | null {
@@ -69,6 +146,11 @@ function withAuthHeaders(workerUrl: string, headers?: RequestInit['headers']): R
 
 export function withReviewHeaders(baseHeaders?: RequestInit['headers']): Record<string, string> {
   const headers = toHeaderRecord(baseHeaders);
+
+  const providerApiKey = readProviderApiKey();
+  if (providerApiKey) {
+    headers['X-Provider-Api-Key'] = providerApiKey;
+  }
 
   const openrouterApiKey = readOpenrouterApiKey();
   if (openrouterApiKey) {

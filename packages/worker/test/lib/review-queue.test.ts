@@ -10,8 +10,14 @@ export async function runReviewQueueTests(): Promise<void> {
   const parsed = parseReviewQueueMessage(message);
   assert.deepEqual(parsed, message);
 
-  const tokenMessage = createReviewQueueMessage('rev_abcd1234', 'ghp_user_token_123', 'or_user_token_123');
+  const tokenMessage = createReviewQueueMessage(
+    'rev_abcd1234',
+    'ghp_user_token_123',
+    'provider_user_token_123',
+    'or_user_token_123'
+  );
   assert.equal(tokenMessage.cochangeGithubToken, 'ghp_user_token_123');
+  assert.equal(tokenMessage.providerApiKey, 'provider_user_token_123');
   assert.equal(tokenMessage.openrouterApiKey, 'or_user_token_123');
   assert.deepEqual(parseReviewQueueMessage(tokenMessage), tokenMessage);
 

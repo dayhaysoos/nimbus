@@ -5,12 +5,14 @@ export interface ReviewQueueMessage {
   reviewId: string;
   queuedAt: string;
   cochangeGithubToken?: string;
+  providerApiKey?: string;
   openrouterApiKey?: string;
 }
 
 export function createReviewQueueMessage(
   reviewId: string,
   cochangeGithubToken?: string | null,
+  providerApiKey?: string | null,
   openrouterApiKey?: string | null
 ): ReviewQueueMessage {
   const message: ReviewQueueMessage = {
@@ -20,6 +22,9 @@ export function createReviewQueueMessage(
   };
   if (typeof cochangeGithubToken === 'string' && cochangeGithubToken.trim()) {
     message.cochangeGithubToken = cochangeGithubToken.trim();
+  }
+  if (typeof providerApiKey === 'string' && providerApiKey.trim()) {
+    message.providerApiKey = providerApiKey.trim();
   }
   if (typeof openrouterApiKey === 'string' && openrouterApiKey.trim()) {
     message.openrouterApiKey = openrouterApiKey.trim();
@@ -45,6 +50,9 @@ export function parseReviewQueueMessage(payload: unknown): ReviewQueueMessage {
   if (record.cochangeGithubToken !== undefined && (typeof record.cochangeGithubToken !== 'string' || !record.cochangeGithubToken.trim())) {
     throw new Error('Invalid review queue payload cochangeGithubToken');
   }
+  if (record.providerApiKey !== undefined && (typeof record.providerApiKey !== 'string' || !record.providerApiKey.trim())) {
+    throw new Error('Invalid review queue payload providerApiKey');
+  }
   if (record.openrouterApiKey !== undefined && (typeof record.openrouterApiKey !== 'string' || !record.openrouterApiKey.trim())) {
     throw new Error('Invalid review queue payload openrouterApiKey');
   }
@@ -56,6 +64,9 @@ export function parseReviewQueueMessage(payload: unknown): ReviewQueueMessage {
   };
   if (typeof record.cochangeGithubToken === 'string' && record.cochangeGithubToken.trim()) {
     parsed.cochangeGithubToken = record.cochangeGithubToken.trim();
+  }
+  if (typeof record.providerApiKey === 'string' && record.providerApiKey.trim()) {
+    parsed.providerApiKey = record.providerApiKey.trim();
   }
   if (typeof record.openrouterApiKey === 'string' && record.openrouterApiKey.trim()) {
     parsed.openrouterApiKey = record.openrouterApiKey.trim();

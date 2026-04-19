@@ -13,6 +13,7 @@ import {
   isRecord,
   isReviewStatusActive,
   jsonResponse,
+  readProviderApiKeyHeader,
   readOpenrouterApiKeyHeader,
   readReviewGithubTokenHeader,
   requireReviewSessionAccess,
@@ -45,6 +46,7 @@ export async function handleGetReviewSession(
         latestReview.id,
         latestReview,
         readReviewGithubTokenHeader(request),
+        readProviderApiKeyHeader(request),
         readOpenrouterApiKeyHeader(request),
         { markFailedWhenRetryUnavailable: false, noAuthTerminalGraceMs: REVIEW_STALE_NOAUTH_TERMINAL_GRACE_MS }
       );
@@ -206,6 +208,7 @@ export async function handleCreateReviewSessionPass(
     }
 
     const reviewGithubToken = readReviewGithubTokenHeader(request);
+    const providerApiKey = readProviderApiKeyHeader(request);
     const openrouterApiKey = readOpenrouterApiKeyHeader(request);
     const userProvenance = isRecord(payload.provenance) ? payload.provenance : {};
     const requestedIdempotencyKey = request.headers.get('Idempotency-Key');
@@ -232,6 +235,7 @@ export async function handleCreateReviewSessionPass(
     const enqueueError = await enqueueReviewRunIfNeeded(env, created.review, {
       reused: created.reused,
       reviewGithubToken,
+      providerApiKey,
       openrouterApiKey,
     });
     if (enqueueError) {

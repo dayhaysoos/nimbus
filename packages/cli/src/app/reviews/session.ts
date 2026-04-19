@@ -3,7 +3,7 @@ import { execFileSync } from 'child_process';
 import { spawn } from 'child_process';
 import { mkdir, readFile, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
-import { getWorkerUrl } from '../../clients/worker/shared.js';
+import { getWorkerUrl, readOpenrouterApiKey, readProviderApiKey } from '../../clients/worker/shared.js';
 import { GitRepo } from '../../lib/checkpoint/git.js';
 import { startStudioPreflightBackgroundPolling, stopStudioPreflightBackgroundPolling } from './studio-preflight-cache.js';
 import { startReportUiSession } from './ui-server.js';
@@ -26,6 +26,7 @@ export interface ReviewUiRuntimeContext {
   workerUrl: string;
   apiKey: string | null;
   reviewGithubToken: string | null;
+  providerApiKey: string | null;
   openrouterApiKey: string | null;
   preferDevUi: boolean;
 }
@@ -238,7 +239,8 @@ export function resolveReviewUiRuntimeContext(
   const workerUrl = getWorkerUrl();
   const apiKey = process.env.NIMBUS_API_KEY?.trim() ?? null;
   const reviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN?.trim() ?? null;
-  const openrouterApiKey = process.env.OPENROUTER_API_KEY?.trim() ?? null;
+  const providerApiKey = readProviderApiKey();
+  const openrouterApiKey = readOpenrouterApiKey();
   if (!apiKey) {
     reporter.warning('NIMBUS_API_KEY is not set. Hosted worker requests may be rejected as unauthenticated.');
   }
@@ -248,6 +250,7 @@ export function resolveReviewUiRuntimeContext(
     workerUrl,
     apiKey,
     reviewGithubToken,
+    providerApiKey,
     openrouterApiKey,
     preferDevUi: Boolean(options?.preferDevUi),
   };
@@ -313,6 +316,7 @@ export async function runStudioServeProcess(runtime: ReviewUiRuntimeContext): Pr
       workerUrl: runtime.workerUrl,
       apiKey: runtime.apiKey,
       reviewGithubToken: runtime.reviewGithubToken,
+      providerApiKey: runtime.providerApiKey,
       openrouterApiKey: runtime.openrouterApiKey,
       preferDevServer: runtime.preferDevUi,
       repoRoot,

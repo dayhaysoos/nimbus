@@ -95,7 +95,11 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
   if (!claimed) {
     const existing = await getReviewRun(env.DB, reviewId);
     if (existing?.status === 'running') {
-      await handleUnclaimedReviewRun(env, reviewId, existing, options?.allowRetryScheduling ?? true);
+      await handleUnclaimedReviewRun(env, reviewId, existing, options?.allowRetryScheduling ?? true, {
+        cochangeGithubToken: options?.cochangeGithubToken,
+        providerApiKey: options?.providerApiKey,
+        openrouterApiKey: options?.openrouterApiKey,
+      });
     }
     return;
   }
@@ -141,6 +145,9 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
     await finalizeSuccessfulReview(env, reviewId, payload, report, {
       expectedAttemptCount: review.attemptCount,
       allowRetryScheduling: options?.allowRetryScheduling,
+      cochangeGithubToken: options?.cochangeGithubToken,
+      providerApiKey: options?.providerApiKey,
+      openrouterApiKey: options?.openrouterApiKey,
     });
     const latestAfterFinalize = await loadLatestReviewUnlessManuallyFailed(env, reviewId);
     if (!latestAfterFinalize || latestAfterFinalize.status !== 'succeeded') {
@@ -152,6 +159,7 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
     }
   } catch (error) {
     const message = formatReviewAnalysisError(error, {
+      providerApiKey: readOptionalString(options?.providerApiKey),
       openrouterApiKey: readOptionalString(options?.openrouterApiKey),
     });
     const latest = await loadLatestReviewUnlessManuallyFailed(env, reviewId);
@@ -166,6 +174,9 @@ export async function processReviewRun(env: Env, reviewId: string, options?: Rev
         attemptCount,
         message,
         reason: message.slice(0, 500),
+        cochangeGithubToken: options?.cochangeGithubToken,
+        providerApiKey: options?.providerApiKey,
+        openrouterApiKey: options?.openrouterApiKey,
       });
       if (retryScheduled) {
         throw new QueueRetryError('Review transient failure; retry requested');

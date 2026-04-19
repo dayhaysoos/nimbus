@@ -381,6 +381,145 @@ export async function runWorkspaceDeployCommandTests(): Promise<void> {
 
     {
       const requests: Array<{ url: string; body: Record<string, unknown> | null }> = [];
+      let preflightAttempts = 0;
+      globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {
+        const url = String(input);
+        const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;
+        requests.push({ url, body });
+        if (
+          url.includes('/api/workspaces/ws_abc12345') &&
+          !url.endsWith('/deploy/preflight') &&
+          !url.endsWith('/deploy') &&
+          !url.endsWith('/reset') &&
+          !url.endsWith('/deployments/dep_after_reset')
+        ) {
+          return new Response(
+            JSON.stringify({
+              id: 'ws_abc12345',
+              status: 'ready',
+              sourceType: 'checkpoint',
+              checkpointId: null,
+              commitSha: 'a'.repeat(40),
+              sourceRef: 'main',
+              sourceProjectRoot: '.',
+              sourceBundleKey: 'key',
+              sourceBundleSha256: 'f'.repeat(64),
+              sourceBundleBytes: 1,
+              sandboxId: 'workspace-ws_abc12345',
+              baselineReady: true,
+              errorCode: null,
+              errorMessage: null,
+              lastDeploymentId: null,
+              lastDeploymentStatus: null,
+              lastDeployedUrl: null,
+              lastDeployedAt: null,
+              lastDeploymentErrorCode: null,
+              lastDeploymentErrorMessage: null,
+              createdAt: '2026-03-11T00:00:00.000Z',
+              updatedAt: '2026-03-11T00:00:00.000Z',
+              deletedAt: null,
+              eventsUrl: '/api/workspaces/ws_abc12345/events',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deploy/preflight')) {
+          preflightAttempts += 1;
+          if (preflightAttempts === 1) {
+            return new Response(
+              JSON.stringify({
+                preflight: {
+                  ok: false,
+                  checks: [
+                    { code: 'workspace_ready', ok: true },
+                    { code: 'git_baseline', ok: false, details: 'Workspace git baseline is missing' },
+                  ],
+                  remediations: [{ code: 'baseline_rehydrated', applied: false, details: 'auto-fix failed' }],
+                },
+                nextAction: 'Reset workspace to rebuild git baseline and retry deploy.',
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            );
+          }
+          return new Response(
+            JSON.stringify({
+              preflight: {
+                ok: true,
+                checks: [
+                  { code: 'workspace_ready', ok: true },
+                  { code: 'git_baseline', ok: true, details: 'auto-fixed baseline rehydrate' },
+                ],
+                remediations: [{ code: 'baseline_rehydrated', applied: true }],
+              },
+              nextAction: null,
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/reset') && init?.method === 'POST') {
+          return new Response(
+            JSON.stringify({
+              workspace: {
+                id: 'ws_abc12345',
+                status: 'ready',
+                sourceType: 'checkpoint',
+                checkpointId: null,
+                commitSha: 'a'.repeat(40),
+                sourceRef: 'main',
+                sourceProjectRoot: '.',
+                sourceBundleKey: 'key',
+                sourceBundleSha256: 'f'.repeat(64),
+                sourceBundleBytes: 1,
+                sandboxId: 'workspace-ws_abc12345',
+                baselineReady: true,
+                errorCode: null,
+                errorMessage: null,
+                lastDeploymentId: null,
+                lastDeploymentStatus: null,
+                lastDeployedUrl: null,
+                lastDeployedAt: null,
+                lastDeploymentErrorCode: null,
+                lastDeploymentErrorMessage: null,
+                createdAt: '2026-03-11T00:00:00.000Z',
+                updatedAt: '2026-03-11T00:01:00.000Z',
+                deletedAt: null,
+                eventsUrl: '/api/workspaces/ws_abc12345/events',
+              },
+              warning: 'post-reset cleanup warning',
+            }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deploy')) {
+          return new Response(
+            JSON.stringify({ deployment: { id: 'dep_after_reset', status: 'queued' } }),
+            { status: 202, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        if (url.endsWith('/deployments/dep_after_reset')) {
+          return new Response(
+            JSON.stringify({ deployment: { id: 'dep_after_reset', status: 'succeeded', provider: 'simulated', deployedUrl: 'https://example.dev' } }),
+            { status: 200, headers: { 'Content-Type': 'application/json' } }
+          );
+        }
+        throw new Error(`Unexpected request in reset-retry test: ${url}`);
+      }) as typeof fetch;
+
+      const deployment = await workspaceDeployCommand('ws_abc12345', {
+        idempotencyKey: 'idem-deploy-reset',
+        runTestsIfPresent: false,
+        runBuildIfPresent: false,
+        autoFix: true,
+        pollIntervalMs: 1,
+      });
+
+      assert.equal(deployment?.id, 'dep_after_reset');
+      assert.equal(requests.filter((request) => request.url.endsWith('/deploy/preflight')).length, 2);
+      assert.equal(requests.some((request) => request.url.endsWith('/reset')), true);
+    }
+
+    {
+      const requests: Array<{ url: string; body: Record<string, unknown> | null }> = [];
       globalThis.fetch = (async (input: unknown, init?: RequestInit): Promise<Response> => {
         const url = String(input);
         const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : null;

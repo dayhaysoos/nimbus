@@ -178,7 +178,7 @@ export function resolveReviewAnalysisModel(payload: Record<string, unknown>, env
   if (agentModel) {
     return agentModel;
   }
-  return 'openai/gpt-5.3-codex';
+  return '@cf/qwen/qwen2.5-coder-32b-instruct';
 }
 
 export function mergeProvenance(

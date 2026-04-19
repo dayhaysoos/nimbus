@@ -590,7 +590,8 @@ export async function resolveReviewContext(
       idempotencyKey: deploymentIdempotencyKey,
       runTestsIfPresent: true,
       runBuildIfPresent: true,
-      autoFix: false,
+      // Review create should self-heal missing baselines/toolchain bootstrap issues on reused workspaces.
+      autoFix: true,
       pollIntervalMs: options?.pollIntervalMs,
       reporter: {
         message: (text) => spinner.message(text),

@@ -721,6 +721,7 @@ export async function proxyApiRequest(
   workerUrl: string,
   apiKey: string | null,
   reviewGithubToken: string | null,
+  providerApiKey: string | null,
   openrouterApiKey: string | null
 ): Promise<boolean> {
   const requestUrl = new URL(request.url ?? '/', `http://${LOCAL_HOST}`);
@@ -1198,6 +1199,7 @@ export async function proxyApiRequest(
   const headers = createProxyHeaders(request.headers, {
     apiKey,
     reviewGithubToken,
+    providerApiKey,
     openrouterApiKey,
   });
 

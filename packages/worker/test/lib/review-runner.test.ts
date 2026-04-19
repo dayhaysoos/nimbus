@@ -1,6 +1,7 @@
 import { strict as assert } from 'assert';
 import { processReviewRun as processReviewRunBase, shouldRetryReviewError } from '../../src/lib/review-runner.js';
 import { scheduleReviewRetryIfCurrent } from '../../src/lib/review-runner/retry.js';
+import type { ReviewQueueMessage } from '../../src/lib/review-queue.js';
 import { setReviewAnalysisSandboxResolverForTests } from '../../src/lib/review-analysis.js';
 
 async function processReviewRun(
@@ -31,13 +32,14 @@ function createReviewRunnerEnv(options?: {
   deploymentRequestProvenance?: Record<string, unknown>;
 }): {
   env: Record<string, unknown>;
-  state: {
-    status: string;
-    attemptCount: number;
-    events: Array<{ eventType: string; payload: unknown }>;
-    reportJson: string | null;
-    markdownSummary: string | null;
-    startedAt: string | null;
+    state: {
+      status: string;
+      attemptCount: number;
+      events: Array<{ eventType: string; payload: unknown }>;
+      queueMessages: ReviewQueueMessage[];
+      reportJson: string | null;
+      markdownSummary: string | null;
+      startedAt: string | null;
     updatedAt: string;
     findingInsertFailuresRemaining: number;
     errorCode: string | null;
@@ -48,6 +50,7 @@ function createReviewRunnerEnv(options?: {
     status: 'queued',
     attemptCount: 0,
     events: [] as Array<{ eventType: string; payload: unknown }>,
+    queueMessages: [] as ReviewQueueMessage[],
     reportJson: null as string | null,
     markdownSummary: null as string | null,
     startedAt: null as string | null,
@@ -560,6 +563,11 @@ function createReviewRunnerEnv(options?: {
           },
         }
       : undefined,
+    REVIEWS_QUEUE: {
+      async send(message: ReviewQueueMessage) {
+        state.queueMessages.push(message);
+      },
+    },
     REVIEW_CONTEXT_GITHUB_TOKEN: 'ghp_test_token',
     ...(options?.envOverrides ?? {}),
   };
@@ -967,7 +975,7 @@ export async function runReviewRunnerTests(): Promise<void> {
 
   {
     const originalFetch = globalThis.fetch;
-    let capturedAuthHeader: string | null = null;
+    let capturedOpenRouterHeader = '';
     setReviewAnalysisSandboxResolverForTests(async () => ({
       async exec(command: string) {
         if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
@@ -987,7 +995,7 @@ export async function runReviewRunnerTests(): Promise<void> {
     }) as never);
     globalThis.fetch = (async (_input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const headers = new Headers(init?.headers);
-      capturedAuthHeader = headers.get('Authorization');
+      capturedOpenRouterHeader = headers.get('X-Openrouter-Api-Key') ?? '';
       return new Response(
         JSON.stringify({
           choices: [
@@ -1008,7 +1016,7 @@ export async function runReviewRunnerTests(): Promise<void> {
     try {
       const { env } = createReviewRunnerEnv({ envOverrides: { AGENT_SDK_URL: 'https://agent.example.com' } });
       await processReviewRun(env as never, 'rev_abcd1234', { openrouterApiKey: 'or_request_key_123' });
-      assert.equal(capturedAuthHeader, 'Bearer or_request_key_123');
+      assert.equal(capturedOpenRouterHeader, 'or_request_key_123');
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
@@ -1134,6 +1142,8 @@ export async function runReviewRunnerTests(): Promise<void> {
     assert.equal(state.status, 'queued');
     assert.equal(state.errorCode, 'retry_scheduled');
     assert.equal(state.events.some((event) => event.eventType === 'review_retry_scheduled'), true);
+    assert.equal(state.queueMessages.length, 1);
+    assert.equal(state.queueMessages[0]?.reviewId, 'rev_abcd1234');
     setReviewAnalysisSandboxResolverForTests(null);
   }
 
@@ -1148,6 +1158,8 @@ export async function runReviewRunnerTests(): Promise<void> {
     assert.equal(state.errorCode, 'retry_scheduled');
     const retryEvent = state.events.find((event) => event.eventType === 'review_retry_scheduled');
     assert.equal((retryEvent?.payload as { reason?: string } | undefined)?.reason, 'stale_running_timeout');
+    assert.equal(state.queueMessages.length, 1);
+    assert.equal(state.queueMessages[0]?.reviewId, 'rev_abcd1234');
   }
 
   {
@@ -1439,8 +1451,18 @@ export async function runReviewRunnerTests(): Promise<void> {
     });
     const fetchCalls: Array<{ url: string; body: Record<string, unknown> }> = [];
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = String(input);
+      if (url.includes('api.github.com/repos/') && /\/commits\?sha=/i.test(url)) {
+        return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('api.github.com/repos/') && /\/commits\/[a-z0-9]{7,40}$/i.test(url)) {
+        return new Response(JSON.stringify({ files: [] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url.includes('api.github.com/repos/') && url.includes('/contents/')) {
+        return new Response(JSON.stringify({ content: '' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
       const body = JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>;
-      fetchCalls.push({ url: String(input), body });
+      fetchCalls.push({ url, body });
       if (fetchCalls.length === 1) {
         return new Response(
           JSON.stringify({
@@ -1456,8 +1478,9 @@ export async function runReviewRunnerTests(): Promise<void> {
       return new Response(
         JSON.stringify({
           action: {
-            type: 'final',
-            summary: JSON.stringify({
+            type: 'complete',
+            summary: 'One logic issue identified.',
+            finalOutput: {
               findings: [
                 {
                   severity: 'medium',
@@ -1473,7 +1496,7 @@ export async function runReviewRunnerTests(): Promise<void> {
               ],
               summary: 'One logic issue identified.',
               furtherPassesLowYield: false,
-            }),
+            },
           },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } }
@@ -1527,7 +1550,7 @@ export async function runReviewRunnerTests(): Promise<void> {
       assert.equal(state.status, 'succeeded');
       assert.equal(fetchCalls.length, 2);
       assert.equal(fetchCalls[0]?.body.model, 'claude-test');
-      assert.equal(capturedSandboxId, 'review-snapshot-rev_abcd1234');
+      assert.equal(capturedSandboxId, 'review-snapshot-rev_abcd1234-attempt-1');
       const firstPromptText = String(fetchCalls[0].body.prompt ?? '');
       assert.equal(
         firstPromptText.includes('Intent session context excerpts') || firstPromptText.includes('Developer intent summary'),
@@ -1619,6 +1642,89 @@ export async function runReviewRunnerTests(): Promise<void> {
       assert.equal(fetchBodies[0]?.model, 'sonnet-4.5-review-override');
       const startedEvent = state.events.find((event) => event.eventType === 'review_analysis_agent_started');
       assert.equal((startedEvent?.payload as Record<string, unknown> | undefined)?.model, 'sonnet-4.5-review-override');
+    } finally {
+      globalThis.fetch = originalFetch;
+      setReviewAnalysisSandboxResolverForTests(null);
+    }
+  }
+
+  {
+    const originalFetch = globalThis.fetch;
+    const fetchBodies: Array<Record<string, unknown>> = [];
+    const fetchHeaders: Headers[] = [];
+    const fetchUrls: string[] = [];
+    setReviewAnalysisSandboxResolverForTests(async () => ({
+      async exec(command: string) {
+        if (command.includes('base64 -d') || command.includes('cat ') || command.includes('rm -rf')) {
+          return { stdout: '', stderr: '', exitCode: 0 };
+        }
+        if (command.includes('os.listdir')) {
+          return { stdout: JSON.stringify({ entries: [] }), stderr: '', exitCode: 0 };
+        }
+        return { stdout: '', stderr: '', exitCode: 0 };
+      },
+      async writeFile() {
+        return undefined;
+      },
+      async destroy() {
+        return undefined;
+      },
+    }) as never);
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      fetchUrls.push(String(input));
+      fetchHeaders.push(new Headers(init?.headers));
+      fetchBodies.push(JSON.parse(String(init?.body ?? '{}')) as Record<string, unknown>);
+      return new Response(
+        JSON.stringify({
+          output: [
+            {
+              type: 'message',
+              role: 'assistant',
+              content: [
+                {
+                  type: 'output_text',
+                  text: JSON.stringify({
+                    type: 'complete',
+                    tool: null,
+                    args: null,
+                    summary: null,
+                    finalOutput: {
+                      findings: [],
+                      summary: 'No actionable findings.',
+                      furtherPassesLowYield: true,
+                    },
+                  }),
+                },
+              ],
+            },
+          ],
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      );
+    }) as typeof fetch;
+    try {
+      const { env, state } = createReviewRunnerEnv({
+        envOverrides: {
+          REVIEW_MODEL: 'openai/gpt-5.3-codex',
+          AGENT_SDK_URL: '',
+          OPENROUTER_API_KEY: '',
+          CF_ACCOUNT_ID: 'cf-account',
+          AI_GATEWAY_AUTH_TOKEN: 'cf_gateway_token',
+          AI_GATEWAY_BYOK_ALIAS: 'org-default',
+          AI_GATEWAY_COLLECT_LOG_PAYLOAD: 'false',
+        },
+      });
+      await processReviewRun(env as never, 'rev_abcd1234');
+      assert.equal(state.status, 'succeeded');
+      const gatewayRequestIndex = fetchBodies.findIndex((body) => body.model === 'gpt-5.3-codex');
+      assert.notEqual(gatewayRequestIndex, -1);
+      assert.equal(fetchUrls[gatewayRequestIndex], 'https://gateway.ai.cloudflare.com/v1/cf-account/default/openai/responses');
+      assert.equal(fetchHeaders[gatewayRequestIndex]?.get('cf-aig-authorization'), 'Bearer cf_gateway_token');
+      assert.equal(fetchHeaders[gatewayRequestIndex]?.get('cf-aig-byok-alias'), 'org-default');
+      assert.equal(fetchHeaders[gatewayRequestIndex]?.get('cf-aig-collect-log-payload'), 'false');
+      assert.equal((fetchBodies[gatewayRequestIndex]?.text as { format?: { type?: string } } | undefined)?.format?.type, 'json_schema');
+      const startedEvent = state.events.find((event) => event.eventType === 'review_analysis_agent_started');
+      assert.equal((startedEvent?.payload as Record<string, unknown> | undefined)?.provider, 'cloudflare_ai_gateway');
     } finally {
       globalThis.fetch = originalFetch;
       setReviewAnalysisSandboxResolverForTests(null);
