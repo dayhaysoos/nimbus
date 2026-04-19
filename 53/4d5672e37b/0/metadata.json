@@ -1,0 +1,39 @@
+{
+  "cli_version": "0.5.2",
+  "checkpoint_id": "534d5672e37b",
+  "session_id": "019d9d31-4d17-7d71-bd79-7c0e1324b230",
+  "strategy": "manual-commit",
+  "created_at": "2026-04-19T18:16:50.230521Z",
+  "branch": "codex/gpt53-review-reliability",
+  "checkpoints_count": 3,
+  "files_touched": [
+    "packages/worker/src/api/workspaces/sandbox-command.ts",
+    "packages/worker/src/lib/review-analysis/sandbox.ts",
+    "packages/worker/src/lib/workspace-task-runner.ts",
+    "packages/worker/test/lib/review-analysis-sandbox.test.ts"
+  ],
+  "agent": "Codex",
+  "model": "gpt-5.4",
+  "turn_id": "c705752de5f2",
+  "checkpoint_transcript_start": 6736,
+  "transcript_lines_at_start": 6736,
+  "token_usage": {
+    "input_tokens": 10383205,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 9913216,
+    "output_tokens": 35922,
+    "api_call_count": 93
+  },
+  "session_metrics": {
+    "turn_count": 33
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-04-19T18:16:43.115372Z",
+    "agent_lines": 6,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 0,
+    "total_committed": 6,
+    "agent_percentage": 100
+  }
+}
