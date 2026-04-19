@@ -87,6 +87,7 @@ function studioContextPlugin() {
       const workerUrl = process.env.NIMBUS_API_PROXY_TARGET ?? 'http://127.0.0.1:8787';
       const apiKey = process.env.NIMBUS_API_KEY?.trim() || null;
       const reviewGithubToken = process.env.REVIEW_CONTEXT_GITHUB_TOKEN?.trim() || null;
+      const providerApiKey = process.env.REVIEW_PROVIDER_API_KEY?.trim() || null;
       const openrouterApiKey = process.env.OPENROUTER_API_KEY?.trim() || null;
       startStudioPreflightBackgroundPolling({ repoRoot: process.env.NIMBUS_STUDIO_REPO_ROOT?.trim() || process.cwd() });
       server.httpServer?.once('close', () => {
@@ -104,6 +105,7 @@ function studioContextPlugin() {
           workerUrl,
           apiKey,
           reviewGithubToken,
+          providerApiKey,
           openrouterApiKey
         );
         if (!handled) {
