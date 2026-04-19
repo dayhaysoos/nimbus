@@ -1,220 +1,24 @@
-Continue Nimbus in /Users/nickdejesus/Code/nimbus on a new branch:
-`codex/gpt53-review-reliability`
-
-You are not planning. You are executing.
-
-Your job:
-1. get Nimbus review runs working reliably with GPT-5.3
-2. deploy the worker yourself
-3. run the real Nimbus CLI review flow yourself
-4. iterate until you either:
-   - get a successful review result on the current committed HEAD
-   - or can prove the exact remaining blocker with evidence
-
-Do the work autonomously:
-- inspect code
-- patch code
-- run tests
-- deploy with Wrangler
-- run real `nimbus review create` commands
-- verify outcomes
-
-Context:
-- Nimbus Studio and `nimbus review create` previously missed real bugs on this commit.
-- We increased review depth and validation:
-  - reasoning: `medium`
-  - max steps: `32`
-  - validation turned on
-- bare `gpt-5.3` was invalid for the provider path
-- it was corrected to `openai/gpt-5.3-codex`
-- after that, reviews got deeper into analysis but failed in retry/recovery instead of completing
-
-Known runs:
-- invalid model run:
-  - `review_12xgxb8z`
-  - `session_frgnmsxv`
-- stalled retry run:
-  - `review_i5b50scf`
-  - `session_glevu8km`
-- fresh rerun that still failed:
-  - `review_y7buxiar`
-  - `session_gz3vvk9o`
-  - failed with `review_execution_timeout: Review recovery retry was scheduled but no worker claimed it within 60s`
-
-Inspect first:
-- `/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-analysis.ts`
-- `/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-analysis/provider.ts`
-- `/Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-runner.ts`
-- `/Users/nickdejesus/Code/nimbus/packages/worker/src/review-runner-do.ts`
-- `/Users/nickdejesus/Code/nimbus/packages/worker/src/api/reviews/queue.ts`
-- `/Users/nickdejesus/Code/nimbus/packages/worker/src/api/reviews/recovery.ts`
-- `/Users/nickdejesus/Code/nimbus/packages/worker/wrangler.toml`
-- `/Users/nickdejesus/Code/nimbus/packages/cli/src/app/reviews/context.ts`
-- `/Users/nickdejesus/Code/nimbus/packages/cli/src/app/reviews/create-from-commit.ts`
-- relevant worker tests under `/Users/nickdejesus/Code/nimbus/packages/worker/test/`
-
-Read:
-- `/Users/nickdejesus/Code/nimbus/docs/architecture/architecture.md`
-- `/Users/nickdejesus/Code/nimbus/docs/architecture/review-session-pivot.md`
-- `/Users/nickdejesus/Code/nimbus/docs/architecture/review-session-implementation-handoff.md`
-
-Validate with real commands:
-- `pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review create --commit HEAD`
-- `pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review show <review-id>`
-- `pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review events <review-id>`
-- `pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review session show <session-id>`
-- `pnpm --filter @dayhaysoos/nimbus exec tsx src/index.ts review session latest`
-
-Important notes:
-- `wrangler deploy` may upload successfully but still exit nonzero because Cloudflare times out on `/containers/me`
-- do not assume a nonzero deploy means no live change occurred
-- the key current suspicion is retry/recovery reliability after long-running analysis, not only model selection
-
-Deliver:
-- working code changes or precise blocker diagnosis
-- test results
-- deploy result
-- real review IDs and session IDs
-- whether Nimbus now:
-  - completes
-  - finds bugs
-  - remediates
-  - produces something adoptable
-
-Do not stop at theory. Run the worker and CLI flow yourself.
-
----
-
-help me understand what the blcoker is. I thought we were going to somepletely switch to Cloudflare for inference?
-
----
-
-I thought we were supposed to completely replace OpenRouter with CF inference instead. Wasn't that defined at the start of this session?
-
----
-
-yea I think the bottleneck here is the fact that we're doing this on open router, we need longer running tasks and cloudflare handling inference is probably the best path forward. Instead of totally deleteing openrouter stuff we should just replace it with CF native AI inference and maybe circle back to OpenRouter later if we wanted.
-
----
-
-okay so I have a problemw ith this. The last review I did on the last commit had these items for feedback:
-
-P1 Respect saved review policy mode when starting from launch
-File: useStudioLaunchController.ts (line 111)
-Problem: the launch flow was always sending policyMode: 'auto' even when preflight had surfaced a saved/manual review preference.
-Effect: starting a session from Studio could skip the expected policy-approval pause and also persist the wrong preference back to the CLI/backend side.
-P2 Preserve backend launch failures instead of replacing them with disconnects
-File: useStudioLaunchController.ts (line 139)
-Problem: when /api/studio/new-review/start/events emitted an error event, the UI recorded the real backend failure but then let the EventSource close and overwrite that message with a generic “launch stream disconnected” error.
-Effect: users lost the actual actionable failure reason they needed to fix.
-P1 Keep the CLI test suite building after removing review-route helpers
-File: create-shared.ts (line 129)
-Problem: a previously exported review-route helper was removed, but downstream tests were not updated.
-Effect: pnpm --filter @dayhaysoos/nimbus test failed during TypeScript compilation before tests even ran.
-
-I wanted to try to figure out why nimbus couldn't find it at all. You're telling me that switching to cloudlfare with 5.3 codex didn't help?
-
----
-
-are you telling me GPT-5.3 isn't a model that's available on Cloudflare?
-
----
-
-so what doI need to use AI gateway? That's the replacement to openrouter right? I'd need an API key?
-
----
-
-I think BYOK is interesting for nimbus..maybe I can do that to support my users instead of them using my stuff?
-
----
-
-this kinda feels like it's spinning out of control. What's the difference between the user supplied provider key in request headers vs CF BYOK?
-
----
-
-I don't want to just send the users Open AI key. I want to support all major LLMs, many devs are on their plans
-
----
-
-yes let's gofor this experience. Once you have it set up, let me know when I should provide my OpenAI key
-
----
-
-walk me through where I go to get the CF ai gateway auth token
-
----
-
-give me the CLI command I need to add a new line with my auth key to .env.local
-
----
-
-I just added the api key named AI_GATEWAY_AUTH_TOKEN to the .dev.vars file in the worker package. It's validated too: 
-
-nickdejesus@MacBook-Pro-6 nimbus % code .   
-nickdejesus@MacBook-Pro-6 nimbus % curl "https://api.cloudflare.com/client/v4/user/tokens/verify" \
-  -H "Authorization: Bearer REDACTED"
-{"result":{"id":"f5db323c1be82d87dddcdb5cfad1d0f1","status":"active"},"success":true,"errors":[],"messages":[{"code":10000,"message":"This API Token is valid and active","type":null}]}%                                                                                                       
-nickdejesus@MacBook-Pro-6 nimbus % 
-
-
-Now as far as my open AI API key, that should be a value that gets passed as an environment variable locally right?
-
----
-
-no we shouldn't add it directly to my cloudflare backend. We are trying to build this in a way that's sharable to others. Is request-header the best practice here?
-
----
-
-okay do that
-
----
-
-I added it as this: OPENAI_API_KEY in the .env file at root level
-
----
-
-I accidentally gave the wrong key. Why does it need review provider api key or nimbus review model? how would it know which is which when the key is passed? Shouldn't you just refer to the OPENAI_API_KEY for now? Or is there a way you can deterministically know which model to use based on the key?
-
----
-
-I'll export review prodiver api key but what should the value actually be?
-
----
-
-I added NIMBUS_REVIEW_MODEL with the gpt value in the .env file. You can go ahead and run the export command to export the review provider APi key when you run this app. Go ahead and run right now
-
----
-
-so what are the options? how do we fix this?
-
----
-
-okay go ahead with your recommendations and test
-
----
-
-go ahead and run that
-
----
-
-proceed
-
----
-
-proceed with trying to fix, we have to see this through.
-
----
-
-so this is good news. but I'm worried about the lack of bugs. what do you think we'd have to do to address this?
-
----
-
-this isn't starting to feel overengineered to you?
-
----
-
-how would the eval set up work?
-
----
-
-There've been tons of changes in this branch. Lots of unstaged commits so far. I think that these should have review results. Why don't I do one review pass right now to see what comes up. Then we can commit this and review with nimbus immediately after to see if we get similiar results. From there we can try to troubleshoot how to get simliar results. What do you think?
+Here are the results:
+
+
+  - [P1] Keep the fallback review model runnable outside Workers AI — /Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-runner/
+    context-helpers.ts:181-181
+    If a deployment has no explicit REVIEW_MODEL/AGENT_MODEL and relies on either AGENT_SDK_URL or OPENROUTER_API_KEY, this new @cf/...
+    default now gets forwarded into selectReviewAgentProvider() and then on to the agent endpoint/OpenRouter. Those providers do not
+    understand Workers AI model IDs, so review analysis regresses from "works with defaults" to provider errors unless every install also
+    updates its model config. The previous default was provider-agnostic, so this is a compatibility break for existing self-hosted setups.
+  - [P2] Consider the AGENT_ENDPOINT binding when enabling analysis — /Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-runner/
+    deployment-report/analysis.ts:79-79
+    This availability check only passes AGENT_SDK_URL into selectReviewAgentProvider(), but runWorkspaceDeploymentAgentAnalysis() now
+    supports a service-binding-only setup via env.AGENT_ENDPOINT. In an install that uses only the internal binding (no public SDK URL),
+    reviewProviderSelection stays null here and the entire model-backed analysis stage is skipped even though the lower-level runner can
+    execute it.
+  - [P2] Restore retry attempts for direct OpenRouter review calls — /Users/nickdejesus/Code/nimbus/packages/worker/src/lib/review-analysis/
+    provider.ts:741-741
+    For deployments using the direct OpenRouter provider, this loop now caps attempts at REVIEW_AGENT_ENDPOINT_MAX_ATTEMPTS (1) instead of
+    REVIEW_PROVIDER_MAX_ATTEMPTS (2). That means transient 429/5xx/timeout failures are no longer retried; the catch path still sleeps and
+    continues, but the for loop has already exhausted its single iteration and exits with a generic failure. This is a reliability regression
+    from the previous behavior.
+
+
+So now I want you to commit the current unstaged changes, then run the CLI version of nimbus
